@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-INSTALL_DIR="${1:-/opt/tradingplatform}"
+INSTALL_DIR="${1:-/opt/commandcenter}"
 
 echo -e "${YELLOW}This will stop and remove all trading platform services.${NC}"
 echo -en "Continue? (y/N): "

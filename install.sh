@@ -123,7 +123,7 @@ ask "Composio API key (calendar)" "" COMPOSIO_API_KEY true
 
 echo ""
 echo -e "${CYAN}═══ INSTALLATION ═══${NC}"
-ask "Install directory" "/opt/tradingplatform" INSTALL_DIR
+ask "Install directory" "/opt/commandcenter" INSTALL_DIR
 DASHBOARD_URL="http://localhost:3000"
 
 # ── INSTALL SYSTEM DEPENDENCIES ───────────────────────────
