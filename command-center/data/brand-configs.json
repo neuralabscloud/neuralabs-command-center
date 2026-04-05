@@ -1,0 +1,16 @@
+{
+  "DEFAULT": {
+    "colors": [
+      {
+        "hex": "#6B2FBF",
+        "label": "Primary"
+      }
+    ],
+    "fonts": [
+      {
+        "family": "Inter",
+        "role": "body"
+      }
+    ]
+  }
+}

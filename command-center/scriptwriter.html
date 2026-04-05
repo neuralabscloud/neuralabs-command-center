@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — Script Writer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --success: hsl(142 76% 36%); --danger: hsl(0 72% 51%);
+  --warning: hsl(45 93% 55%); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --agent-color: hsl(30 90% 55%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(30 90% 55% / 0.02) 0%, transparent 60%); pointer-events: none; }
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar { width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; }
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s; position: relative; border: 1px solid transparent; text-decoration: none; }
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.063); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.063); }
+.nav-item .tooltip { position: absolute; left: 52px; top: 50%; transform: translateY(-50%); background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+@keyframes pulse-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; } .delay-3 { animation-delay: 0.15s; }
+
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, hsl(30 90% 55%), hsl(30 90% 70%)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header { font-family: var(--font-display); font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 14px; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+/* Form */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.form-group.full { grid-column: 1 / -1; }
+.form-label { font-family: var(--font-data); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+.form-input, .form-select, .form-textarea {
+  background: hsl(0 0% 4%); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; color: var(--text); font-family: var(--font-data); font-size: 12px;
+  outline: none; transition: border-color 0.2s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--agent-color); }
+.form-textarea { min-height: 80px; resize: vertical; line-height: 1.6; }
+.form-select { cursor: pointer; }
+.form-select option { background: hsl(0 0% 5%); }
+.submit-btn {
+  padding: 12px 28px; border: none; border-radius: 8px; cursor: pointer;
+  background: linear-gradient(135deg, hsl(30 90% 55%), hsl(30 90% 70%));
+  color: white; font-family: var(--font-data); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.06em; transition: all 0.2s;
+}
+.submit-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 20px hsla(30 90% 55% / 0.3); }
+
+/* Task list */
+.task-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s;
+}
+.task-card:hover { border-color: hsla(30 90% 55% / 0.3); }
+.task-top { display: flex; justify-content: space-between; align-items: center; }
+.task-type { font-family: var(--font-data); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--agent-color); font-weight: 600; }
+.task-status { font-family: var(--font-data); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+.task-status.pending { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
+.task-status.processing { color: var(--primary); background: hsla(264 65% 49% / 0.08); }
+.task-status.completed { color: var(--success); background: hsla(142 76% 36% / 0.08); }
+.task-desc { font-family: var(--font-data); font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.task-result { font-family: var(--font-data); font-size: 12px; color: var(--text); background: hsl(0 0% 3%); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; white-space: pre-wrap; line-height: 1.7; max-height: 300px; overflow-y: auto; }
+.task-meta { font-family: var(--font-data); font-size: 10px; color: hsl(215 20% 45%); display: flex; gap: 12px; }
+.task-actions { display: flex; gap: 6px; }
+.task-btn { font-family: var(--font-data); font-size: 10px; padding: 4px 10px; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+.task-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.task-btn.del:hover { color: var(--danger); border-color: var(--danger); }
+.tasks-grid { display: flex; flex-direction: column; gap: 10px; }
+.empty-state { text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-data); font-size: 12px; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── RESPONSIVE: MOBILE ── */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+    scrollbar-width: none; transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar::after {
+    content: ''; position: sticky; right: 0; top: 0; bottom: 0;
+    width: 28px; flex-shrink: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-sidebar));
+    pointer-events: none;
+  }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 11px; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .main { padding: 12px 10px 64px; gap: 16px; }
+  .header-title { font-size: 15px; }
+  .sidebar-nav { gap: 0; padding: 0 2px; }
+  .nav-item { width: 33px; height: 33px; }
+  .nav-item svg { width: 15px; height: 15px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+  </aside>
+
+  <main class="main">
+    <div class="fade-up delay-1">
+      <div class="header-title">SCRIPT WRITER</div>
+      <div class="header-sub">Video scripts, social media copy & content outlines</div>
+    </div>
+
+    <!-- NEW TASK -->
+    <section class="fade-up delay-2">
+      <div class="section-header">New Script</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="f-type">
+            <option value="video_script">Video Script</option>
+            <option value="social_post">Social Media Post</option>
+            <option value="thread">Thread / Carousel</option>
+            <option value="newsletter">Newsletter</option>
+            <option value="hook">Hook / Intro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Format</label>
+          <select class="form-select" id="f-format">
+            <option value="short-form">Short-form (&lt;60s)</option>
+            <option value="medium">Medium (1-3 min)</option>
+            <option value="long-form">Long-form (3+ min)</option>
+            <option value="text-only">Text only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tone</label>
+          <select class="form-select" id="f-tone">
+            <option value="educational">Educational</option>
+            <option value="hype">Hype / Promotional</option>
+            <option value="professional">Professional</option>
+            <option value="casual">Casual / Conversational</option>
+            <option value="storytelling">Storytelling</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Topic</label>
+          <input class="form-input" id="f-topic" placeholder="e.g. Funding rate arbitrage uitleg">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Description / Brief</label>
+          <textarea class="form-textarea" id="f-desc" placeholder="Extra context, doelgroep, key points..."></textarea>
+        </div>
+        <div class="form-group">
+          <button class="submit-btn" onclick="createTask()">Create Script Task</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TASK LIST -->
+    <section class="fade-up delay-3">
+      <div class="section-header">Tasks</div>
+      <div class="tasks-grid" id="tasks-grid">
+        <div class="empty-state">Geen taken</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script>
+const API = '/scriptwriter/tasks';
+
+async function loadTasks() {
+  try {
+    const tasks = await (await fetch(API)).json();
+    const grid = document.getElementById('tasks-grid');
+    if (!tasks.length) { grid.innerHTML = '<div class="empty-state">Geen taken</div>'; return; }
+    grid.innerHTML = tasks.map(t => {
+      const date = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      return `<div class="task-card">
+        <div class="task-top">
+          <span class="task-type">${t.type} — ${t.format || 'short-form'}</span>
+          <span class="task-status ${t.status}">${t.status}</span>
+        </div>
+        ${t.topic ? `<div class="task-desc"><strong>${esc(t.topic)}</strong></div>` : ''}
+        ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+        ${t.result ? `<div class="task-result">${esc(t.result)}</div>` : ''}
+        ${t.error ? `<div class="task-desc" style="color:var(--danger)">${esc(t.error)}</div>` : ''}
+        <div class="task-top">
+          <div class="task-meta"><span>${date}</span><span>${t.tone || ''}</span></div>
+          <div class="task-actions">
+            <button class="task-btn del" onclick="deleteTask('${t.id}')">Delete</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function createTask() {
+  const body = {
+    type: document.getElementById('f-type').value,
+    format: document.getElementById('f-format').value,
+    tone: document.getElementById('f-tone').value,
+    topic: document.getElementById('f-topic').value,
+    description: document.getElementById('f-desc').value,
+  };
+  await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  document.getElementById('f-topic').value = '';
+  document.getElementById('f-desc').value = '';
+  loadTasks();
+}
+
+async function deleteTask(id) {
+  await fetch(API + '/' + id, { method: 'DELETE' });
+  loadTasks();
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+loadTasks();
+setInterval(loadTasks, 15000);
+</script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>

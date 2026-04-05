@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — Analyst</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --success: hsl(142 76% 36%); --danger: hsl(0 72% 51%);
+  --warning: hsl(45 93% 55%); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.024) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.024) 0%, transparent 60%); pointer-events: none; }
+body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(var(--text-muted) 1px, transparent 1px), linear-gradient(90deg, var(--text-muted) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.04; pointer-events: none; }
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar { width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; }
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s; position: relative; border: 1px solid transparent; text-decoration: none; }
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.063); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.063); }
+.nav-item .tooltip { position: absolute; left: 52px; top: 50%; transform: translateY(-50%); background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 14px; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.summary-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; transition: all 0.25s; }
+.summary-label { font-family: var(--font-data); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.summary-value { font-family: var(--font-data); font-size: 22px; font-weight: 700; }
+.summary-sub { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-family: var(--font-data); }
+
+.bot-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.bot-tab { font-family: var(--font-data); font-size: 11px; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid var(--border); background: transparent; color: var(--text-dim); }
+.bot-tab:hover { color: var(--text); border-color: var(--primary-dim); }
+.bot-tab.active { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.06); }
+
+.report-card { background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.report-pre { font-family: var(--font-data); font-size: 12px; color: var(--text-dim); line-height: 1.8; white-space: pre-wrap; }
+
+.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th { font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 10px 14px; border-bottom: 1px solid hsla(217 32% 20% / 0.12); font-size: 12px; font-family: var(--font-data); }
+.data-table tr { transition: background 0.2s; }
+.data-table tr:hover { background: hsla(264 65% 49% / 0.02); }
+
+.pnl-chart { display: flex; align-items: end; gap: 2px; height: 80px; padding: 8px 0; }
+.pnl-bar { flex: 1; border-radius: 2px; min-width: 3px; transition: height 0.3s; }
+
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; } .delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── RESPONSIVE: MOBILE ── */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+    scrollbar-width: none; transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar::after {
+    content: ''; position: sticky; right: 0; top: 0; bottom: 0;
+    width: 28px; flex-shrink: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-sidebar));
+    pointer-events: none;
+  }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 11px; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .two-col { grid-template-columns: 1fr !important; }
+  .bot-tabs { flex-wrap: wrap; gap: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { min-width: 500px; }
+}
+
+@media (max-width: 480px) {
+  .main { padding: 12px 10px 64px; gap: 16px; }
+  .header-title { font-size: 15px; }
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+  .sidebar-nav { gap: 0; padding: 0 2px; }
+  .nav-item { width: 33px; height: 33px; }
+  .nav-item svg { width: 15px; height: 15px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+  </aside>
+
+  <main class="main">
+    <div class="fade-up delay-1">
+      <div class="header-title">BOT ANALYST</div>
+      <div class="header-sub">Trade history, performance metrics & daily reports</div>
+    </div>
+
+    <!-- SUMMARY -->
+    <section class="fade-up delay-2">
+      <div class="summary-grid" id="summary-grid"></div>
+    </section>
+
+    <!-- DAILY REPORT + BOT DIAGNOSE -->
+    <section class="fade-up delay-3 two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div>
+        <div class="section-header">Daily Report</div>
+        <div class="report-card" style="height:calc(100% - 40px);">
+          <div class="report-pre" id="daily-report">Loading...</div>
+        </div>
+      </div>
+      <div>
+        <div class="section-header">Bot Diagnose</div>
+        <div class="report-card" style="height:calc(100% - 40px);">
+          <div class="report-pre" id="bot-diagnosis">Loading...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PNL CHART -->
+    <section class="fade-up delay-3">
+      <div class="section-header">Cumulative PnL</div>
+      <div class="bot-tabs" id="bot-tabs"></div>
+      <div class="report-card">
+        <div class="pnl-chart" id="pnl-chart"></div>
+      </div>
+    </section>
+
+    <!-- TRADE HISTORY -->
+    <section class="fade-up delay-4">
+      <div class="section-header">Trade History</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Bot</th><th>Asset</th><th>Direction</th><th>Entry</th><th>Exit</th><th>Size</th><th>PnL</th><th>Reason</th></tr></thead>
+          <tbody id="trades-table"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const BOTS = { funding: 'Funding', trend: 'Trend' };
+const BOT_COLORS = { funding: 'var(--success)', trend: 'var(--primary)' };
+let allTrades = {};
+let selectedBot = 'all';
+
+function fmtNum(n) {
+  if (Math.abs(n) >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1000) return (n/1000).toFixed(1) + 'K';
+  return n.toFixed(2);
+}
+
+function getPnl(t) { return t.total_pnl ?? t.pnl ?? 0; }
+function getDate(t) { return t.closed_at || t.dt || ''; }
+function getExit(t) { return t.close_price || t.exit_price || 0; }
+function getReason(t) { return t.close_reason || t.reason_close || '—'; }
+
+async function loadAll() {
+  try {
+    const [tradesRes, reportRes, statusRes] = await Promise.all([
+      fetch('/analyst/trades'),
+      fetch('/analyst/daily-report'),
+      fetch('/api/status'),
+    ]);
+    allTrades = await tradesRes.json();
+    const report = await reportRes.json();
+    const botStatus = await statusRes.json();
+
+    renderReport(report);
+    renderSummary(botStatus);
+    renderTabs();
+    renderPnlChart();
+    renderTradeTable();
+  } catch(e) {
+    console.error('Load error:', e);
+  }
+}
+
+function renderReport(report) {
+  const el = document.getElementById('daily-report');
+  const text = (report.analysis || 'No report available').replace(/\n{3,}/g, '\n\n');
+  el.textContent = text;
+
+  const diagEl = document.getElementById('bot-diagnosis');
+  const diagText = (report.diagnosis || 'No diagnosis available').replace(/\n{3,}/g, '\n\n');
+  diagEl.textContent = diagText;
+}
+
+function renderSummary(botStatus) {
+  const flat = Object.entries(allTrades).flatMap(([id, trades]) => trades.map(t => ({ ...t, botId: id })));
+  const totalPnl = flat.reduce((s, t) => s + getPnl(t), 0);
+  const totalTrades = flat.length;
+  const wins = flat.filter(t => getPnl(t) > 0).length;
+  const winRate = totalTrades > 0 ? Math.round(wins / totalTrades * 100) : 0;
+  const totalEquity = Object.values(botStatus).reduce((s, b) => s + (b.accountValue || 0), 0);
+  const todayPnl = Object.values(botStatus).reduce((s, b) => s + (b.stats?.dailyPnl || 0), 0);
+
+  document.getElementById('summary-grid').innerHTML = [
+    { label: 'Total Equity', value: '$' + totalEquity.toFixed(2), sub: Object.keys(BOTS).length + ' wallets', color: 'var(--text)' },
+    { label: 'Today PnL', value: '$' + (todayPnl >= 0 ? '+' : '') + todayPnl.toFixed(2), sub: 'Realized', color: todayPnl >= 0 ? 'var(--success)' : 'var(--danger)' },
+    { label: 'Total PnL', value: '$' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(2), sub: 'All time', color: totalPnl >= 0 ? 'var(--success)' : 'var(--danger)' },
+    { label: 'Win Rate', value: winRate + '%', sub: wins + '/' + totalTrades + ' trades', color: winRate >= 50 ? 'var(--success)' : 'var(--warning)' },
+    { label: 'Total Trades', value: String(totalTrades), sub: 'Across all bots', color: 'var(--primary)' },
+  ].map(s => `<div class="summary-card"><div class="summary-label">${s.label}</div><div class="summary-value" style="color:${s.color}">${s.value}</div><div class="summary-sub">${s.sub}</div></div>`).join('');
+}
+
+function renderTabs() {
+  const tabs = [{ id: 'all', label: 'ALL BOTS' }, ...Object.entries(BOTS).map(([id, name]) => ({ id, label: name.toUpperCase() }))];
+  document.getElementById('bot-tabs').innerHTML = tabs.map(t =>
+    `<button class="bot-tab ${t.id === selectedBot ? 'active' : ''}" onclick="selectBot('${t.id}')">${t.label}</button>`
+  ).join('');
+}
+
+function selectBot(id) {
+  selectedBot = id;
+  renderTabs();
+  renderPnlChart();
+  renderTradeTable();
+}
+
+function renderPnlChart() {
+  const trades = selectedBot === 'all'
+    ? Object.entries(allTrades).flatMap(([id, t]) => t.map(tr => ({ ...tr, botId: id })))
+    : (allTrades[selectedBot] || []).map(t => ({ ...t, botId: selectedBot }));
+
+  trades.sort((a, b) => getDate(a).localeCompare(getDate(b)));
+
+  let cumPnl = 0;
+  const points = trades.map(t => { cumPnl += getPnl(t); return cumPnl; });
+
+  if (!points.length) {
+    document.getElementById('pnl-chart').innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;width:100%;padding:20px">No trades</div>';
+    return;
+  }
+
+  const max = Math.max(...points.map(Math.abs), 0.01);
+  const mid = 40; // middle of 80px height
+  document.getElementById('pnl-chart').innerHTML = points.map(p => {
+    const h = Math.abs(p) / max * 35;
+    const color = p >= 0 ? 'var(--success)' : 'var(--danger)';
+    const bottom = p >= 0 ? mid : mid - h;
+    return `<div class="pnl-bar" style="height:${h}px;background:${color};margin-top:${80-bottom-h}px;opacity:0.8" title="$${p.toFixed(2)}"></div>`;
+  }).join('') + `<div style="position:absolute;left:0;right:0;top:${mid}px;height:1px;background:var(--border);pointer-events:none;"></div>`;
+
+  document.getElementById('pnl-chart').style.position = 'relative';
+}
+
+function renderTradeTable() {
+  const trades = selectedBot === 'all'
+    ? Object.entries(allTrades).flatMap(([id, t]) => t.map(tr => ({ ...tr, botId: id })))
+    : (allTrades[selectedBot] || []).map(t => ({ ...t, botId: selectedBot }));
+
+  trades.sort((a, b) => getDate(b).localeCompare(getDate(a)));
+
+  const tbody = document.getElementById('trades-table');
+  if (!trades.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-dim)">No trades</td></tr>'; return; }
+
+  tbody.innerHTML = trades.slice(0, 50).map(t => {
+    const pnl = getPnl(t);
+    const dt = getDate(t);
+    const dateStr = dt ? new Date(dt).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+    return `<tr>
+      <td>${dateStr}</td>
+      <td style="color:${BOT_COLORS[t.botId]||'var(--text)'}">${BOTS[t.botId]||t.botId}</td>
+      <td>${t.asset||'—'}</td>
+      <td style="color:${t.direction==='LONG'?'var(--success)':'var(--danger)'}">${t.direction||'—'}</td>
+      <td>$${(t.entry_price||0).toFixed(2)}</td>
+      <td>$${getExit(t).toFixed(2)}</td>
+      <td>$${(t.size_usd||0).toFixed(0)}</td>
+      <td style="color:${pnl>=0?'var(--success)':'var(--danger)'}">$${pnl>=0?'+':''}${pnl.toFixed(4)}</td>
+      <td style="color:var(--text-dim);font-size:10px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${getReason(t)}</td>
+    </tr>`;
+  }).join('');
+}
+
+loadAll();
+</script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>

@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — Research</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%);
+  --bg-base: hsl(0 0% 3%);
+  --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%);
+  --bg-card-hover: hsl(0 0% 8%);
+  --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%);
+  --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%);
+  --primary-dim: hsla(264 65% 49% / 0.5);
+  --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%);
+  --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%);
+  --success-dim: hsla(142 76% 36% / 0.4);
+  --danger: hsl(0 72% 51%);
+  --danger-dim: hsla(0 72% 51% / 0.4);
+  --warning: hsl(45 93% 55%);
+  --warning-dim: hsla(45 93% 55% / 0.4);
+  --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%);
+  --text-dim: hsl(215 20% 65%);
+  --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px;
+  --sidebar-w: 62px;
+  --feed-w: 272px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.02) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(var(--text-muted) 1px, transparent 1px),
+    linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.04;
+  pointer-events: none;
+}
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+
+/* SIDEBAR */
+.sidebar {
+  width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+}
+.sidebar-logo {
+  font-family: var(--font-display); font-size: 10px; font-weight: 900;
+  color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px;
+  text-shadow: 0 0 20px var(--primary-glow);
+}
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  position: relative; border: 1px solid transparent; text-decoration: none;
+}
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active {
+  color: var(--primary); background: hsla(264 65% 49% / 0.06);
+  border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.06);
+}
+.nav-item .tooltip {
+  position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text);
+  white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+
+/* MAIN */
+.main {
+  flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px;
+  display: flex; flex-direction: column; gap: 28px;
+}
+.header { display: flex; align-items: center; justify-content: space-between; }
+.header-title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header {
+  font-family: var(--font-display); font-size: 11px; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity: 0.6; box-shadow: 0 0 8px 2px currentColor; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+.delay-5 { animation-delay: 0.25s; } .delay-6 { animation-delay: 0.30s; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── PAGE-SPECIFIC ──────────────────────────────── */
+.content-area { display: flex; gap: 24px; flex: 1; }
+.content-main { flex: 1; display: flex; flex-direction: column; gap: 24px; }
+.idea-bank {
+  width: var(--feed-w); background: var(--bg-sidebar); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; max-height: calc(100vh - 120px);
+  overflow-y: auto; flex-shrink: 0;
+}
+.idea-bank-title {
+  font-family: var(--font-display); font-size: 10px; letter-spacing: 0.2em;
+  color: var(--primary); margin-bottom: 14px;
+}
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); text-align: left;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 12px 14px; border-bottom: 1px solid hsla(217 32% 20% / 0.12); font-size: 13px;
+  vertical-align: middle;
+}
+.data-table tr { transition: background 0.2s; }
+.data-table tr:hover { background: hsla(264 65% 49% / 0.02); }
+.table-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+
+.rating-bar {
+  height: 4px; border-radius: 4px; background: var(--bg-deep); width: 80px; display: inline-block;
+  vertical-align: middle; position: relative; overflow: hidden;
+}
+.rating-fill { height: 100%; border-radius: 4px; }
+.platform-tag {
+  font-family: var(--font-data); font-size: 10px; padding: 2px 8px;
+  border-radius: 4px; display: inline-block;
+}
+.btn-sm {
+  font-family: var(--font-data); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; background: hsla(264 65% 49% / 0.06); color: var(--primary);
+  border: 1px solid hsla(264 65% 49% / 0.15); padding: 5px 12px; border-radius: 6px;
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-sm:hover { background: hsla(264 65% 49% / 0.09); box-shadow: 0 0 16px hsla(264 65% 49% / 0.07); }
+
+/* COMPETITOR CARDS */
+.comp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.comp-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; transition: all 0.25s;
+}
+.comp-card:hover { border-color: var(--border-glow); box-shadow: 0 0 24px hsla(264 65% 49% / 0.03); }
+.comp-name { font-family: var(--font-data); font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.comp-handle { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; }
+.comp-stats { display: flex; gap: 16px; }
+.comp-stat-val { font-family: var(--font-data); font-size: 16px; font-weight: 600; }
+.comp-stat-lbl { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* HOOK LIBRARY */
+.hook-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.hook-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
+  transition: all 0.25s;
+}
+.hook-card:hover { border-color: var(--border-glow); }
+.hook-text { font-size: 13px; flex: 1; margin-right: 12px; }
+.hook-category {
+  font-family: var(--font-data); font-size: 9px; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px;
+}
+.btn-copy {
+  font-family: var(--font-data); font-size: 10px; background: var(--bg-surface);
+  color: var(--text-dim); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 4px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.btn-copy:hover { color: var(--primary); border-color: var(--primary-dim); }
+
+/* CAPTURE */
+.capture-area {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px;
+}
+.capture-textarea {
+  width: 100%; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 14px; color: var(--text); font-family: var(--font-body);
+  font-size: 13px; resize: vertical; min-height: 80px; outline: none; transition: border-color 0.2s;
+}
+.capture-textarea:focus { border-color: var(--primary-dim); }
+.capture-textarea::placeholder { color: var(--text-muted); }
+.capture-actions { display: flex; justify-content: flex-end; margin-top: 10px; gap: 8px; }
+
+.idea-item {
+  padding: 10px 0; border-bottom: 1px solid hsla(217 32% 20% / 0.09); font-size: 12px; color: var(--text-dim);
+}
+.idea-item-time { font-family: var(--font-data); font-size: 9px; color: var(--text-muted); margin-bottom: 3px; }
+
+/* ── RESPONSIVE: MOBILE ── */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+    scrollbar-width: none; transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar::after {
+    content: ''; position: sticky; right: 0; top: 0; bottom: 0;
+    width: 28px; flex-shrink: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-sidebar));
+    pointer-events: none;
+  }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 11px; }
+  .content-area { flex-direction: column; }
+  .idea-bank { width: 100%; max-height: 300px; position: static; }
+  /* Stack grids to 1 column */
+  .comp-grid, .hook-grid { grid-template-columns: 1fr; }
+  /* Tables: horizontal scroll */
+  .data-table { display: block; overflow-x: auto; }
+  table { min-width: 500px; }
+}
+
+@media (max-width: 480px) {
+  .main { padding: 12px 10px 64px; gap: 16px; }
+  .header-title { font-size: 15px; }
+  .sidebar-nav { gap: 0; padding: 0 2px; }
+  .nav-item { width: 33px; height: 33px; }
+  .nav-item svg { width: 15px; height: 15px; }
+}
+
+/* ── REPORT CARDS ── */
+.report-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+}
+.report-card-header {
+  font-family: var(--font-data); font-size: 11px; font-weight: 700;
+  color: var(--primary); letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+}
+.report-card-icon { font-size: 14px; }
+.report-card-body {
+  padding: 18px 20px; font-size: 13px; line-height: 1.75;
+  color: var(--text); font-family: var(--font-body);
+}
+
+/* ── POST CARDS ── */
+.post-grid { display: flex; flex-direction: column; }
+.post-card {
+  padding: 16px 20px;
+  border-bottom: 1px solid hsla(217 32% 20% / 0.4);
+  transition: background 0.2s;
+}
+.post-card:last-child { border-bottom: none; }
+.post-card:hover { background: hsla(264 65% 49% / 0.02); }
+.post-card-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.post-card-num {
+  font-family: var(--font-data); font-size: 10px; font-weight: 700;
+  color: var(--primary); background: hsla(264 65% 49% / 0.1);
+  border: 1px solid hsla(264 65% 49% / 0.2);
+  width: 22px; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+}
+.post-card-title {
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
+  color: var(--text); flex: 1;
+}
+.post-copy-btn {
+  font-family: var(--font-data); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-dim); background: var(--bg-surface);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: 4px 10px; cursor: pointer; transition: all 0.2s;
+}
+.post-copy-btn:hover { border-color: var(--primary); color: var(--primary); }
+.post-copy-btn.copied { border-color: var(--success); color: var(--success); }
+.post-field { margin-bottom: 8px; }
+.post-field-label {
+  font-family: var(--font-data); font-size: 9px; font-weight: 600;
+  color: var(--text-dim); letter-spacing: 0.08em; text-transform: uppercase;
+  display: block; margin-bottom: 3px;
+}
+.post-field-value { font-size: 13px; line-height: 1.6; color: var(--text); }
+.post-hook { font-weight: 600; font-size: 14px; }
+.post-tweet {
+  font-size: 13px; background: hsla(0 0% 100% / 0.02);
+  border-left: 2px solid var(--text-dim); padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+}
+.post-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.post-tag {
+  font-family: var(--font-data); font-size: 9px; font-weight: 500;
+  color: var(--text-dim); background: hsla(0 0% 100% / 0.04);
+  border: 1px solid hsla(0 0% 100% / 0.08); border-radius: 4px;
+  padding: 2px 8px;
+}
+.post-tag-style { color: var(--primary); border-color: hsla(264 65% 49% / 0.2); background: hsla(264 65% 49% / 0.05); }
+.post-hashtags {
+  font-family: var(--font-data); font-size: 11px; color: var(--primary);
+  margin-top: 4px; line-height: 1.6;
+}
+.post-engagement {
+  font-size: 11px; color: var(--text-dim); margin-top: 6px;
+  font-style: italic;
+}
+
+/* ── LANG TOGGLE ── */
+.lang-toggle {
+  display: flex; gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.lang-btn {
+  font-family: var(--font-data); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em; padding: 6px 14px;
+  background: transparent; border: none; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s;
+}
+.lang-btn:hover { color: var(--text); background: hsla(0 0% 100% / 0.03); }
+.lang-btn.active { color: var(--primary); background: hsla(264 65% 49% / 0.1); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+  </aside>
+
+  <main class="main">
+    <div class="header fade-up delay-1">
+      <div style="flex:1">
+        <div class="header-title">RESEARCH AGENT</div>
+        <div class="header-sub">Trending topics, hooks & competitor intelligence</div>
+        <div id="report-date" style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);margin-top:4px;"></div>
+      </div>
+      <div class="lang-toggle" id="lang-toggle">
+        <button class="lang-btn active" data-lang="NL" onclick="switchReportLang('NL')">NL</button>
+        <button class="lang-btn" data-lang="EN" onclick="switchReportLang('EN')">EN</button>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <div class="content-main">
+
+        <!-- FULL REPORT (for markdown-style reports) -->
+        <div id="full-report" class="fade-up delay-2" style="display:none;"></div>
+
+        <!-- TRENDING TOPICS (for structured reports) -->
+        <section class="fade-up delay-2" id="section-trending">
+          <div class="section-header">Trending Topics</div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Topic</th><th>Hook Angle</th><th>Platform</th><th>Potential</th><th></th></tr>
+              </thead>
+              <tbody id="topics-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- COMPETITOR PULSE -->
+        <section class="fade-up delay-3" id="section-competitors">
+          <div class="section-header">Competitor Pulse</div>
+          <div class="comp-grid" id="comp-grid"></div>
+        </section>
+
+        <!-- HOOK FORMULA LIBRARY -->
+        <section class="fade-up delay-4" id="section-hooks">
+          <div class="section-header">Hook Formula Library</div>
+          <div class="hook-grid" id="hook-grid"></div>
+        </section>
+
+        <!-- RESEARCH TASK / QUICK CAPTURE -->
+        <section class="fade-up delay-5">
+          <div class="section-header">New Research Task</div>
+          <div class="capture-area">
+            <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+              <select id="research-type" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:12px;font-family:var(--font-body);outline:none;">
+                <option value="daily_full">Daily Full Scan</option>
+                <option value="trending">Trending Topics</option>
+                <option value="competitors">Competitor Analysis</option>
+                <option value="hooks">Hook Research</option>
+                <option value="hashtags">Trending Hashtags</option>
+                <option value="custom">Custom Query</option>
+              </select>
+              <select id="research-lang" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:12px;font-family:var(--font-body);outline:none;">
+                <option value="NL">Nederlands</option>
+                <option value="EN">English</option>
+              </select>
+            </div>
+            <textarea class="capture-textarea" id="capture-input" placeholder="Optional: specific topic, competitor handle, or custom research query..."></textarea>
+            <div class="capture-actions">
+              <button class="btn-sm" onclick="saveIdea()">Save to Ideas</button>
+              <button class="btn-sm" style="background:linear-gradient(135deg, var(--primary), hsl(270 65% 55%));color:white;border-color:transparent;" onclick="submitResearch()">Submit Research Task</button>
+              <button class="btn-sm" id="daily-btn" style="background:var(--bg-surface);border-color:var(--success);color:var(--success);" onclick="runDailyResearch()">Daily Research</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- IDEA BANK + TASK QUEUE SIDEBAR -->
+      <div class="idea-bank fade-up delay-3">
+        <div class="idea-bank-title">TASK QUEUE</div>
+        <div id="research-tasks" style="margin-bottom:20px;"></div>
+        <div class="idea-bank-title" style="margin-top:10px;">IDEA BANK</div>
+        <div id="idea-list"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const PLATFORM_COLORS = {
+  tiktok: 'hsl(270 95% 65%)', x: 'hsl(210 40% 98%)', reddit: 'hsl(15 80% 55%)',
+  instagram: 'hsl(330 70% 55%)', youtube: 'hsl(0 72% 51%)', web: 'hsl(264 65% 49%)',
+};
+
+// ── LANG TOGGLE ──────────────────────────
+let allReports = [];
+let currentLang = 'NL';
+
+function switchReportLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+
+  // Find latest report in this language
+  const langReport = allReports.find(r => (r.language || 'NL') === lang);
+
+  if (langReport) {
+    renderReport(langReport);
+  } else {
+    // No report in this language — offer to generate one
+    document.getElementById('full-report').style.display = 'flex';
+    document.getElementById('full-report').innerHTML = `
+      <div class="report-card">
+        <div class="report-card-header"><span class="report-card-icon">🌐</span><span>${lang === 'EN' ? 'No English report yet' : 'Geen Nederlands rapport beschikbaar'}</span></div>
+        <div class="report-card-body" style="text-align:center;padding:40px 20px;">
+          <p style="color:var(--text-dim);margin-bottom:16px">${lang === 'EN' ? 'Generate an English version of the daily research?' : 'Genereer een Nederlandse versie van de daily research?'}</p>
+          <button class="btn-sm" style="background:linear-gradient(135deg, var(--primary), hsl(270 65% 55%));color:white;border-color:transparent;padding:8px 20px" onclick="generateLangReport('${lang}')">
+            ${lang === 'EN' ? 'Generate English Report' : 'Genereer Nederlands Rapport'}
+          </button>
+        </div>
+      </div>`;
+    document.getElementById('section-trending').style.display = 'none';
+    document.getElementById('section-competitors').style.display = 'none';
+    document.getElementById('section-hooks').style.display = 'none';
+  }
+}
+
+async function generateLangReport(lang) {
+  try {
+    const res = await fetch('/research/tasks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'daily',
+        query: lang === 'EN'
+          ? 'Daily crypto & trading research — ' + new Date().toISOString().slice(0,10) + '. Research the latest crypto developments, market movements, trending topics on X/Reddit/TikTok, and generate concrete content suggestions for Instagram and Twitter.'
+          : 'Daily crypto & trading research — ' + new Date().toISOString().slice(0,10) + '. Onderzoek de belangrijkste crypto ontwikkelingen, marktbewegingen, trending topics op X/Reddit/TikTok, en genereer concrete content suggesties voor Instagram en Twitter.',
+        platforms: ['x', 'reddit', 'tiktok'],
+        niche: 'crypto trading',
+        language: lang,
+      }),
+    });
+    if (res.ok) {
+      document.getElementById('full-report').innerHTML = `
+        <div class="report-card">
+          <div class="report-card-header"><span class="report-card-icon">⏳</span><span>${lang === 'EN' ? 'Generating...' : 'Bezig met genereren...'}</span></div>
+          <div class="report-card-body" style="text-align:center;padding:40px;color:var(--text-dim)">
+            ${lang === 'EN' ? 'Research task submitted. This takes about 1-2 minutes. The page will auto-refresh.' : 'Research task ingediend. Dit duurt ongeveer 1-2 minuten. De pagina ververst automatisch.'}
+          </div>
+        </div>`;
+      loadTasks();
+    }
+  } catch {}
+}
+
+// ── LOAD REPORTS ──────────────────────────
+async function loadReports() {
+  try {
+    const res = await fetch('/research/reports');
+    const reports = await res.json();
+    allReports = reports;
+    if (!reports.length) {
+      renderEmptyState();
+      return;
+    }
+    // Use latest report to fill the page
+    switchReportLang(currentLang);
+  } catch {
+    renderEmptyState();
+  }
+}
+
+function renderEmptyState() {
+  document.getElementById('topics-body').innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:30px;">No research data yet. Submit a task or say "process research tasks" in Claude.</td></tr>';
+  document.getElementById('comp-grid').innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px;grid-column:1/-1;">No competitor data yet</div>';
+  document.getElementById('hook-grid').innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px;grid-column:1/-1;">No hooks yet</div>';
+}
+
+function renderReport(report) {
+  const sections = report.sections || [];
+
+  // Trending Topics
+  const trending = sections.find(s => s.type === 'trending');
+  if (trending && trending.items?.length) {
+    document.getElementById('topics-body').innerHTML = trending.items.map(t => {
+      const pColor = (t.potential || 0) > 85 ? 'var(--success)' : (t.potential || 0) > 70 ? 'var(--warning)' : 'var(--text-dim)';
+      const platColor = PLATFORM_COLORS[t.platform?.toLowerCase()] || 'var(--accent)';
+      return `<tr>
+        <td style="font-weight:500">${t.topic || ''}</td>
+        <td style="color:var(--text-dim);font-size:12px">${t.hook || ''}</td>
+        <td><span class="platform-tag" style="background:${platColor}15;color:${platColor}">${t.platform || ''}</span></td>
+        <td>
+          <span style="font-family:var(--font-data);font-size:12px;color:${pColor};margin-right:8px">${t.potential || 0}%</span>
+          <span class="rating-bar"><span class="rating-fill" style="width:${t.potential || 0}%;background:${pColor}"></span></span>
+        </td>
+        <td><button class="btn-sm" onclick="saveIdea('${(t.topic || '').replace(/'/g,"\\'")} — ${(t.hook || '').replace(/'/g,"\\'")}')">→ Ideas</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Competitors
+  const competitors = sections.find(s => s.type === 'competitors');
+  if (competitors && competitors.items?.length) {
+    document.getElementById('comp-grid').innerHTML = competitors.items.map(c => `
+      <div class="comp-card">
+        <div class="comp-name">${c.name || ''}</div>
+        <div class="comp-handle">${c.handle || ''}</div>
+        <div class="comp-stats">
+          <div><div class="comp-stat-val">${c.followers || '—'}</div><div class="comp-stat-lbl">Followers</div></div>
+          <div><div class="comp-stat-val">${c.avg_views || '—'}</div><div class="comp-stat-lbl">Avg Views</div></div>
+          <div><div class="comp-stat-val" style="color:${c.trend_up !== false ? 'var(--success)' : 'var(--danger)'}">${c.trend || '—'}</div><div class="comp-stat-lbl">Trend</div></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Hooks
+  const hooks = sections.find(s => s.type === 'hooks');
+  if (hooks && hooks.items?.length) {
+    document.getElementById('hook-grid').innerHTML = hooks.items.map(h => `
+      <div class="hook-card">
+        <div>
+          <div class="hook-text">${h.text || ''}</div>
+          <div class="hook-category">${h.category || ''}</div>
+        </div>
+        <button class="btn-copy" onclick="copyHook(this, '${(h.text || '').replace(/'/g, "\\'")}')">Copy</button>
+      </div>
+    `).join('');
+  }
+
+  // Content Ideas
+  const contentIdeas = sections.find(s => s.type === 'content_ideas');
+  if (contentIdeas && contentIdeas.items?.length) {
+    contentIdeas.items.forEach(idea => {
+      addIdeaToBank(idea.text || idea, new Date(report.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }));
+    });
+  }
+
+  // Check if this is a markdown-style report (new format) or structured (old format)
+  const hasStructured = trending?.items?.length || competitors?.items?.length || hooks?.items?.length;
+
+  if (!hasStructured && sections.length) {
+    // Hide old structured sections
+    document.getElementById('section-trending').style.display = 'none';
+    document.getElementById('section-competitors').style.display = 'none';
+    document.getElementById('section-hooks').style.display = 'none';
+
+    // Render full report as clean cards
+    const reportEl = document.getElementById('full-report');
+    reportEl.style.display = 'flex';
+    reportEl.style.flexDirection = 'column';
+    reportEl.style.gap = '16px';
+
+    const contentSections = sections.filter(s => s.content && s.title);
+    reportEl.innerHTML = contentSections.map(s => {
+      const isPostSection = /instagram|twitter|x post/i.test(s.title);
+      const isCalendar = /kalender|calendar/i.test(s.title);
+
+      if (isPostSection) {
+        return renderPostCards(s);
+      }
+
+      // Icon per section type
+      const icons = {
+        'markt': '📊', 'market': '📊', 'trend': '📈', 'nieuws': '📰', 'news': '📰',
+        'kalender': '📅', 'calendar': '📅',
+      };
+      const iconKey = Object.keys(icons).find(k => s.title.toLowerCase().includes(k));
+      const icon = iconKey ? icons[iconKey] : '📋';
+
+      return `<div class="report-card">
+        <div class="report-card-header">
+          <span class="report-card-icon">${icon}</span>
+          <span>${escHtml(s.title)}</span>
+        </div>
+        <div class="report-card-body">${formatMarkdown(s.content)}</div>
+      </div>`;
+    }).join('');
+  } else {
+    // Show old structured sections, hide full report
+    document.getElementById('full-report').style.display = 'none';
+    document.getElementById('section-trending').style.display = '';
+    document.getElementById('section-competitors').style.display = '';
+    document.getElementById('section-hooks').style.display = '';
+  }
+
+  // Show report date
+  const dateStr = new Date(report.created_at).toLocaleString('nl-NL', { weekday:'long', day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('report-date').textContent = 'Last report: ' + dateStr;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderPostCards(section) {
+  const isTwitter = /twitter|x post/i.test(section.title);
+  const icon = isTwitter ? '𝕏' : '📸';
+  const accentColor = isTwitter ? 'var(--text)' : 'var(--primary)';
+
+  // Split into individual posts by ### headers
+  const posts = section.content.split(/^### /gm).filter(Boolean).map(block => {
+    const lines = block.trim().split('\n');
+    const postTitle = lines[0] || '';
+    const fields = {};
+    let currentKey = '';
+
+    for (let i = 1; i < lines.length; i++) {
+      // Match **Key:** value — colon is INSIDE the bold markers
+      const match = lines[i].match(/^\*\*(.+?):\*\*\s*(.*)/);
+      if (match) {
+        currentKey = match[1].toLowerCase().trim();
+        let val = match[2].trim();
+        // Remove surrounding quotes
+        if (val.startsWith('\u201C') || val.startsWith('"')) val = val.slice(1);
+        if (val.endsWith('\u201D') || val.endsWith('"')) val = val.slice(0, -1);
+        fields[currentKey] = val.replace(/\\n/g, '\n');
+      } else if (currentKey && lines[i].trim()) {
+        let val = lines[i].trim();
+        if (val.endsWith('\u201D') || val.endsWith('"')) val = val.slice(0, -1);
+        fields[currentKey] += '\n' + val;
+      }
+    }
+    return { title: postTitle, fields };
+  });
+
+  if (!posts.length) {
+    return `<div class="report-card">
+      <div class="report-card-header"><span class="report-card-icon">${icon}</span><span>${escHtml(section.title)}</span></div>
+      <div class="report-card-body">${formatMarkdown(section.content)}</div>
+    </div>`;
+  }
+
+  const postsHTML = posts.map((p, idx) => {
+    const mainText = p.fields.tweet || p.fields.hook || p.fields.body || '';
+    const format = p.fields.format || '';
+    const hashtags = p.fields.hashtags || '';
+    const type = p.fields.type || '';
+    const engagement = p.fields['engagement strategie'] || p.fields['engagement strategy'] || '';
+    const stijlTip = p.fields['stijl tip'] || p.fields['style tip'] || '';
+    const body = p.fields.body || '';
+
+    // Build copyable text
+    let copyText = '';
+    if (isTwitter) {
+      copyText = [mainText, hashtags].filter(Boolean).join('\n\n').replace(/\*\*/g, '').trim();
+    } else {
+      copyText = [p.fields.hook || mainText, body, hashtags].filter(Boolean).join('\n\n').replace(/\*\*/g, '').trim();
+    }
+
+    const copyId = 'copy-' + Date.now() + '-' + idx;
+
+    return `<div class="post-card">
+      <div class="post-card-header">
+        <span class="post-card-num">${idx + 1}</span>
+        <span class="post-card-title">${escHtml(p.title)}</span>
+        <textarea id="${copyId}" style="position:absolute;left:-9999px">${escHtml(copyText)}</textarea>
+        <button class="post-copy-btn" onclick="copyFromTextarea(this, '${copyId}')">Copy</button>
+      </div>
+      ${p.fields.hook ? `<div class="post-field"><span class="post-field-label">Hook</span><div class="post-field-value post-hook">${formatMarkdown(p.fields.hook)}</div></div>` : ''}
+      ${body && !isTwitter ? `<div class="post-field"><span class="post-field-label">Body</span><div class="post-field-value">${formatMarkdown(body)}</div></div>` : ''}
+      ${mainText && isTwitter ? `<div class="post-field"><span class="post-field-label">Tweet</span><div class="post-field-value post-tweet">${formatMarkdown(mainText)}</div></div>` : ''}
+      <div class="post-meta">
+        ${format ? `<span class="post-tag">${escHtml(format)}</span>` : ''}
+        ${type ? `<span class="post-tag">${escHtml(type)}</span>` : ''}
+        ${stijlTip ? `<span class="post-tag post-tag-style" title="Designer stijl">${escHtml(stijlTip)}</span>` : ''}
+      </div>
+      ${hashtags ? `<div class="post-hashtags">${formatMarkdown(hashtags)}</div>` : ''}
+      ${engagement ? `<div class="post-engagement"><span class="post-field-label">Engagement</span> ${escHtml(engagement)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="report-card">
+    <div class="report-card-header"><span class="report-card-icon">${icon}</span><span>${escHtml(section.title)}</span></div>
+    <div class="post-grid">${postsHTML}</div>
+  </div>`;
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+function copyPost(btn, text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+  btn.textContent = 'Copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+}
+
+function copyFromTextarea(btn, id) {
+  const ta = document.getElementById(id);
+  if (!ta) return;
+  const text = ta.value;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    }).catch(() => {
+      fallbackCopy(text);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  } else {
+    fallbackCopy(text);
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+  }
+}
+
+function formatMarkdown(text) {
+  // Pre-clean: fix broken bullets where "- \ntext" should be "- text"
+  let clean = text
+    .replace(/^- \n/gm, '- ')
+    .replace(/\n\n- \n/g, '\n- ')
+    // Fix stray newlines inside sentences (single \n between non-empty lines that aren't bullets/headers)
+    .replace(/([^\n])\n([^\n\-#*\d])/g, '$1 $2')
+    // Collapse multiple newlines
+    .replace(/\n{3,}/g, '\n\n');
+
+  return clean
+    // Headers
+    .replace(/^### (.+)$/gm, '<div style="font-size:13px;font-weight:700;color:var(--text);margin:16px 0 8px;padding-top:10px;border-top:1px solid hsla(217 32% 20%/0.3)">$1</div>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em style="color:var(--text-dim)">$1</em>')
+    // Bullets
+    .replace(/^- (.+)$/gm, '<div style="padding-left:16px;position:relative;margin:5px 0;line-height:1.6"><span style="position:absolute;left:2px;top:8px;width:6px;height:6px;background:var(--primary);border-radius:1px;display:block"></span>$1</div>')
+    // Numbered
+    .replace(/^(\d+)\. (.+)$/gm, '<div style="padding-left:20px;position:relative;margin:5px 0;line-height:1.6"><span style="position:absolute;left:0;color:var(--primary);font-weight:700;font-family:var(--font-data);font-size:11px">$1.</span>$2</div>')
+    // Inline code
+    .replace(/`([^`]+)`/g, '<code style="background:hsla(264 65% 49%/0.08);padding:1px 6px;border-radius:3px;font-size:11px;color:var(--primary);font-family:var(--font-data)">$1</code>')
+    // Hashtags (only when not inside a word)
+    .replace(/(^|\s)#(\w+)/g, '$1<span style="color:var(--primary);font-family:var(--font-data);font-size:12px">#$2</span>')
+    // Paragraphs
+    .replace(/\n\n/g, '<div style="height:10px"></div>')
+    .replace(/\n/g, '<br>');
+}
+
+function copyHook(btn, text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+  btn.textContent = 'Copied!';
+  btn.style.color = 'var(--success)';
+  setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 1500);
+}
+
+// ── IDEA BANK ─────────────────────────────
+let ideas = JSON.parse(localStorage.getItem('ctrl_ideas') || '[]');
+
+function renderIdeas() {
+  document.getElementById('idea-list').innerHTML = ideas.length
+    ? ideas.map(i => `<div class="idea-item"><div class="idea-item-time">${i.time}</div><div>${i.text}</div></div>`).join('')
+    : '<div style="color:var(--text-muted);font-size:11px;padding:10px 0;">No ideas saved yet</div>';
+}
+
+function addIdeaToBank(text, time) {
+  if (ideas.some(i => i.text === text)) return;
+  ideas.unshift({ text, time: time || 'Just now' });
+  if (ideas.length > 50) ideas.length = 50;
+  localStorage.setItem('ctrl_ideas', JSON.stringify(ideas));
+  renderIdeas();
+}
+
+function saveIdea(prefilledText) {
+  const input = document.getElementById('capture-input');
+  const text = prefilledText || input.value.trim();
+  if (!text) return;
+  addIdeaToBank(text, 'Just now');
+  if (!prefilledText) input.value = '';
+}
+
+renderIdeas();
+
+// ── RESEARCH TASKS ────────────────────────
+async function loadTasks() {
+  try {
+    const res = await fetch('/research/tasks');
+    const tasks = await res.json();
+    const el = document.getElementById('research-tasks');
+    if (!tasks.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">No pending tasks</div>'; return; }
+    el.innerHTML = tasks.slice(0, 5).map(t => {
+      const time = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      const statusColors = { pending: 'var(--warning)', processing: 'var(--primary)', completed: 'var(--success)', failed: 'var(--danger)' };
+      return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid hsla(217 32% 20% / 0.15);">
+        <span style="width:6px;height:6px;border-radius:50%;background:${statusColors[t.status] || 'var(--text-dim)'};flex-shrink:0;${t.status==='processing'?'animation:pulse-glow 2s infinite;':''}"></span>
+        <span style="flex:1;font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.query || t.type}</span>
+        <span style="font-family:var(--font-data);font-size:9px;color:var(--text-muted);flex-shrink:0;">${time}</span>
+        <button onclick="deleteTask('${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;">&#x2715;</button>
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+async function submitResearch() {
+  const query = document.getElementById('capture-input').value.trim();
+  const type = document.getElementById('research-type').value;
+  const language = document.getElementById('research-lang').value;
+  if (!query && type === 'custom') return;
+  try {
+    await fetch('/research/tasks', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type,
+        query: query || type,
+        platforms: ['tiktok', 'x', 'reddit', 'youtube'],
+        niche: 'crypto trading',
+        language,
+      }),
+    });
+    document.getElementById('capture-input').value = '';
+    loadTasks();
+  } catch {}
+}
+
+async function runDailyResearch() {
+  const btn = document.getElementById('daily-btn');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  try {
+    const res = await fetch('/research/daily', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok === false) {
+      btn.textContent = data.message || 'Already ran today';
+    } else {
+      btn.textContent = 'Triggered!';
+      loadTasks();
+    }
+  } catch { btn.textContent = 'Failed'; }
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Daily Research'; }, 3000);
+}
+
+async function deleteTask(id) {
+  await fetch('/research/tasks/' + id, { method: 'DELETE' });
+  loadTasks();
+}
+
+// Init
+loadReports();
+loadTasks();
+setInterval(loadTasks, 10000);
+</script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>

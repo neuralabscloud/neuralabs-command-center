@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — AI Operations Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+/* ── CSS VARIABLES ──────────────────────────────── */
+:root {
+  --bg-deep: hsl(0 0% 0%);
+  --bg-base: hsl(0 0% 3%);
+  --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%);
+  --bg-card-hover: hsl(0 0% 8%);
+  --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%);
+  --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%);
+  --primary-dim: hsla(264 65% 49% / 0.5);
+  --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%);
+  --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%);
+  --success-dim: hsla(142 76% 36% / 0.4);
+  --danger: hsl(0 72% 51%);
+  --danger-dim: hsla(0 72% 51% / 0.4);
+  --warning: hsl(45 93% 55%);
+  --warning-dim: hsla(45 93% 55% / 0.4);
+  --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%);
+  --text-dim: hsl(215 20% 65%);
+  --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px;
+  --sidebar-w: 62px;
+  --feed-w: 272px;
+}
+
+/* ── RESET ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── ATMOSPHERIC BG ─────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.024) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.024) 0%, transparent 60%);
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(var(--text-muted) 1px, transparent 1px),
+    linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.04;
+  pointer-events: none;
+}
+
+/* ── LAYOUT ─────────────────────────────────────── */
+.layout {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── LEFT SIDEBAR ───────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  z-index: 100;
+}
+.sidebar-logo {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--primary);
+  letter-spacing: 0.2em;
+  margin-bottom: 28px;
+  text-shadow: 0 0 20px var(--primary-glow);
+}
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  border: 1px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active {
+  color: var(--primary);
+  background: hsla(264 65% 49% / 0.063);
+  border-color: var(--border-glow);
+  box-shadow: 0 0 16px hsla(264 65% 49% / 0.063);
+}
+.nav-item .tooltip {
+  position: absolute;
+  left: 52px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: var(--font-body);
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+
+/* ── MAIN CONTENT ───────────────────────────────── */
+.main {
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  margin-right: var(--feed-w);
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── HEADER ─────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  font-family: var(--font-data);
+}
+.header-right {
+  display: flex; align-items: center; gap: 14px;
+}
+.status-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--success);
+  background: hsla(142 76% 36% / 0.03);
+  border: 1px solid hsla(142 76% 36% / 0.125);
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulse-glow 2s infinite;
+}
+
+/* ── BRIEFING BANNER ────────────────────────────── */
+.briefing {
+  background: linear-gradient(180deg, hsl(0 0% 5%), hsl(0 0% 3%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.briefing::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary-dim), transparent);
+}
+.briefing-item-label {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  margin-bottom: 8px;
+}
+.briefing-item-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.briefing-item-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  font-family: var(--font-data);
+}
+
+/* ── SECTION HEADERS ────────────────────────────── */
+.section-header {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(210 40% 98%);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* ── SOCIAL CARDS ───────────────────────────────── */
+.social-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.brand-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.brand-card::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(135deg, transparent 30%, var(--primary-glow) 70%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.brand-card:hover::before { opacity: 1; }
+.brand-card:hover { border-color: hsla(264 65% 49% / 0.3); box-shadow: 0 8px 40px hsla(264 65% 49% / 0.08), 0 0 1px hsla(264 65% 49% / 0.2); transform: translateY(-2px); }
+
+.brand-header {
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid hsla(217 32% 20% / 0.4);
+}
+.brand-avatar {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  background: linear-gradient(135deg, hsla(264 65% 49% / 0.15), hsla(264 65% 49% / 0.05));
+  border: 1px solid hsla(264 65% 49% / 0.2);
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text);
+}
+.brand-platforms-count {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+.brand-total {
+  margin-left: auto;
+  text-align: right;
+}
+.brand-total-value {
+  font-family: var(--font-data);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.brand-total-label {
+  font-size: 8px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+
+.brand-body { padding: 6px 0; }
+
+.platform-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 20px;
+  gap: 12px;
+  transition: background 0.2s;
+}
+.platform-row:hover { background: hsla(264 65% 49% / 0.02); }
+.platform-row + .platform-row { border-top: 1px solid hsla(217 32% 20% / 0.2); }
+
+.platform-icon {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-data);
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+.platform-icon.tt { color: hsl(270 95% 65%); background: hsla(270 95% 65% / 0.1); }
+.platform-icon.ig { color: hsl(330 70% 55%); background: linear-gradient(135deg, hsla(330 70% 55% / 0.1), hsla(270 70% 55% / 0.1)); }
+.platform-icon.yt { color: hsl(0 72% 51%); background: hsla(0 72% 51% / 0.1); }
+.platform-icon.x { color: hsl(210 40% 98%); background: hsla(210 40% 98% / 0.08); }
+
+.platform-info { flex: 1; min-width: 0; }
+.platform-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  margin-bottom: 2px;
+}
+.platform-metric-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.platform-followers {
+  font-family: var(--font-data);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.platform-eng {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.platform-change {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.platform-change.up { color: var(--success); background: hsla(142 76% 36% / 0.08); }
+.platform-change.down { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
+.platform-change.neutral { color: var(--text-dim); background: hsla(217 32% 20% / 0.2); }
+
+.platform-loading {
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  font-size: 10px;
+  animation: pulse-glow 1.5s infinite;
+  flex: 1;
+  text-align: center;
+}
+
+.brand-footer {
+  padding: 10px 20px 14px;
+  border-top: 1px solid hsla(217 32% 20% / 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brand-footer-stat {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.brand-footer-stat span { color: var(--text-dim); font-weight: 600; }
+
+/* ── AGENTS SECTION ─────────────────────────────── */
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+@keyframes agent-border-scan {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes agent-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes agent-task-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.agent-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+/* Animated scanning border for running agents */
+.agent-card.is-running::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--agent-glow, hsla(264 65% 49% / 0.4)) 25%, transparent 50%, var(--agent-glow, hsla(264 65% 49% / 0.3)) 75%, transparent 100%);
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: agent-border-scan 3s linear infinite;
+}
+/* Static glow on hover for non-running */
+.agent-card:not(.is-running)::before {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(135deg, transparent 30%, var(--agent-glow, hsla(264 65% 49% / 0.4)) 70%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.agent-card:not(.is-running):hover::before { opacity: 1; }
+.agent-card:hover { border-color: hsla(264 65% 49% / 0.3); box-shadow: 0 8px 40px hsla(264 65% 49% / 0.08), 0 0 1px hsla(264 65% 49% / 0.2); transform: translateY(-2px); }
+
+.agent-card-header {
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid hsla(217 32% 20% / 0.4);
+}
+.agent-avatar {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  position: relative;
+}
+.agent-avatar-bg {
+  position: absolute; inset: 0;
+  border-radius: 12px;
+  opacity: 0.12;
+}
+.agent-header-info { flex: 1; }
+.agent-name {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.agent-role {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--font-data);
+}
+.agent-status {
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.agent-status.running { color: var(--success); background: hsla(142 76% 36% / 0.08); }
+.agent-status.running::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: pulse-glow 2s infinite; }
+.agent-status.idle { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
+.agent-status.idle::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); opacity: 0.5; }
+.agent-status.queued { color: var(--accent); background: hsla(264 65% 49% / 0.08); }
+.agent-status.queued::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0.5; }
+.agent-status.offline { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
+.agent-status.offline::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+.health-row { display: flex; gap: 10px; margin-top: 6px; font-family: var(--font-data); font-size: 9px; letter-spacing: 0.04em; }
+.health-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; background: hsla(0 0% 100% / 0.03); border: 1px solid var(--border); }
+.health-tag .dot { width: 5px; height: 5px; border-radius: 50%; }
+.health-tag .dot.ok { background: var(--success); }
+.health-tag .dot.err { background: var(--danger); }
+
+.agent-card-body { padding: 16px 20px; }
+.agent-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.agent-progress {
+  flex: 1;
+  height: 4px;
+  background: hsla(217 32% 20% / 0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.agent-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+/* Glow tip */
+.agent-progress-fill::after {
+  content: '';
+  position: absolute; right: 0; top: -1px; bottom: -1px; width: 12px;
+  border-radius: 0 4px 4px 0;
+  filter: blur(4px);
+  background: inherit;
+  opacity: 0.6;
+}
+/* Shimmer sweep on running progress bars */
+.is-running .agent-progress-fill::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, hsla(0 0% 100% / 0.15) 50%, transparent 100%);
+  animation: agent-shimmer 2s ease-in-out infinite;
+}
+.agent-progress-pct {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 32px;
+  text-align: right;
+}
+.agent-task {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+/* Blinking cursor after task text for running agents */
+.is-running .agent-task::after {
+  content: '▋';
+  color: var(--agent-color, var(--primary));
+  font-size: 10px;
+  margin-left: 2px;
+  animation: agent-task-blink 1s step-end infinite;
+}
+
+.agent-card-footer {
+  padding: 10px 20px 14px;
+  border-top: 1px solid hsla(217 32% 20% / 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.agent-footer-label {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.agent-footer-label span { color: var(--text); font-weight: 600; }
+
+/* ── KANBAN ──────────────────────────────────────── */
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+.kanban-col {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-height: 160px;
+}
+.kanban-col-header {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.kanban-count {
+  background: var(--bg-card);
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.kanban-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  cursor: default;
+  transition: all 0.2s;
+}
+.kanban-card:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 16px hsla(264 65% 49% / 0.024);
+}
+.kanban-card-tag {
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 6px;
+}
+
+/* ── SOP LIBRARY ────────────────────────────────── */
+.sop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.sop-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  transition: all 0.25s;
+}
+.sop-card:hover {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 24px hsla(264 65% 49% / 0.03);
+}
+.sop-title {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.sop-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.sop-btn {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: hsla(264 65% 49% / 0.063);
+  color: var(--primary);
+  border: 1px solid hsla(264 65% 49% / 0.145);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sop-btn:hover {
+  background: hsla(264 65% 49% / 0.094);
+  box-shadow: 0 0 20px hsla(264 65% 49% / 0.08);
+}
+
+/* ── RIGHT FEED ─────────────────────────────────── */
+.feed {
+  width: var(--feed-w);
+  position: fixed;
+  right: 0; top: 0; bottom: 0;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border);
+  padding: 20px 16px;
+  overflow-y: auto;
+  z-index: 100;
+}
+.feed-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--primary);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feed-title .live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: pulse-glow 2s infinite;
+}
+.feed-item {
+  padding: 12px 0;
+  border-bottom: 1px solid hsla(217 32% 20% / 0.094);
+}
+.feed-item-time {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.feed-item-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.feed-item-text strong { color: var(--text); font-weight: 500; }
+.feed-tag {
+  font-family: var(--font-data);
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+/* ── ANIMATIONS ─────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity: 0.6; box-shadow: 0 0 8px 2px currentColor; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  opacity: 0;
+  animation: fade-up 0.5s ease-out forwards;
+}
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.20s; }
+.delay-5 { animation-delay: 0.25s; }
+.delay-6 { animation-delay: 0.30s; }
+.delay-7 { animation-delay: 0.35s; }
+.delay-8 { animation-delay: 0.40s; }
+
+/* ── SCROLLBAR ──────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── MOBILE NAV BUTTONS ────────────────────────── */
+.mobile-nav { display: none; }
+.mobile-nav-btn {
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-nav-btn:hover, .mobile-nav-btn.active { color: var(--primary); border-color: var(--border-glow); }
+.mobile-nav-btn svg { width: 18px; height: 18px; }
+.mobile-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: hsla(0 0% 0% / 0.6);
+  z-index: 90;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.mobile-overlay.visible { display: block; }
+
+/* ── RESPONSIVE: TABLET (≤1024px) ──────────────── */
+@media (max-width: 1024px) {
+  :root { --feed-w: 0px; }
+  .feed {
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 280px;
+    z-index: 110;
+  }
+  .feed.open { transform: translateX(0); }
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 110;
+  }
+  .sidebar.open { transform: translateX(0); }
+  :root { --sidebar-w: 0px; }
+  .main { margin-right: 0; margin-left: 0; }
+  .briefing { grid-template-columns: repeat(2, 1fr); }
+  #stripe-grid { grid-template-columns: repeat(3, 1fr) !important; }
+  .social-grid { grid-template-columns: repeat(2, 1fr); }
+  .agents-grid { grid-template-columns: repeat(2, 1fr); }
+  .kanban { grid-template-columns: repeat(3, 1fr); }
+  .sop-grid { grid-template-columns: repeat(2, 1fr); }
+  .mobile-nav { display: flex; gap: 8px; }
+}
+
+/* ── RESPONSIVE: MOBILE (≤768px) ───────────────── */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+
+  /* Sidebar becomes bottom bar */
+  .sidebar, .sidebar.open {
+    position: fixed;
+    left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120;
+    background: var(--bg-sidebar);
+    scrollbar-width: none;
+    transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar::after {
+    content: ''; position: sticky; right: 0; top: 0; bottom: 0;
+    width: 28px; flex-shrink: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-sidebar));
+    pointer-events: none;
+  }
+  .sidebar-logo { display: none; }
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 1px;
+    flex: none;
+    padding: 0 4px;
+  }
+  .nav-item {
+    width: 36px; height: 36px;
+    flex-shrink: 0;
+  }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  /* Hide bell/settings in bottom bar, keep compact */
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+
+  .main {
+    margin-left: 0;
+    padding: 16px 16px 68px;
+    gap: 20px;
+  }
+  .header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-title { font-size: 16px; }
+  .header-right { width: 100%; justify-content: space-between; }
+  /* Hide hamburger on mobile, sidebar is always visible as bottom bar */
+  #menu-btn { display: none; }
+  .briefing { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
+  .briefing-item-value { font-size: 13px; }
+  #stripe-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+  .social-grid { grid-template-columns: 1fr; }
+  .agents-grid { grid-template-columns: 1fr; }
+  .kanban { grid-template-columns: 1fr; overflow-x: auto; }
+  .kanban-col { min-width: 240px; }
+  .sop-grid { grid-template-columns: 1fr; }
+  .section-header { font-size: 13px; letter-spacing: 0.1em; }
+  .brand-header { padding: 14px 16px 10px; }
+  .platform-row { padding: 8px 16px; }
+  .agent-card-header { padding: 14px 16px 10px; }
+  .agent-card-body { padding: 12px 16px; }
+  .agent-card-footer { padding: 8px 16px 12px; }
+}
+
+/* ── RESPONSIVE: SMALL MOBILE (≤480px) ─────────── */
+@media (max-width: 480px) {
+  .main { padding: 12px; gap: 16px; }
+  .header-title { font-size: 14px; }
+  .briefing { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
+  #stripe-grid { grid-template-columns: 1fr !important; }
+  .brand-card { border-radius: 10px; }
+  .agent-card { border-radius: 10px; }
+  .sidebar-nav { gap: 0; padding: 0 2px; }
+  .nav-item { width: 33px; height: 33px; }
+  .nav-item svg { width: 15px; height: 15px; }
+}
+</style>
+</head>
+<body>
+
+<div class="mobile-overlay" id="mobile-overlay" onclick="closeAllMobile()"></div>
+<div class="layout">
+
+  <!-- ── LEFT SIDEBAR ──────────────────────────── -->
+  <aside class="sidebar">
+  </aside>
+
+  <!-- ── MAIN CONTENT ──────────────────────────── -->
+  <main class="main">
+
+    <!-- HEADER -->
+    <div class="header fade-up delay-1">
+      <div>
+        <div class="header-title"><span data-brand="company">Trading Platform</span> COMMAND CENTER</div>
+        <div class="header-sub" id="datetime"></div>
+      </div>
+      <div class="header-right">
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          ALL SYSTEMS ONLINE
+        </div>
+        <div class="mobile-nav">
+          <button class="mobile-nav-btn" id="menu-btn" onclick="toggleSidebar()" aria-label="Menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <button class="mobile-nav-btn" id="feed-btn" onclick="toggleFeed()" aria-label="Activity feed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M12 4h9M4 8l4 4-4 4"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRIPE / REVENUE -->
+    <section class="fade-up delay-2">
+      <div class="section-header">Business Revenue <button id="blur-toggle" onclick="toggleBlur()" style="font-family:var(--font-data);font-size:10px;background:none;border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:6px;cursor:pointer;margin-left:8px;transition:all 0.2s;">Hide</button></div>
+      <div id="stripe-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;transition:filter 0.3s;"></div>
+    </section>
+
+    <!-- LIVE TRADING BOTS -->
+    <section class="fade-up delay-2">
+      <div class="section-header">Trading Bots</div>
+      <div class="briefing" id="briefing-banner" style="margin-bottom:18px">
+        <div>
+          <div class="briefing-item-label">Total Account Value</div>
+          <div class="briefing-item-value" id="brief-total-value">—</div>
+          <div class="briefing-item-meta" id="brief-total-meta">Loading...</div>
+        </div>
+        <div>
+          <div class="briefing-item-label">Daily PnL</div>
+          <div class="briefing-item-value" id="brief-daily-pnl">—</div>
+          <div class="briefing-item-meta" id="brief-daily-meta">Loading...</div>
+        </div>
+        <div>
+          <div class="briefing-item-label">Total PnL</div>
+          <div class="briefing-item-value" id="brief-total-pnl">—</div>
+          <div class="briefing-item-meta" id="brief-total-pnl-meta">Loading...</div>
+        </div>
+        <div>
+          <div class="briefing-item-label">Active Bots</div>
+          <div class="briefing-item-value" id="brief-bots-online">—</div>
+          <div class="briefing-item-meta" id="brief-bots-meta">Loading...</div>
+        </div>
+      </div>
+      <div class="agents-grid" id="agents-grid"></div>
+    </section>
+
+    <!-- SOCIAL PERFORMANCE -->
+    <section class="fade-up delay-3">
+      <div class="section-header" style="margin-bottom:0">Social Performance</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div id="last-refresh" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)"></div>
+        <div style="display:flex;gap:8px">
+<button id="refresh-btn" onclick="refreshAllData(true)" style="font-family:var(--font-data);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;background:hsla(264 65% 49% / 0.063);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.145);padding:6px 14px;border-radius:6px;cursor:pointer;transition:all 0.2s">↻ Force Refresh</button>
+        </div>
+      </div>
+      <div class="social-grid" id="social-grid"></div>
+    </section>
+
+    <!-- AI TEAM -->
+    <section class="fade-up delay-5">
+      <div class="section-header">AI Team</div>
+      <div class="agents-grid" id="ai-team-grid"></div>
+    </section>
+
+  </main>
+
+  <!-- ── RIGHT FEED ────────────────────────────── -->
+  <aside class="feed">
+    <div class="feed-title"><span class="live-dot"></span> LIVE ACTIVITY</div>
+    <div id="feed-list"></div>
+  </aside>
+
+</div>
+
+<script>
+// ── DATE/TIME ──────────────────────────────────
+function updateTime() {
+  const now = new Date();
+  document.getElementById('datetime').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) +
+    ' — ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+updateTime();
+setInterval(updateTime, 1000);
+
+// ── HELPERS ────────────────────────────────────
+function sparkline(data, color) {
+  const max = Math.max(...data);
+  return data.map(v =>
+    `<div class="sparkline-bar" style="height:${Math.max(8, (v/max)*100)}%;background:${color};opacity:${0.4 + (v/max)*0.6}"></div>`
+  ).join('');
+}
+function fmtNum(n) {
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+  return String(n);
+}
+
+// ── CONFIG ─────────────────────────────────────
+const APIFY_TOKEN = ''; // Set APIFY_API_KEY in .env to enable social media tracking
+const APIFY_BASE = 'https://api.apify.com/v2';
+const YT_KEY = ''; // Set YOUTUBE_API_KEY in .env to enable YouTube tracking
+
+// ── BRANDS CONFIG ─────────────────────────────
+// Configure your social media brands/handles here
+const BRANDS = [
+  // Example:
+  // { name: 'MyBrand', platforms: [
+  //   { type: 'tt', handle: 'myhandle', label: 'TikTok' },
+  //   { type: 'ig', handle: 'myhandle', label: 'Instagram' },
+  //   { type: 'yt', handle: '@myhandle', label: 'YouTube' },
+  //   { type: 'x', handle: 'myhandle', label: 'X' },
+  // ]},
+];
+
+// ── SOCIAL STATE (flat lookup by cache key) ───
+const platformState = {};
+BRANDS.forEach(b => b.platforms.forEach(p => {
+  const key = p.type + '_' + p.handle;
+  platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
+}));
+
+const BRAND_ICONS = {};
+const PLATFORM_LABELS = { tt: 'TikTok', ig: 'Instagram', yt: 'YouTube', x: 'X / Twitter' };
+
+function renderSocialCards() {
+  document.getElementById('social-grid').innerHTML = BRANDS.map(brand => {
+    const platformData = brand.platforms.map(p => ({ ...p, state: platformState[p.type + '_' + p.handle] }));
+    const totalFollowers = platformData.reduce((sum, p) => {
+      const f = p.state?.followers;
+      if (!f || f === '—' || f === 'Err') return sum;
+      const num = parseFloat(f.replace(/[KMB]/g, m => ({ K: 'e3', M: 'e6', B: 'e9' }[m])));
+      return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+
+    return `<div class="brand-card">
+      <div class="brand-header">
+        <div class="brand-avatar">${BRAND_ICONS[brand.name] || brand.name[0]}</div>
+        <div>
+          <div class="brand-name">${brand.name}</div>
+          <div class="brand-platforms-count">${brand.platforms.length} platform${brand.platforms.length > 1 ? 's' : ''}</div>
+        </div>
+        <div class="brand-total">
+          <div class="brand-total-value">${totalFollowers > 0 ? fmtNum(totalFollowers) : '—'}</div>
+          <div class="brand-total-label">Total Reach</div>
+        </div>
+      </div>
+      <div class="brand-body">
+        ${platformData.map(p => {
+          const s = p.state;
+          return `<div class="platform-row">
+            <div class="platform-icon ${p.type}">${p.type.toUpperCase()}</div>
+            ${s.loading
+              ? `<span class="platform-loading">Fetching...</span>`
+              : `<div class="platform-info">
+                  <div class="platform-label">${PLATFORM_LABELS[p.type] || p.type}</div>
+                  <div class="platform-metric-row">
+                    <span class="platform-followers">${s.followers}</span>
+                    ${s.engagement && s.engagement !== '—' ? `<span class="platform-eng">${s.engagement} eng</span>` : ''}
+                  </div>
+                </div>
+                <span class="platform-change ${s.change ? (s.up ? 'up' : 'down') : 'neutral'}">${s.change || '—'}</span>`
+            }
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="brand-footer">
+        <span class="brand-footer-stat"><span>${brand.platforms.length}</span> connected</span>
+        <span class="brand-footer-stat">${platformData.some(p => p.state?.loading) ? '<span style="animation:pulse-glow 1.5s infinite">syncing</span>' : '<span>synced</span>'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showRefreshTime() {
+  const ts = localStorage.getItem('ctrl_refresh_ts');
+  const el = document.getElementById('last-refresh');
+  if (ts && el) {
+    const d = new Date(parseInt(ts));
+    el.textContent = 'Last refresh: ' + d.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+  }
+}
+
+function updatePlatform(type, handle, fields) {
+  const key = type + '_' + handle;
+  Object.assign(platformState[key], fields, { loading: false });
+  renderSocialCards();
+}
+
+const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+
+function cacheSet(key, data) {
+  localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+}
+
+function cacheGet(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    // Support old format (no ts wrapper) and new format
+    if (parsed.ts && parsed.data) return parsed;
+    // Old format: raw data, treat as expired so it refreshes once
+    return { ts: 0, data: parsed };
+  } catch { return null; }
+}
+
+function cacheIsFresh(key) {
+  const entry = cacheGet(key);
+  return entry && (Date.now() - entry.ts) < CACHE_MAX_AGE;
+}
+
+// ── APIFY: poll run until done, return dataset items ──
+async function apifyRunAndWait(actorId, input) {
+  console.log('[NL] Starting Apify run:', actorId);
+  const startRes = await fetch(`${APIFY_BASE}/acts/${actorId}/runs?token=${APIFY_TOKEN}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input)
+  });
+  if (!startRes.ok) throw new Error('Apify start failed: ' + startRes.status);
+  const startJson = await startRes.json();
+  if (!startJson.data?.id) throw new Error('Apify: no run ID returned');
+  const runId = startJson.data.id;
+  console.log('[NL] Apify run started:', runId);
+
+  // Poll until done (max 3 min)
+  for (let i = 0; i < 36; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const poll = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    if (!poll.ok) { console.warn('[NL] Poll error:', poll.status); continue; }
+    const pollJson = await poll.json();
+    const status = pollJson.data?.status;
+    console.log('[NL] Poll', i + 1, ':', status);
+    if (status === 'SUCCEEDED') break;
+    if (status === 'FAILED' || status === 'ABORTED') throw new Error('Apify run ' + status);
+  }
+
+  const dsRes = await fetch(`${APIFY_BASE}/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`);
+  if (!dsRes.ok) throw new Error('Apify dataset failed: ' + dsRes.status);
+  return dsRes.json();
+}
+
+// ── TIKTOK FETCH (multi-profile, sequential to avoid Apify concurrency limits) ──
+async function fetchTikTok() {
+  const handles = BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'tt').map(p => p.handle));
+  for (const h of handles) {
+    try { await fetchTikTokProfile(h); } catch(e) { console.error('[NL] TT fetch error:', h, e); }
+  }
+}
+
+async function fetchTikTokProfile(handle) {
+  const cacheKey = 'ctrl_tt_' + handle;
+  if (cacheIsFresh(cacheKey)) { console.log('[NL] TT cache fresh:', handle); applyTikTokProfile(cacheGet(cacheKey).data, handle); return; }
+
+  try {
+    const data = await apifyRunAndWait('clockworks~free-tiktok-scraper', {
+      profiles: [handle], resultsPerPage: 10,
+      shouldDownloadVideos: false, shouldDownloadCovers: false
+    });
+    cacheSet(cacheKey, data);
+    applyTikTokProfile(data, handle);
+  } catch(e) { updatePlatform('tt', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
+}
+
+function applyTikTokProfile(data, handle) {
+  if (!data.length) { updatePlatform('tt', handle, { followers: '—', engagement: '—', change: 'No data' }); return; }
+  const am = data[0].authorMeta || {};
+  const fans = am.fans || 0;
+  const plays = data.map(p => p.playCount || 0);
+  const totalPlays = plays.reduce((a,b) => a+b, 0);
+  const totalEng = data.reduce((a,p) => a + (p.diggCount||0) + (p.shareCount||0) + (p.commentCount||0), 0);
+  const eng = totalPlays > 0 ? (totalEng / totalPlays * 100).toFixed(1) + '%' : '—';
+
+  updatePlatform('tt', handle, {
+    followers: fmtNum(fans), engagement: eng,
+    change: fmtNum(totalPlays) + ' plays', up: true, label: 'Followers'
+  });
+}
+
+// ── INSTAGRAM FETCH (multi-profile, sequential) ──
+async function fetchInstagram() {
+  const handles = BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'ig').map(p => p.handle));
+  for (const h of handles) {
+    try { await fetchInstagramProfile(h); } catch(e) { console.error('[NL] IG fetch error:', h, e); }
+  }
+}
+
+async function fetchInstagramProfile(handle) {
+  const cacheKey = 'ctrl_ig_' + handle;
+  if (cacheIsFresh(cacheKey)) { console.log('[NL] IG cache fresh:', handle); applyInstagramProfile(cacheGet(cacheKey).data, handle); return; }
+
+  try {
+    // Single run: details includes followersCount + latestPosts
+    const data = await apifyRunAndWait('shu8hvrXbJbY3Eb9W', {
+      directUrls: ['https://www.instagram.com/' + handle + '/'],
+      resultsType: 'details', resultsLimit: 1
+    });
+    cacheSet(cacheKey, data[0] || {});
+    applyInstagramProfile(data[0] || {}, handle);
+  } catch(e) { updatePlatform('ig', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
+}
+
+function applyInstagramProfile(data, handle) {
+  const followers = data.followersCount || 0;
+  const posts = data.latestPosts || [];
+
+  const totalEng = posts.reduce((a, p) => a + (p.likesCount || 0) + (p.commentsCount || 0), 0);
+  const avgEng = posts.length > 0 && followers > 0
+    ? ((totalEng / posts.length) / followers * 100).toFixed(1) + '%'
+    : '—';
+  const totalLikes = posts.reduce((a, p) => a + (p.likesCount || 0), 0);
+
+  updatePlatform('ig', handle, {
+    followers: followers ? fmtNum(followers) : '—',
+    engagement: avgEng,
+    change: fmtNum(totalLikes) + ' likes', up: true, label: 'Followers'
+  });
+}
+
+// ── YOUTUBE FETCH (multi-profile) ─────────────
+async function fetchYouTubeData() {
+  const handles = BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'yt').map(p => p.handle));
+  for (const h of handles) {
+    try { await fetchYouTubeProfile(h); } catch(e) { console.error('[NL] YT fetch error:', h, e); }
+  }
+}
+
+async function fetchYouTubeProfile(handle) {
+  const cacheKey = 'ctrl_yt_' + handle;
+  if (cacheIsFresh(cacheKey)) {
+    console.log('[NL] YT cache fresh:', handle);
+    const yt = cacheGet(cacheKey).data;
+    updatePlatform('yt', handle, { followers: fmtNum(yt.subs), engagement: yt.eng, change: fmtNum(yt.totalViews)+' views', up: true, label: 'Subscribers' });
+    return;
+  }
+  try {
+    const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&forHandle=${handle}&key=${YT_KEY}`);
+    if (!chRes.ok) throw new Error(chRes.status === 403 ? 'API quota exceeded' : 'API error ' + chRes.status);
+    const chData = await chRes.json();
+    if (chData.error) throw new Error(chData.error.message?.substring(0, 40) || 'API error');
+    if (!chData.items?.length) { updatePlatform('yt', handle, { followers: '—', change: 'Not found' }); return; }
+    const ch = chData.items[0];
+    const subs = parseInt(ch.statistics.subscriberCount) || 0;
+    const totalVids = parseInt(ch.statistics.videoCount) || 0;
+    if (totalVids === 0) { updatePlatform('yt', handle, { followers: fmtNum(subs), engagement: '—', change: 'No content yet', label: 'Subscribers' }); return; }
+
+    const srRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${ch.id}&order=date&maxResults=10&type=video&key=${YT_KEY}`);
+    const videoIds = ((await srRes.json()).items || []).map(i => i.id.videoId).filter(Boolean);
+    if (!videoIds.length) { updatePlatform('yt', handle, { followers: fmtNum(subs), engagement: '—', change: totalVids+' videos', label: 'Subscribers' }); return; }
+
+    const vRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds.join(',')}&key=${YT_KEY}`);
+    const videos = (await vRes.json()).items || [];
+    const views = videos.map(v => parseInt(v.statistics.viewCount) || 0);
+    const likes = videos.map(v => parseInt(v.statistics.likeCount) || 0);
+    const comments = videos.map(v => parseInt(v.statistics.commentCount) || 0);
+    const totalViews = views.reduce((a,b) => a+b, 0);
+    const totalEng = likes.reduce((a,b) => a+b, 0) + comments.reduce((a,b) => a+b, 0);
+    const eng = totalViews > 0 ? (totalEng / totalViews * 100).toFixed(1) + '%' : '—';
+
+    cacheSet(cacheKey, { subs, totalViews, eng });
+    updatePlatform('yt', handle, { followers: fmtNum(subs), engagement: eng, change: fmtNum(totalViews)+' views', up: true, label: 'Subscribers' });
+  } catch(e) { updatePlatform('yt', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
+}
+
+// ── X/TWITTER FETCH (multi-profile, sequential) ──
+async function fetchX() {
+  const handles = [...new Set(BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'x').map(p => p.handle)))];
+  const xDataByHandle = {};
+  for (const h of handles) {
+    try { xDataByHandle[h] = await fetchXProfile(h); } catch(e) { console.error('[NL] X fetch error:', h, e); }
+  }
+  // Apply to all brand platforms that use each handle
+  BRANDS.forEach(b => b.platforms.filter(p => p.type === 'x').forEach(p => {
+    if (xDataByHandle[p.handle]) applyXProfile(xDataByHandle[p.handle], p.handle);
+  }));
+}
+
+async function fetchXProfile(handle) {
+  const cacheKey = 'ctrl_x_' + handle;
+  if (cacheIsFresh(cacheKey)) { console.log('[NL] X cache fresh:', handle); const d = cacheGet(cacheKey).data; applyXProfile(d, handle); return d; }
+
+  try {
+    const data = await apifyRunAndWait('quacker~twitter-scraper', {
+      handles: [handle], tweetsDesired: 5
+    });
+    if (data[0]?.error) { updatePlatform('x', handle, { followers: '—', engagement: '—', change: 'No data', up: true }); return null; }
+    cacheSet(cacheKey, data);
+    applyXProfile(data, handle);
+    return data;
+  } catch(e) { updatePlatform('x', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); return null; }
+}
+
+function applyXProfile(data, handle) {
+  if (!data || !data.length || data[0]?.error) { updatePlatform('x', handle, { followers: '—', engagement: '—', change: 'No data' }); return; }
+  const user = data[0].user || {};
+  const followers = user.followers_count || 0;
+  const tweets = data.filter(t => t.user);
+  const totalEng = tweets.reduce((a, t) => a + (t.favorite_count || 0) + (t.retweet_count || 0) + (t.reply_count || 0), 0);
+  const avgEng = tweets.length > 0 && followers > 0
+    ? ((totalEng / tweets.length) / followers * 100).toFixed(1) + '%'
+    : '—';
+  const totalLikes = tweets.reduce((a, t) => a + (t.favorite_count || 0), 0);
+
+  updatePlatform('x', handle, {
+    followers: followers ? fmtNum(followers) : '—',
+    engagement: avgEng,
+    change: fmtNum(totalLikes) + ' likes', up: true, label: 'Followers'
+  });
+}
+
+// ── CLEAR CACHE ──────────────────────────────
+function clearSocialCache() {
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('ctrl_'));
+  keys.forEach(k => localStorage.removeItem(k));
+  console.log('[NL] Cleared', keys.length, 'cache entries:', keys);
+  Object.values(platformState).forEach(s => { s.loading = false; s.followers = '—'; s.engagement = '—'; s.change = 'Cache cleared'; s.up = true; });
+  renderSocialCards();
+}
+
+// ── REFRESH ALL ───────────────────────────────
+let refreshing = false;
+async function refreshAllData(forceAll) {
+  if (refreshing) return;
+  refreshing = true;
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '◌ Refreshing...';
+  btn.style.opacity = '0.6';
+
+  // If forced (from button click), ignore cache freshness
+  if (forceAll) {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('ctrl_'));
+    keys.forEach(k => localStorage.removeItem(k));
+    console.log('[NL] Force refresh — cleared cache');
+  }
+
+  // Set all platforms to loading
+  Object.values(platformState).forEach(s => { s.loading = true; });
+  renderSocialCards();
+
+  // Run everything sequentially to avoid Apify concurrency limits
+  console.log('[NL] Fetching TikTok...');
+  await fetchTikTok().catch(e => console.error('[NL] TikTok failed:', e));
+  console.log('[NL] Fetching Instagram...');
+  await fetchInstagram().catch(e => console.error('[NL] Instagram failed:', e));
+  console.log('[NL] Fetching X...');
+  await fetchX().catch(e => console.error('[NL] X failed:', e));
+  console.log('[NL] Fetching YouTube...');
+  await fetchYouTubeData().catch(e => console.error('[NL] YouTube failed:', e));
+  console.log('[NL] All fetches done');
+
+  localStorage.setItem('ctrl_refresh_ts', String(Date.now()));
+  showRefreshTime();
+  btn.textContent = '↻ Refresh (24h cache)';
+  btn.style.opacity = '1';
+  refreshing = false;
+}
+
+// ── INIT: load from cache, auto-fetch if stale ──
+(function init() {
+  let needsFetch = false;
+
+  BRANDS.forEach(brand => brand.platforms.forEach(p => {
+    const cacheKey = 'ctrl_' + p.type + '_' + p.handle;
+    const entry = cacheGet(cacheKey);
+    if (entry) {
+      const data = entry.data;
+      if (p.type === 'tt') applyTikTokProfile(data, p.handle);
+      else if (p.type === 'ig') applyInstagramProfile(data, p.handle);
+      else if (p.type === 'x') applyXProfile(data, p.handle);
+      else if (p.type === 'yt') {
+        updatePlatform('yt', p.handle, { followers: fmtNum(data.subs), engagement: data.eng, change: fmtNum(data.totalViews)+' views', up: true, label: 'Subscribers' });
+      }
+      if (!cacheIsFresh(cacheKey)) needsFetch = true;
+    } else {
+      updatePlatform(p.type, p.handle, { followers: '—', engagement: '—', change: 'Refresh to fetch', up: true });
+      needsFetch = true;
+    }
+  }));
+
+  renderSocialCards();
+  showRefreshTime();
+
+  // Auto-fetch all stale data (runs once per day effectively)
+  if (needsFetch) {
+    console.log('[NL] Cache stale or missing — auto-fetching all platforms');
+    refreshAllData();
+  } else {
+    console.log('[NL] All caches fresh (< 24h) — skipping fetch');
+  }
+})();
+
+// ── LIVE BOT DATA ─────────────────────────────
+const BOT_META = {
+  funding: { name: 'FUNDING BOT', emoji: '💰', role: 'Funding Rate Arbitrage', color: 'var(--success)', hsl: '142 76% 36%' },
+  trend:   { name: 'TREND BOT', emoji: '📈', role: 'Mean-Reversion BB+RSI+ADX', color: 'var(--primary)', hsl: '264 65% 49%' },
+};
+
+const DASHBOARD_API = '/api/status';
+
+function renderBotCards(data) {
+  const bots = Object.entries(BOT_META).map(([id, meta]) => {
+    const bot = data[id] || {};
+    const s = bot.stats || {};
+    const status = bot.online ? 'running' : 'offline';
+    const positions = bot.positions?.length || 0;
+    const lastLine = (bot.recentActivity || []).filter(l => !l.includes('───')).slice(-1)[0] || 'No recent activity';
+    const task = lastLine.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\|\s+\w+\s+\|\s+/, '');
+    const winRate = s.winRate || 0;
+
+    const procOk = bot.processRunning === true;
+    const logOk = bot.logFresh === true;
+
+    const upnl = (bot.positions || []).reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0);
+    return { id, ...meta, status, bot, s, positions, task, winRate, procOk, logOk, upnl };
+  });
+
+  document.getElementById('agents-grid').innerHTML = bots.map(a => `
+    <div class="agent-card ${a.status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+      <div class="agent-card-header">
+        <div class="agent-avatar">
+          <div class="agent-avatar-bg" style="background:${a.color}"></div>
+          <span style="position:relative;z-index:1">${a.emoji}</span>
+        </div>
+        <div class="agent-header-info">
+          <div class="agent-name">${a.name}</div>
+          <div class="agent-role">${a.role}</div>
+        </div>
+        <span class="agent-status ${a.status}">${a.status}</span>
+      </div>
+      <div class="agent-card-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Account</div>
+            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:var(--text)">$${(a.bot.accountValue || 0).toFixed(0)}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized PnL</div>
+            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:${a.upnl >= 0 ? 'var(--success)' : 'var(--danger)'}">$${a.upnl >= 0 ? '+' : ''}${a.upnl.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div>
+            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:${a.s.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'}">$${a.s.totalPnl >= 0 ? '+' : ''}${(a.s.totalPnl || 0).toFixed(2)}</div>
+          </div>
+        </div>
+        <div class="agent-progress-wrap">
+          <div class="agent-progress">
+            <div class="agent-progress-fill" style="width:${a.winRate}%;background:${a.color}"></div>
+          </div>
+          <span class="agent-progress-pct">${a.winRate}%</span>
+        </div>
+        <div class="agent-task">${a.task}</div>
+        <div class="health-row">
+          <span class="health-tag"><span class="dot ${a.procOk ? 'ok' : 'err'}"></span>${a.procOk ? 'Process' : 'No process'}</span>
+          <span class="health-tag"><span class="dot ${a.logOk ? 'ok' : 'err'}"></span>${a.logOk ? 'Log active' : 'Log stale'}</span>
+        </div>
+      </div>
+      <div class="agent-card-footer">
+        <span class="agent-footer-label"><span>${a.s.totalTrades || 0}</span> trades</span>
+        <span class="agent-footer-label"><span>${a.positions}</span> open pos</span>
+        <span class="agent-footer-label">wr <span>${a.winRate}%</span></span>
+      </div>
+    </div>
+  `).join('');
+
+  // Update briefing banner
+  const totalValue = Object.values(data).reduce((s, b) => s + (b.accountValue || 0), 0);
+  const totalDailyPnl = Object.values(data).reduce((s, b) => s + (b.stats?.dailyPnl || 0), 0);
+  const onlineCount = Object.values(data).filter(b => b.online).length;
+  const totalBots = Object.keys(BOT_META).length;
+  const totalTrades = Object.values(data).reduce((s, b) => s + (b.stats?.totalTrades || 0), 0);
+
+  document.getElementById('brief-total-value').textContent = '$' + totalValue.toFixed(2);
+  document.getElementById('brief-total-meta').textContent = totalBots + ' wallets combined';
+  const pnlEl = document.getElementById('brief-daily-pnl');
+  pnlEl.textContent = '$' + (totalDailyPnl >= 0 ? '+' : '') + totalDailyPnl.toFixed(2);
+  pnlEl.style.color = totalDailyPnl >= 0 ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('brief-daily-meta').textContent = totalTrades + ' trades total';
+  const totalPnl = Object.values(data).reduce((s, b) => s + (b.stats?.totalPnl || 0), 0);
+  const totalPnlEl = document.getElementById('brief-total-pnl');
+  totalPnlEl.textContent = '$' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(2);
+  totalPnlEl.style.color = totalPnl >= 0 ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('brief-total-pnl-meta').textContent = 'All time combined';
+  document.getElementById('brief-bots-online').textContent = onlineCount + '/' + totalBots;
+  document.getElementById('brief-bots-online').style.color = onlineCount === totalBots ? 'var(--success)' : 'var(--danger)';
+  const offlineBots = Object.entries(BOT_META).filter(([id]) => !data[id]?.online).map(([,m]) => m.name);
+  document.getElementById('brief-bots-meta').textContent = onlineCount === totalBots ? 'All systems operational' : offlineBots.join(', ') + ' offline';
+
+  // Update live feed with real bot activity
+  const allActivity = Object.entries(BOT_META).flatMap(([id, meta]) => {
+    return (data[id]?.recentActivity || [])
+      .filter(line => line.includes('INFO') && !line.includes('───'))
+      .slice(-5)
+      .map(line => {
+        const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
+        const msgMatch = line.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\|\s+\w+\s+\|\s+/, '');
+        return { time: timeMatch?.[1] || '—', text: '<strong>' + meta.name + '</strong> ' + msgMatch, color: meta.color, tag: id.toUpperCase() };
+      });
+  }).sort((a, b) => b.time.localeCompare(a.time)).slice(0, 15);
+
+  document.getElementById('feed-list').innerHTML = allActivity.map(f => `
+    <div class="feed-item">
+      <div class="feed-item-time">${f.time}</div>
+      <div class="feed-item-text">${f.text}</div>
+      <span class="feed-tag" style="background:hsla(264 65% 49% / 0.08);color:${f.color}">${f.tag}</span>
+    </div>
+  `).join('') || '<div style="color:var(--text-dim);font-size:11px;padding:12px 0">No recent activity</div>';
+}
+
+// Fetch bot data and render
+async function fetchBotData() {
+  try {
+    const res = await fetch(DASHBOARD_API);
+    if (!res.ok) throw new Error('API ' + res.status);
+    const data = await res.json();
+    renderBotCards(data);
+  } catch(e) {
+    console.error('[NL] Bot API error:', e);
+    document.getElementById('agents-grid').innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:20px;text-align:center">Could not connect to trading dashboard (port 3000)</div>';
+  }
+}
+
+// ── REVENUE BLUR TOGGLE ───────────────────────
+function toggleBlur() {
+  const grid = document.getElementById('stripe-grid');
+  const btn = document.getElementById('blur-toggle');
+  const blurred = grid.style.filter === 'blur(10px)';
+  grid.style.filter = blurred ? 'none' : 'blur(10px)';
+  grid.style.userSelect = blurred ? '' : 'none';
+  btn.textContent = blurred ? 'Hide' : 'Show';
+  localStorage.setItem('ctrl_revenue_blurred', blurred ? '' : '1');
+}
+// Restore blur state
+if (localStorage.getItem('ctrl_revenue_blurred')) {
+  requestAnimationFrame(() => {
+    const grid = document.getElementById('stripe-grid');
+    const btn = document.getElementById('blur-toggle');
+    if (grid) { grid.style.filter = 'blur(10px)'; grid.style.userSelect = 'none'; }
+    if (btn) btn.textContent = 'Show';
+  });
+}
+
+// ── STRIPE REVENUE (live from Stripe API) ──
+function fmtEur(n) {
+  return '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function renderStripeCard(label, value, sub, color) {
+  return `<div style="background:linear-gradient(180deg,hsla(0 0% 6%/1) 0%,hsla(0 0% 3%/1) 100%);border:1px solid var(--border);border-radius:14px;padding:16px 18px;transition:all 0.3s;">
+    <div style="font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">${label}</div>
+    <div style="font-family:var(--font-data);font-size:22px;font-weight:700;color:${color};margin-bottom:4px;">${value}</div>
+    <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">${sub}</div>
+  </div>`;
+}
+async function renderStripe() {
+  const grid = document.getElementById('stripe-grid');
+  grid.innerHTML = renderStripeCard('MRR', '—', 'Loading...', 'var(--text-dim)')
+    + renderStripeCard('Revenue (MTD)', '—', 'Loading...', 'var(--text-dim)')
+    + renderStripeCard('Active Subs', '—', 'Loading...', 'var(--text-dim)')
+    + renderStripeCard('Churn Rate', '—', 'Loading...', 'var(--text-dim)')
+    + renderStripeCard('Balance', '—', 'Loading...', 'var(--text-dim)');
+  try {
+    const res = await fetch('/stripe/revenue', { credentials: 'include' });
+    if (!res.ok) throw new Error('API error');
+    const d = await res.json();
+    const c = v => fmtEur(v / 100); // cents to EUR
+    const grossGrowth = d.gross.prev > 0 ? Math.round(((d.gross.mtd - d.gross.prev) / d.gross.prev) * 100) : 0;
+    const growthSign = grossGrowth >= 0 ? '+' : '';
+    grid.innerHTML = [
+      renderStripeCard('Bruto Volume', c(d.gross.mtd), growthSign + grossGrowth + '% vs vorige maand · fees: ' + c(d.gross.fees_mtd), grossGrowth >= 0 ? 'var(--success)' : 'var(--danger)'),
+      renderStripeCard((window.__BRAND_COMPANY || 'Trading Platform') + ' MRR', c(d.mrr.value), d.active_subs.value + ' actieve subs × €9,99', 'var(--primary)'),
+      renderStripeCard('Other Revenue MTD', c(d.other.mtd), 'vorige maand: ' + c(d.other.prev), 'var(--success)'),
+      renderStripeCard('Balance', c(d.balance.available + d.balance.pending), c(d.balance.pending) + ' pending', 'var(--warning)'),
+    ].join('');
+  } catch (e) {
+    console.error('[STRIPE]', e);
+  }
+}
+renderStripe();
+setInterval(renderStripe, 5 * 60 * 1000); // refresh elke 5 min
+
+// Initial fetch + poll every 10 seconds
+fetchBotData();
+setInterval(fetchBotData, 10000);
+
+// ── AI TEAM ───────────────────────────────────
+const aiTeam = [
+  { name: 'TRADER', emoji: '🤖', role: '3 Live Bots on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
+  { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
+  { name: 'ANALYST', emoji: '📊', role: 'Bot Reports & Diagnostics', status: 'idle', color: 'var(--premium)', hsl: '270 95% 65%', task: 'Awaiting assignment' },
+  { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
+  { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
+  { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
+  { name: 'SCRIPT WRITER', emoji: '✍️', role: 'Video & Content Scripts', status: 'idle', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', task: 'Awaiting assignment' },
+  { name: 'MARKETEER', emoji: '📣', role: 'Marketing Strategy & Content', status: 'idle', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', task: 'Awaiting assignment', isMarketeer: true },
+  { name: 'ASSISTANT', emoji: '📅', role: 'Google Calendar Assistant', status: 'idle', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', task: 'Awaiting assignment', isCalendar: true },
+];
+
+const TASK_APIS = {
+  RESEARCHER: '/research/tasks',
+  ANALYST: '/analyst/tasks',
+  DESIGNER: '/designer/tasks',
+  'VIDEO EDITOR': ['/video/tasks', '/video/ai-generate'],
+  'CONTENT CREATOR': '/avatar/tasks',
+  'SCRIPT WRITER': '/scriptwriter/tasks',
+};
+
+async function renderAiTeam() {
+  // Fetch bot data for Trader card
+  let botData = null;
+  try { botData = await (await fetch('/api/status')).json(); } catch {}
+
+  // Fetch task counts per agent
+  const taskCounts = {};
+  for (const [name, api] of Object.entries(TASK_APIS)) {
+    try {
+      const apis = Array.isArray(api) ? api : [api];
+      let allTasks = [];
+      for (const a of apis) { try { allTasks = allTasks.concat(await (await fetch(a)).json()); } catch {} }
+      taskCounts[name] = {
+        pending: allTasks.filter(t => t.status === 'pending').length,
+        processing: allTasks.filter(t => t.status === 'processing').length,
+        completed: allTasks.filter(t => t.status === 'completed').length,
+      };
+    } catch { taskCounts[name] = { pending: 0, processing: 0, completed: 0 }; }
+  }
+
+  document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
+    if (a.isTrader && botData) {
+      const onlineCount = ['funding','liq','trend'].filter(id => botData[id]?.online).length;
+      const totalEquity = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.accountValue||0), 0);
+      const totalUpnl = ['funding','liq','trend'].reduce((s, id) => s + ((botData[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
+      const totalRealizedPnl = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.stats?.totalPnl||0), 0);
+      const totalTrades = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.stats?.totalTrades||0), 0);
+      const status = onlineCount === 3 ? 'running' : onlineCount > 0 ? 'queued' : 'idle';
+
+      return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+          <span class="agent-status ${status}">${onlineCount}/3 online</span>
+        </div>
+        <div class="agent-card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Equity</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:var(--text)">$${totalEquity.toFixed(0)}</div></div>
+            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalUpnl>=0?'var(--success)':'var(--danger)'}">$${totalUpnl>=0?'+':''}${totalUpnl.toFixed(2)}</div></div>
+            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalRealizedPnl>=0?'var(--success)':'var(--danger)'}">$${totalRealizedPnl>=0?'+':''}${totalRealizedPnl.toFixed(2)}</div></div>
+          </div>
+          <div class="agent-task">${onlineCount === 3 ? 'All bots operational' : (3-onlineCount)+' bot(s) offline'}</div>
+          <div class="health-row">
+            ${['funding','liq','trend'].map(id => {
+              const b = botData[id] || {};
+              const label = id === 'funding' ? 'Fund' : id === 'liq' ? 'Liq' : 'Trend';
+              const ok = b.online;
+              return '<span class="health-tag"><span class="dot ' + (ok ? 'ok' : 'err') + '"></span>' + label + '</span>';
+            }).join('')}
+          </div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label"><span>${totalTrades}</span> trades</span>
+          <span class="agent-footer-label"><span>${onlineCount}/3</span> active</span>
+        </div>
+      </div>`;
+    }
+
+    if (a.isMarketeer) {
+      return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+          <span class="agent-status running">25 skills</span>
+        </div>
+        <div class="agent-card-body">
+          <div class="agent-task">Content, copy, ads, SEO & growth strategy</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">engine <span>Claude + Skills</span></span>
+          <a href="marketeer.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open marketeer</a>
+        </div>
+      </div>`;
+    }
+
+    if (a.isCalendar) {
+      return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+          <span class="agent-status running">connected</span>
+        </div>
+        <div class="agent-card-body">
+          <div class="agent-task">Google Calendar via Composio</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">engine <span>Composio</span></span>
+          <a href="calendar.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open assistant</a>
+        </div>
+      </div>`;
+    }
+
+    const tc = taskCounts[a.name] || { pending: 0, processing: 0, completed: 0 };
+    const status = tc.processing > 0 ? 'running' : tc.pending > 0 ? 'queued' : tc.completed > 0 ? 'idle' : 'idle';
+    const statusText = tc.processing > 0 ? `Processing ${tc.processing}` : tc.pending > 0 ? `${tc.pending} pending` : 'Awaiting assignment';
+
+    return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+      <div class="agent-card-header">
+        <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+        <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+        <span class="agent-status ${status}">${status}</span>
+      </div>
+      <div class="agent-card-body">
+        <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
+          <span style="color:var(--warning)">${tc.pending} pending</span>
+          <span style="color:var(--primary)">${tc.processing} active</span>
+          <span style="color:var(--success)">${tc.completed} done</span>
+        </div>
+        <div class="agent-task">${statusText}</div>
+      </div>
+      <div class="agent-card-footer">
+        <span class="agent-footer-label"><span>${tc.pending + tc.processing + tc.completed}</span> total tasks</span>
+        <span class="agent-footer-label">status <span>${status}</span></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+renderAiTeam();
+setInterval(renderAiTeam, 10000);
+
+// ── MOBILE NAVIGATION ─────────────────────────
+function toggleSidebar() {
+  // Only used on tablet (≤1024 & >768) — on mobile sidebar is bottom bar
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mobile-overlay');
+  const feed = document.querySelector('.feed');
+  feed.classList.remove('open');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('visible', sidebar.classList.contains('open'));
+}
+function toggleFeed() {
+  const feed = document.querySelector('.feed');
+  const overlay = document.getElementById('mobile-overlay');
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.classList.remove('open');
+  feed.classList.toggle('open');
+  overlay.classList.toggle('visible', feed.classList.contains('open'));
+}
+function closeAllMobile() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.querySelector('.feed').classList.remove('open');
+  document.getElementById('mobile-overlay').classList.remove('visible');
+}
+// Close panels on resize back to desktop
+window.addEventListener('resize', function() {
+  if (window.innerWidth > 1024) closeAllMobile();
+});
+</script>
+
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>

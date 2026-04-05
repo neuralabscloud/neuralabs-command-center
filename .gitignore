@@ -1,0 +1,31 @@
+# Secrets
+.env
+!.env.example
+
+# OAuth tokens
+command-center/data/canva-oauth.json
+
+# Runtime data
+*/node_modules/
+*/venv/
+*/__pycache__/
+*.pyc
+
+# Logs
+*.log
+*/logs/*.log
+
+# Generated images
+command-center/data/generated-images/*
+!command-center/data/generated-images/.gitkeep
+
+# Lock files
+.bot*.lock
+.server.lock
+
+# Build artifacts
+command-center/dist/
+
+# OS
+.DS_Store
+Thumbs.db

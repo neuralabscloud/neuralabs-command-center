@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%); --danger: hsl(0 72% 51%); --warning: hsl(45 93% 55%); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.024) 0%, transparent 60%), radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.024) 0%, transparent 60%); pointer-events: none; }
+body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-image: linear-gradient(var(--text-muted) 1px, transparent 1px), linear-gradient(90deg, var(--text-muted) 1px, transparent 1px); background-size: 60px 60px; opacity: 0.04; pointer-events: none; }
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar { width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; }
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s; position: relative; border: 1px solid transparent; text-decoration: none; }
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.063); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.063); }
+.nav-item .tooltip { position: absolute; left: 52px; top: 50%; transform: translateY(-50%); background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header { font-family: var(--font-display); font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 14px; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+/* ── INTEGRATIONS GRID ── */
+.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+.integration-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px;
+  transition: all 0.3s; position: relative; overflow: hidden;
+}
+.integration-card:hover { border-color: hsla(264 65% 49% / 0.3); box-shadow: 0 8px 40px hsla(264 65% 49% / 0.06); }
+.integration-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.integration-icon {
+  width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.integration-name { font-family: var(--font-data); font-size: 14px; font-weight: 700; color: var(--text); }
+.integration-desc { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.integration-status {
+  margin-left: auto; font-family: var(--font-data); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.integration-status.connected { color: var(--success); background: hsla(142 76% 36% / 0.08); }
+.integration-status.connected::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: pulse-glow 2s infinite; }
+.integration-status.disconnected { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
+.integration-status.not-configured { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
+
+.integration-details { display: flex; flex-direction: column; gap: 8px; }
+.detail-row { display: flex; align-items: center; gap: 10px; }
+.detail-label { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; width: 90px; flex-shrink: 0; }
+.detail-value {
+  font-family: var(--font-data); font-size: 12px; color: var(--text); flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.detail-value.masked { color: var(--text-dim); letter-spacing: 0.15em; }
+.detail-value a { color: var(--primary); text-decoration: none; }
+.detail-value a:hover { text-decoration: underline; }
+
+.key-toggle {
+  font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
+  border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 2px 8px;
+  cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+}
+.key-toggle:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
+
+.btn-test {
+  margin-top: 12px; padding: 6px 16px;
+  background: hsla(264 65% 49% / 0.08); border: 1px solid hsla(264 65% 49% / 0.2);
+  border-radius: 8px; color: var(--primary); font-weight: 500; font-size: 11px;
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-data); display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-test:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.15); }
+.btn-test.testing { opacity: 0.6; cursor: wait; }
+
+.test-result {
+  font-family: var(--font-data); font-size: 10px; margin-top: 6px; padding: 6px 10px;
+  border-radius: 6px; display: none;
+}
+.test-result.success { display: block; color: var(--success); background: hsla(142 76% 36% / 0.06); }
+.test-result.error { display: block; color: var(--danger); background: hsla(0 72% 51% / 0.06); }
+
+/* ── SUMMARY STATS ── */
+.stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.stat-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; flex: 1; min-width: 160px;
+}
+.stat-value { font-family: var(--font-data); font-size: 28px; font-weight: 800; color: var(--text); }
+.stat-value.text-success { color: var(--success); }
+.stat-value.text-warning { color: var(--warning); }
+.stat-value.text-danger { color: var(--danger); }
+.stat-label { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+
+@keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; } .delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+    scrollbar-width: none; transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
+  .header-title { font-size: 17px; }
+  .integrations-grid { grid-template-columns: 1fr; }
+  .stats-row { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+
+  <main class="main">
+    <div class="fade-up delay-1">
+      <div class="header-title">SETTINGS</div>
+      <div class="header-sub">API integrations, connections & system configuration</div>
+    </div>
+
+    <!-- SUMMARY -->
+    <section class="fade-up delay-2">
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Integrations</div></div>
+        <div class="stat-card"><div class="stat-value text-success" id="stat-connected">—</div><div class="stat-label">Connected</div></div>
+        <div class="stat-card"><div class="stat-value text-warning" id="stat-not-configured">—</div><div class="stat-label">Not Configured</div></div>
+        <div class="stat-card"><div class="stat-value text-danger" id="stat-error">—</div><div class="stat-label">Errors</div></div>
+      </div>
+    </section>
+
+    <!-- INTEGRATIONS -->
+    <section class="fade-up delay-3">
+      <div class="section-header">API Integrations</div>
+      <div class="integrations-grid" id="integrations-grid">
+        <div style="color: var(--text-dim); font-size: 13px;">Loading integrations...</div>
+      </div>
+    </section>
+
+    <!-- LOCAL SERVICES -->
+    <section class="fade-up delay-4">
+      <div class="section-header">Local Services</div>
+      <div class="integrations-grid" id="services-grid">
+        <div style="color: var(--text-dim); font-size: 13px;">Loading services...</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const INTEGRATIONS_API = '/settings/integrations';
+
+function maskKey(key) {
+  if (!key) return '—';
+  if (key.length <= 12) return '••••••••';
+  return key.slice(0, 7) + '••••••••' + key.slice(-4);
+}
+
+function iconBg(color) {
+  return `background: hsla(${color} / 0.1); border: 1px solid hsla(${color} / 0.2);`;
+}
+
+const SERVICE_META = {
+  anthropic: { icon: '🧠', color: '264 65% 49%', label: 'Anthropic / Claude', desc: 'AI chat, research, design generation' },
+  heygen: { icon: '🎬', color: '210 90% 55%', label: 'HeyGen', desc: 'AI avatar video generation' },
+  stripe: { icon: '💳', color: '265 65% 60%', label: 'Stripe', desc: 'Payments, subscriptions & revenue' },
+  canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Design generation via OAuth + MCP' },
+  telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
+  inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
+  apify: { icon: '🕷', color: '142 70% 40%', label: 'Apify', desc: 'Social media scraping — TikTok, Instagram, X' },
+  composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
+};
+
+// Local services are checked server-side
+
+async function loadIntegrations() {
+  try {
+    const res = await fetch(INTEGRATIONS_API);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    renderIntegrations(data.integrations);
+    renderStats(data.integrations);
+  } catch (e) {
+    document.getElementById('integrations-grid').innerHTML =
+      `<div style="color: var(--danger); font-size: 12px;">Could not load integrations: ${e.message}</div>`;
+  }
+}
+
+function renderStats(integrations) {
+  const total = integrations.length;
+  const connected = integrations.filter(i => i.status === 'connected').length;
+  const notConfigured = integrations.filter(i => i.status === 'not-configured').length;
+  const errors = integrations.filter(i => i.status === 'error').length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-connected').textContent = connected;
+  document.getElementById('stat-not-configured').textContent = notConfigured;
+  document.getElementById('stat-error').textContent = errors;
+}
+
+function renderIntegrations(integrations) {
+  document.getElementById('integrations-grid').innerHTML = integrations.map(int => {
+    const meta = SERVICE_META[int.id] || { icon: '🔗', color: '217 32% 40%', label: int.id, desc: '' };
+    const statusClass = int.status === 'connected' ? 'connected' : int.status === 'not-configured' ? 'not-configured' : 'disconnected';
+    const statusLabel = int.status === 'connected' ? 'Connected' : int.status === 'not-configured' ? 'Not Configured' : 'Error';
+
+    return `<div class="integration-card" id="card-${int.id}">
+      <div class="integration-header">
+        <div class="integration-icon" style="${iconBg(meta.color)}">${meta.icon}</div>
+        <div>
+          <div class="integration-name">${meta.label}</div>
+          <div class="integration-desc">${meta.desc}</div>
+        </div>
+        <span class="integration-status ${statusClass}">${statusLabel}</span>
+      </div>
+      <div class="integration-details">
+        ${int.details.map(d => `
+          <div class="detail-row">
+            <span class="detail-label">${d.label}</span>
+            ${d.secret
+              ? `<span class="detail-value masked" data-full="${d.value}" data-masked="${maskKey(d.value)}">${maskKey(d.value)}</span>
+                 <button class="key-toggle" onclick="toggleKey(this)">Show</button>`
+              : `<span class="detail-value">${d.value || '—'}</span>`
+            }
+          </div>
+        `).join('')}
+      </div>
+      <button class="btn-test" onclick="testIntegration('${int.id}', this)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        Test Connection
+      </button>
+      <div class="test-result" id="test-${int.id}"></div>
+    </div>`;
+  }).join('');
+}
+
+function toggleKey(btn) {
+  const val = btn.previousElementSibling;
+  const full = val.dataset.full;
+  const masked = val.dataset.masked;
+  if (val.textContent === masked) {
+    val.textContent = full;
+    val.classList.remove('masked');
+    btn.textContent = 'Hide';
+  } else {
+    val.textContent = masked;
+    val.classList.add('masked');
+    btn.textContent = 'Show';
+  }
+}
+
+async function testIntegration(id, btn) {
+  btn.classList.add('testing');
+  btn.textContent = 'Testing...';
+  const result = document.getElementById(`test-${id}`);
+  result.className = 'test-result';
+  result.style.display = 'none';
+
+  try {
+    const res = await fetch(`/settings/integrations/${id}/test`, { method: 'POST' });
+    const data = await res.json();
+    result.textContent = data.ok ? `Connected — ${data.message}` : `Error — ${data.message}`;
+    result.className = `test-result ${data.ok ? 'success' : 'error'}`;
+  } catch (e) {
+    result.textContent = `Failed: ${e.message}`;
+    result.className = 'test-result error';
+  }
+
+  btn.classList.remove('testing');
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Test Connection';
+}
+
+async function loadLocalServices() {
+  const grid = document.getElementById('services-grid');
+  try {
+    const res = await fetch('/settings/services');
+    if (!res.ok) throw new Error(res.status);
+    const services = await res.json();
+    grid.innerHTML = services.map(svc => {
+      const statusClass = svc.status === 'online' ? 'connected' : 'disconnected';
+      const statusLabel = svc.status === 'online' ? 'Online' : 'Offline';
+      return `<div class="integration-card">
+        <div class="integration-header">
+          <div class="integration-icon" style="${iconBg('217 32% 40%')}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </div>
+          <div>
+            <div class="integration-name">${svc.label}</div>
+            <div class="integration-desc">${svc.desc}</div>
+          </div>
+          <span class="integration-status ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="integration-details">
+          <div class="detail-row">
+            <span class="detail-label">URL</span>
+            <span class="detail-value">${svc.url}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="color:var(--danger);font-size:12px;">Could not load services: ${e.message}</div>`;
+  }
+}
+
+loadIntegrations();
+loadLocalServices();
+</script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>

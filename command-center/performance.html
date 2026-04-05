@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Platform — Performance</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%); --success-dim: hsla(142 76% 36% / 0.4);
+  --danger: hsl(0 72% 51%); --danger-dim: hsla(0 72% 51% / 0.4);
+  --warning: hsl(45 93% 55%); --warning-dim: hsla(45 93% 55% / 0.4); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.02) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background-image: linear-gradient(var(--text-muted) 1px, transparent 1px), linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+  background-size: 60px 60px; opacity: 0.04; pointer-events: none;
+}
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar {
+  width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+}
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  position: relative; border: 1px solid transparent; text-decoration: none;
+}
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.06); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.06); }
+.nav-item .tooltip {
+  position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text);
+  white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+.header { display: flex; align-items: center; justify-content: space-between; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header {
+  font-family: var(--font-display); font-size: 11px; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+@keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── PAGE SPECIFIC ──────────────────────────────── */
+.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.summary-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; transition: all 0.25s;
+}
+.summary-card:hover { border-color: var(--border-glow); box-shadow: 0 0 24px hsla(264 65% 49% / 0.03); }
+.summary-label {
+  font-family: var(--font-data); font-size: 9px; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
+}
+.summary-value { font-family: var(--font-data); font-size: 24px; font-weight: 600; }
+.summary-change { font-family: var(--font-data); font-size: 11px; margin-top: 4px; }
+
+.table-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); text-align: left;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 12px 14px; border-bottom: 1px solid hsla(217 32% 20% / 0.12); font-size: 13px;
+  vertical-align: middle;
+}
+.data-table tr { transition: background 0.2s; }
+.data-table tr:hover { background: hsla(264 65% 49% / 0.015); }
+.sparkline-container { height: 24px; display: flex; align-items: end; gap: 2px; width: 100px; display: inline-flex; }
+.sparkline-bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; }
+.platform-badge {
+  font-family: var(--font-data); font-size: 10px; font-weight: 600;
+  padding: 4px 10px; border-radius: 6px; letter-spacing: 0.08em;
+}
+
+/* ── RESPONSIVE: MOBILE ── */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+    scrollbar-width: none; transform: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar::after {
+    content: ''; position: sticky; right: 0; top: 0; bottom: 0;
+    width: 28px; flex-shrink: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-sidebar));
+    pointer-events: none;
+  }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .sidebar > .nav-item:last-child { display: none; }
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
+  .header-title { font-size: 17px; }
+  .header-sub { font-size: 11px; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 600px; }
+}
+
+@media (max-width: 480px) {
+  .main { padding: 12px 10px 64px; gap: 16px; }
+  .header-title { font-size: 15px; }
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+  .sidebar-nav { gap: 0; padding: 0 2px; }
+  .nav-item { width: 33px; height: 33px; }
+  .nav-item svg { width: 15px; height: 15px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+  </aside>
+
+  <main class="main">
+    <div class="header fade-up delay-1">
+      <div>
+        <div class="header-title">PERFORMANCE</div>
+        <div class="header-sub">Cross-platform analytics &amp; content metrics</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="last-refresh" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)"></span>
+        <button id="refresh-btn" onclick="refreshAllData()" style="font-family:var(--font-data);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;background:hsla(264 65% 49% / 0.06);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.15);padding:6px 14px;border-radius:6px;cursor:pointer;transition:all 0.2s">↻ Refresh Data</button>
+      </div>
+    </div>
+
+    <!-- SUMMARY -->
+    <section class="fade-up delay-2">
+      <div class="summary-grid" id="summary-grid"></div>
+    </section>
+
+    <!-- PLATFORM SECTIONS (generated dynamically) -->
+    <div id="platform-sections"></div>
+  </main>
+</div>
+
+<script>
+// ── HELPERS ────────────────────────────────────
+function sparkline(data, color) {
+  const max = Math.max(...data);
+  return `<span class="sparkline-container">${data.map(v =>
+    `<span class="sparkline-bar" style="height:${Math.max(8,(v/max)*100)}%;background:${color};opacity:${0.4+(v/max)*0.6}"></span>`
+  ).join('')}</span>`;
+}
+function fmtNum(n) {
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+  return String(n);
+}
+const loadingRow = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:var(--text-dim);font-family:var(--font-data);font-size:11px"><span style="animation:pulse-glow 1.5s infinite">◌ ${msg}</span></td></tr>`;
+function decodeHtml(s) { return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"'); }
+
+// ── CONFIG ─────────────────────────────────────
+const APIFY_TOKEN = ''; // Set APIFY_API_KEY in .env to enable
+const APIFY_BASE = 'https://api.apify.com/v2';
+const YT_KEY = ''; // Set YOUTUBE_API_KEY in .env to enable
+
+// Configure your social media brands/handles here
+const BRANDS = [
+  // Example:
+  // { name: 'MyBrand', profiles: [
+  //   { type: 'tt', handle: 'myhandle', color: 'hsl(270 95% 65%)' },
+  //   { type: 'ig', handle: 'myhandle', color: 'hsl(330 70% 55%)' },
+  //   { type: 'yt', handle: '@myhandle', color: 'hsl(0 72% 51%)' },
+  // ]},
+];
+
+const TYPE_LABELS = { tt: 'TIKTOK', ig: 'INSTAGRAM', yt: 'YOUTUBE', x: 'X' };
+
+// ── SUMMARY CARDS ──────────────────────────────
+function renderSummary(data) {
+  document.getElementById('summary-grid').innerHTML = data.map(s => `
+    <div class="summary-card">
+      <div class="summary-label">${s.label}</div>
+      <div class="summary-value" style="color:${s.color}">${s.value}</div>
+      <div class="summary-change" style="color:var(--text-dim)">${s.sub}</div>
+    </div>
+  `).join('');
+}
+
+function showRefreshTime() {
+  const ts = localStorage.getItem('ctrl_refresh_ts');
+  const el = document.getElementById('last-refresh');
+  if (ts && el) el.textContent = 'Last: ' + new Date(parseInt(ts)).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ── APIFY: run actor, poll, return dataset items ──
+async function apifyRunAndWait(actorId, input) {
+  const r = await fetch(`${APIFY_BASE}/acts/${actorId}/runs?token=${APIFY_TOKEN}`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(input)
+  });
+  const runId = (await r.json()).data.id;
+  for (let i = 0; i < 36; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const p = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    const st = (await p.json()).data.status;
+    if (st === 'SUCCEEDED') break;
+    if (st === 'FAILED' || st === 'ABORTED') throw new Error('Run ' + st);
+  }
+  return (await fetch(`${APIFY_BASE}/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`)).json();
+}
+
+// ── GENERIC FETCH/RENDER PER PROFILE ──────────
+
+function renderTable(tableId, rows, color) {
+  const tbody = document.getElementById(tableId);
+  if (!tbody) return;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim)">No data yet — click Refresh</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td style="font-weight:500">${r.title}</td>
+    <td><span style="font-family:var(--font-data)">${r.col1}</span></td>
+    <td><span style="font-family:var(--font-data)">${r.col2}</span></td>
+    <td><span style="font-family:var(--font-data)">${r.col3}</span></td>
+    <td><span style="font-family:var(--font-data);color:var(--success)">${r.eng}</span></td>
+    <td>${sparkline(r.sparkData || [0], color)}</td>
+  </tr>`).join('');
+}
+
+function parseTikTokData(data) {
+  if (!data?.length) return { rows: [], stats: {} };
+  const am = data[0].authorMeta || {};
+  const allPlays = data.map(p => p.playCount || 0);
+  const rows = data.map(p => ({
+    title: (p.text||'').substring(0,50) + ((p.text||'').length>50?'...':''),
+    col1: fmtNum(p.playCount||0), col2: fmtNum(p.diggCount||0), col3: fmtNum(p.shareCount||0),
+    eng: (p.playCount||0) > 0 ? (((p.diggCount||0)+(p.shareCount||0)+(p.commentCount||0))/(p.playCount)*100).toFixed(1)+'%' : '—',
+    sparkData: allPlays,
+  }));
+  return { rows, stats: { fans: am.fans||0, totalPlays: allPlays.reduce((a,b)=>a+b,0) } };
+}
+
+function parseInstagramData(data) {
+  // Support both post array and details object (with latestPosts)
+  const posts = Array.isArray(data) ? data : (data?.latestPosts || []);
+  if (!posts.length) return { rows: [], stats: {} };
+  const allViews = posts.map(p => p.videoViewCount || p.likesCount || 0);
+  const rows = posts.map(p => ({
+    title: (p.caption||'').substring(0,50) + ((p.caption||'').length>50?'...':''),
+    col1: p.videoViewCount || '—', col2: fmtNum(p.likesCount||0), col3: fmtNum(p.commentsCount||0),
+    eng: (p.videoViewCount||p.likesCount||0) > 0 ? (((p.likesCount||0)+(p.commentsCount||0))/(p.videoViewCount||p.likesCount||1)*100).toFixed(1)+'%' : '—',
+    sparkData: allViews,
+  }));
+  const totalViews = allViews.reduce((a,b)=>a+b,0);
+  const totalEng = posts.reduce((a,p)=>a+(p.likesCount||0)+(p.commentsCount||0),0);
+  return { rows, stats: { totalViews, engRate: totalViews>0?(totalEng/totalViews*100).toFixed(1)+'%':'—', followers: data?.followersCount||0 } };
+}
+
+async function fetchProfile(profile, tableId) {
+  const cacheKey = 'ctrl_perf_' + profile.type + '_' + profile.handle;
+  const tbody = document.getElementById(tableId);
+  if (!tbody) return {};
+
+  // Try cache first
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      const data = JSON.parse(cached);
+      const parsed = profile.type === 'tt' ? parseTikTokData(data.data) : parseInstagramData(data.data);
+      renderTable(tableId, parsed.rows, profile.color);
+      return parsed.stats;
+    } catch {}
+  }
+
+  tbody.innerHTML = loadingRow(6, 'No data yet — click Refresh');
+  return {};
+}
+
+async function fetchProfileLive(profile, tableId) {
+  const cacheKey = 'ctrl_perf_' + profile.type + '_' + profile.handle;
+  const tbody = document.getElementById(tableId);
+  if (!tbody) return {};
+
+  tbody.innerHTML = loadingRow(6, 'Fetching ' + profile.handle + '...');
+
+  try {
+    let data, parsed;
+    if (profile.type === 'tt') {
+      data = await apifyRunAndWait('clockworks~free-tiktok-scraper', {
+        profiles: [profile.handle], resultsPerPage: 10,
+        shouldDownloadVideos: false, shouldDownloadCovers: false
+      });
+      parsed = parseTikTokData(data);
+    } else if (profile.type === 'ig') {
+      data = await apifyRunAndWait('shu8hvrXbJbY3Eb9W', {
+        directUrls: ['https://www.instagram.com/' + profile.handle + '/'],
+        resultsType: 'details', resultsLimit: 1
+      });
+      data = data[0] || {};
+      parsed = parseInstagramData(data);
+    } else if (profile.type === 'yt') {
+      return await fetchYouTubeProfile(profile.handle, tableId);
+    } else {
+      return {};
+    }
+    localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data }));
+    renderTable(tableId, parsed.rows, profile.color);
+    return parsed.stats;
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);text-align:center;padding:20px">${e.message}</td></tr>`;
+    return {};
+  }
+}
+
+async function fetchYouTubeProfile(handle, tableId) {
+  const tbody = document.getElementById(tableId);
+  try {
+    const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&forHandle=${handle}&key=${YT_KEY}`);
+    if (!chRes.ok) throw new Error(chRes.status === 403 ? 'API quota exceeded' : 'API error');
+    const chData = await chRes.json();
+    if (!chData.items?.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim)">Channel not found</td></tr>'; return {}; }
+    const ch = chData.items[0], st = ch.statistics;
+    const subs = parseInt(st.subscriberCount)||0;
+
+    const srRes = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${ch.id}&order=date&maxResults=10&type=video&key=${YT_KEY}`);
+    const videoItems = (await srRes.json()).items||[];
+    const videoIds = videoItems.map(i=>i.id.videoId).filter(Boolean);
+    const titles = {}; videoItems.forEach(i => { titles[i.id.videoId] = i.snippet.title; });
+    if (!videoIds.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim)">No videos</td></tr>'; return { subs }; }
+
+    const vRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoIds.join(',')}&key=${YT_KEY}`);
+    const videos = (await vRes.json()).items||[];
+    const allViews = videos.map(v=>parseInt(v.statistics.viewCount)||0);
+    const rows = videos.map(v => {
+      const views = parseInt(v.statistics.viewCount)||0;
+      const likes = parseInt(v.statistics.likeCount)||0;
+      const cmts = parseInt(v.statistics.commentCount)||0;
+      return {
+        title: (decodeHtml(titles[v.id]||'')).substring(0,50),
+        col1: fmtNum(views), col2: fmtNum(likes), col3: fmtNum(cmts),
+        eng: views > 0 ? ((likes+cmts)/views*100).toFixed(1)+'%' : '—',
+        sparkData: allViews,
+      };
+    });
+    renderTable(tableId, rows, 'hsl(0 72% 51%)');
+    return { subs, recentViews: allViews.reduce((a,b)=>a+b,0) };
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);text-align:center;padding:20px">${e.message}</td></tr>`;
+    return {};
+  }
+}
+
+// ── BUILD SECTIONS DYNAMICALLY ────────────────
+function buildSections() {
+  const container = document.getElementById('platform-sections');
+  const headers = { tt: ['Post', 'Views', 'Likes', 'Shares', 'Engagement', 'Trend'],
+                     ig: ['Post', 'Views', 'Likes', 'Comments', 'Engagement', 'Trend'],
+                     yt: ['Video', 'Views', 'Likes', 'Comments', 'Engagement', 'Trend'] };
+
+  let html = '';
+  BRANDS.forEach((brand, bi) => {
+    html += `<div style="margin-bottom:28px;">
+      <div class="section-header">${brand.name}</div>`;
+    brand.profiles.forEach((p, pi) => {
+      const tableId = 'table-' + brand.name + '-' + p.type + '-' + pi;
+      const cols = headers[p.type] || headers.tt;
+      html += `<div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="platform-badge" style="background:${p.color}12;color:${p.color}">${TYPE_LABELS[p.type]} @${p.handle}</span>
+        </div>
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr>${cols.map(c => '<th>'+c+'</th>').join('')}</tr></thead>
+          <tbody id="${tableId}"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim)">No data yet — click Refresh</td></tr></tbody>
+        </table></div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+// ── REFRESH ALL (sequential to avoid Apify limits) ──
+let refreshing = false;
+async function refreshAllData() {
+  if (refreshing) return;
+  refreshing = true;
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '◌ Refreshing...';
+  btn.style.opacity = '0.6';
+
+  renderSummary([
+    {label:'Total Profiles',value:BRANDS.reduce((s,b)=>s+b.profiles.length,0),sub:'Across '+BRANDS.length+' brands',color:'var(--primary)'},
+    {label:'Status',value:'Refreshing...',sub:'Sequential fetch',color:'var(--warning)'},
+  ]);
+
+  for (const brand of BRANDS) {
+    for (let pi = 0; pi < brand.profiles.length; pi++) {
+      const p = brand.profiles[pi];
+      const tableId = 'table-' + brand.name + '-' + p.type + '-' + pi;
+      const tbody = document.getElementById(tableId);
+      if (tbody) tbody.innerHTML = loadingRow(6, 'Fetching ' + p.handle + '...');
+      try { await fetchProfileLive(p, tableId); } catch(e) { console.error(e); }
+    }
+  }
+
+  localStorage.setItem('ctrl_refresh_ts', String(Date.now()));
+  showRefreshTime();
+  btn.textContent = '↻ Refresh Data';
+  btn.style.opacity = '1';
+  refreshing = false;
+
+  updateSummary();
+}
+
+function updateSummary() {
+  let totalViews = 0, totalEng = 0, totalFollowers = 0, totalPosts = 0;
+
+  BRANDS.forEach(brand => brand.profiles.forEach(p => {
+    const cacheKey = 'ctrl_perf_' + p.type + '_' + p.handle;
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return;
+    try {
+      const { data } = JSON.parse(raw);
+      if (p.type === 'tt') {
+        const d = Array.isArray(data) ? data : [];
+        totalViews += d.reduce((s, t) => s + (t.playCount || 0), 0);
+        totalEng += d.reduce((s, t) => s + (t.diggCount||0) + (t.shareCount||0) + (t.commentCount||0), 0);
+        totalFollowers += d[0]?.authorMeta?.fans || 0;
+        totalPosts += d.length;
+      } else if (p.type === 'ig') {
+        const posts = data?.latestPosts || (Array.isArray(data) ? data : []);
+        totalViews += posts.reduce((s, t) => s + (t.videoViewCount || t.likesCount || 0), 0);
+        totalEng += posts.reduce((s, t) => s + (t.likesCount||0) + (t.commentsCount||0), 0);
+        totalFollowers += data?.followersCount || 0;
+        totalPosts += posts.length;
+      } else if (p.type === 'yt') {
+        // YT data is stored differently via fetchYouTubeProfile — skip for now, added via live fetch
+      }
+    } catch {}
+  }));
+
+  const avgEng = totalViews > 0 ? (totalEng / totalViews * 100).toFixed(1) + '%' : '—';
+  const totalProfiles = BRANDS.reduce((s, b) => s + b.profiles.length, 0);
+  const cached = BRANDS.flatMap(b => b.profiles.map(p => localStorage.getItem('ctrl_perf_' + p.type + '_' + p.handle))).filter(Boolean).length;
+
+  renderSummary([
+    { label: 'Combined Views', value: totalViews > 0 ? fmtNum(totalViews) : '—', sub: 'All platforms recent posts', color: 'var(--primary)' },
+    { label: 'Combined Followers', value: totalFollowers > 0 ? fmtNum(totalFollowers) : '—', sub: 'TT + IG combined', color: 'var(--accent)' },
+    { label: 'Avg Engagement', value: avgEng, sub: totalPosts + ' posts analyzed', color: 'var(--success)' },
+    { label: 'Total Interactions', value: totalEng > 0 ? fmtNum(totalEng) : '—', sub: 'Likes + comments + shares', color: 'var(--warning)' },
+    { label: 'Profiles Synced', value: cached + '/' + totalProfiles, sub: cached === totalProfiles ? 'All up to date' : 'Click Refresh', color: cached === totalProfiles ? 'var(--success)' : 'var(--text-dim)' },
+  ]);
+}
+
+// ── INIT ──────────────────────────────────────
+(async function init() {
+  buildSections();
+  showRefreshTime();
+
+  // Load from cache
+  for (const brand of BRANDS) {
+    for (let pi = 0; pi < brand.profiles.length; pi++) {
+      const p = brand.profiles[pi];
+      const tableId = 'table-' + brand.name + '-' + p.type + '-' + pi;
+      await fetchProfile(p, tableId);
+    }
+  }
+
+  updateSummary();
+})();
+</script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script src="/brand-loader.js"></script>
+</body>
+</html>
