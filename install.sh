@@ -119,7 +119,8 @@ ask "Telegram bot token (@BotFather)" "" TELEGRAM_BOT_TOKEN
 ask "Telegram chat ID" "" TELEGRAM_CHAT_ID
 ask "HeyGen API key (video generation)" "" HEYGEN_API_KEY true
 ask "Stripe secret key (revenue tracking)" "" STRIPE_SECRET_KEY true
-ask "Composio API key (calendar)" "" COMPOSIO_API_KEY true
+ask "Composio API key (calendar — composio.dev)" "" COMPOSIO_API_KEY true
+ask "Apify API token (social media scraping — apify.com)" "" APIFY_API_KEY true
 
 echo ""
 echo -e "${CYAN}═══ INSTALLATION ═══${NC}"
@@ -199,6 +200,7 @@ TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
 HEYGEN_API_KEY=${HEYGEN_API_KEY}
 STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
 COMPOSIO_API_KEY=${COMPOSIO_API_KEY}
+APIFY_API_KEY=${APIFY_API_KEY}
 BRAND_ASSET_URL=
 INSTALL_DIR=${INSTALL_DIR}
 DASHBOARD_URL=${DASHBOARD_URL}
@@ -301,6 +303,11 @@ echo -e "  ${YELLOW}Manage services:${NC}"
 echo "    systemctl status command-center"
 echo "    systemctl restart command-center"
 echo "    journalctl -u command-center -f"
+echo ""
+echo -e "  ${YELLOW}Optional post-install setup:${NC}"
+echo "    Canva Designer:    Connect via Command Center > Settings > Integrations"
+echo "    Inference.sh:      npm install -g inference.sh && infsh login"
+echo "    (See the installation guide for detailed instructions)"
 echo ""
 
 if [ "$ALL_OK" = false ]; then
