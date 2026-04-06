@@ -1279,7 +1279,7 @@ app.get("/settings/integrations", (_req, res) => {
       { label: "API Token", value: apifyToken, secret: true },
       { label: "Actors", value: "TikTok Scraper, Instagram Scraper, Twitter/X Scraper" },
       { label: "Used by", value: "Performance page, Overview — social media analytics" },
-    ],
+    ] : [{ label: "Status", value: "Not configured — set APIFY_API_KEY in .env" }],
   });
 
   // 8. Composio
@@ -3073,6 +3073,7 @@ Per post, gebruik exact dit format:
 **Caption:**
 [Schrijf hier de volledige Instagram caption: hook + body + CTA. Minimaal 4-6 zinnen. Gebruik line breaks, emoji's waar passend, en een duidelijke CTA aan het einde.]
 
+**Image prompt:** [Beschrijf in detail de afbeelding die bij deze post hoort. Schrijf dit als een Engelse AI image generation prompt die direct bruikbaar is voor Nano Banana / Gemini. Wees specifiek over compositie, kleuren, stijl, tekst-overlays en sfeer. Bijv: "Dark futuristic trading dashboard with neon purple glow, Bitcoin chart going up, bold text overlay 'BTC $100K', cyberpunk style, 1080x1080"]
 **Hashtags:** #tag1 #tag2 #tag3 #tag4 #tag5
 **Format:** carousel / single image / reel
 **Stijl tip:** [welke stijl-keywords voor de designer, bijv. 'cyberpunk bold', 'neon intense']`
@@ -3084,6 +3085,7 @@ Per post, use exactly this format:
 **Caption:**
 [Write the full Instagram caption here: hook + body + CTA. Minimum 4-6 sentences. Use line breaks, emojis where appropriate, and a clear CTA at the end.]
 
+**Image prompt:** [Describe in detail the image for this post. Write this as an English AI image generation prompt ready to use with Nano Banana / Gemini. Be specific about composition, colors, style, text overlays and mood. E.g: "Dark futuristic trading dashboard with neon purple glow, Bitcoin chart going up, bold text overlay 'BTC $100K', cyberpunk style, 1080x1080"]
 **Hashtags:** #tag1 #tag2 #tag3 #tag4 #tag5
 **Format:** carousel / single image / reel
 **Style tip:** [which style keywords for the designer, e.g. 'cyberpunk bold', 'neon intense']`}

@@ -358,6 +358,20 @@ body::after {
   font-size: 11px; color: var(--text-dim); margin-top: 6px;
   font-style: italic;
 }
+.post-caption { font-size: 13px; line-height: 1.7; white-space: pre-line; }
+.post-image-prompt-field { position: relative; margin-top: 6px; }
+.post-image-prompt {
+  font-size: 11px; line-height: 1.5; color: var(--warning);
+  background: hsla(45 93% 55% / 0.05); border: 1px solid hsla(45 93% 55% / 0.15);
+  border-radius: 6px; padding: 8px 12px; font-family: var(--font-data);
+}
+.post-copy-prompt {
+  position: absolute; top: 0; right: 0;
+  font-size: 9px; padding: 2px 8px;
+  background: hsla(45 93% 55% / 0.1); border: 1px solid hsla(45 93% 55% / 0.2);
+  color: var(--warning); border-radius: 4px; cursor: pointer;
+}
+.post-copy-prompt:hover { background: hsla(45 93% 55% / 0.2); }
 
 /* ── LANG TOGGLE ── */
 .lang-toggle {
@@ -706,11 +720,13 @@ function renderPostCards(section) {
 
   const postsHTML = posts.map((p, idx) => {
     const mainText = p.fields.tweet || p.fields.hook || p.fields.body || '';
+    const caption = p.fields.caption || '';
     const format = p.fields.format || '';
     const hashtags = p.fields.hashtags || '';
     const type = p.fields.type || '';
     const engagement = p.fields['engagement strategie'] || p.fields['engagement strategy'] || '';
     const stijlTip = p.fields['stijl tip'] || p.fields['style tip'] || '';
+    const imagePrompt = p.fields['image prompt'] || '';
     const body = p.fields.body || '';
 
     // Build copyable text
@@ -718,10 +734,12 @@ function renderPostCards(section) {
     if (isTwitter) {
       copyText = [mainText, hashtags].filter(Boolean).join('\n\n').replace(/\*\*/g, '').trim();
     } else {
-      copyText = [p.fields.hook || mainText, body, hashtags].filter(Boolean).join('\n\n').replace(/\*\*/g, '').trim();
+      copyText = [caption || p.fields.hook || mainText, body, hashtags].filter(Boolean).join('\n\n').replace(/\*\*/g, '').trim();
     }
 
     const copyId = 'copy-' + Date.now() + '-' + idx;
+
+    const imgPromptCopyId = 'imgp-' + Date.now() + '-' + idx;
 
     return `<div class="post-card">
       <div class="post-card-header">
@@ -730,9 +748,16 @@ function renderPostCards(section) {
         <textarea id="${copyId}" style="position:absolute;left:-9999px">${escHtml(copyText)}</textarea>
         <button class="post-copy-btn" onclick="copyFromTextarea(this, '${copyId}')">Copy</button>
       </div>
-      ${p.fields.hook ? `<div class="post-field"><span class="post-field-label">Hook</span><div class="post-field-value post-hook">${formatMarkdown(p.fields.hook)}</div></div>` : ''}
-      ${body && !isTwitter ? `<div class="post-field"><span class="post-field-label">Body</span><div class="post-field-value">${formatMarkdown(body)}</div></div>` : ''}
+      ${caption && !isTwitter ? `<div class="post-field"><span class="post-field-label">Caption</span><div class="post-field-value post-caption">${formatMarkdown(caption)}</div></div>` : ''}
+      ${!caption && p.fields.hook ? `<div class="post-field"><span class="post-field-label">Hook</span><div class="post-field-value post-hook">${formatMarkdown(p.fields.hook)}</div></div>` : ''}
+      ${!caption && body && !isTwitter ? `<div class="post-field"><span class="post-field-label">Body</span><div class="post-field-value">${formatMarkdown(body)}</div></div>` : ''}
       ${mainText && isTwitter ? `<div class="post-field"><span class="post-field-label">Tweet</span><div class="post-field-value post-tweet">${formatMarkdown(mainText)}</div></div>` : ''}
+      ${imagePrompt ? `<div class="post-field post-image-prompt-field">
+        <span class="post-field-label">Image Prompt</span>
+        <div class="post-field-value post-image-prompt">${escHtml(imagePrompt)}</div>
+        <textarea id="${imgPromptCopyId}" style="position:absolute;left:-9999px">${escHtml(imagePrompt)}</textarea>
+        <button class="post-copy-btn post-copy-prompt" onclick="copyFromTextarea(this, '${imgPromptCopyId}')" title="Copy image prompt">Copy prompt</button>
+      </div>` : ''}
       <div class="post-meta">
         ${format ? `<span class="post-tag">${escHtml(format)}</span>` : ''}
         ${type ? `<span class="post-tag">${escHtml(type)}</span>` : ''}
