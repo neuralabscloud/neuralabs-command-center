@@ -286,7 +286,7 @@ Na de setup wizard kom je op het Command Center dashboard. In de sidebar vind je
 | **Research** | Marktonderzoek, trend analyse, concurrentie analyse, dagelijkse rapporten |
 | **Performance** | KPI's, revenue (Stripe), social media analytics (Apify), groei metrics |
 | **Agents** | Overzicht en beheer van alle AI agents en hun taken |
-| **Video Editor** | Video's bewerken, knippen, samenvoegen en exporteren |
+| **Video Editor** | Video's bewerken, knippen, samenvoegen en exporteren via Remotion |
 | **Designer** | Social media content maken: carousels, thumbnails, banners, infographics. Gebruikt Claude AI, Canva, en Nano Banana (Inference.sh) |
 | **Content Creator** | AI avatar video's genereren via HeyGen |
 | **Script Writer** | Scripts schrijven voor video's, social media posts en content |
@@ -302,6 +302,7 @@ Elke agent is een gespecialiseerde AI die zelfstandig taken uitvoert:
 |-------|-------------|---------|
 | **Designer** | Maakt social media content: carousels, thumbnails, banners | Anthropic API key |
 | **Researcher** | Marktonderzoek, trend analyse, concurrentie analyse | Anthropic API key |
+| **Video Editor** | Video's maken en bewerken via Remotion (React-based video framework) | — (ingebouwd) |
 | **Content Creator** | AI avatar video's maken | HeyGen API key |
 | **Script Writer** | Scripts voor video's en content | Anthropic API key |
 | **Marketeer** | Marketing strategie en campagne planning | Anthropic API key |
