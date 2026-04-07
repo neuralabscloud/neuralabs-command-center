@@ -68,7 +68,7 @@ body::before { content: ''; position: fixed; inset: 0; background: radial-gradie
 <body>
 <div class="wizard">
   <h1>Setup Wizard</h1>
-  <div class="sub">Configureer je Command Center</div>
+  <div class="sub">Configure your Command Center</div>
   <div class="progress" id="progress"></div>
   <div id="steps"></div>
 </div>
@@ -95,51 +95,51 @@ function init() {
   // Step 1: Branding
   html += `<div class="step active" data-step="0">
     <h2><span class="num">1</span>Branding</h2>
-    <div class="field"><label>Bedrijfsnaam</label><input type="text" id="s-company" placeholder="MijnBedrijf" autocomplete="off"><div class="hint">Wordt getoond in de UI, Telegram berichten en AI assistant</div></div>
-    <div class="field"><label>AI Assistant Naam</label><input type="text" id="s-assistant" placeholder="Assistant" value="Assistant" autocomplete="off"></div>
+    <div class="field"><label>Company Name</label><input type="text" id="s-company" placeholder="MyCompany" autocomplete="off"><div class="hint">Shown in the UI, Telegram messages and AI assistant</div></div>
+    <div class="field"><label>AI Assistant Name</label><input type="text" id="s-assistant" placeholder="Assistant" value="Assistant" autocomplete="off"></div>
     <div class="field"><label>Tagline</label><input type="text" id="s-tagline" placeholder="Your Platform" autocomplete="off"></div>
     <div class="field">
-      <label>Primaire Kleur (hue 0-360)</label>
+      <label>Primary Color (hue 0-360)</label>
       <input type="range" id="s-hue" min="0" max="360" value="264" oninput="updateColorPreview()">
-      <div class="color-preview"><div class="color-swatch" id="s-swatch" style="background:hsl(264 65% 49%)"></div><div class="color-labels" id="s-hue-label">264 (paars)</div></div>
+      <div class="color-preview"><div class="color-swatch" id="s-swatch" style="background:hsl(264 65% 49%)"></div><div class="color-labels" id="s-hue-label">264 (purple)</div></div>
     </div>
-    <div class="btns"><button class="btn primary" onclick="next()">Volgende</button></div>
+    <div class="btns"><button class="btn primary" onclick="next()">Next</button></div>
   </div>`;
 
   // Step 2: Anthropic
   html += `<div class="step" data-step="1">
     <h2><span class="num">2</span>AI (Anthropic API)</h2>
-    <div class="field"><label>Anthropic API Key</label><input type="password" id="s-anthropic" placeholder="sk-ant-..." autocomplete="off"><div class="hint">Vereist voor AI functies (research, design, analyse). <a href="https://console.anthropic.com" target="_blank">Key aanmaken</a></div></div>
-    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="next()">Volgende</button><button class="btn secondary skip" onclick="skip()">Overslaan</button></div>
+    <div class="field"><label>Anthropic API Key</label><input type="password" id="s-anthropic" placeholder="sk-ant-..." autocomplete="off"><div class="hint">Required for AI features (research, design, analysis). <a href="https://console.anthropic.com" target="_blank">Create key</a></div></div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Back</button><button class="btn primary" onclick="next()">Next</button><button class="btn secondary skip" onclick="skip()">Skip</button></div>
   </div>`;
 
   // Step 3: Telegram
   html += `<div class="step" data-step="2">
-    <h2><span class="num">3</span>Telegram Notificaties</h2>
-    <div class="field"><label>Bot Token</label><input type="text" id="s-tg-token" placeholder="123456:ABC-DEF..." autocomplete="off"><div class="hint">Maak een bot via <a href="https://t.me/BotFather" target="_blank">@BotFather</a></div></div>
-    <div class="field"><label>Chat ID</label><input type="text" id="s-tg-chatid" placeholder="123456789" autocomplete="off"><div class="hint">Gebruik <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> om je chat ID te vinden</div></div>
-    <div class="optional-tag">Optioneel — je kunt dit later instellen via Instellingen</div>
-    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="next()">Volgende</button><button class="btn secondary skip" onclick="skip()">Overslaan</button></div>
+    <h2><span class="num">3</span>Telegram Notifications</h2>
+    <div class="field"><label>Bot Token</label><input type="text" id="s-tg-token" placeholder="123456:ABC-DEF..." autocomplete="off"><div class="hint">Create a bot via <a href="https://t.me/BotFather" target="_blank">@BotFather</a></div></div>
+    <div class="field"><label>Chat ID</label><input type="text" id="s-tg-chatid" placeholder="123456789" autocomplete="off"><div class="hint">Use <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> to find your chat ID</div></div>
+    <div class="optional-tag">Optional — you can set this up later in Settings</div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Back</button><button class="btn primary" onclick="next()">Next</button><button class="btn secondary skip" onclick="skip()">Skip</button></div>
   </div>`;
 
   // Step 4: Integrations
   html += `<div class="step" data-step="3">
-    <h2><span class="num">4</span>Integraties</h2>
-    <div class="field"><label>HeyGen API Key (video generatie)</label><input type="password" id="s-heygen" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://app.heygen.com/settings" target="_blank">Key ophalen bij HeyGen</a></div></div>
+    <h2><span class="num">4</span>Integrations</h2>
+    <div class="field"><label>HeyGen API Key (video generation)</label><input type="password" id="s-heygen" placeholder="Optional" autocomplete="off"><div class="hint"><a href="https://app.heygen.com/settings" target="_blank">Get key from HeyGen</a></div></div>
     <div class="field"><label>Stripe Secret Key (revenue tracking)</label><input type="password" id="s-stripe" placeholder="sk_..." autocomplete="off"></div>
-    <div class="field"><label>Composio API Key (calendar)</label><input type="password" id="s-composio" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://app.composio.dev" target="_blank">composio.dev</a></div></div>
-    <div class="field"><label>Apify API Token (social media)</label><input type="password" id="s-apify" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://console.apify.com/account/integrations" target="_blank">apify.com</a></div></div>
-    <div class="optional-tag">Alle velden zijn optioneel. Laat leeg en vul later in via Instellingen.</div>
-    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="finish()">Voltooien</button><button class="btn secondary skip" onclick="finish()">Overslaan</button></div>
+    <div class="field"><label>Composio API Key (calendar)</label><input type="password" id="s-composio" placeholder="Optional" autocomplete="off"><div class="hint"><a href="https://app.composio.dev" target="_blank">composio.dev</a></div></div>
+    <div class="field"><label>Apify API Token (social media)</label><input type="password" id="s-apify" placeholder="Optional" autocomplete="off"><div class="hint"><a href="https://console.apify.com/account/integrations" target="_blank">apify.com</a></div></div>
+    <div class="optional-tag">All fields are optional. Leave empty and fill in later via Settings.</div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Back</button><button class="btn primary" onclick="finish()">Finish</button><button class="btn secondary skip" onclick="finish()">Skip</button></div>
   </div>`;
 
   // Done
   html += `<div class="step" data-step="done">
     <div class="success">
       <div class="icon">&#10003;</div>
-      <h2>Setup Voltooid!</h2>
-      <p>Je Command Center is geconfigureerd en klaar voor gebruik.</p>
-      <button class="btn primary" onclick="window.location.href='/index.html'">Naar Command Center</button>
+      <h2>Setup Complete!</h2>
+      <p>Your Command Center is configured and ready to use.</p>
+      <button class="btn primary" onclick="window.location.href='/index.html'">Go to Command Center</button>
     </div>
   </div>`;
 
@@ -161,7 +161,7 @@ function updateUI() {
 function updateColorPreview() {
   const hue = document.getElementById('s-hue').value;
   document.getElementById('s-swatch').style.background = `hsl(${hue} 65% 49%)`;
-  const names = {0:'rood',30:'oranje',60:'geel',120:'groen',180:'cyaan',210:'blauw',240:'indigo',264:'paars',300:'magenta',330:'roze',360:'rood'};
+  const names = {0:'red',30:'orange',60:'yellow',120:'green',180:'cyan',210:'blue',240:'indigo',264:'purple',300:'magenta',330:'pink',360:'red'};
   let closest = Object.keys(names).reduce((a,b) => Math.abs(b-hue) < Math.abs(a-hue) ? b : a);
   document.getElementById('s-hue-label').textContent = `${hue} (${names[closest]})`;
 }
@@ -202,11 +202,11 @@ async function finish() {
 
   try {
     const r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
-    if (!r.ok) throw new Error('Opslaan mislukt');
+    if (!r.ok) throw new Error('Save failed');
     currentStep = STEPS.length;
     updateUI();
   } catch (e) {
-    alert('Fout bij opslaan: ' + e.message);
+    alert('Error saving settings: ' + e.message);
   }
 }
 
