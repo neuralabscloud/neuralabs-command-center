@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Settings</title>
+<title>NEURALABS — Settings</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -141,6 +141,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
   .header-title { font-size: 17px; }
   .integrations-grid { grid-template-columns: 1fr; }
+  #config-grid { grid-template-columns: 1fr !important; }
   .stats-row { flex-direction: column; }
 }
 </style>
@@ -163,6 +164,44 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <div class="stat-card"><div class="stat-value text-warning" id="stat-not-configured">—</div><div class="stat-label">Not Configured</div></div>
         <div class="stat-card"><div class="stat-value text-danger" id="stat-error">—</div><div class="stat-label">Errors</div></div>
       </div>
+    </section>
+
+    <!-- CONFIGURATION -->
+    <section class="fade-up delay-3" style="margin-bottom: 20px">
+      <div class="section-header">Configuration</div>
+      <div id="config-saved" style="display:none;padding:8px 14px;background:hsla(142 76% 36%/0.1);border:1px solid hsla(142 76% 36%/0.2);border-radius:8px;color:var(--success);font-size:12px;margin-bottom:14px;text-align:center">Settings saved successfully</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="config-grid">
+        <!-- Branding -->
+        <div class="integration-card">
+          <div class="integration-header" style="margin-bottom:12px">
+            <div class="integration-icon" style="background:hsla(264 65% 49%/0.1);border:1px solid hsla(264 65% 49%/0.2)">B</div>
+            <div><div class="integration-name">Branding</div><div class="integration-desc">Company name, colors & identity</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Company Name</label><input type="text" id="cfg-company" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="MyCompany"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">AI Assistant Name</label><input type="text" id="cfg-assistant" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Assistant"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Tagline</label><input type="text" id="cfg-tagline" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Your Platform"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Primary Color</label><input type="range" id="cfg-hue" min="0" max="360" value="264" style="width:100%" oninput="document.getElementById('cfg-swatch').style.background='hsl('+this.value+' 65% 49%)'"><div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div id="cfg-swatch" style="width:24px;height:24px;border-radius:6px;background:hsl(264 65% 49%);border:1px solid var(--border)"></div><span style="font-size:11px;color:var(--text-dim)" id="cfg-hue-val">264</span></div></div>
+          </div>
+        </div>
+        <!-- API Keys -->
+        <div class="integration-card">
+          <div class="integration-header" style="margin-bottom:12px">
+            <div class="integration-icon" style="background:hsla(264 65% 49%/0.1);border:1px solid hsla(264 65% 49%/0.2)">K</div>
+            <div><div class="integration-name">API Keys & Integrations</div><div class="integration-desc">Leave empty to keep current value</div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Anthropic API Key</label><input type="password" id="cfg-anthropic" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current key kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Telegram Bot Token</label><input type="text" id="cfg-tg-token" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Telegram Chat ID</label><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Apify API Token</label><input type="password" id="cfg-apify" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+          </div>
+        </div>
+      </div>
+      <button onclick="saveConfig()" id="cfg-save-btn" style="margin-top:14px;padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;transition:all 0.2s">Save Changes</button>
     </section>
 
     <!-- INTEGRATIONS -->
@@ -338,12 +377,86 @@ async function loadLocalServices() {
   }
 }
 
+// ── CONFIG EDITOR ──────────────────────────
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/settings');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.branding) {
+      document.getElementById('cfg-company').value = d.branding.company_name || '';
+      document.getElementById('cfg-assistant').value = d.branding.assistant_name || '';
+      document.getElementById('cfg-tagline').value = d.branding.tagline || '';
+      const hue = d.branding.primary_hue || 264;
+      document.getElementById('cfg-hue').value = hue;
+      document.getElementById('cfg-swatch').style.background = `hsl(${hue} 65% 49%)`;
+      document.getElementById('cfg-hue-val').textContent = hue;
+    }
+    if (d.integrations) {
+      // Show masked values as placeholders
+      const setPlaceholder = (id, int) => {
+        const el = document.getElementById(id);
+        if (el && int.has_key) el.placeholder = int.masked || 'Configured';
+      };
+      setPlaceholder('cfg-anthropic', d.integrations.anthropic);
+      setPlaceholder('cfg-heygen', d.integrations.heygen);
+      setPlaceholder('cfg-stripe', d.integrations.stripe);
+      setPlaceholder('cfg-composio', d.integrations.composio);
+      setPlaceholder('cfg-apify', d.integrations.apify);
+      if (d.integrations.telegram.has_key) {
+        document.getElementById('cfg-tg-token').placeholder = d.integrations.telegram.token_masked || 'Configured';
+        document.getElementById('cfg-tg-chatid').value = d.integrations.telegram.chat_id || '';
+      }
+    }
+  } catch {}
+}
+
+document.getElementById('cfg-hue').addEventListener('input', function() {
+  document.getElementById('cfg-hue-val').textContent = this.value;
+});
+
+async function saveConfig() {
+  const btn = document.getElementById('cfg-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  const payload = {
+    branding: {
+      company_name: document.getElementById('cfg-company').value.trim(),
+      assistant_name: document.getElementById('cfg-assistant').value.trim(),
+      tagline: document.getElementById('cfg-tagline').value.trim(),
+      primary_hue: parseInt(document.getElementById('cfg-hue').value),
+    },
+    integrations: {}
+  };
+
+  const fields = {
+    anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
+    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', composio_key: 'cfg-composio', apify_key: 'cfg-apify',
+  };
+  for (const [key, id] of Object.entries(fields)) {
+    const val = document.getElementById(id)?.value?.trim();
+    if (val) payload.integrations[key] = val;
+  }
+
+  try {
+    const r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('Save failed');
+    const saved = document.getElementById('config-saved');
+    saved.style.display = 'block';
+    setTimeout(() => saved.style.display = 'none', 3000);
+    loadIntegrations(); // Refresh status cards
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = 'Save Changes';
+}
+
+loadConfig();
 loadIntegrations();
 loadLocalServices();
 </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>
