@@ -1,4 +1,8 @@
-require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
+const _path = require("path");
+const _fs = require("fs");
+const _envPaths = [_path.join(__dirname, ".env"), _path.join(__dirname, "..", ".env")];
+const _envPath = _envPaths.find(p => _fs.existsSync(p)) || _envPaths[1];
+require("dotenv").config({ path: _envPath });
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -22,9 +26,6 @@ app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   next();
 });
-
-// ── STATIC FILES ─────────────────────────────
-app.use(express.static(__dirname));
 
 // ── AUTH ──────────────────────────────────────
 const CC_PASSWORD = process.env.CC_PASSWORD;
@@ -70,8 +71,8 @@ app.get("/auth/check", (req, res) => {
 
 // Protect all other API routes
 app.use((req, res, next) => {
-  // Allow auth endpoints and setup status (needed before full config)
-  if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
+  // Allow auth endpoints
+  if (req.path.startsWith("/auth/")) return next();
   // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
@@ -79,18 +80,59 @@ app.use((req, res, next) => {
   res.status(401).json({ error: "Unauthorized" });
 });
 
-// ── SETUP WIZARD & SETTINGS API ─────────────────────────
-const ENV_PATH = path.join(__dirname, "..", ".env");
+// ── SETTINGS API ─────────────────────────────
+const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
+
+// Populate process.env with values from bot config.py files (for Telegram etc.)
+(function populateEnvFromBotConfigs() {
+  const botConfigs = [
+    path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+    path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+  ];
+  for (const f of botConfigs) {
+    try {
+      if (!fs.existsSync(f)) continue;
+      const content = fs.readFileSync(f, "utf8");
+      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
+    } catch {}
+  }
+})();
 
 function readEnvFile() {
+  const env = {};
+  // Read .env file
   try {
-    const env = {};
     for (const line of fs.readFileSync(ENV_PATH, "utf8").split("\n")) {
       const m = line.match(/^([A-Z_]+)=(.*)$/);
       if (m) env[m[1]] = m[2];
     }
-    return env;
-  } catch { return {}; }
+  } catch {}
+  // Merge from process.env (picks up vars from other sources like dotenv loading)
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "APIFY_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  for (const key of envKeys) {
+    if (!env[key] && process.env[key]) env[key] = process.env[key];
+  }
+  // Check bot config.py files for Telegram if not in .env
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    const botConfigs = [
+      path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+      path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+    ];
+    for (const f of botConfigs) {
+      try {
+        if (!fs.existsSync(f)) continue;
+        const content = fs.readFileSync(f, "utf8");
+        const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+        const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+        if (tokenMatch && tokenMatch[1] && !env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+        if (chatMatch && chatMatch[1] && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = chatMatch[1];
+      } catch {}
+    }
+  }
+  return env;
 }
 
 function writeEnvFile(updates) {
@@ -110,34 +152,26 @@ function maskKey(val) {
   return val.slice(0, 6) + "..." + val.slice(-4);
 }
 
-app.get("/api/setup-status", (_req, res) => {
-  const env = readEnvFile();
-  const configured = !!(env.COMPANY_NAME && env.ANTHROPIC_API_KEY);
-  res.json({ configured });
-});
-
 app.get("/api/settings", (_req, res) => {
   const env = readEnvFile();
+  // Read brand.json, fall back to loadBrand() defaults
+  let brand = {};
+  try { brand = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8")); } catch {}
+  if (!brand.company_name && typeof loadBrand === "function") { try { brand = loadBrand(); } catch {} }
   res.json({
     branding: {
-      company_name: env.COMPANY_NAME || "",
-      assistant_name: env.ASSISTANT_NAME || "",
-      tagline: env.TAGLINE || "",
-      primary_hue: parseInt(env.PRIMARY_COLOR_HUE || "264"),
-      primary_sat: parseInt(env.PRIMARY_COLOR_SAT || "65"),
-      primary_lit: parseInt(env.PRIMARY_COLOR_LIT || "49"),
+      company_name: brand.company_name || env.COMPANY_NAME || "",
+      assistant_name: brand.assistant_name || env.ASSISTANT_NAME || "",
+      tagline: brand.tagline || env.TAGLINE || "",
+      primary_hue: brand.primary_hue || parseInt(env.PRIMARY_COLOR_HUE || "264"),
+      primary_sat: brand.primary_sat || parseInt(env.PRIMARY_COLOR_SAT || "65"),
+      primary_lit: brand.primary_lit || parseInt(env.PRIMARY_COLOR_LIT || "49"),
     },
     integrations: {
       anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
       heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY) },
-      inference: (function() {
-        try {
-          const cfg = JSON.parse(fs.readFileSync(path.join(process.env.HOME || "/root", ".inferencesh", "config.json"), "utf8"));
-          return { has_key: !!cfg.api_key, masked: maskKey(cfg.api_key || "") };
-        } catch { return { has_key: false, masked: "" }; }
-      })(),
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       apify: { has_key: !!env.APIFY_API_KEY, masked: maskKey(env.APIFY_API_KEY) },
     }
@@ -172,14 +206,6 @@ app.post("/api/settings", (req, res) => {
         updates[envKey] = integrations[field].trim();
       }
     }
-    // Inference.sh key is stored in its own config file, not .env
-    if (integrations.inference_key && integrations.inference_key.trim()) {
-      const infshDir = path.join(process.env.HOME || "/root", ".inferencesh");
-      try {
-        fs.mkdirSync(infshDir, { recursive: true });
-        fs.writeFileSync(path.join(infshDir, "config.json"), JSON.stringify({ api_key: integrations.inference_key.trim() }, null, 2));
-      } catch {}
-    }
   }
 
   try {
@@ -187,8 +213,17 @@ app.post("/api/settings", (req, res) => {
       writeEnvFile(updates);
       // Regenerate brand.json if branding changed
       if (branding) {
-        const configScript = path.join(__dirname, "..", "config", "generate-configs.sh");
-        try { require("child_process").execSync(`bash ${configScript} 2>&1`, { timeout: 5000 }); } catch {}
+        const brandPath = path.join(__dirname, "data", "brand.json");
+        let existing = {};
+        try { existing = JSON.parse(fs.readFileSync(brandPath, "utf8")); } catch {}
+        if (branding.company_name !== undefined) existing.company_name = branding.company_name;
+        if (branding.assistant_name !== undefined) existing.assistant_name = branding.assistant_name;
+        if (branding.tagline !== undefined) existing.tagline = branding.tagline;
+        if (branding.primary_hue !== undefined) existing.primary_hue = branding.primary_hue;
+        if (branding.primary_sat !== undefined) existing.primary_sat = branding.primary_sat;
+        if (branding.primary_lit !== undefined) existing.primary_lit = branding.primary_lit;
+        fs.mkdirSync(path.join(__dirname, "data"), { recursive: true });
+        fs.writeFileSync(brandPath, JSON.stringify(existing, null, 2));
       }
     }
     res.json({ ok: true });
@@ -410,8 +445,11 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
     writeTaskFile("designer-tasks.json", tasks);
     res.status(201).json(createdTasks);
 
-    // Run infsh for each task
-    for (const task of createdTasks) {
+    // Run infsh for each task with staggered delays (avoid rate limits)
+    for (let _qi = 0; _qi < createdTasks.length; _qi++) {
+      const task = createdTasks[_qi];
+      const _delay = _qi * 3000; // 3s between each slide start
+      setTimeout(() => {
       const slideIdx = createdTasks.indexOf(task);
       const slide = slides.length > 1 ? slides[slideIdx] : null;
       let slideDesc;
@@ -596,6 +634,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
         });
       };
       runInfsh(1);
+      }, _delay);
     }
     return;
   }
