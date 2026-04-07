@@ -322,16 +322,97 @@ Elke agent is een gespecialiseerde AI die zelfstandig taken uitvoert:
 
 ## 7. Dagelijks Gebruik
 
-### Automatische taken
+### Werken met Agents
 
-Het Command Center draait elke dag automatisch:
+Elke agent voert taken voor je uit. Je maakt een taak aan, de agent verwerkt het, en je krijgt het resultaat terug — in het dashboard en optioneel via Telegram.
 
-- **07:00 UTC** — Dagelijkse research taken triggeren
-- **07:05 UTC** — Research agent verwerkt taken via Claude API
+**Designer — Social media content**
 
-### Claude Code gebruiken
+Ga naar de Designer pagina en maak een nieuwe taak aan. Je kunt kiezen uit:
+- **Carousel** — Meerdere slides voor Instagram, LinkedIn, etc.
+- **Thumbnail** — YouTube of video thumbnails
+- **Banner** — Headers voor social media of website
+- **Infographic** — Data visualisaties
 
-Claude Code is een AI assistent in de terminal. Start het wanneer je wilt:
+Geef een beschrijving van wat je wilt (bijv. "5-slide carousel over AI trends in 2026") en kies een engine:
+- **Claude AI** — Genereert design via code (altijd beschikbaar met Anthropic key)
+- **Nano Banana** — Genereert images via Google Gemini (vereist Inference.sh key)
+- **Canva** — Maakt designs in Canva (vereist Canva koppeling)
+
+**Researcher — Marktonderzoek**
+
+Ga naar de Research pagina en maak een nieuw onderzoek aan. Voorbeelden:
+- "Analyseer de top 5 concurrenten in de AI SaaS markt"
+- "Wat zijn de trending topics op social media deze week?"
+- "Maak een rapport over de crypto markt ontwikkelingen"
+
+De Researcher gebruikt Claude AI om informatie te verzamelen, analyseren en een rapport te genereren.
+
+**Content Creator — AI Video's**
+
+Ga naar Content Creator om AI avatar video's te maken via HeyGen:
+- Kies een avatar en stem
+- Schrijf of genereer een script
+- De video wordt automatisch gegenereerd
+
+**Script Writer — Scripts en teksten**
+
+Laat de Script Writer content schrijven:
+- Video scripts voor YouTube, TikTok, Instagram Reels
+- Social media captions en copy
+- Blog posts en artikelen
+
+**Marketeer — Strategie**
+
+De Marketeer helpt met marketing planning:
+- Content kalender opstellen
+- Campagne ideeen genereren
+- Doelgroep analyse
+
+**Calendar — Agenda beheer**
+
+Als Composio is gekoppeld kun je via de Calendar pagina:
+- Afspraken inzien en aanmaken
+- Meetings plannen
+- Agenda overzicht bekijken
+
+### Automatische taken instellen
+
+Je kunt taken inplannen die automatisch op vaste tijden worden uitgevoerd. Ga naar de **Agents** pagina en maak een nieuw schema aan:
+
+| Veld | Uitleg |
+|------|--------|
+| **Name** | Naam van het schema (bijv. "Dagelijkse Instagram post") |
+| **Agent** | Welke agent de taak uitvoert (designer, researcher, scriptwriter, content_creator) |
+| **Hour / Minute** | Tijdstip in UTC waarop de taak wordt uitgevoerd |
+| **Days** | Op welke dagen (ma-zo) |
+| **Payload** | Wat de agent moet doen (beschrijving, type, etc.) |
+
+**Voorbeelden van automatische taken:**
+
+- Elke werkdag om 09:00 een Instagram carousel genereren
+- Elke maandag om 08:00 een marktonderzoek rapport
+- Dagelijks om 10:00 een video script schrijven
+- Elke vrijdag om 16:00 een weekoverzicht onderzoek
+
+Taken worden automatisch uitgevoerd en het resultaat verschijnt in het dashboard. Als Telegram is ingesteld krijg je een notificatie als de taak klaar is.
+
+### Telegram AI Assistant
+
+Als je Telegram hebt ingesteld, kun je je AI assistant ook via Telegram bereiken. Stuur gewoon een bericht naar je bot:
+
+| Commando | Wat het doet |
+|----------|-------------|
+| `/start` | Begroeting en uitleg |
+| `/status` | Bot status en equity (als trading bots geinstalleerd) |
+| `/clear` | Chat history wissen |
+| *Elk bericht* | Claude AI antwoordt — stel vragen, geef opdrachten, vraag om analyses |
+
+Je kunt via Telegram dezelfde dingen doen als in het Command Center — agents aansturen, vragen stellen, rapporten opvragen.
+
+### Claude Code in de terminal
+
+Claude Code is een AI assistent die direct op je server draait. Start het wanneer je wilt:
 
 ```bash
 claude
@@ -345,6 +426,8 @@ Voorbeelden:
 | *"Wat zijn de trending topics vandaag?"* | Doet marktonderzoek via de Researcher |
 | *"Toon mijn revenue deze maand"* | Haalt Stripe data op en maakt een rapport |
 | *"Plan een meeting morgen om 10u"* | Beheert je Google Calendar via Composio |
+| *"Pas de branding kleur aan naar blauw"* | Wijzigt de configuratie |
+| *"Toon de logs van het Command Center"* | Opent en analyseert de log bestanden |
 
 ---
 
