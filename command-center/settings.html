@@ -380,7 +380,7 @@ async function loadLocalServices() {
 // ── CONFIG EDITOR ──────────────────────────
 async function loadConfig() {
   try {
-    const r = await fetch('/api/settings');
+    const r = await fetch('/api/settings', { credentials: 'include' });
     if (!r.ok) return;
     const d = await r.json();
     if (d.branding) {
