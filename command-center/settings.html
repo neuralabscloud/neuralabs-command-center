@@ -196,6 +196,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Telegram Chat ID</label><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Apify API Token</label><input type="password" id="cfg-apify" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
           </div>
@@ -402,6 +403,7 @@ async function loadConfig() {
       setPlaceholder('cfg-anthropic', d.integrations.anthropic);
       setPlaceholder('cfg-heygen', d.integrations.heygen);
       setPlaceholder('cfg-stripe', d.integrations.stripe);
+      setPlaceholder('cfg-inference', d.integrations.inference);
       setPlaceholder('cfg-composio', d.integrations.composio);
       setPlaceholder('cfg-apify', d.integrations.apify);
       if (d.integrations.telegram) {
@@ -436,7 +438,7 @@ async function saveConfig() {
 
   const fields = {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
-    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', composio_key: 'cfg-composio', apify_key: 'cfg-apify',
+    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', inference_key: 'cfg-inference', composio_key: 'cfg-composio', apify_key: 'cfg-apify',
   };
   for (const [key, id] of Object.entries(fields)) {
     const val = document.getElementById(id)?.value?.trim();

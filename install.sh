@@ -132,6 +132,11 @@ info "Installing Claude Code..."
 npm install -g @anthropic-ai/claude-code --silent 2>/dev/null
 ok "Claude Code installed"
 
+# Inference.sh (Nano Banana / Gemini image generation)
+info "Installing Inference.sh..."
+npm install -g inference.sh --silent 2>/dev/null
+ok "Inference.sh installed"
+
 pip3 install -q python-dotenv 2>/dev/null || true
 
 # ── COPY FILES ────────────────────────────────────────────

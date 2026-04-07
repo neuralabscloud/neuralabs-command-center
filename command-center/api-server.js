@@ -132,6 +132,12 @@ app.get("/api/settings", (_req, res) => {
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
       heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY) },
+      inference: (function() {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(path.join(process.env.HOME || "/root", ".inferencesh", "config.json"), "utf8"));
+          return { has_key: !!cfg.api_key, masked: maskKey(cfg.api_key || "") };
+        } catch { return { has_key: false, masked: "" }; }
+      })(),
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       apify: { has_key: !!env.APIFY_API_KEY, masked: maskKey(env.APIFY_API_KEY) },
     }
@@ -165,6 +171,14 @@ app.post("/api/settings", (req, res) => {
       if (integrations[field] !== undefined && integrations[field] !== "") {
         updates[envKey] = integrations[field].trim();
       }
+    }
+    // Inference.sh key is stored in its own config file, not .env
+    if (integrations.inference_key && integrations.inference_key.trim()) {
+      const infshDir = path.join(process.env.HOME || "/root", ".inferencesh");
+      try {
+        fs.mkdirSync(infshDir, { recursive: true });
+        fs.writeFileSync(path.join(infshDir, "config.json"), JSON.stringify({ api_key: integrations.inference_key.trim() }, null, 2));
+      } catch {}
     }
   }
 

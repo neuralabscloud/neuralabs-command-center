@@ -253,21 +253,11 @@ Klik op **Skip** als je dit later wilt instellen. Je kunt het altijd toevoegen v
 
 - **HeyGen API Key** — Voor AI avatar video generatie. Key ophalen via [app.heygen.com/settings](https://app.heygen.com/settings)
 - **Stripe Secret Key** — Voor revenue & subscription tracking. Key vind je in je [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (begint met `sk_live_` of `sk_test_`)
+- **Inference.sh API Key** — Voor AI image generatie (Nano Banana / Google Gemini). Gebruikt door de Designer agent. Key ophalen via [inference.sh](https://inference.sh) (begint met `1nfsh-`)
 - **Composio API Key** — Voor Google Calendar integratie. Aanmaken via [app.composio.dev](https://app.composio.dev)
 - **Apify API Token** — Voor social media scraping (TikTok, Instagram, X). Token ophalen via [console.apify.com](https://console.apify.com/account/integrations)
 
 Alle velden zijn optioneel. Klik op **Finish** of **Skip** om door te gaan.
-
-### Na de wizard: Inference.sh installeren (optioneel)
-
-Inference.sh (Nano Banana) wordt gebruikt door de Designer agent voor AI image generatie via Google Gemini. Dit wordt niet via de wizard geconfigureerd maar via de terminal:
-
-```bash
-npm install -g inference.sh
-infsh login
-```
-
-Volg de instructies om in te loggen. Na het inloggen is Inference.sh direct beschikbaar voor de Designer agent (Nano Banana engine). Geen API key nodig in de `.env` — credentials worden opgeslagen door de CLI zelf.
 
 ### Na de wizard: Canva koppelen (optioneel)
 
