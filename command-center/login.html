@@ -103,7 +103,12 @@ async function doLogin() {
       body: JSON.stringify({ password: pw }),
     });
     if (res.ok) {
-      window.location.href = '/index.html';
+      // Check if setup wizard is needed
+      try {
+        const sr = await fetch('/api/setup-status', { credentials: 'include' });
+        const sd = await sr.json();
+        window.location.href = sd.configured ? '/index.html' : '/setup.html';
+      } catch { window.location.href = '/index.html'; }
     } else {
       err.textContent = 'Incorrect password';
       document.getElementById('pw').select();

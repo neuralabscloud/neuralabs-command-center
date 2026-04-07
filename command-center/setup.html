@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setup Wizard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: hsl(0 0% 0%); --panel: hsl(0 0% 5%); --border: hsl(217 32% 20%);
+  --primary: hsl(264 65% 49%); --primary-glow: hsl(264 65% 65%);
+  --success: hsl(142 76% 36%); --danger: hsl(0 72% 51%); --warning: hsl(45 93% 55%);
+  --text: hsl(210 40% 98%); --dim: hsl(215 20% 65%); --muted: hsl(217 32% 40%);
+  --font: 'Inter', -apple-system, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse 60% 50% at 50% 40%, hsla(264 65% 49% / 0.04) 0%, transparent 70%); pointer-events: none; }
+
+.wizard { position: relative; width: 560px; max-width: 95vw; background: linear-gradient(180deg, hsl(0 0% 6%) 0%, hsl(0 0% 3%) 100%); border: 1px solid var(--border); border-radius: 16px; padding: 36px 32px; animation: fade-in 0.5s ease-out; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+.wizard h1 { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; text-align: center; margin-bottom: 4px; background: linear-gradient(135deg, var(--primary), var(--primary-glow)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.wizard .sub { font-size: 11px; color: var(--dim); text-align: center; margin-bottom: 24px; }
+
+.progress { display: flex; gap: 6px; justify-content: center; margin-bottom: 24px; }
+.progress .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border); transition: all 0.3s; }
+.progress .dot.active { background: var(--primary); box-shadow: 0 0 8px hsla(264 65% 65% / 0.5); }
+.progress .dot.done { background: var(--success); }
+
+.step { display: none; }
+.step.active { display: block; }
+.step h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; color: var(--text); display: flex; align-items: center; gap: 10px; }
+.step h2 .num { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin-bottom: 4px; }
+.field input, .field select { width: 100%; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--font); font-size: 13px; outline: none; transition: border-color 0.2s; }
+.field input:focus { border-color: var(--primary); }
+.field input::placeholder { color: var(--muted); }
+.field .hint { font-size: 9px; color: var(--muted); margin-top: 3px; }
+.field .hint a { color: var(--primary-glow); text-decoration: none; }
+.field input.error { border-color: var(--danger); }
+
+.color-preview { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+.color-swatch { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); }
+.color-labels { font-size: 10px; color: var(--dim); }
+
+.btns { display: flex; gap: 10px; margin-top: 24px; }
+.btn { padding: 11px 24px; border: none; border-radius: 8px; font-family: var(--font); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s; }
+.btn.primary { background: linear-gradient(135deg, var(--primary), var(--primary-glow)); color: #fff; }
+.btn.primary:hover { box-shadow: 0 0 20px hsla(264 65% 65% / 0.3); }
+.btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--dim); }
+.btn.secondary:hover { color: var(--text); border-color: var(--primary); }
+.btn.skip { margin-left: auto; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.optional-tag { font-size: 9px; padding: 8px 12px; background: hsla(264 65% 49% / 0.06); border: 1px solid hsla(264 65% 49% / 0.1); border-radius: 6px; color: var(--dim); margin-top: 10px; }
+
+.success { text-align: center; padding: 20px 0; }
+.success .icon { font-size: 48px; color: var(--success); margin-bottom: 12px; }
+.success h2 { justify-content: center; margin-bottom: 8px; }
+.success p { font-size: 12px; color: var(--dim); margin-bottom: 20px; line-height: 1.6; }
+
+@media (max-width: 600px) { .wizard { padding: 24px 20px; } }
+</style>
+</head>
+<body>
+<div class="wizard">
+  <h1>Setup Wizard</h1>
+  <div class="sub">Configureer je Command Center</div>
+  <div class="progress" id="progress"></div>
+  <div id="steps"></div>
+</div>
+
+<script>
+const API = '';
+const STEPS = [
+  { id: 'branding', title: 'Branding', required: true },
+  { id: 'anthropic', title: 'AI (Anthropic)', required: false },
+  { id: 'telegram', title: 'Telegram', required: false },
+  { id: 'integrations', title: 'Integraties', required: false },
+];
+let currentStep = 0;
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function init() {
+  const prog = document.getElementById('progress');
+  prog.innerHTML = STEPS.map((_, i) => `<div class="dot ${i===0?'active':''}" data-i="${i}"></div>`).join('') + '<div class="dot" data-i="done"></div>';
+
+  const stepsEl = document.getElementById('steps');
+  let html = '';
+
+  // Step 1: Branding
+  html += `<div class="step active" data-step="0">
+    <h2><span class="num">1</span>Branding</h2>
+    <div class="field"><label>Bedrijfsnaam</label><input type="text" id="s-company" placeholder="MijnBedrijf" autocomplete="off"><div class="hint">Wordt getoond in de UI, Telegram berichten en AI assistant</div></div>
+    <div class="field"><label>AI Assistant Naam</label><input type="text" id="s-assistant" placeholder="Assistant" value="Assistant" autocomplete="off"></div>
+    <div class="field"><label>Tagline</label><input type="text" id="s-tagline" placeholder="Your Platform" autocomplete="off"></div>
+    <div class="field">
+      <label>Primaire Kleur (hue 0-360)</label>
+      <input type="range" id="s-hue" min="0" max="360" value="264" oninput="updateColorPreview()">
+      <div class="color-preview"><div class="color-swatch" id="s-swatch" style="background:hsl(264 65% 49%)"></div><div class="color-labels" id="s-hue-label">264 (paars)</div></div>
+    </div>
+    <div class="btns"><button class="btn primary" onclick="next()">Volgende</button></div>
+  </div>`;
+
+  // Step 2: Anthropic
+  html += `<div class="step" data-step="1">
+    <h2><span class="num">2</span>AI (Anthropic API)</h2>
+    <div class="field"><label>Anthropic API Key</label><input type="password" id="s-anthropic" placeholder="sk-ant-..." autocomplete="off"><div class="hint">Vereist voor AI functies (research, design, analyse). <a href="https://console.anthropic.com" target="_blank">Key aanmaken</a></div></div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="next()">Volgende</button><button class="btn secondary skip" onclick="skip()">Overslaan</button></div>
+  </div>`;
+
+  // Step 3: Telegram
+  html += `<div class="step" data-step="2">
+    <h2><span class="num">3</span>Telegram Notificaties</h2>
+    <div class="field"><label>Bot Token</label><input type="text" id="s-tg-token" placeholder="123456:ABC-DEF..." autocomplete="off"><div class="hint">Maak een bot via <a href="https://t.me/BotFather" target="_blank">@BotFather</a></div></div>
+    <div class="field"><label>Chat ID</label><input type="text" id="s-tg-chatid" placeholder="123456789" autocomplete="off"><div class="hint">Gebruik <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> om je chat ID te vinden</div></div>
+    <div class="optional-tag">Optioneel — je kunt dit later instellen via Instellingen</div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="next()">Volgende</button><button class="btn secondary skip" onclick="skip()">Overslaan</button></div>
+  </div>`;
+
+  // Step 4: Integrations
+  html += `<div class="step" data-step="3">
+    <h2><span class="num">4</span>Integraties</h2>
+    <div class="field"><label>HeyGen API Key (video generatie)</label><input type="password" id="s-heygen" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://app.heygen.com/settings" target="_blank">Key ophalen bij HeyGen</a></div></div>
+    <div class="field"><label>Stripe Secret Key (revenue tracking)</label><input type="password" id="s-stripe" placeholder="sk_..." autocomplete="off"></div>
+    <div class="field"><label>Composio API Key (calendar)</label><input type="password" id="s-composio" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://app.composio.dev" target="_blank">composio.dev</a></div></div>
+    <div class="field"><label>Apify API Token (social media)</label><input type="password" id="s-apify" placeholder="Optioneel" autocomplete="off"><div class="hint"><a href="https://console.apify.com/account/integrations" target="_blank">apify.com</a></div></div>
+    <div class="optional-tag">Alle velden zijn optioneel. Laat leeg en vul later in via Instellingen.</div>
+    <div class="btns"><button class="btn secondary" onclick="prev()">Vorige</button><button class="btn primary" onclick="finish()">Voltooien</button><button class="btn secondary skip" onclick="finish()">Overslaan</button></div>
+  </div>`;
+
+  // Done
+  html += `<div class="step" data-step="done">
+    <div class="success">
+      <div class="icon">&#10003;</div>
+      <h2>Setup Voltooid!</h2>
+      <p>Je Command Center is geconfigureerd en klaar voor gebruik.</p>
+      <button class="btn primary" onclick="window.location.href='/index.html'">Naar Command Center</button>
+    </div>
+  </div>`;
+
+  stepsEl.innerHTML = html;
+}
+
+function updateUI() {
+  document.querySelectorAll('.step').forEach(el => {
+    const s = el.dataset.step;
+    el.classList.toggle('active', s === String(currentStep) || (currentStep >= STEPS.length && s === 'done'));
+  });
+  document.querySelectorAll('.progress .dot').forEach(el => {
+    const i = el.dataset.i === 'done' ? STEPS.length : parseInt(el.dataset.i);
+    el.classList.toggle('done', i < currentStep);
+    el.classList.toggle('active', i === currentStep || (currentStep >= STEPS.length && el.dataset.i === 'done'));
+  });
+}
+
+function updateColorPreview() {
+  const hue = document.getElementById('s-hue').value;
+  document.getElementById('s-swatch').style.background = `hsl(${hue} 65% 49%)`;
+  const names = {0:'rood',30:'oranje',60:'geel',120:'groen',180:'cyaan',210:'blauw',240:'indigo',264:'paars',300:'magenta',330:'roze',360:'rood'};
+  let closest = Object.keys(names).reduce((a,b) => Math.abs(b-hue) < Math.abs(a-hue) ? b : a);
+  document.getElementById('s-hue-label').textContent = `${hue} (${names[closest]})`;
+}
+
+function next() {
+  // Validate required fields
+  if (currentStep === 0) {
+    const company = document.getElementById('s-company');
+    if (!company.value.trim()) { company.classList.add('error'); company.focus(); return; }
+    company.classList.remove('error');
+  }
+  currentStep++;
+  updateUI();
+}
+
+function prev() { if (currentStep > 0) { currentStep--; updateUI(); } }
+function skip() { currentStep++; updateUI(); }
+
+async function finish() {
+  const payload = {
+    branding: {
+      company_name: document.getElementById('s-company')?.value?.trim() || '',
+      assistant_name: document.getElementById('s-assistant')?.value?.trim() || 'Assistant',
+      tagline: document.getElementById('s-tagline')?.value?.trim() || '',
+      primary_hue: parseInt(document.getElementById('s-hue')?.value || '264'),
+    },
+    integrations: {}
+  };
+
+  const fields = {
+    anthropic_key: 's-anthropic', telegram_token: 's-tg-token', telegram_chat_id: 's-tg-chatid',
+    heygen_key: 's-heygen', stripe_key: 's-stripe', composio_key: 's-composio', apify_key: 's-apify',
+  };
+  for (const [key, id] of Object.entries(fields)) {
+    const val = document.getElementById(id)?.value?.trim();
+    if (val) payload.integrations[key] = val;
+  }
+
+  try {
+    const r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('Opslaan mislukt');
+    currentStep = STEPS.length;
+    updateUI();
+  } catch (e) {
+    alert('Fout bij opslaan: ' + e.message);
+  }
+}
+
+// Load existing settings to pre-fill
+async function loadExisting() {
+  try {
+    const r = await fetch('/api/settings', { credentials: 'include' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.branding) {
+      if (d.branding.company_name) document.getElementById('s-company').value = d.branding.company_name;
+      if (d.branding.assistant_name) document.getElementById('s-assistant').value = d.branding.assistant_name;
+      if (d.branding.tagline) document.getElementById('s-tagline').value = d.branding.tagline;
+      if (d.branding.primary_hue) { document.getElementById('s-hue').value = d.branding.primary_hue; updateColorPreview(); }
+    }
+  } catch {}
+}
+
+init();
+loadExisting();
+</script>
+</body>
+</html>

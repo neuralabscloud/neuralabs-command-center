@@ -23,6 +23,9 @@ app.use((_req, res, next) => {
   next();
 });
 
+// ── STATIC FILES ─────────────────────────────
+app.use(express.static(__dirname));
+
 // ── AUTH ──────────────────────────────────────
 const CC_PASSWORD = process.env.CC_PASSWORD;
 const SESSION_SECRET = process.env.CC_SESSION_SECRET;
@@ -67,13 +70,117 @@ app.get("/auth/check", (req, res) => {
 
 // Protect all other API routes
 app.use((req, res, next) => {
-  // Allow auth endpoints
-  if (req.path.startsWith("/auth/")) return next();
+  // Allow auth endpoints and setup status (needed before full config)
+  if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
   // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
   if (isValidSession(req.cookies?.cc_session)) return next();
   res.status(401).json({ error: "Unauthorized" });
+});
+
+// ── SETUP WIZARD & SETTINGS API ─────────────────────────
+const ENV_PATH = path.join(__dirname, "..", ".env");
+
+function readEnvFile() {
+  try {
+    const env = {};
+    for (const line of fs.readFileSync(ENV_PATH, "utf8").split("\n")) {
+      const m = line.match(/^([A-Z_]+)=(.*)$/);
+      if (m) env[m[1]] = m[2];
+    }
+    return env;
+  } catch { return {}; }
+}
+
+function writeEnvFile(updates) {
+  let content = "";
+  try { content = fs.readFileSync(ENV_PATH, "utf8"); } catch {}
+  for (const [key, val] of Object.entries(updates)) {
+    const re = new RegExp(`^${key}=.*$`, "m");
+    if (re.test(content)) content = content.replace(re, `${key}=${val}`);
+    else content += `\n${key}=${val}`;
+  }
+  fs.writeFileSync(ENV_PATH, content.trim() + "\n", { mode: 0o600 });
+}
+
+function maskKey(val) {
+  if (!val) return "";
+  if (val.length <= 10) return "***";
+  return val.slice(0, 6) + "..." + val.slice(-4);
+}
+
+app.get("/api/setup-status", (_req, res) => {
+  const env = readEnvFile();
+  const configured = !!(env.COMPANY_NAME && env.ANTHROPIC_API_KEY);
+  res.json({ configured });
+});
+
+app.get("/api/settings", (_req, res) => {
+  const env = readEnvFile();
+  res.json({
+    branding: {
+      company_name: env.COMPANY_NAME || "",
+      assistant_name: env.ASSISTANT_NAME || "",
+      tagline: env.TAGLINE || "",
+      primary_hue: parseInt(env.PRIMARY_COLOR_HUE || "264"),
+      primary_sat: parseInt(env.PRIMARY_COLOR_SAT || "65"),
+      primary_lit: parseInt(env.PRIMARY_COLOR_LIT || "49"),
+    },
+    integrations: {
+      anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
+      telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
+      heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
+      stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY) },
+      composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
+      apify: { has_key: !!env.APIFY_API_KEY, masked: maskKey(env.APIFY_API_KEY) },
+    }
+  });
+});
+
+app.post("/api/settings", (req, res) => {
+  const { branding, integrations } = req.body;
+  const updates = {};
+
+  if (branding) {
+    if (branding.company_name !== undefined) updates.COMPANY_NAME = branding.company_name;
+    if (branding.assistant_name !== undefined) updates.ASSISTANT_NAME = branding.assistant_name;
+    if (branding.tagline !== undefined) updates.TAGLINE = branding.tagline;
+    if (branding.primary_hue !== undefined) updates.PRIMARY_COLOR_HUE = String(branding.primary_hue);
+    if (branding.primary_sat !== undefined) updates.PRIMARY_COLOR_SAT = String(branding.primary_sat);
+    if (branding.primary_lit !== undefined) updates.PRIMARY_COLOR_LIT = String(branding.primary_lit);
+  }
+
+  if (integrations) {
+    const keyMap = {
+      anthropic_key: "ANTHROPIC_API_KEY",
+      telegram_token: "TELEGRAM_BOT_TOKEN",
+      telegram_chat_id: "TELEGRAM_CHAT_ID",
+      heygen_key: "HEYGEN_API_KEY",
+      stripe_key: "STRIPE_SECRET_KEY",
+      composio_key: "COMPOSIO_API_KEY",
+      apify_key: "APIFY_API_KEY",
+    };
+    for (const [field, envKey] of Object.entries(keyMap)) {
+      if (integrations[field] !== undefined && integrations[field] !== "") {
+        updates[envKey] = integrations[field].trim();
+      }
+    }
+  }
+
+  try {
+    if (Object.keys(updates).length) {
+      writeEnvFile(updates);
+      // Regenerate brand.json if branding changed
+      if (branding) {
+        const configScript = path.join(__dirname, "..", "config", "generate-configs.sh");
+        try { require("child_process").execSync(`bash ${configScript} 2>&1`, { timeout: 5000 }); } catch {}
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Generic task file helpers
