@@ -485,7 +485,16 @@ https://api.telegram.org/botJOUW_TOKEN/getUpdates
 
 ## 9. Trading Bots Addon
 
-Trading bots zijn een aparte installatie die je later kunt toevoegen. De bots draaien onafhankelijk van het Command Center.
+Trading bots zijn een aparte installatie die je later kunt toevoegen aan je Command Center.
+
+### Wat je krijgt
+
+De Trading Bots addon bevat:
+- **Funding Rate Bot** — Delta-neutrale funding rate arbitrage op Hyperliquid
+- **Trend Bot** — Mean-reversion strategie met RSI + Bollinger Bands
+- **Trading Dashboard** — Live monitoring met posities, PnL, orderbook, liquidaties
+- **Data Hub (Jarvis)** — Centrale marktdata service voor realtime prijzen en funding rates
+- **Analytics pagina** — Performance overzicht met dagelijkse AI rapporten
 
 ### Installeren
 
@@ -500,6 +509,23 @@ sudo ./install.sh
 Na installatie open je `http://JOUW_IP:3000` en volg je de setup wizard om je wallets en private keys te configureren.
 
 Zie de **NeuraLabs Trading Bots — Installatie Handleiding** voor de volledige stap-voor-stap guide.
+
+### Standalone of geintegreerd
+
+De trading bots werken volledig **standalone** via het eigen Trading Dashboard op poort 3000. Je hebt het Command Center niet nodig om de bots te draaien.
+
+Maar als je het Command Center ook hebt geinstalleerd, worden ze automatisch **geintegreerd**:
+
+| Wat er verandert in het Command Center | Uitleg |
+|----------------------------------------|--------|
+| **Sidebar** | Er verschijnt een link naar het Trading Dashboard |
+| **Overview pagina** | Trading bots worden getoond met live status en PnL |
+| **AI Team (Overview)** | De Analyst agent verschijnt als teamlid |
+| **Agents pagina** | Analyst agent card wordt toegevoegd |
+| **Analyst pagina** | Nieuwe pagina in de sidebar voor bot performance analyse, trade history en rapporten |
+| **Telegram** | `/status` commando toont bot equity en open posities |
+
+De integratie werkt automatisch — het Command Center detecteert de trading bots via de Trading Dashboard API op `localhost:3000`. Er is geen extra configuratie nodig.
 
 ---
 
