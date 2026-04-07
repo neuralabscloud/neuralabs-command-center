@@ -247,6 +247,16 @@ Vul beide velden in de wizard in:
 - **Bot Token** — Het token van @BotFather
 - **Chat ID** — Het getal dat je net hebt gevonden
 
+Na het instellen kun je via Telegram direct met je AI assistant chatten. Stuur een bericht naar je bot en je krijgt antwoord van Claude — dezelfde AI die ook in het Command Center draait.
+
+**Telegram commando's:**
+| Commando | Wat het doet |
+|----------|-------------|
+| `/start` | Begroeting en uitleg wat de bot kan |
+| `/status` | Bot status en account equity (als trading bots geinstalleerd) |
+| `/clear` | Chat history wissen |
+| *Elk ander bericht* | AI assistant antwoordt via Claude |
+
 Klik op **Skip** als je dit later wilt instellen. Je kunt het altijd toevoegen via Settings.
 
 ### Stap 4: Integrations — optioneel
