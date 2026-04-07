@@ -71,8 +71,8 @@ app.get("/auth/check", (req, res) => {
 
 // Protect all other API routes
 app.use((req, res, next) => {
-  // Allow auth endpoints
-  if (req.path.startsWith("/auth/")) return next();
+  // Allow auth endpoints and setup check
+  if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
   // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
@@ -80,60 +80,30 @@ app.use((req, res, next) => {
   res.status(401).json({ error: "Unauthorized" });
 });
 
-// ── SETTINGS API ─────────────────────────────
-const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
-
-// Populate process.env with values from bot config.py files (for Telegram etc.)
-(function populateEnvFromBotConfigs() {
-  const botConfigs = [
-    path.join(__dirname, "..", "neuralabs-bot", "config.py"),
-    path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
-  ];
-  for (const f of botConfigs) {
-    try {
-      if (!fs.existsSync(f)) continue;
-      const content = fs.readFileSync(f, "utf8");
-      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
-      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
-      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
-      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
-    } catch {}
-  }
-})();
+// ── SETUP & SETTINGS API ─────────────────────
+const ENV_PATH = path.join(__dirname, "..", ".env");
 
 function readEnvFile() {
   const env = {};
-  // Read .env file
   try {
     for (const line of fs.readFileSync(ENV_PATH, "utf8").split("\n")) {
       const m = line.match(/^([A-Z_]+)=(.*)$/);
       if (m) env[m[1]] = m[2];
     }
   } catch {}
-  // Merge from process.env (picks up vars from other sources like dotenv loading)
+  // Merge from process.env (dotenv loaded at startup)
   const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "APIFY_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
-  // Check bot config.py files for Telegram if not in .env
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    const botConfigs = [
-      path.join(__dirname, "..", "neuralabs-bot", "config.py"),
-      path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
-    ];
-    for (const f of botConfigs) {
-      try {
-        if (!fs.existsSync(f)) continue;
-        const content = fs.readFileSync(f, "utf8");
-        const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
-        const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
-        if (tokenMatch && tokenMatch[1] && !env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
-        if (chatMatch && chatMatch[1] && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = chatMatch[1];
-      } catch {}
-    }
-  }
   return env;
 }
+
+app.get("/api/setup-status", (_req, res) => {
+  const env = readEnvFile();
+  const configured = !!env.COMPANY_NAME;
+  res.json({ configured });
+});
 
 function writeEnvFile(updates) {
   let content = "";

@@ -965,33 +965,8 @@ body::after {
       <div id="stripe-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;transition:filter 0.3s;"></div>
     </section>
 
-    <!-- LIVE TRADING BOTS -->
-    <section class="fade-up delay-2">
-      <div class="section-header">Trading Bots</div>
-      <div class="briefing" id="briefing-banner" style="margin-bottom:18px">
-        <div>
-          <div class="briefing-item-label">Total Account Value</div>
-          <div class="briefing-item-value" id="brief-total-value">—</div>
-          <div class="briefing-item-meta" id="brief-total-meta">Loading...</div>
-        </div>
-        <div>
-          <div class="briefing-item-label">Daily PnL</div>
-          <div class="briefing-item-value" id="brief-daily-pnl">—</div>
-          <div class="briefing-item-meta" id="brief-daily-meta">Loading...</div>
-        </div>
-        <div>
-          <div class="briefing-item-label">Total PnL</div>
-          <div class="briefing-item-value" id="brief-total-pnl">—</div>
-          <div class="briefing-item-meta" id="brief-total-pnl-meta">Loading...</div>
-        </div>
-        <div>
-          <div class="briefing-item-label">Active Bots</div>
-          <div class="briefing-item-value" id="brief-bots-online">—</div>
-          <div class="briefing-item-meta" id="brief-bots-meta">Loading...</div>
-        </div>
-      </div>
-      <div class="agents-grid" id="agents-grid"></div>
-    </section>
+    <!-- AGENTS GRID (populated dynamically) -->
+    <div class="agents-grid" id="agents-grid" style="display:none"></div>
 
     <!-- SOCIAL PERFORMANCE -->
     <section class="fade-up delay-3">
@@ -1626,15 +1601,11 @@ async function renderStripe() {
 renderStripe();
 setInterval(renderStripe, 5 * 60 * 1000); // refresh elke 5 min
 
-// Initial fetch + poll every 10 seconds
-fetchBotData();
-setInterval(fetchBotData, 10000);
+// Bot data polling removed — trading bots are a separate addon
 
 // ── AI TEAM ───────────────────────────────────
 const aiTeam = [
-  { name: 'TRADER', emoji: '🤖', role: '3 Live Bots on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
   { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
-  { name: 'ANALYST', emoji: '📊', role: 'Bot Reports & Diagnostics', status: 'idle', color: 'var(--premium)', hsl: '270 95% 65%', task: 'Awaiting assignment' },
   { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
   { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },

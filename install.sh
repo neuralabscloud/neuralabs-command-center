@@ -224,6 +224,18 @@ if [ -f "$INSTALL_DIR/config/cron/crontab.tpl" ]; then
   ok "Cron jobs installed"
 fi
 
+# ── OPEN FIREWALL ────────────────────────────────────────
+info "Opening firewall port 3004..."
+iptables -I INPUT -p tcp --dport 3004 -j ACCEPT 2>/dev/null || true
+ufw allow 3004 2>/dev/null || true
+# Persist iptables rules if possible
+if command -v netfilter-persistent &>/dev/null; then
+  netfilter-persistent save 2>/dev/null || true
+elif command -v iptables-save &>/dev/null; then
+  iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+fi
+ok "Firewall port 3004 opened"
+
 # ── VERIFICATION ────────────────────────────────────────
 echo ""
 info "Verifying installation..."

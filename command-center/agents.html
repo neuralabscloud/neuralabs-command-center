@@ -327,7 +327,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="sched-select" id="sched-agent" onchange="updatePayloadFields()">
               <option value="designer">Designer</option>
               <option value="researcher">Researcher</option>
-              <option value="analyst">Analyst</option>
               <option value="scriptwriter">Script Writer</option>
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
@@ -380,9 +379,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
 <script>
 const AI_TEAM = [
-  { name: 'TRADER', emoji: '\u{1F916}', role: '3 Live Bots on Hyperliquid', color: 'var(--success)', hsl: '142 76% 36%', isTrader: true },
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
-  { name: 'ANALYST', emoji: '\u{1F4CA}', role: 'Bot Reports & Diagnostics', color: 'var(--premium)', hsl: '270 95% 65%', taskApi: '/analyst/tasks', type: 'ANALYST' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
