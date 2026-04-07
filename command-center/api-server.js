@@ -69,7 +69,12 @@ app.get("/auth/check", (req, res) => {
   res.json({ authenticated: isValidSession(req.cookies?.cc_session) });
 });
 
-// Protect all other API routes
+// Allow login page and static assets without auth
+app.use("/login.html", express.static(path.join(__dirname, "login.html")));
+app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
+app.use("/brand-loader.js", express.static(path.join(__dirname, "brand-loader.js")));
+
+// Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
   // Allow auth endpoints and setup check
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
@@ -77,8 +82,13 @@ app.use((req, res, next) => {
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
   if (isValidSession(req.cookies?.cc_session)) return next();
+  // Unauthenticated: redirect HTML requests to login, reject API calls
+  if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
 });
+
+// Serve all static files (HTML, JS, CSS) — protected by auth middleware above
+app.use(express.static(__dirname));
 
 // ── SETUP & SETTINGS API ─────────────────────
 const ENV_PATH = path.join(__dirname, "..", ".env");
