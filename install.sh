@@ -127,15 +127,21 @@ if ! command -v redis-server &>/dev/null; then
 fi
 ok "Redis installed"
 
-# Claude Code
+# Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
-npm install -g @anthropic-ai/claude-code --silent 2>/dev/null
-ok "Claude Code installed"
+if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3; then
+  ok "Claude Code installed"
+else
+  warn "Claude Code install timed out or failed — install later with: npm install -g @anthropic-ai/claude-code"
+fi
 
-# Inference.sh (Nano Banana / Gemini image generation)
+# Inference.sh (optional — timeout after 60s)
 info "Installing Inference.sh..."
-npm install -g inference.sh --silent 2>/dev/null
-ok "Inference.sh installed"
+if timeout 60 npm install -g inference.sh 2>&1 | tail -3; then
+  ok "Inference.sh installed"
+else
+  warn "Inference.sh install timed out or failed — install later with: npm install -g inference.sh"
+fi
 
 pip3 install -q python-dotenv 2>/dev/null || true
 
@@ -190,8 +196,8 @@ chmod +x "$INSTALL_DIR/config/generate-configs.sh"
 bash "$INSTALL_DIR/config/generate-configs.sh"
 
 # ── INSTALL NODE.JS DEPENDENCIES ─────────────────────────
-info "Installing Command Center dependencies..."
-cd "$INSTALL_DIR/command-center" && npm install --production --silent 2>/dev/null
+info "Installing Command Center dependencies (this may take a few minutes)..."
+cd "$INSTALL_DIR/command-center" && npm install --production 2>&1 | tail -5
 ok "Command Center npm packages installed"
 
 # ── INSTALL SYSTEMD SERVICES ────────────────────────────
