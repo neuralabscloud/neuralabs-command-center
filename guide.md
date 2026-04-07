@@ -225,19 +225,60 @@ Als je dit nog niet hebt, klik op **Skip**. Je kunt het later instellen via Sett
 
 ### Stap 3: Telegram Notifications — optioneel
 
-- **Bot Token** — Van @BotFather op Telegram
-- **Chat ID** — Je persoonlijke chat ID
+Om notificaties te ontvangen bij voltooide taken, rapporten en alerts heb je een Telegram bot nodig.
 
-Klik op **Skip** als je dit later wilt instellen. Zie sectie 8 voor uitgebreide instructies.
+**Bot aanmaken:**
+1. Open Telegram en zoek **@BotFather**
+2. Typ `/newbot`
+3. Geef je bot een naam (bijv. "Mijn Platform Bot")
+4. Geef je bot een username (bijv. `mijn_platform_bot`)
+5. Je krijgt een **Bot Token** — kopieer dit (ziet er zo uit: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+**Chat ID vinden:**
+1. Open een chat met je nieuwe bot in Telegram
+2. Stuur een bericht (bijv. "hallo")
+3. Open deze URL in je browser (vervang JOUW_TOKEN):
+```
+https://api.telegram.org/botJOUW_TOKEN/getUpdates
+```
+4. Zoek in de tekst naar `"chat":{"id":` — het getal erachter is je **Chat ID**
+
+Vul beide velden in de wizard in:
+- **Bot Token** — Het token van @BotFather
+- **Chat ID** — Het getal dat je net hebt gevonden
+
+Klik op **Skip** als je dit later wilt instellen. Je kunt het altijd toevoegen via Settings.
 
 ### Stap 4: Integrations — optioneel
 
-- **HeyGen API Key** — Voor AI avatar video generatie
-- **Stripe Secret Key** — Voor revenue & subscription tracking
-- **Composio API Key** — Voor Google Calendar integratie
-- **Apify API Token** — Voor social media scraping (TikTok, Instagram, X)
+- **HeyGen API Key** — Voor AI avatar video generatie. Key ophalen via [app.heygen.com/settings](https://app.heygen.com/settings)
+- **Stripe Secret Key** — Voor revenue & subscription tracking. Key vind je in je [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (begint met `sk_live_` of `sk_test_`)
+- **Composio API Key** — Voor Google Calendar integratie. Aanmaken via [app.composio.dev](https://app.composio.dev)
+- **Apify API Token** — Voor social media scraping (TikTok, Instagram, X). Token ophalen via [console.apify.com](https://console.apify.com/account/integrations)
 
 Alle velden zijn optioneel. Klik op **Finish** of **Skip** om door te gaan.
+
+### Na de wizard: Inference.sh installeren (optioneel)
+
+Inference.sh (Nano Banana) wordt gebruikt door de Designer agent voor AI image generatie via Google Gemini. Dit wordt niet via de wizard geconfigureerd maar via de terminal:
+
+```bash
+npm install -g inference.sh
+infsh login
+```
+
+Volg de instructies om in te loggen. Na het inloggen is Inference.sh direct beschikbaar voor de Designer agent (Nano Banana engine). Geen API key nodig in de `.env` — credentials worden opgeslagen door de CLI zelf.
+
+### Na de wizard: Canva koppelen (optioneel)
+
+Canva wordt gebruikt door de Designer agent voor design generatie. Canva gebruikt OAuth (geen API key):
+
+1. Ga naar **Settings** in het Command Center
+2. Zoek **Canva** in de integratielijst
+3. Klik **Connect** en log in met je Canva account
+4. Autoriseer de koppeling
+
+Na het koppelen kan de Designer agent rechtstreeks designs maken en bewerken in Canva.
 
 > **Dat is alles!** Je Command Center is nu klaar voor gebruik.
 
