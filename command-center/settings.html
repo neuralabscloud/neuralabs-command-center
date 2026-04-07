@@ -393,19 +393,24 @@ async function loadConfig() {
       document.getElementById('cfg-hue-val').textContent = hue;
     }
     if (d.integrations) {
-      // Show masked values as placeholders
+      // Show masked values as placeholders with current key indicator
       const setPlaceholder = (id, int) => {
         const el = document.getElementById(id);
-        if (el && int.has_key) el.placeholder = int.masked || 'Configured';
+        if (el && int.has_key && int.masked) el.placeholder = 'Current: ' + int.masked + ' (leave empty to keep)';
+        else if (el && int.has_key) el.placeholder = 'Configured (leave empty to keep)';
       };
       setPlaceholder('cfg-anthropic', d.integrations.anthropic);
       setPlaceholder('cfg-heygen', d.integrations.heygen);
       setPlaceholder('cfg-stripe', d.integrations.stripe);
       setPlaceholder('cfg-composio', d.integrations.composio);
       setPlaceholder('cfg-apify', d.integrations.apify);
-      if (d.integrations.telegram.has_key) {
-        document.getElementById('cfg-tg-token').placeholder = d.integrations.telegram.token_masked || 'Configured';
-        document.getElementById('cfg-tg-chatid').value = d.integrations.telegram.chat_id || '';
+      if (d.integrations.telegram) {
+        if (d.integrations.telegram.token_masked) {
+          document.getElementById('cfg-tg-token').placeholder = 'Current: ' + d.integrations.telegram.token_masked + ' (leave empty to keep)';
+        }
+        if (d.integrations.telegram.chat_id) {
+          document.getElementById('cfg-tg-chatid').value = d.integrations.telegram.chat_id;
+        }
       }
     }
   } catch {}
