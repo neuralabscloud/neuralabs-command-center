@@ -2401,7 +2401,7 @@ BESCHIKBARE TOOLS:
 - GOOGLECALENDAR_LIST_CALENDARS: Toon alle calendars.
 - GOOGLECALENDAR_EVENTS_LIST: Toon events. Gebruik calendar_id "primary" tenzij anders gevraagd. Stuur time_min en time_max als ISO 8601 strings.
 - GOOGLECALENDAR_FIND_EVENT: Zoek events op tekst.
-- GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone, bijv. "2026-04-03T14:00:00+02:00"). Optioneel: description, location, attendees.
+- GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone, bijv. "2026-04-03T14:00:00+02:00"), timezone (altijd "Europe/Amsterdam"). Optioneel: description, location, attendees.
 - GOOGLECALENDAR_DELETE_EVENT: Verwijder een event (event_id nodig).
 - GOOGLECALENDAR_FIND_FREE_SLOTS: Vind vrije slots (time_min, time_max, duration_minutes).
 
@@ -2410,7 +2410,8 @@ REGELS:
 - Wees beknopt en direct. Geen emoji tenzij gevraagd.
 - Bij het tonen van events, formatteer ze overzichtelijk met tijd, titel, en locatie.
 - Bij het aanmaken van events, bevestig altijd de details voordat je het aanmaakt, tenzij de gebruiker al specifiek genoeg is.
-- Gebruik Europe/Amsterdam timezone (CET/CEST) als default.
+- KRITIEK TIMEZONE REGEL: De gebruiker zit in Europe/Amsterdam (CET = UTC+1, CEST = UTC+2). Als de gebruiker zegt "16:30" bedoelt hij 16:30 lokale tijd in Amsterdam. Gebruik ALTIJD de offset +01:00 (winter/CET) of +02:00 (zomer/CEST) in de ISO 8601 datetime string. Stuur ALTIJD timezone: "Europe/Amsterdam" mee als parameter bij CREATE_EVENT. NOOIT UTC (+00:00) gebruiken voor tijden die de gebruiker opgeeft.
+- Huidige timezone offset: van laatste zondag van maart t/m laatste zondag van oktober = CEST (+02:00), rest = CET (+01:00).
 - Bij "vandaag", "morgen", "deze week" etc.: gebruik eerst GET_CURRENT_DATE_TIME om de juiste datum te bepalen.
 - Toon tijden in 24-uurs formaat (14:00 niet 2 PM).
 - Als je een event aanmaakt, bevestig met de details (titel, datum, tijd, duur).`;
