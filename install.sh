@@ -136,7 +136,7 @@ ok "Redis installed"
 
 # Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
-if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3; then
+if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1; then
   ok "Claude Code installed"
 else
   warn "Claude Code install timed out or failed — install later with: npm install -g @anthropic-ai/claude-code"
@@ -144,7 +144,7 @@ fi
 
 # Inference.sh SDK (optional — timeout after 60s)
 info "Installing Inference.sh SDK..."
-if timeout 60 npm install -g @inferencesh/sdk 2>&1 | tail -3; then
+if timeout 60 npm install -g --engine-strict=false @inferencesh/sdk 2>&1; then
   ok "Inference.sh SDK installed"
 else
   warn "Inference.sh SDK install timed out or failed — install later with: npm install -g @inferencesh/sdk"
