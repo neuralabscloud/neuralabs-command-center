@@ -105,8 +105,8 @@ export DEBIAN_FRONTEND=noninteractive
 info "Updating package lists..."
 apt-get update -q || { error "apt-get update failed — check your internet connection"; exit 1; }
 
-# Node.js 20+ (via NodeSource)
-if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 18 ]; then
+# Node.js 20+ (via NodeSource) — required by langchain, vite, and other deps
+if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 20 ]; then
   info "Installing Node.js 20..."
   curl -fsSL --max-time 30 https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh || {
     error "Failed to download NodeSource setup. Check internet connection."
@@ -203,7 +203,7 @@ bash "$INSTALL_DIR/config/generate-configs.sh"
 
 # ── INSTALL NODE.JS DEPENDENCIES ─────────────────────────
 info "Installing Command Center dependencies (this may take a few minutes)..."
-cd "$INSTALL_DIR/command-center" && npm install --production 2>&1
+cd "$INSTALL_DIR/command-center" && npm install --omit=dev 2>&1
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
