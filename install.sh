@@ -210,7 +210,9 @@ bash "$INSTALL_DIR/config/generate-configs.sh"
 
 # ── INSTALL NODE.JS DEPENDENCIES ─────────────────────────
 info "Installing Command Center dependencies (this may take a few minutes)..."
-cd "$INSTALL_DIR/command-center" && npm install --omit=dev 2>&1
+cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit 2>&1
+info "Running security audit fix..."
+npm audit fix --no-fund 2>&1 || true
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
