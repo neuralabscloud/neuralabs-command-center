@@ -102,25 +102,33 @@ echo ""
 info "Installing system dependencies..."
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+info "Updating package lists..."
+apt-get update -q || { error "apt-get update failed — check your internet connection"; exit 1; }
 
-# Node.js 18+
+# Node.js 20+ (via NodeSource)
 if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 18 ]; then
-  info "Installing Node.js 18..."
-  curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-  apt-get install -y -qq nodejs
+  info "Installing Node.js 20..."
+  curl -fsSL --max-time 30 https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh || {
+    error "Failed to download NodeSource setup. Check internet connection."
+    exit 1
+  }
+  bash /tmp/nodesource_setup.sh
+  apt-get install -y -q nodejs || { error "Failed to install Node.js"; exit 1; }
+  rm -f /tmp/nodesource_setup.sh
 fi
 ok "Node.js $(node -v)"
 
 # Python 3
 if ! command -v python3 &>/dev/null; then
-  apt-get install -y -qq python3 python3-venv python3-pip
+  info "Installing Python 3..."
+  apt-get install -y -q python3 python3-venv python3-pip || { error "Failed to install Python 3"; exit 1; }
 fi
 ok "Python $(python3 --version)"
 
 # Redis
 if ! command -v redis-server &>/dev/null; then
-  apt-get install -y -qq redis-server
+  info "Installing Redis..."
+  apt-get install -y -q redis-server || { error "Failed to install Redis"; exit 1; }
   systemctl enable redis-server
   systemctl start redis-server
 fi
