@@ -203,14 +203,14 @@ bash "$INSTALL_DIR/config/generate-configs.sh"
 
 # ── INSTALL NODE.JS DEPENDENCIES ─────────────────────────
 info "Installing Command Center dependencies (this may take a few minutes)..."
-cd "$INSTALL_DIR/command-center" && npm install --production 2>&1 | tail -5
+cd "$INSTALL_DIR/command-center" && npm install --production 2>&1
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
 info "Installing Playwright browsers (this may take a few minutes)..."
-if npx playwright install chromium 2>&1 | tail -3; then
-  info "Installing Playwright system dependencies..."
-  npx playwright install-deps chromium 2>&1 | tail -5
+if npx playwright install chromium 2>&1; then
+  info "Installing Playwright system dependencies (this may take a few minutes)..."
+  DEBIAN_FRONTEND=noninteractive npx playwright install-deps chromium 2>&1
   ok "Playwright Chromium installed"
 else
   warn "Playwright install failed — slide designer won't work. Install later with: npx playwright install chromium"
