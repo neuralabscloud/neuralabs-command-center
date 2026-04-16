@@ -244,6 +244,16 @@ app.post("/api/settings", (req, res) => {
   }
 });
 
+// ── SETUP STATUS ────────────────────────────────
+app.get("/api/setup-status", (_req, res) => {
+  const env = readEnvFile();
+  const brand = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8")); } catch { return {}; } })();
+  const hasCompany = !!(brand.company_name && brand.company_name !== "MyBrand" && brand.company_name !== "");
+  const hasAnthropic = !!env.ANTHROPIC_API_KEY;
+  const setupDone = hasCompany || hasAnthropic;
+  res.json({ setup_complete: setupDone, has_branding: hasCompany, has_anthropic: hasAnthropic });
+});
+
 // Generic task file helpers
 function readTaskFile(file) {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", file), "utf8")); }
