@@ -207,9 +207,10 @@ cd "$INSTALL_DIR/command-center" && npm install --production 2>&1 | tail -5
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
-info "Installing Playwright browsers..."
+info "Installing Playwright browsers (this may take a few minutes)..."
 if npx playwright install chromium 2>&1 | tail -3; then
-  npx playwright install-deps chromium 2>&1 | tail -3
+  info "Installing Playwright system dependencies..."
+  npx playwright install-deps chromium 2>&1 | tail -5
   ok "Playwright Chromium installed"
 else
   warn "Playwright install failed — slide designer won't work. Install later with: npx playwright install chromium"
