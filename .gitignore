@@ -14,10 +14,41 @@ command-center/data/canva-oauth.json
 # Logs
 *.log
 */logs/*.log
+command-center/data/cron.log
+command-center/data/research-agent.log
 
 # Generated images
 command-center/data/generated-images/*
 !command-center/data/generated-images/.gitkeep
+
+# AI video uploads
+command-center/data/ai-video-uploads/*
+!command-center/data/ai-video-uploads/.gitkeep
+
+# Video projects (user data)
+command-center/data/video-projects/*
+!command-center/data/video-projects/.gitkeep
+
+# Nano Banana temp files
+command-center/data/nb-*.json
+
+# Media uploads
+command-center/public/media/*
+!command-center/public/media/.gitkeep
+
+# Brand asset uploads (customers upload their own)
+command-center/data/brand-assets/*/icon.png
+command-center/data/brand-assets/*/logo.png
+
+# Marketing skills cache
+command-center/data/marketingskills/
+
+# Transcripts
+command-center/data/transcripts/*
+!command-center/data/transcripts/.gitkeep
+
+# Trading dashboard caches
+trading-dashboard/data/*.json
 
 # Lock files
 .bot*.lock
@@ -25,6 +56,10 @@ command-center/data/generated-images/*
 
 # Build artifacts
 command-center/dist/
+command-center/.next/
+
+# Package lock (customers install fresh)
+command-center/package-lock.json
 
 # OS
 .DS_Store

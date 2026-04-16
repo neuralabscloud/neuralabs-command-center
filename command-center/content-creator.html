@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Content Creator</title>
+<title>NEURALABS — Content Creator</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -91,7 +91,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .avatar-filters { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .avatar-filter-btn { padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--text-dim); font-size: 10px; font-family: var(--font-data); cursor: pointer; transition: all 0.15s; }
 .avatar-filter-btn.active { color: var(--teal); border-color: hsla(180 70% 45% / 0.3); background: hsla(180 70% 45% / 0.08); }
-.avatar-selected { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.avatar-selected { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .avatar-selected img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
 .avatar-selected-name { font-size: 11px; color: var(--text-dim); font-family: var(--font-data); }
 .avatar-clear { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; margin-left: auto; }
@@ -176,14 +176,14 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div>
             <div class="form-label">Avatar</div>
             <div class="avatar-picker" id="avatar-picker-cc">
-              <input class="avatar-picker-input" placeholder="Search avatars..." autocomplete="off" />
-              <div class="avatar-dropdown"></div>
-              <input type="hidden" id="cc-avatar" value="703a2be1c9ae459e81be99b04636c5dc" />
               <div class="avatar-selected">
                 <img src="https://resource2.heygen.ai/best_frame_selection/candidates/9e9394bd4552428ba3d812bddc00cc2a.jpg" />
                 <span class="avatar-selected-name">Meta Vers3</span>
                 <button class="avatar-clear" onclick="clearAvatar('avatar-picker-cc','cc-avatar')" title="Clear">&times;</button>
               </div>
+              <input type="hidden" id="cc-avatar" value="703a2be1c9ae459e81be99b04636c5dc" />
+              <input class="avatar-picker-input" placeholder="Zoek andere avatar..." autocomplete="off" />
+              <div class="avatar-dropdown"></div>
             </div>
           </div>
           <div>
@@ -206,9 +206,15 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </select>
           </div>
         </div>
-        <div style="margin-bottom:16px;">
-          <div class="form-label">Description (what is this video for?)</div>
-          <input class="form-input" id="cc-desc" placeholder="e.g. Daily trading recap for TikTok, Education video about funding rates..." />
+        <div class="form-grid" style="grid-template-columns:2fr 1fr;">
+          <div>
+            <div class="form-label">Description (what is this video for?)</div>
+            <input class="form-input" id="cc-desc" placeholder="e.g. Daily trading recap for TikTok, Education video about funding rates..." />
+          </div>
+          <div>
+            <div class="form-label">Brand</div>
+            <select class="form-select cc-brand-select"></select>
+          </div>
         </div>
         <div style="margin-bottom:16px;">
           <div class="form-label">Script</div>
@@ -233,7 +239,11 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div class="form-label">Prompt (beschrijf je video)</div>
           <textarea class="form-textarea" id="va-prompt" style="min-height:120px;" placeholder="e.g. Maak een 30 seconden UGC-style video over crypto trading tips voor beginners. Casual toon, gericht op Gen-Z TikTok publiek..."></textarea>
         </div>
-        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+          <div>
+            <div class="form-label">Brand</div>
+            <select class="form-select cc-brand-select"></select>
+          </div>
           <div>
             <div class="form-label">Duur (seconden)</div>
             <select class="form-select" id="va-duration">
@@ -254,10 +264,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div>
             <div class="form-label">Avatar (optioneel)</div>
             <div class="avatar-picker" id="avatar-picker-va">
+              <div class="avatar-selected" style="display:none;"></div>
+              <input type="hidden" id="va-avatar" value="" />
               <input class="avatar-picker-input" placeholder="AI kiest, of zoek avatar..." autocomplete="off" />
               <div class="avatar-dropdown"></div>
-              <input type="hidden" id="va-avatar" value="" />
-              <div class="avatar-selected" style="display:none;"></div>
             </div>
           </div>
         </div>
@@ -346,6 +356,7 @@ async function submitAvatarTask() {
         voice_id: document.getElementById('cc-voice').value,
         voice_engine: document.getElementById('cc-engine').value,
         script, description: desc || 'Avatar video',
+        brand: getSelectedBrand(),
       }),
     });
     document.getElementById('cc-script').value = '';
@@ -373,6 +384,7 @@ async function submitAgentTask() {
         orientation: document.getElementById('va-orientation').value,
         avatar_id: avatarId || null,
         description: prompt.substring(0, 60) + (prompt.length > 60 ? '...' : ''),
+        brand: getSelectedBrand(),
       }),
     });
     document.getElementById('va-prompt').value = '';
@@ -465,12 +477,32 @@ function clearAvatar(pickerId, hiddenId) {
 initAvatarPicker('avatar-picker-cc', 'cc-avatar');
 initAvatarPicker('avatar-picker-va', 'va-avatar');
 
+// ── Brand selector ──
+function getSelectedBrand() {
+  const el = document.querySelector('.cc-brand-select');
+  return el ? el.value : '';
+}
+async function loadBrandOptions() {
+  try {
+    const res = await fetch('/brands');
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = Object.keys(data).sort();
+    if (!names.length) return;
+    document.querySelectorAll('.cc-brand-select').forEach(sel => {
+      const current = sel.value;
+      sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+      if (current && names.includes(current)) sel.value = current;
+    });
+  } catch {}
+}
+loadBrandOptions();
+
 loadTasks();
 setInterval(loadTasks, 10000);
 </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

@@ -25,7 +25,7 @@ def setup_logger():
 
     file_handler = RotatingFileHandler(
         LOG_FILE,
-        maxBytes=5 * 1024 * 1024,
+        maxBytes=10 * 1024 * 1024,
         backupCount=3,
         encoding="utf-8",
     )
@@ -34,11 +34,9 @@ def setup_logger():
 
     logger.addHandler(file_handler)
 
-    import sys
-    if sys.stdout.isatty():
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(log_format)
-        logger.addHandler(console_handler)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(log_format)
+    logger.addHandler(console_handler)
 
     return logger

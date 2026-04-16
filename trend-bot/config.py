@@ -1,13 +1,13 @@
 import os
 
-PRIVATE_KEY = os.environ["TREND_BOT_PRIVATE_KEY"]
-WALLET_ADDRESS = os.environ["TREND_BOT_WALLET_ADDRESS"]
+PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY_BOT5", "")
+WALLET_ADDRESS = os.getenv("HL_WALLET_ADDRESS_BOT5", "")
 
 TESTNET = False
 
-ASSETS = ["BTC", "ETH", "SOL", "BNB", "HYPE", "XRP", "AAVE", "ADA", "WLD"]
-LEVERAGE = 5
-POSITION_SIZE_PCT = 0.15   # 15% van account per trade
+ASSETS = ["BTC", "ETH", "SOL", "BNB", "HYPE", "XRP", "AAVE", "ADA", "WLD", "DOGE", "AVAX", "SUI", "LINK"]
+LEVERAGE = 7
+POSITION_SIZE_PCT = 0.11   # 11% van account per trade (verlaagd van 15% — compenseert hogere leverage)
 
 # Mean-reversion signaal parameters (15m candles)
 CANDLE_INTERVAL = "15m"
@@ -43,10 +43,16 @@ MAX_DAILY_LOSS_PCT = 3.0       # 3% dagverlies = kill switch (conservatiever voo
 MAX_DRAWDOWN_PCT = 8.0
 MAX_TRADES_PER_DAY = 8         # max 8 trades per dag
 
+# BTC regime filter — blokkeer mean-reversion shorts/longs tegen een sterke BTC beweging
+# 3 correlated SHORTS op 2026-04-11 stopped tijdens BTC rally +0.8%/uur — deze filter fixt dat
+BTC_REGIME_ENABLED = True
+BTC_REGIME_LOOKBACK_CANDLES = 4   # 4 x 15m = laatste uur
+BTC_REGIME_THRESHOLD_PCT = 0.5    # > +0.5% = shorts blokkeren, < -0.5% = longs blokkeren
+
 # Telegram
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN)
+TELEGRAM_ENABLED = False
+TELEGRAM_BOT_TOKEN = ""
+TELEGRAM_CHAT_ID = ""
 
 BASE_URL = "https://api.hyperliquid-testnet.xyz" if TESTNET else "https://api.hyperliquid.xyz"
 WS_URL = "wss://api.hyperliquid-testnet.xyz/ws" if TESTNET else "wss://api.hyperliquid.xyz/ws"
@@ -65,6 +71,10 @@ TICK_SIZES = {
     "AAVE": 0.01,
     "ADA": 0.0001,
     "WLD": 0.0001,
+    "DOGE": 0.000001,
+    "AVAX": 0.0001,
+    "SUI": 0.00001,
+    "LINK": 0.0001,
 }
 
 # Size decimals per asset
@@ -78,4 +88,8 @@ SZ_DECIMALS = {
     "AAVE": 2,
     "ADA": 0,
     "WLD": 1,
+    "DOGE": 0,
+    "AVAX": 2,
+    "SUI": 1,
+    "LINK": 1,
 }

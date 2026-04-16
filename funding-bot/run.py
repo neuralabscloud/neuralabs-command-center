@@ -3,10 +3,6 @@ import os
 import signal
 import atexit
 import argparse
-from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
-
 from logger_setup import setup_logger
 from config import PRIVATE_KEY, WALLET_ADDRESS, TESTNET
 
@@ -91,7 +87,7 @@ def check_mode():
     logger.info("Connectie check geslaagd")
 
 def main():
-    parser = argparse.ArgumentParser(description="Funding Rate Arbitrage Bot")
+    parser = argparse.ArgumentParser(description="NeuraLabs Funding Rate Arbitrage Bot")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--status", action="store_true")
     args = parser.parse_args()

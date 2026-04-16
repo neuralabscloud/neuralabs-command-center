@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Designer Agent</title>
+<title>NEURALABS — Designer Agent</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -72,64 +72,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 }
 .style-tag:hover { border-color: var(--primary); color: var(--primary); background: hsla(264 65% 49% / 0.1); }
 .style-tag.active { border-color: var(--primary); color: var(--text); background: hsla(264 65% 49% / 0.18); }
-
-/* ── BRAND ASSETS ── */
-.brand-assets-grid { display: flex; gap: 16px; flex-wrap: wrap; }
-.brand-card {
-  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
-  border: 1px solid var(--border); border-radius: 12px; padding: 18px; min-width: 220px; flex: 1; max-width: 340px;
-}
-.brand-card-name { font-family: var(--font-data); font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; margin-bottom: 14px; text-transform: uppercase; }
-.brand-asset-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.brand-asset-label { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; width: 72px; flex-shrink: 0; }
-.brand-asset-preview { width: 36px; height: 36px; border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.brand-asset-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.brand-upload-btn {
-  font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
-  border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 3px 8px; cursor: pointer; transition: all 0.2s;
-}
-.brand-upload-btn:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
-.brand-remove-btn {
-  font-family: var(--font-data); font-size: 11px; color: var(--text-muted); background: none; border: none;
-  cursor: pointer; padding: 2px 4px; transition: color 0.2s;
-}
-.brand-remove-btn:hover { color: var(--danger); }
-.brand-section-title { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin: 14px 0 8px; padding-top: 10px; border-top: 1px solid var(--border); }
-.brand-colors { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
-.brand-color-swatch {
-  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; position: relative; transition: all 0.2s;
-}
-.brand-color-swatch:hover { transform: scale(1.15); border-color: var(--primary); }
-.brand-color-swatch .remove-x {
-  position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; border-radius: 50%;
-  background: var(--danger); color: white; font-size: 8px; display: none; align-items: center; justify-content: center; cursor: pointer;
-}
-.brand-color-swatch:hover .remove-x { display: flex; }
-.brand-color-add {
-  width: 28px; height: 28px; border-radius: 6px; border: 1px dashed var(--border); background: transparent;
-  color: var(--text-dim); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
-}
-.brand-color-add:hover { border-color: var(--primary); color: var(--primary); }
-.brand-color-input { position: absolute; opacity: 0; width: 0; height: 0; }
-.brand-fonts { display: flex; flex-direction: column; gap: 6px; }
-.brand-font-row { display: flex; align-items: center; gap: 8px; }
-.brand-font-name { font-family: var(--font-data); font-size: 11px; color: var(--text); flex: 1; }
-.brand-font-role { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); text-transform: uppercase; }
-.brand-font-add-row { display: flex; gap: 6px; align-items: center; }
-.brand-font-input {
-  flex: 1; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); padding: 5px 8px; font-size: 11px; font-family: var(--font-body); outline: none;
-}
-.brand-font-input:focus { border-color: var(--primary); }
-.brand-font-role-select {
-  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text); padding: 5px 6px; font-size: 10px; font-family: var(--font-data); outline: none;
-}
-.brand-font-add-btn {
-  font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
-  border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
-}
-.brand-font-add-btn:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
 
 /* ── TASK GALLERY ───────────────────────────── */
 .tasks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
@@ -249,9 +191,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
           <div class="form-field">
             <label class="form-label">Brand</label>
-            <select class="form-select" id="design-brand">
-              <option value="DEFAULT">DEFAULT</option>
-            </select>
+            <select class="form-select" id="design-brand"></select>
           </div>
           <div class="form-field">
             <label class="form-label">Brand Kit</label>
@@ -334,12 +274,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <span class="form-status" id="form-status"></span>
         </div>
       </div>
-    </section>
-
-    <!-- BRAND ASSETS -->
-    <section class="fade-up delay-2" id="brand-assets-section">
-      <div class="section-header">Brand Assets</div>
-      <div class="brand-assets-grid" id="brand-assets-grid"></div>
     </section>
 
     <!-- TASK GALLERY -->
@@ -481,164 +415,6 @@ async function deleteTask(id) {
   loadTasks();
 }
 
-// ── BRAND ASSETS ──
-const BRAND_LIST = ['DEFAULT'];
-const ASSET_TYPES = [
-  { key: 'logo', label: 'Logo' },
-  { key: 'watermark', label: 'Watermark' },
-  { key: 'icon', label: 'Icon' },
-];
-
-async function loadBrandAssets() {
-  try {
-    await loadBrandConfigs();
-    const res = await fetch('/brands');
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    renderBrandAssets(data);
-  } catch { document.getElementById('brand-assets-grid').innerHTML = ''; }
-}
-
-let brandConfigs = {};
-
-async function loadBrandConfigs() {
-  try {
-    const res = await fetch('/brands/config');
-    if (res.ok) brandConfigs = await res.json();
-  } catch {}
-}
-
-function renderBrandAssets(data) {
-  document.getElementById('brand-assets-grid').innerHTML = BRAND_LIST.map(brand => {
-    const assets = data[brand] || [];
-    const config = brandConfigs[brand] || { colors: [], fonts: [] };
-    return `<div class="brand-card">
-      <div class="brand-card-name">${brand}</div>
-      ${ASSET_TYPES.map(at => {
-        const asset = assets.find(a => a.name.startsWith(at.key));
-        return `<div class="brand-asset-row">
-          <span class="brand-asset-label">${at.label}</span>
-          <div class="brand-asset-preview">
-            ${asset ? `<img src="${asset.url}" alt="${at.label}" />` : ''}
-          </div>
-          ${asset
-            ? `<button class="brand-remove-btn" onclick="removeBrandAsset('${brand}','${asset.name}')" title="Remove">&#x2715;</button>`
-            : `<label class="brand-upload-btn">Upload<input type="file" accept="image/*" style="display:none" onchange="uploadBrandAsset('${brand}','${at.key}',this.files[0])"></label>`
-          }
-        </div>`;
-      }).join('')}
-      <div class="brand-section-title">Colors</div>
-      <div class="brand-colors">
-        ${(config.colors || []).map((c, i) => `
-          <div class="brand-color-swatch" style="background:${c.hex}" title="${c.label || c.hex}">
-            <span class="remove-x" onclick="removeBrandColor('${brand}',${i})">&#x2715;</span>
-          </div>
-        `).join('')}
-        <label class="brand-color-add" title="Add color">+
-          <input type="color" class="brand-color-input" onchange="addBrandColor('${brand}', this.value)">
-        </label>
-      </div>
-      <div class="brand-section-title">Fonts</div>
-      <div class="brand-fonts">
-        ${(config.fonts || []).map((f, i) => `
-          <div class="brand-font-row">
-            <span class="brand-font-name" style="font-family:'${f.family}',sans-serif">${f.family}</span>
-            <span class="brand-font-role">${f.role || 'body'}</span>
-            <button class="brand-remove-btn" onclick="removeBrandFont('${brand}',${i})" title="Remove">&#x2715;</button>
-          </div>
-        `).join('')}
-        <div class="brand-font-add-row">
-          <input type="text" class="brand-font-input" id="font-input-${brand}" placeholder="Google Font name..." />
-          <select class="brand-font-role-select" id="font-role-${brand}">
-            <option value="display">Display</option>
-            <option value="body">Body</option>
-            <option value="data">Data</option>
-          </select>
-          <button class="brand-font-add-btn" onclick="addBrandFont('${brand}')">Add</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  loadGoogleFonts();
-}
-
-function loadGoogleFonts() {
-  const families = new Set();
-  Object.values(brandConfigs).forEach(c => (c.fonts || []).forEach(f => families.add(f.family)));
-  if (families.size === 0) return;
-  const existing = document.getElementById('google-fonts-link');
-  if (existing) existing.remove();
-  const link = document.createElement('link');
-  link.id = 'google-fonts-link';
-  link.rel = 'stylesheet';
-  link.href = `https://fonts.googleapis.com/css2?${[...families].map(f => `family=${f.replace(/ /g, '+')}`).join('&')}&display=swap`;
-  document.head.appendChild(link);
-}
-
-async function saveBrandConfig(brand, config) {
-  await fetch(`/brands/${brand}/config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
-}
-
-async function addBrandColor(brand, hex) {
-  const label = prompt('Label for this color (e.g. Primary, Accent):', '');
-  const config = brandConfigs[brand] || { colors: [], fonts: [] };
-  config.colors = config.colors || [];
-  config.colors.push({ hex, label: label || '' });
-  brandConfigs[brand] = config;
-  await saveBrandConfig(brand, config);
-  loadBrandAssets();
-}
-
-async function removeBrandColor(brand, index) {
-  const config = brandConfigs[brand] || { colors: [], fonts: [] };
-  config.colors.splice(index, 1);
-  await saveBrandConfig(brand, config);
-  loadBrandAssets();
-}
-
-async function addBrandFont(brand) {
-  const input = document.getElementById(`font-input-${brand}`);
-  const roleSelect = document.getElementById(`font-role-${brand}`);
-  const family = input.value.trim();
-  if (!family) return;
-  const config = brandConfigs[brand] || { colors: [], fonts: [] };
-  config.fonts = config.fonts || [];
-  config.fonts.push({ family, role: roleSelect.value });
-  brandConfigs[brand] = config;
-  await saveBrandConfig(brand, config);
-  loadBrandAssets();
-}
-
-async function removeBrandFont(brand, index) {
-  const config = brandConfigs[brand] || { colors: [], fonts: [] };
-  config.fonts.splice(index, 1);
-  await saveBrandConfig(brand, config);
-  loadBrandAssets();
-}
-
-async function uploadBrandAsset(brand, type, file) {
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const res = await fetch(`/brands/${brand}/assets/${type}`, { method: 'POST', body: fd });
-    if (!res.ok) throw new Error();
-    loadBrandAssets();
-  } catch(e) { alert('Upload failed: ' + e.message); }
-}
-
-async function removeBrandAsset(brand, filename) {
-  if (!confirm(`Remove ${filename} from ${brand}?`)) return;
-  await fetch(`/brands/${brand}/assets/${filename}`, { method: 'DELETE' });
-  loadBrandAssets();
-}
-
-loadBrandAssets();
-
 // ── STYLE TAG CLICKS ──
 document.querySelectorAll('.style-tag').forEach(tag => {
   tag.addEventListener('click', () => {
@@ -680,6 +456,21 @@ function syncStyleTags() {
 }
 document.getElementById('design-desc').addEventListener('input', syncStyleTags);
 
+// Populate brand dropdown from /brands
+async function loadBrandOptions() {
+  try {
+    const res = await fetch('/brands');
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = Object.keys(data).sort();
+    const sel = document.getElementById('design-brand');
+    const current = sel.value;
+    sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+    if (current && names.includes(current)) sel.value = current;
+  } catch {}
+}
+loadBrandOptions();
+
 // Load tasks and poll every 10 seconds
 loadTasks();
 setInterval(loadTasks, 10000);
@@ -687,6 +478,5 @@ setInterval(loadTasks, 10000);
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

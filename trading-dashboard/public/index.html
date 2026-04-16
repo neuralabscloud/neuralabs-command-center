@@ -110,7 +110,7 @@ html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--tex
 
 /* stat row inside card */
 .card-stats {
-  display:grid; grid-template-columns:repeat(7,1fr);
+  display:grid; grid-template-columns:repeat(8,1fr);
   border-bottom:1px solid var(--b);
 }
 .cs { padding:10px 14px; border-right:1px solid var(--b); }
@@ -406,6 +406,127 @@ table.pos-tbl tfoot td { font-weight:700; border-top:2px solid var(--b2); }
   #lf-events, #hl-events, #hl-funding, #spread-panel { max-height:120px !important; }
 }
 
+/* ── SETUP WIZARD & SETTINGS ── */
+#setup-overlay, #settings-overlay {
+  position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.92); backdrop-filter:blur(8px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; transition:opacity .4s; pointer-events:none;
+}
+#setup-overlay.active, #settings-overlay.active { opacity:1; pointer-events:all; }
+.setup-box {
+  background:var(--panel); border:1px solid var(--b2); border-radius:12px;
+  padding:32px 40px; max-width:560px; width:90%;
+  box-shadow:0 24px 80px rgba(0,0,0,.6);
+}
+.setup-box h2 {
+  font-size:14px; text-transform:uppercase; letter-spacing:2px; color:var(--blue);
+  margin-bottom:4px;
+}
+.setup-box .setup-sub {
+  font-size:11px; color:var(--muted); margin-bottom:24px;
+}
+.setup-step { display:none; }
+.setup-step.active { display:block; }
+.setup-step h3 {
+  font-size:12px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text);
+  margin-bottom:16px; display:flex; align-items:center; gap:8px;
+}
+.setup-step h3 .step-num {
+  background:var(--blue); color:#000; width:20px; height:20px; border-radius:50%;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700;
+}
+.setup-field { margin-bottom:14px; }
+.setup-field label {
+  display:block; font-size:9px; text-transform:uppercase; letter-spacing:1px;
+  color:var(--muted); margin-bottom:4px;
+}
+.setup-field input {
+  width:100%; padding:10px 12px; background:var(--bg); border:1px solid var(--b2);
+  border-radius:6px; color:var(--text); font-family:var(--font); font-size:12px;
+  outline:none; transition:border-color .2s;
+}
+.setup-field input:focus { border-color:var(--blue); }
+.setup-field input::placeholder { color:var(--muted); }
+.setup-field .field-hint {
+  font-size:9px; color:var(--muted); margin-top:3px;
+}
+.setup-field input.error { border-color:var(--red); }
+.setup-btns { display:flex; gap:10px; margin-top:20px; }
+.setup-btn {
+  padding:10px 24px; border:none; border-radius:6px; font-family:var(--font);
+  font-size:11px; text-transform:uppercase; letter-spacing:1px; cursor:pointer;
+  transition:all .2s;
+}
+.setup-btn.primary { background:var(--blue); color:#000; font-weight:700; }
+.setup-btn.primary:hover { filter:brightness(1.2); }
+.setup-btn.secondary { background:transparent; border:1px solid var(--b2); color:var(--muted); }
+.setup-btn.secondary:hover { color:var(--text); border-color:var(--blue); }
+.setup-btn:disabled { opacity:.4; cursor:not-allowed; }
+.setup-progress { display:flex; gap:6px; margin-bottom:20px; }
+.setup-progress .dot {
+  width:8px; height:8px; border-radius:50%; background:var(--b2); transition:background .3s;
+}
+.setup-progress .dot.done { background:var(--green); }
+.setup-progress .dot.current { background:var(--blue); box-shadow:0 0 6px var(--blue); }
+.setup-success { text-align:center; padding:20px 0; }
+.setup-success .check { font-size:48px; color:var(--green); margin-bottom:12px; }
+.setup-success p { font-size:12px; color:var(--dim); margin-bottom:20px; }
+.settings-btn {
+  background:transparent; border:none; color:var(--muted); cursor:pointer;
+  padding:0 10px; display:flex; align-items:center; transition:color .2s;
+}
+.settings-btn:hover { color:var(--blue); }
+.settings-btn svg { width:16px; height:16px; }
+/* settings-specific */
+.settings-section { margin-bottom:20px; }
+.settings-section h3 {
+  font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--blue);
+  margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid var(--b);
+}
+.settings-saved {
+  display:none; padding:8px 14px; background:rgba(0,217,126,.1);
+  border:1px solid rgba(0,217,126,.2); border-radius:6px;
+  color:var(--green); font-size:11px; margin-bottom:14px; text-align:center;
+}
+.settings-saved.show { display:block; }
+.settings-close {
+  position:absolute; top:16px; right:16px; background:transparent;
+  border:none; color:var(--muted); cursor:pointer; font-size:18px;
+  font-family:var(--font); transition:color .2s;
+}
+.settings-close:hover { color:var(--text); }
+.setup-box { position:relative; }
+
+/* ── ANALYTICS PAGE ── */
+#analytics-page .bot-card-an {
+  background:var(--panel); border:1px solid var(--b); border-radius:8px; padding:16px;
+}
+#analytics-page .bot-card-an h4 {
+  font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text);
+  margin-bottom:10px; display:flex; align-items:center; gap:8px;
+}
+#analytics-page .bot-card-an .an-stat-row {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px;
+}
+#analytics-page .bot-card-an .an-stat { display:flex; flex-direction:column; gap:2px; }
+#analytics-page .bot-card-an .an-stat-label { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+#analytics-page .bot-card-an .an-stat-value { font-size:14px; font-weight:700; }
+.bot-ctrl-btn {
+  padding:3px 12px; border:1px solid var(--green); border-radius:4px;
+  background:rgba(0,217,126,.1); color:var(--green); font-family:var(--font);
+  font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+  cursor:pointer; transition:all .2s;
+}
+.bot-ctrl-btn:hover { background:rgba(0,217,126,.2); }
+.bot-ctrl-btn:disabled { opacity:.4; cursor:not-allowed; }
+@media (max-width: 768px) {
+  #analytics-stats { grid-template-columns:repeat(2,1fr) !important; }
+  #analytics-bots { grid-template-columns:1fr !important; }
+  #analytics-page { height:auto !important; overflow:visible !important; }
+}
+
 /* ── TOUCH DEVICES ── */
 @media (hover: none) and (pointer: coarse) {
   .bot-tab { min-height:44px; }
@@ -436,6 +557,11 @@ table.pos-tbl tfoot td { font-weight:700; border-top:2px solid var(--b2); }
     <div class="mid-item"><span class="mid-coin">SOL</span><span class="mid-price" id="m-SOL">—</span></div>
     <div class="mid-item"><span class="mid-coin">BNB</span><span class="mid-price" id="m-BNB">—</span></div>
     <div class="ws-pill"><div class="dot" id="wsdot"></div><span id="wslbl">Offline</span></div>
+    <button class="settings-btn" onclick="openSettings()" title="Instellingen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </div>
 </div>
 
@@ -443,8 +569,56 @@ table.pos-tbl tfoot td { font-weight:700; border-top:2px solid var(--b2); }
 <div id="bot-tabs">
   <button class="bot-tab active" data-bot="funding" onclick="switchBot('funding')">Funding Rate Bot</button>
   <button class="bot-tab" data-bot="trend" onclick="switchBot('trend')">Mean-Reversion Bot</button>
+  <button class="bot-tab" data-bot="analytics" onclick="showAnalytics()" style="margin-left:auto;border-left:1px solid var(--b2);border-right:none">Analytics</button>
 </div>
 
+
+<!-- ANALYTICS PAGE -->
+<div id="analytics-page" style="display:none;overflow-y:auto;height:calc(100vh - 72px)">
+  <div style="max-width:1100px;margin:0 auto;padding:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--blue)">Performance Analytics</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px" id="analytics-date">Laden...</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="analytics-date-select" onchange="loadAnalyticsReport(this.value)" style="background:var(--bg);border:1px solid var(--b2);color:var(--text);font-family:var(--font);font-size:10px;padding:4px 8px;border-radius:4px"></select>
+        <button class="bot-ctrl-btn" onclick="generateReport()" id="analytics-gen-btn">NIEUW RAPPORT</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px" id="analytics-stats">
+      <div style="background:var(--panel);border:1px solid var(--b);border-radius:8px;padding:14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Totaal Equity</div>
+        <div style="font-size:22px;font-weight:700;color:var(--blue)" id="an-equity">—</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--b);border-radius:8px;padding:14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">PnL Vandaag</div>
+        <div style="font-size:22px;font-weight:700" id="an-pnl-today">—</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--b);border-radius:8px;padding:14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">PnL 7 Dagen</div>
+        <div style="font-size:22px;font-weight:700" id="an-pnl-7d">—</div>
+      </div>
+      <div style="background:var(--panel);border:1px solid var(--b);border-radius:8px;padding:14px">
+        <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Winrate 7d</div>
+        <div style="font-size:22px;font-weight:700;color:var(--yel)" id="an-winrate">—</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px" id="analytics-bots"></div>
+    <div style="background:var(--panel);border:1px solid var(--b);border-radius:8px;overflow:hidden">
+      <div style="padding:10px 16px;border-bottom:1px solid var(--b);display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--blue);font-weight:700">AI Analyse Rapport</span>
+        <span style="font-size:9px;color:var(--muted)" id="an-ai-badge"></span>
+      </div>
+      <div style="padding:16px;font-size:12px;line-height:1.7;color:var(--text)" id="an-report">
+        <div style="color:var(--muted);text-align:center;padding:30px">
+          Nog geen rapport beschikbaar.<br>
+          <span style="font-size:10px">Klik "NIEUW RAPPORT" om er een te genereren.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- MAIN -->
 <div id="main">
@@ -488,6 +662,10 @@ table.pos-tbl tfoot td { font-weight:700; border-top:2px solid var(--b2); }
         <div class="cs">
           <div class="cs-l" id="lbl-cs-trades">Totaal Trades</div>
           <div class="cs-v blue" id="cs-trades">—</div>
+        </div>
+        <div class="cs">
+          <div class="cs-l" id="lbl-cs-tp">Totaal PnL</div>
+          <div class="cs-v" id="cs-tp">—</div>
         </div>
         <div class="cs">
           <div class="cs-l" id="lbl-cs-wr">Win Rate</div>
@@ -788,6 +966,31 @@ table.pos-tbl tfoot td { font-weight:700; border-top:2px solid var(--b2); }
   </div>
 </div>
 
+<!-- SETUP WIZARD -->
+<div id="setup-overlay">
+  <div class="setup-box">
+    <h2>Trading Bots Setup</h2>
+    <div class="setup-sub">Configureer je wallet adressen en private keys om te beginnen</div>
+    <div class="setup-progress" id="setup-progress"></div>
+    <div id="setup-steps"></div>
+  </div>
+</div>
+
+<!-- SETTINGS OVERLAY -->
+<div id="settings-overlay">
+  <div class="setup-box" style="max-width:600px">
+    <button class="settings-close" onclick="closeSettings()">&times;</button>
+    <h2>Instellingen</h2>
+    <div class="setup-sub">Beheer wallet adressen en private keys voor je bots</div>
+    <div class="settings-saved" id="settings-saved">Instellingen opgeslagen</div>
+    <div id="settings-content"></div>
+    <div class="setup-btns">
+      <button class="setup-btn primary" onclick="saveSettings()">Opslaan</button>
+      <button class="setup-btn secondary" onclick="closeSettings()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- #app -->
 
 <script>
@@ -995,7 +1198,11 @@ let obCache = {};
 let activeBotId = 'funding';
 const allBotStates = {};
 
-const BOT_DIRS = {};  // Populated from server config; terminal features disabled
+const BOT_DIRS = {
+  'funding': '/root/neuralabs-bot',
+  'mm':      '/root/neuralabs-bot-2',
+  'poly':    '/root/polymarket-sniper',
+};
 
 function termSend(cmd) { /* terminal disabled */ }
 function termCd(botId) { /* terminal disabled */ }
@@ -1219,6 +1426,7 @@ function renderBot(d) {
     const acc  = d.accountValue || 0;
     const upnl = positions.reduce((s,p)=>s+(p.unrealizedPnl||0),0);
     const dp   = d.stats?.dailyPnl || 0;
+    const tp   = d.stats?.totalPnl || 0;
     const dd   = d.stats?.drawdown || 0;
     const tt   = d.stats?.tradesToday || 0;
     const wr   = d.stats?.winRate || 0;
@@ -1245,6 +1453,7 @@ function renderBot(d) {
     sv('cs-pos',  marketState, marketState === 'RANGE' ? 'pos' : marketState === 'TRENDING' ? 'neg' : 'blue');
     sv('cs-upnl', fpnl(upnl), upnl>=0?'pos':'neg');
     sv('cs-day',  fpnl(dp), dp>=0?'pos':'neg');
+    sv('cs-tp',   fpnl(tp), tp>=0?'pos':'neg');
     sv('cs-fund', dd.toFixed(2)+'%', dd>5?'neg':'blue');
     txt('cs-trades', tt);
     txt('cs-wr', wr+'%');
@@ -1266,6 +1475,7 @@ function renderBot(d) {
   txt('cs-pos', positions.length);
   sv('cs-fund', '$'+df.toFixed(2), 'blue');
   sv('cs-day',    fpnl(dp), dp>=0?'pos':'neg');
+  sv('cs-tp',     fpnl(tp), tp>=0?'pos':'neg');
   txt('cs-trades', nt);
   txt('cs-wr', wr+'%');
 
@@ -1822,8 +2032,365 @@ function fs(n) {
 function fpnl(v) { return (v>=0?'+$':'-$')+Math.abs(v).toFixed(2); }
 function esc(s)  { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// ── Setup Wizard & Settings ──────────────────────────────
+let setupBots = [];
+let setupSteps = [];
+let setupStep = 0;
+
+async function checkSetup() {
+  try {
+    const r = await fetch('/api/setup-status');
+    const d = await r.json();
+    if (!d.configured) {
+      setupBots = d.bots;
+      showSetupWizard();
+    }
+  } catch {}
+}
+
+function showSetupWizard() {
+  const overlay = document.getElementById('setup-overlay');
+  const stepsEl = document.getElementById('setup-steps');
+  const progEl  = document.getElementById('setup-progress');
+  setupStep = 0;
+
+  setupSteps = [];
+  setupBots.forEach((bot, i) => setupSteps.push({ idx: i, type: 'bot', bot }));
+  setupSteps.push({ idx: setupSteps.length, type: 'anthropic' });
+  setupSteps.push({ idx: setupSteps.length, type: 'telegram' });
+
+  progEl.innerHTML = setupSteps.map((_, i) =>
+    `<div class="dot ${i === 0 ? 'current' : ''}" data-step="${i}"></div>`
+  ).join('') + '<div class="dot" data-step="done"></div>';
+
+  let html = '';
+  let stepNum = 0;
+
+  for (const step of setupSteps) {
+    stepNum++;
+    if (step.type === 'bot') {
+      const bot = step.bot;
+      html += `<div class="setup-step ${step.idx === 0 ? 'active' : ''}" data-step="${step.idx}">
+        <h3><span class="step-num">${stepNum}</span>${esc(bot.name)}</h3>
+        <div class="setup-field">
+          <label>Wallet Adres</label>
+          <input type="text" id="setup-wallet-${bot.id}" placeholder="0x..." autocomplete="off">
+          <div class="field-hint">Het Hyperliquid wallet adres voor deze bot</div>
+        </div>
+        <div class="setup-field">
+          <label>Private Key</label>
+          <input type="password" id="setup-key-${bot.id}" placeholder="Vul je private key in" autocomplete="off">
+          <div class="field-hint">Wordt veilig opgeslagen op de server. Nooit getoond in de browser.</div>
+        </div>
+        <div class="setup-btns">
+          ${step.idx > 0 ? '<button class="setup-btn secondary" onclick="wizardPrev()">Vorige</button>' : ''}
+          <button class="setup-btn primary" onclick="wizardNext()">Volgende</button>
+        </div>
+      </div>`;
+    } else if (step.type === 'anthropic') {
+      html += `<div class="setup-step" data-step="${step.idx}">
+        <h3><span class="step-num">${stepNum}</span>Claude Code (AI Assistant)</h3>
+        <div class="setup-field">
+          <label>Anthropic API Key</label>
+          <input type="password" id="setup-anthropic-key" placeholder="sk-ant-..." autocomplete="off">
+          <div class="field-hint">Hiermee kun je Claude Code gebruiken om je bots te beheren via AI in de terminal. <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">Key aanmaken</a></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;padding:8px;background:rgba(77,166,255,.05);border-radius:4px;">Optioneel — je kunt dit later instellen via het tandwiel-icoon.</div>
+        <div class="setup-btns">
+          <button class="setup-btn secondary" onclick="wizardPrev()">Vorige</button>
+          <button class="setup-btn primary" onclick="wizardNext()">Volgende</button>
+          <button class="setup-btn secondary" onclick="wizardSkip()" style="margin-left:auto">Overslaan</button>
+        </div>
+      </div>`;
+    } else if (step.type === 'telegram') {
+      html += `<div class="setup-step" data-step="${step.idx}">
+        <h3><span class="step-num">${stepNum}</span>Telegram Notificaties</h3>
+        <div class="setup-field">
+          <label>Bot Token</label>
+          <input type="text" id="setup-telegram-token" placeholder="123456:ABC-DEF..." autocomplete="off">
+          <div class="field-hint">Maak een bot via <a href="https://t.me/BotFather" target="_blank" style="color:var(--blue)">@BotFather</a> op Telegram</div>
+        </div>
+        <div class="setup-field">
+          <label>Chat ID</label>
+          <input type="text" id="setup-telegram-chatid" placeholder="123456789" autocomplete="off">
+          <div class="field-hint">Stuur /start naar je bot en gebruik <a href="https://t.me/userinfobot" target="_blank" style="color:var(--blue)">@userinfobot</a> om je chat ID te vinden</div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:8px;padding:8px;background:rgba(77,166,255,.05);border-radius:4px;">Optioneel — je kunt dit later instellen via het tandwiel-icoon.</div>
+        <div class="setup-btns">
+          <button class="setup-btn secondary" onclick="wizardPrev()">Vorige</button>
+          <button class="setup-btn primary" onclick="wizardNext()">Voltooien</button>
+          <button class="setup-btn secondary" onclick="wizardSkip()" style="margin-left:auto">Overslaan</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  html += `<div class="setup-step" data-step="done">
+    <div class="setup-success">
+      <div class="check">&#10003;</div>
+      <h3 style="justify-content:center">Setup Voltooid!</h3>
+      <p>Je bots zijn geconfigureerd en klaar om te starten.</p>
+      <button class="setup-btn primary" onclick="closeSetupWizard()">Naar Dashboard</button>
+    </div>
+  </div>`;
+
+  stepsEl.innerHTML = html;
+  overlay.classList.add('active');
+}
+
+function wizardNext() {
+  const step = setupSteps[setupStep];
+  if (step.type === 'bot') {
+    const wallet = document.getElementById('setup-wallet-' + step.bot.id);
+    const key    = document.getElementById('setup-key-' + step.bot.id);
+    let valid = true;
+    if (!wallet.value.trim()) { wallet.classList.add('error'); valid = false; } else { wallet.classList.remove('error'); }
+    if (!key.value.trim())    { key.classList.add('error');    valid = false; } else { key.classList.remove('error'); }
+    if (!valid) return;
+  }
+
+  setupStep++;
+  updateSetupUI();
+  if (setupStep >= setupSteps.length) saveSetupWizard();
+}
+
+function wizardSkip() {
+  setupStep++;
+  updateSetupUI();
+  if (setupStep >= setupSteps.length) saveSetupWizard();
+}
+
+function wizardPrev() {
+  if (setupStep > 0) { setupStep--; updateSetupUI(); }
+}
+
+function updateSetupUI() {
+  const total = setupSteps.length;
+  document.querySelectorAll('.setup-step').forEach(el => {
+    const s = el.dataset.step;
+    el.classList.toggle('active', s === String(setupStep) || (setupStep >= total && s === 'done'));
+  });
+  document.querySelectorAll('.setup-progress .dot').forEach(el => {
+    const s = el.dataset.step;
+    const i = s === 'done' ? total : parseInt(s);
+    el.classList.toggle('done', i < setupStep);
+    el.classList.toggle('current', i === setupStep || (setupStep >= total && s === 'done'));
+  });
+}
+
+async function saveSetupWizard() {
+  const botPayload = setupBots.map(bot => ({
+    id: bot.id,
+    wallet_address: document.getElementById('setup-wallet-' + bot.id).value.trim(),
+    private_key:    document.getElementById('setup-key-' + bot.id).value.trim()
+  }));
+  const services = {};
+  const ak = document.getElementById('setup-anthropic-key')?.value?.trim();
+  if (ak) services.anthropic_key = ak;
+  const tt = document.getElementById('setup-telegram-token')?.value?.trim();
+  const tc = document.getElementById('setup-telegram-chatid')?.value?.trim();
+  if (tt) services.telegram_token = tt;
+  if (tc) services.telegram_chat_id = tc;
+
+  try {
+    const r = await fetch('/api/bot-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bots: botPayload, services }) });
+    if (!r.ok) throw new Error('Save failed');
+    updateSetupUI();
+  } catch (e) {
+    setupStep = 0;
+    updateSetupUI();
+    alert('Fout bij opslaan: ' + e.message);
+  }
+}
+
+function closeSetupWizard() {
+  document.getElementById('setup-overlay').classList.remove('active');
+}
+
+// ── Settings ─────────────────────────────────────────────
+async function openSettings() {
+  const overlay = document.getElementById('settings-overlay');
+  const content = document.getElementById('settings-content');
+  document.getElementById('settings-saved').classList.remove('show');
+
+  try {
+    const r = await fetch('/api/bot-config');
+    const d = await r.json();
+    const svc = d.services || {};
+    let html = '';
+    for (const bot of d.bots) {
+      html += `<div class="settings-section">
+        <h3>${esc(bot.name)}</h3>
+        <div class="setup-field">
+          <label>Wallet Adres</label>
+          <input type="text" id="settings-wallet-${bot.id}" value="${esc(bot.wallet_address)}" placeholder="0x..." autocomplete="off">
+        </div>
+        <div class="setup-field">
+          <label>Private Key${bot.has_private_key ? ' (al ingesteld: ' + esc(bot.private_key_masked) + ')' : ''}</label>
+          <input type="password" id="settings-key-${bot.id}" placeholder="${bot.has_private_key ? 'Laat leeg om huidige te behouden' : 'Vul je private key in'}" autocomplete="off">
+          <div class="field-hint">${bot.has_private_key ? 'Laat leeg om de huidige key te behouden, of vul een nieuwe in.' : 'Wordt veilig opgeslagen op de server.'}</div>
+        </div>
+      </div>`;
+    }
+    html += `<div class="settings-section">
+      <h3>Claude Code (AI Assistant)</h3>
+      <div class="setup-field">
+        <label>Anthropic API Key${svc.has_anthropic ? ' (al ingesteld: ' + esc(svc.anthropic_key) + ')' : ''}</label>
+        <input type="password" id="settings-anthropic-key" placeholder="${svc.has_anthropic ? 'Laat leeg om huidige te behouden' : 'sk-ant-...'}" autocomplete="off">
+        <div class="field-hint">${svc.has_anthropic ? 'Laat leeg om de huidige key te behouden.' : '<a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">Key aanmaken bij Anthropic</a>'}</div>
+      </div>
+    </div>`;
+    html += `<div class="settings-section">
+      <h3>Telegram Notificaties</h3>
+      <div class="setup-field">
+        <label>Bot Token${svc.has_telegram ? ' (al ingesteld: ' + esc(svc.telegram_token) + ')' : ''}</label>
+        <input type="text" id="settings-telegram-token" placeholder="${svc.has_telegram ? 'Laat leeg om huidige te behouden' : '123456:ABC-DEF...'}" autocomplete="off">
+      </div>
+      <div class="setup-field">
+        <label>Chat ID</label>
+        <input type="text" id="settings-telegram-chatid" value="${esc(svc.telegram_chat_id || '')}" placeholder="123456789" autocomplete="off">
+      </div>
+    </div>`;
+    content.innerHTML = html;
+    overlay.classList.add('active');
+  } catch (e) {
+    alert('Kon instellingen niet laden: ' + e.message);
+  }
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('active');
+}
+
+async function saveSettings() {
+  const content = document.getElementById('settings-content');
+  const botPayload = [];
+
+  content.querySelectorAll('input[id^="settings-wallet-"]').forEach(walletInput => {
+    const botId = walletInput.id.replace('settings-wallet-', '');
+    const keyInput = document.getElementById('settings-key-' + botId);
+    const update = { id: botId, wallet_address: walletInput.value.trim() };
+    if (keyInput && keyInput.value.trim()) update.private_key = keyInput.value.trim();
+    botPayload.push(update);
+  });
+
+  const services = {};
+  const ak = document.getElementById('settings-anthropic-key')?.value?.trim();
+  if (ak) services.anthropic_key = ak;
+  const tt = document.getElementById('settings-telegram-token')?.value?.trim();
+  const tc = document.getElementById('settings-telegram-chatid')?.value?.trim();
+  if (tt) services.telegram_token = tt;
+  if (tc) services.telegram_chat_id = tc;
+
+  try {
+    const r = await fetch('/api/bot-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bots: botPayload, services }) });
+    if (!r.ok) throw new Error('Save failed');
+    document.getElementById('settings-saved').classList.add('show');
+    setTimeout(() => document.getElementById('settings-saved').classList.remove('show'), 3000);
+  } catch (e) {
+    alert('Fout bij opslaan: ' + e.message);
+  }
+}
+
+// ── Analytics ────────────────────────────────────────────
+function showAnalytics() {
+  document.querySelectorAll('.bot-tab').forEach(t => t.classList.toggle('active', t.dataset.bot === 'analytics'));
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('term').style.display = 'none';
+  document.getElementById('analytics-page').style.display = '';
+  loadAnalytics();
+}
+
+function hideAnalytics() {
+  document.getElementById('analytics-page').style.display = 'none';
+  document.getElementById('main').style.display = '';
+  document.getElementById('term').style.display = '';
+}
+
+const _origSwitchBot = switchBot;
+switchBot = function(botId) { hideAnalytics(); _origSwitchBot(botId); };
+
+async function loadAnalytics() {
+  try {
+    const r = await fetch('/api/analytics');
+    const d = await r.json();
+    renderAnalytics(d);
+  } catch (e) {
+    document.getElementById('an-report').innerHTML = '<div style="color:var(--red);padding:20px;text-align:center">Kon analytics niet laden</div>';
+  }
+}
+
+async function loadAnalyticsReport(date) {
+  try {
+    const r = await fetch('/api/analytics/report/' + date);
+    const d = await r.json();
+    renderAnalytics({ report: d, dates: Array.from(document.getElementById('analytics-date-select').options).map(o => o.value) });
+  } catch {}
+}
+
+function renderAnalytics(d) {
+  const select = document.getElementById('analytics-date-select');
+  select.innerHTML = (d.dates || []).map(dt => `<option value="${dt}">${dt}</option>`).join('');
+  const rpt = d.report;
+  if (!rpt) { document.getElementById('analytics-date').textContent = 'Geen rapporten beschikbaar'; return; }
+
+  document.getElementById('analytics-date').textContent = 'Rapport van ' + rpt.date + (rpt.ai_used ? ' (AI)' : ' (statisch)');
+  document.getElementById('an-ai-badge').textContent = rpt.ai_used ? 'Gegenereerd door Claude AI' : 'Statisch rapport';
+
+  let totalEquity = 0, totalPnlToday = 0, totalPnl7d = 0, totalTrades7d = 0, totalWins7d = 0;
+  const bots = rpt.bots || {};
+  for (const [id, b] of Object.entries(bots)) {
+    totalEquity += b.equity || 0;
+    totalPnlToday += b.pnl_today || 0;
+    totalPnl7d += b.pnl_7d || 0;
+    totalTrades7d += b.trades_7d || 0;
+    totalWins7d += Math.round((b.winrate_7d || 0) / 100 * (b.trades_7d || 0));
+  }
+  const totalWr = totalTrades7d > 0 ? (totalWins7d / totalTrades7d * 100).toFixed(0) : '—';
+
+  document.getElementById('an-equity').textContent = '$' + totalEquity.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const ptEl = document.getElementById('an-pnl-today');
+  ptEl.textContent = fpnl(totalPnlToday); ptEl.style.color = totalPnlToday >= 0 ? 'var(--green)' : 'var(--red)';
+  const p7El = document.getElementById('an-pnl-7d');
+  p7El.textContent = fpnl(totalPnl7d); p7El.style.color = totalPnl7d >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('an-winrate').textContent = totalWr + '%';
+
+  let botsHtml = '';
+  for (const [id, b] of Object.entries(bots)) {
+    const statusColor = b.service_status === 'active' ? 'var(--green)' : 'var(--red)';
+    const statusLabel = b.service_status === 'active' ? 'ONLINE' : 'OFFLINE';
+    botsHtml += `<div class="bot-card-an">
+      <h4><span style="width:8px;height:8px;border-radius:50%;background:${statusColor};display:inline-block"></span>${esc(b.name)}<span style="font-size:9px;color:${statusColor};font-weight:400">${statusLabel}</span></h4>
+      <div class="an-stat-row">
+        <div class="an-stat"><span class="an-stat-label">Equity</span><span class="an-stat-value" style="color:var(--blue)">$${(b.equity||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>
+        <div class="an-stat"><span class="an-stat-label">PnL Vandaag</span><span class="an-stat-value" style="color:${(b.pnl_today||0)>=0?'var(--green)':'var(--red)'}">${fpnl(b.pnl_today||0)}</span></div>
+        <div class="an-stat"><span class="an-stat-label">PnL 7 Dagen</span><span class="an-stat-value" style="color:${(b.pnl_7d||0)>=0?'var(--green)':'var(--red)'}">${fpnl(b.pnl_7d||0)}</span></div>
+        <div class="an-stat"><span class="an-stat-label">Trades 7d</span><span class="an-stat-value">${b.trades_7d||0}</span></div>
+        <div class="an-stat"><span class="an-stat-label">Winrate 7d</span><span class="an-stat-value" style="color:var(--yel)">${(b.winrate_7d||0).toFixed(0)}%</span></div>
+        <div class="an-stat"><span class="an-stat-label">Totaal Trades</span><span class="an-stat-value">${b.total_trades_all_time||0}</span></div>
+      </div>
+      ${(b.positions||[]).length ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--b);font-size:10px;color:var(--dim)">' + (b.positions||[]).map(p => `<div style="margin-top:3px">${p.side} <b>${p.coin}</b> @ $${fp(p.entry_price)} | uPnL: <span style="color:${p.unrealized_pnl>=0?'var(--green)':'var(--red)'}">$${p.unrealized_pnl.toFixed(2)}</span></div>`).join('') + '</div>' : ''}
+    </div>`;
+  }
+  document.getElementById('analytics-bots').innerHTML = botsHtml;
+  document.getElementById('an-report').innerHTML = rpt.report_html || '<div style="color:var(--muted);text-align:center;padding:20px">Geen rapport beschikbaar</div>';
+}
+
+async function generateReport() {
+  const btn = document.getElementById('analytics-gen-btn');
+  btn.disabled = true; btn.textContent = 'GENEREREN...';
+  try {
+    const r = await fetch('/api/analytics/generate', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) await loadAnalytics();
+    else alert('Fout bij genereren: ' + (d.error || 'Onbekende fout'));
+  } catch (e) { alert('Fout: ' + e.message); }
+  btn.disabled = false; btn.textContent = 'NIEUW RAPPORT';
+}
+
 // ── Boot ──────────────────────────────────────────────────
 connect();
+checkSetup();
 setTimeout(()=>{
 },400);
 </script>

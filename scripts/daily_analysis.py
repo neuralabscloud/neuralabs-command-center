@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-daily_analysis.py - Dagelijkse performance analyse van trading bots.
+daily_analysis.py - Dagelijkse performance analyse van alle NeuraLabs bots.
 Analyseert trades, PnL, winrate, en key metrics per bot.
 Stuurt rapport naar Telegram.
+
+Gebruik:
+  python3 /root/daily_analysis.py
 """
 
 import json
@@ -12,37 +15,30 @@ import html
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from collections import defaultdict
-from dotenv import load_dotenv
-
-# Load central .env
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+INSTALL_DIR = os.getenv("INSTALL_DIR", "/opt/commandcenter")
+
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 HL_API = "https://api.hyperliquid.xyz/info"
 
-INSTALL_DIR = os.environ.get("INSTALL_DIR", str(Path(__file__).resolve().parent.parent))
-
 WALLETS = {
-    "Funding Bot": os.environ.get("FUNDING_BOT_WALLET_ADDRESS", ""),
-    "Trend Bot":   os.environ.get("TREND_BOT_WALLET_ADDRESS", ""),
+    "Funding Bot":    os.getenv("HL_WALLET_ADDRESS_BOT1", ""),
+    "Trend Bot":      os.getenv("HL_WALLET_ADDRESS_BOT5", ""),
 }
 
 TRADE_FILES = {
-    "Funding Bot": os.path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
-    "Trend Bot":   os.path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
+    "Funding Bot":     f"{INSTALL_DIR}/funding-bot/data/trade_history.json",
+    "Trend Bot":       f"{INSTALL_DIR}/trend-bot/data/trade_history.json",
 }
 
 
 # ─── TELEGRAM ────────────────────────────────────────────────────────────────
 
 def send_telegram(text: str):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[TELEGRAM] Skipped — no token configured")
-        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     # Split long messages (Telegram max 4096 chars)
     chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]

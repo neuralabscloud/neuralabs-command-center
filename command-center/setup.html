@@ -129,8 +129,7 @@ function init() {
     <div class="field"><label>Stripe Secret Key (revenue tracking)</label><input type="password" id="s-stripe" placeholder="sk_..." autocomplete="off"><div class="hint"><a href="https://dashboard.stripe.com/apikeys" target="_blank">Stripe Dashboard</a></div></div>
     <div class="field"><label>Inference.sh API Key (AI image generation)</label><input type="password" id="s-inference" placeholder="1nfsh-..." autocomplete="off"><div class="hint">Used by Designer for Nano Banana / Gemini images. <a href="https://inference.sh" target="_blank">Get key at inference.sh</a></div></div>
     <div class="field"><label>Composio API Key (calendar)</label><input type="password" id="s-composio" placeholder="Optional" autocomplete="off"><div class="hint"><a href="https://app.composio.dev" target="_blank">composio.dev</a></div></div>
-    <div class="field"><label>Apify API Token (social media)</label><input type="password" id="s-apify" placeholder="Optional" autocomplete="off"><div class="hint"><a href="https://console.apify.com/account/integrations" target="_blank">apify.com</a></div></div>
-    <div class="optional-tag">All fields are optional. Leave empty and fill in later via Settings.</div>
+    <div class="optional-tag">All fields are optional. Leave empty and fill in later via Settings. Social media accounts (Instagram, TikTok, X, YouTube) verbind je via Settings → Social Connections.</div>
     <div class="btns"><button class="btn secondary" onclick="prev()">Back</button><button class="btn primary" onclick="finish()">Finish</button><button class="btn secondary skip" onclick="finish()">Skip</button></div>
   </div>`;
 
@@ -194,7 +193,7 @@ async function finish() {
 
   const fields = {
     anthropic_key: 's-anthropic', telegram_token: 's-tg-token', telegram_chat_id: 's-tg-chatid',
-    heygen_key: 's-heygen', stripe_key: 's-stripe', inference_key: 's-inference', composio_key: 's-composio', apify_key: 's-apify',
+    heygen_key: 's-heygen', stripe_key: 's-stripe', inference_key: 's-inference', composio_key: 's-composio',
   };
   for (const [key, id] of Object.entries(fields)) {
     const val = document.getElementById(id)?.value?.trim();

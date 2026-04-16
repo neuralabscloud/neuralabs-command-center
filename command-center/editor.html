@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Video Editor</title>
+<title>NEURALABS — Video Editor</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -332,81 +332,65 @@ body::after {
           <div class="header-sub">Remotion-powered video creation</div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="mode-btn" id="mode-editor" onclick="switchMode('editor')">Manual Editor</button>
-          <button class="mode-btn" id="mode-tasks" onclick="switchMode('tasks')">Video Tasks</button>
-          <button class="mode-btn active" id="mode-aigen" onclick="switchMode('aigen')">AI Generate</button>
+          <button class="mode-btn active" id="mode-tasks" onclick="switchMode('tasks')">Video Projects</button>
+          <button class="mode-btn" id="mode-aigen" onclick="switchMode('aigen')">AI Generate</button>
         </div>
       </div>
 
-      <!-- EDITOR MODE -->
-      <div id="editor-root" style="flex: 1; display: none; flex-direction: column; min-height: 0;"></div>
+      <!-- LEGACY EDITOR MODE (unused, kept for React mount target) -->
+      <div id="editor-root" style="display:none;"></div>
 
-      <!-- TASKS MODE -->
-      <div id="tasks-panel" style="display:none; flex:1; flex-direction:column; gap:24px; overflow-y:auto; padding-bottom:20px;">
+      <!-- PROJECTS MODE -->
+      <div id="tasks-panel" style="display:flex; flex:1; flex-direction:column; gap:20px; overflow-y:auto; padding-bottom:20px; padding:20px 24px 20px;">
         <!-- New Task Form -->
+        <!-- NEW PROJECT -->
         <div style="background:linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border:1px solid var(--border); border-radius:14px; padding:20px;">
-          <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);margin-bottom:16px;">NEW VIDEO TASK</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
-            <div>
-              <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Template</div>
-              <select id="vt-template" style="width:100%;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font-body);outline:none;">
-                <option value="trading-recap">Trading Recap</option>
-                <option value="education">Education / Tutorial</option>
-                <option value="social-clip">Social Clip</option>
-                <option value="announcement">Announcement</option>
-                <option value="custom">Custom (describe below)</option>
-              </select>
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Format</div>
-              <select id="vt-ratio" style="width:100%;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font-body);outline:none;">
-                <option value="9:16">9:16 (TikTok/Reels)</option>
-                <option value="16:9">16:9 (YouTube)</option>
-                <option value="1:1">1:1 (Square)</option>
-              </select>
-            </div>
-            <div>
-              <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Brand</div>
-              <select id="vt-brand" style="width:100%;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font-body);outline:none;">
-                <option value="Default">Default</option>
-              </select>
-            </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;">
+            <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);">NEW REMOTION PROJECT</div>
+            <span id="vp-upload-status" style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);"></span>
           </div>
-          <div style="margin-bottom:12px;">
-            <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Description</div>
-            <textarea id="vt-desc" placeholder="Describe the video content: what text, what data, what style..." style="width:100%;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;font-family:var(--font-body);outline:none;resize:vertical;min-height:70px;"></textarea>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+            <input type="text" id="vp-name" placeholder="Project name (optional)" style="flex:1;min-width:200px;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px 12px;font-size:13px;font-family:var(--font-body);outline:none;">
+            <label style="padding:10px 18px;background:hsla(264 65% 49% / 0.08);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.2);border-radius:8px;cursor:pointer;font-family:var(--font-data);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s;">
+              Upload folder
+              <input type="file" id="vp-folder-input" style="display:none" webkitdirectory directory multiple onchange="uploadVideoProject(this.files, 'folder')">
+            </label>
+            <label style="padding:10px 18px;background:hsla(264 65% 49% / 0.08);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.2);border-radius:8px;cursor:pointer;font-family:var(--font-data);font-size:11px;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s;">
+              Upload .zip
+              <input type="file" id="vp-zip-input" style="display:none" accept=".zip" onchange="uploadVideoProject(this.files, 'zip')">
+            </label>
           </div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <button id="vt-submit" onclick="submitVideoTask()" style="padding:10px 24px;background:linear-gradient(135deg, var(--primary), hsl(270 65% 55%));border:none;border-radius:8px;color:white;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.2s;font-family:var(--font-body);">Submit Video Task</button>
-            <span id="vt-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data);line-height:1.5">
+            Upload a Remotion project (folder with <code style="color:var(--primary)">src/index.ts</code> or similar entry point). node_modules wordt automatisch gelinked. Je kunt dan live in de browser previewen, scrubben en bewerken via Remotion Studio, en naar MP4 renderen.
           </div>
         </div>
 
-        <!-- Media Library -->
-        <div style="background:linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border:1px solid var(--border); border-radius:14px; padding:20px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);">MEDIA LIBRARY</div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <span id="media-path" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">~/command-center/public/media/</span>
-              <label style="padding:6px 14px;background:hsla(264 65% 49% / 0.06);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.15);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s;">
-                Upload
-                <input type="file" id="media-upload" style="display:none" multiple accept="image/*,video/*,audio/*" onchange="uploadMedia(this.files)">
-              </label>
+        <!-- STUDIO PREVIEW -->
+        <div id="vp-studio-section" style="display:none;background:linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border:1px solid var(--border); border-radius:14px; padding:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;">
+            <div>
+              <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);">REMOTION STUDIO</div>
+              <div style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);margin-top:2px" id="vp-studio-subtitle">—</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button id="vp-studio-reload" onclick="reloadStudioIframe()" style="padding:6px 14px;background:hsla(264 65% 49% / 0.06);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.2);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;">↻ Reload</button>
+              <button id="vp-studio-stop" onclick="stopStudio()" style="padding:6px 14px;background:hsla(0 72% 51% / 0.08);color:var(--danger);border:1px solid hsla(0 72% 51% / 0.25);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;">✕ Stop</button>
             </div>
           </div>
-          <div id="media-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(120px, 1fr));gap:10px;"></div>
-          <div id="media-empty" style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px;">Drop files in <code style="color:var(--primary)">public/media/</code> or upload above</div>
+          <iframe id="vp-studio-iframe" src="about:blank" style="width:100%;height:calc(100vh - 160px);min-height:500px;border:1px solid var(--border);border-radius:10px;background:#000" allow="autoplay; fullscreen"></iframe>
         </div>
 
-        <!-- Task List -->
-        <div>
-          <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);margin-bottom:14px;">TASK QUEUE</div>
-          <div id="video-tasks-list"></div>
+        <!-- PROJECTS LIST -->
+        <div style="background:linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border:1px solid var(--border); border-radius:14px; padding:20px;">
+          <div style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:0.12em;color:var(--text);margin-bottom:14px;">PROJECTS</div>
+          <div id="vp-list" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px;">No projects yet — upload a Remotion folder or .zip above.</div>
+          </div>
         </div>
       </div>
 
       <!-- AI GENERATE MODE -->
-      <div id="aigen-panel" style="display:flex; flex:1; flex-direction:column; gap:24px; overflow-y:auto; padding:20px 24px 20px;">
+      <div id="aigen-panel" style="display:none; flex:1; flex-direction:column; gap:24px; overflow-y:auto; padding:20px 24px 20px;">
 
         <!-- Generate Form -->
         <div style="background:linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border:1px solid var(--border); border-radius:14px; padding:20px;">
@@ -541,170 +525,253 @@ body::after {
 
   <script>
     function switchMode(mode) {
-      const editor = document.getElementById('editor-root');
       const tasks = document.getElementById('tasks-panel');
       const aigen = document.getElementById('aigen-panel');
-      const btnEditor = document.getElementById('mode-editor');
       const btnTasks = document.getElementById('mode-tasks');
       const btnAigen = document.getElementById('mode-aigen');
-      editor.style.display = mode === 'editor' ? 'flex' : 'none';
       tasks.style.display = mode === 'tasks' ? 'flex' : 'none';
       aigen.style.display = mode === 'aigen' ? 'flex' : 'none';
-      btnEditor.classList.toggle('active', mode === 'editor');
       btnTasks.classList.toggle('active', mode === 'tasks');
       btnAigen.classList.toggle('active', mode === 'aigen');
-      if (mode === 'tasks') loadVideoTasks();
+      if (mode === 'tasks') loadVideoProjects();
       if (mode === 'aigen') loadAIVideos();
     }
 
-    async function loadVideoTasks() {
+    // ── REMOTION VIDEO PROJECTS ──
+    async function loadVideoProjects() {
       try {
-        const res = await fetch('/video/tasks');
-        const tasks = await res.json();
-        const el = document.getElementById('video-tasks-list');
-        if (!tasks.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No video tasks yet</div>'; return; }
-        const tplLabels = { 'trading-recap': 'Trading Recap', 'education': 'Education', 'social-clip': 'Social Clip', 'announcement': 'Announcement', 'custom': 'Custom' };
-        el.innerHTML = tasks.map(t => {
-          const time = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
-          return `<div class="vt-card">
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <span style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-transform:uppercase;letter-spacing:0.06em;">${tplLabels[t.template] || t.template}</span>
-                <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${t.aspect_ratio} &middot; ${t.brand}</span>
+        const res = await fetch('/video-projects');
+        const data = await res.json();
+        const list = document.getElementById('vp-list');
+        const projects = data.projects || [];
+        const studio = data.studio;
+
+        // Sync Studio section with active project
+        const studioSection = document.getElementById('vp-studio-section');
+        if (studio) {
+          studioSection.style.display = 'block';
+          const proj = projects.find(p => p.id === studio.projectId);
+          document.getElementById('vp-studio-subtitle').textContent = (proj ? proj.name : studio.projectId) + ' — ' + studio.url;
+          const iframe = document.getElementById('vp-studio-iframe');
+          if (iframe.src === 'about:blank' || !iframe.src.startsWith(studio.url)) {
+            iframe.src = studio.url + '?project=' + studio.projectId;
+          }
+        } else {
+          studioSection.style.display = 'none';
+          document.getElementById('vp-studio-iframe').src = 'about:blank';
+        }
+
+        if (!projects.length) {
+          list.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:20px;">No projects yet — upload a Remotion folder or .zip above.</div>';
+          return;
+        }
+
+        list.innerHTML = projects.map(p => {
+          const time = new Date(p.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+          const isActive = studio && studio.projectId === p.id;
+          const lastRender = (p.renders || [])[0];
+          const statusBadge = p.status === 'missing-entry'
+            ? '<span style="font-family:var(--font-data);font-size:9px;color:var(--danger);background:hsla(0 72% 51% / 0.08);padding:2px 8px;border-radius:4px;border:1px solid hsla(0 72% 51% / 0.2);text-transform:uppercase;letter-spacing:0.06em">No entry</span>'
+            : `<span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);">Entry: <code style="color:var(--primary)">${p.entry}</code></span>`;
+          return `<div style="background:linear-gradient(180deg, hsla(0 0% 7% / 1) 0%, hsla(0 0% 4% / 1) 100%);border:1px solid ${isActive ? 'hsla(264 65% 49% / 0.4)' : 'var(--border)'};border-radius:12px;padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:220px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+                <span style="font-size:14px;color:var(--text);font-weight:600;">${escapeHtml(p.name)}</span>
+                ${isActive ? '<span style="font-family:var(--font-data);font-size:9px;color:var(--success);background:hsla(142 76% 36% / 0.1);padding:2px 8px;border-radius:4px;border:1px solid hsla(142 76% 36% / 0.25);text-transform:uppercase;letter-spacing:0.06em">Live in Studio</span>' : ''}
               </div>
-              <div style="font-size:13px;color:var(--text);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.description}</div>
-              ${t.error ? '<div style="font-size:10px;color:var(--danger);margin-top:4px;font-family:var(--font-data);">' + t.error + '</div>' : ''}
-              ${t.result_url ? '<a href="' + t.result_url + '" target="_blank" style="font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;margin-top:4px;display:inline-block;">Download video</a>' : ''}
+              <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                ${statusBadge}
+                <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
+              </div>
+              ${lastRender ? `<div style="margin-top:6px;font-family:var(--font-data);font-size:10px;">Last render: <span style="color:${lastRender.status==='completed'?'var(--success)':lastRender.status==='failed'?'var(--danger)':'var(--warning)'}">${lastRender.status}</span>${lastRender.path ? ` · <a href="${lastRender.path}" target="_blank" style="color:var(--primary);text-decoration:none">Download MP4</a>` : ''}${lastRender.error ? ` · <span style="color:var(--danger)">${escapeHtml(lastRender.error.slice(0,80))}</span>` : ''}</div>` : ''}
             </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-              <span class="vt-badge ${t.status}">${t.status}</span>
-              <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${p.entry ? `<button onclick="openInStudio('${p.id}')" style="padding:7px 14px;background:hsla(264 65% 49% / 0.08);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.2);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s;">${isActive ? 'Reopen' : 'Open Studio'}</button>` : ''}
+              ${p.entry ? `<button onclick="renderProject('${p.id}')" style="padding:7px 14px;background:hsla(142 76% 36% / 0.08);color:var(--success);border:1px solid hsla(142 76% 36% / 0.25);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;">Render MP4</button>` : ''}
+              <button onclick="retranscodeProject('${p.id}')" title="Re-transcode .mov/.mkv/.webm videos to browser-playable H.264" style="padding:7px 10px;background:none;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:10px;">↻ Video</button>
+              <button onclick="deleteProject('${p.id}','${escapeHtml(p.name)}')" style="padding:7px 10px;background:none;color:var(--text-muted);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font-data);font-size:12px;">✕</button>
             </div>
-            <button onclick="deleteVideoTask('${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
           </div>`;
         }).join('');
       } catch(e) {
-        document.getElementById('video-tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>';
+        console.error('Failed to load projects', e);
       }
     }
 
-    async function submitVideoTask() {
-      const desc = document.getElementById('vt-desc').value.trim();
-      if (!desc) { document.getElementById('vt-status').textContent = 'Enter a description'; return; }
-      const btn = document.getElementById('vt-submit');
-      btn.disabled = true;
-      document.getElementById('vt-status').textContent = 'Submitting...';
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+    async function uploadVideoProject(files, kind) {
+      if (!files || !files.length) return;
+      const statusEl = document.getElementById('vp-upload-status');
+      statusEl.style.color = 'var(--primary)';
+      statusEl.textContent = `Uploading ${files.length} file(s)...`;
+      const fd = new FormData();
+      const name = document.getElementById('vp-name').value.trim();
+      if (name) fd.append('name', name);
+      for (const f of files) {
+        fd.append('files', f);
+        // webkitRelativePath is set for folder uploads
+        fd.append('paths', f.webkitRelativePath || f.name);
+      }
       try {
-        await fetch('/video/tasks', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: document.getElementById('vt-template').value,
-            aspect_ratio: document.getElementById('vt-ratio').value,
-            brand: document.getElementById('vt-brand').value,
-            description: desc,
-          }),
+        const res = await fetch('/video-projects', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || ('HTTP ' + res.status));
+        }
+        const meta = await res.json();
+        statusEl.style.color = 'var(--success)';
+        statusEl.textContent = `Project "${meta.name}" created${meta.entry ? ' (entry: ' + meta.entry + ')' : ' — no entry point detected'}. Transcoding video assets in background...`;
+        document.getElementById('vp-name').value = '';
+        document.getElementById('vp-folder-input').value = '';
+        document.getElementById('vp-zip-input').value = '';
+        await loadVideoProjects();
+        if (meta.transcode_status === 'running') {
+          pollTranscodeStatus(meta.id);
+        } else {
+          setTimeout(() => { statusEl.textContent = ''; }, 5000);
+        }
+      } catch(e) {
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = 'Upload failed: ' + e.message;
+      }
+    }
+
+    async function openInStudio(id) {
+      const statusEl = document.getElementById('vp-upload-status');
+      statusEl.style.color = 'var(--primary)';
+      statusEl.textContent = 'Starting Remotion Studio...';
+      try {
+        const res = await fetch('/video-projects/' + id + '/studio', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'HTTP ' + res.status);
+        }
+        statusEl.textContent = 'Studio starting — iframe will load in a few seconds...';
+        // Give Studio subprocess a moment to bind port
+        setTimeout(async () => {
+          await loadVideoProjects();
+          statusEl.textContent = '';
+        }, 3000);
+      } catch(e) {
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = 'Failed: ' + e.message;
+      }
+    }
+
+    async function stopStudio() {
+      await fetch('/video-projects/studio/stop', { method: 'POST' });
+      await loadVideoProjects();
+    }
+
+    function reloadStudioIframe() {
+      const iframe = document.getElementById('vp-studio-iframe');
+      const src = iframe.src;
+      iframe.src = 'about:blank';
+      setTimeout(() => { iframe.src = src; }, 100);
+    }
+
+    async function renderProject(id) {
+      const statusEl = document.getElementById('vp-upload-status');
+      statusEl.style.color = 'var(--primary)';
+      statusEl.textContent = 'Rendering... (this may take a while)';
+      try {
+        const res = await fetch('/video-projects/' + id + '/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
         });
-        document.getElementById('vt-desc').value = '';
-        document.getElementById('vt-status').textContent = 'Task submitted!';
-        loadVideoTasks();
-        setTimeout(() => { document.getElementById('vt-status').textContent = ''; }, 3000);
-      } catch(e) { document.getElementById('vt-status').textContent = 'Error: ' + e.message; }
-      finally { btn.disabled = false; }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        statusEl.textContent = 'Render queued — polling for result...';
+        // Poll until render completes
+        const pollStart = Date.now();
+        const poll = async () => {
+          if (Date.now() - pollStart > 15 * 60 * 1000) { statusEl.textContent = 'Render timed out (15min)'; return; }
+          await loadVideoProjects();
+          const res2 = await fetch('/video-projects/' + id);
+          if (res2.ok) {
+            const m = await res2.json();
+            const last = (m.renders || [])[0];
+            if (last && last.status === 'completed') { statusEl.style.color = 'var(--success)'; statusEl.textContent = 'Render complete! Download link below.'; return; }
+            if (last && last.status === 'failed') { statusEl.style.color = 'var(--danger)'; statusEl.textContent = 'Render failed: ' + (last.error || '?'); return; }
+          }
+          setTimeout(poll, 3000);
+        };
+        setTimeout(poll, 2000);
+      } catch(e) {
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = 'Render error: ' + e.message;
+      }
     }
 
-    async function deleteVideoTask(id) {
-      await fetch('/video/tasks/' + id, { method: 'DELETE' });
-      loadVideoTasks();
+    async function deleteProject(id, name) {
+      if (!confirm(`Delete project "${name}" including all files, bundles and renders?`)) return;
+      await fetch('/video-projects/' + id, { method: 'DELETE' });
+      await loadVideoProjects();
     }
 
-    // ── MEDIA LIBRARY ──────────────────────
-    let selectedMedia = new Set();
-
-    async function loadMedia() {
+    async function retranscodeProject(id) {
+      const statusEl = document.getElementById('vp-upload-status');
+      statusEl.style.color = 'var(--primary)';
+      statusEl.textContent = 'Queueing transcode...';
       try {
-        const res = await fetch('/media/list');
-        const files = await res.json();
-        const grid = document.getElementById('media-grid');
-        const empty = document.getElementById('media-empty');
-        if (!files.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
-        empty.style.display = 'none';
-
-        grid.innerHTML = files.map(f => {
-          const isSelected = selectedMedia.has(f.name);
-          const preview = f.type === 'image'
-            ? `<img src="${f.path}" alt="${f.name}" />`
-            : f.type === 'video'
-              ? `<video src="${f.path}" muted></video>`
-              : `<div style="display:flex;align-items:center;justify-content:center;height:100%;background:var(--bg-surface);color:var(--text-dim);font-size:20px;">${f.type === 'audio' ? '♪' : '?'}</div>`;
-          return `<div class="media-item ${isSelected ? 'selected' : ''}" onclick="toggleMedia('${f.name}')" title="${f.name} (${(f.size/1024).toFixed(0)}KB)">
-            ${preview}
-            <span class="media-item-check">&#10003;</span>
-            <span class="media-item-type">${f.type}</span>
-            <button class="media-item-delete" onclick="event.stopPropagation();deleteMedia('${f.name}')" title="Delete">&#x2715;</button>
-            <div class="media-item-label">${f.name}</div>
-          </div>`;
-        }).join('');
-      } catch { document.getElementById('media-empty').style.display = 'block'; }
+        const res = await fetch('/video-projects/' + id + '/transcode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: true }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        statusEl.textContent = 'Transcoding in background (this can take a few minutes for long videos)...';
+        pollTranscodeStatus(id);
+      } catch(e) {
+        statusEl.style.color = 'var(--danger)';
+        statusEl.textContent = 'Transcode error: ' + e.message;
+      }
     }
 
-    function toggleMedia(name) {
-      if (selectedMedia.has(name)) selectedMedia.delete(name);
-      else selectedMedia.add(name);
-      loadMedia();
-    }
-
-    async function uploadMedia(files) {
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
+    async function pollTranscodeStatus(id) {
+      const statusEl = document.getElementById('vp-upload-status');
+      const startedAt = Date.now();
+      const tick = async () => {
+        if (Date.now() - startedAt > 30 * 60 * 1000) { statusEl.textContent = 'Transcode timed out (30min)'; return; }
         try {
-          await fetch('/media/upload', { method: 'POST', body: formData });
-        } catch(e) { console.error('Upload failed:', e); }
-      }
-      loadMedia();
+          const res = await fetch('/video-projects/' + id);
+          if (res.ok) {
+            const m = await res.json();
+            if (m.transcode_status === 'done') {
+              const n = (m.transcoded || []).length;
+              const f = (m.transcode_failures || []).length;
+              statusEl.style.color = f ? 'var(--warning)' : 'var(--success)';
+              statusEl.textContent = `Transcoded ${n} file(s)` + (f ? `, ${f} failed` : '') + '. Reload Studio to see changes.';
+              loadVideoProjects();
+              setTimeout(() => { statusEl.textContent = ''; }, 8000);
+              return;
+            }
+            if (m.transcode_status === 'failed') {
+              statusEl.style.color = 'var(--danger)';
+              statusEl.textContent = 'Transcode failed: ' + (m.transcode_error || 'unknown');
+              return;
+            }
+          }
+        } catch {}
+        setTimeout(tick, 3000);
+      };
+      setTimeout(tick, 2000);
     }
 
-    async function deleteMedia(name) {
-      await fetch('/media/' + name, { method: 'DELETE' });
-      selectedMedia.delete(name);
-      loadMedia();
-    }
-
-    // Override submitVideoTask to include selected media
-    const _origSubmitVideoTask = submitVideoTask;
-    submitVideoTask = async function() {
-      const desc = document.getElementById('vt-desc').value.trim();
-      if (!desc) { document.getElementById('vt-status').textContent = 'Enter a description'; return; }
-      const btn = document.getElementById('vt-submit');
-      btn.disabled = true;
-      document.getElementById('vt-status').textContent = 'Submitting...';
-      try {
-        await fetch('/video/tasks', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template: document.getElementById('vt-template').value,
-            aspect_ratio: document.getElementById('vt-ratio').value,
-            brand: document.getElementById('vt-brand').value,
-            description: desc,
-            media_files: [...selectedMedia],
-          }),
-        });
-        document.getElementById('vt-desc').value = '';
-        selectedMedia.clear();
-        document.getElementById('vt-status').textContent = 'Task submitted!';
-        loadVideoTasks();
-        loadMedia();
-        setTimeout(() => { document.getElementById('vt-status').textContent = ''; }, 3000);
-      } catch(e) { document.getElementById('vt-status').textContent = 'Error: ' + e.message; }
-      finally { btn.disabled = false; }
-    };
-
-    // Load media when switching to tasks mode
-    const _origSwitchMode = switchMode;
-    switchMode = function(mode) {
-      _origSwitchMode(mode);
-      if (mode === 'tasks') loadMedia();
-    };
+    // Drag-and-drop folder/zip on the new-project card
+    (function initProjectDropzone() {
+      const container = document.querySelector('#tasks-panel');
+      if (!container) return;
+      ['dragover','dragenter'].forEach(ev => container.addEventListener(ev, e => { e.preventDefault(); }));
+      container.addEventListener('drop', e => {
+        // Only handle drops outside the studio iframe
+        if (e.target && (e.target.id === 'vp-studio-iframe' || e.target.closest && e.target.closest('#vp-studio-iframe'))) return;
+        e.preventDefault();
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length) uploadVideoProject(files, 'zip');
+      });
+    })();
 
     // ── AI VIDEO GENERATION ───────────────────
     let aiRefFile = null;
@@ -744,6 +811,8 @@ body::after {
         formData.append('aspect_ratio', document.getElementById('ai-ratio').value);
         formData.append('duration', document.getElementById('ai-duration').value);
         formData.append('prompt', prompt);
+        const vtBrand = document.getElementById('vt-brand');
+        if (vtBrand && vtBrand.value) formData.append('brand', vtBrand.value);
         if (aiRefFile) formData.append('ref_image', aiRefFile);
 
         const res = await fetch('/video/ai-generate', { method: 'POST', body: formData });
@@ -800,12 +869,32 @@ body::after {
     setInterval(() => {
       if (document.getElementById('aigen-panel').style.display !== 'none') loadAIVideos();
     }, 15000);
-  </script>
 
-  <script type="module" src="/src/editor/main.tsx"></script>
+    // Populate brand dropdown from /brands
+    async function loadBrandOptions() {
+      try {
+        const res = await fetch('/brands');
+        if (!res.ok) return;
+        const data = await res.json();
+        const names = Object.keys(data).sort();
+        const sel = document.getElementById('vt-brand');
+        if (!sel) return;
+        const current = sel.value;
+        sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+        if (current && names.includes(current)) sel.value = current;
+      } catch {}
+    }
+    loadBrandOptions();
+
+    // Init: load projects on page load
+    loadVideoProjects();
+    // Poll project list every 5s while on projects tab (picks up studio status changes)
+    setInterval(() => {
+      if (document.getElementById('tasks-panel').style.display !== 'none') loadVideoProjects();
+    }, 5000);
+  </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

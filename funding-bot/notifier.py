@@ -23,7 +23,7 @@ class TelegramNotifier:
             logger.error(f"Telegram kon bericht niet sturen: {e}")
 
     def notify_startup(self, assets, testnet):
-        self.send(f"<b>Bot Gestart</b>\nNetwerk: {'TESTNET' if testnet else 'MAINNET'}\nAssets: {', '.join(assets)}")
+        self.send(f"<b>NeuraLabs Bot Gestart</b>\nNetwerk: {'TESTNET' if testnet else 'MAINNET'}\nAssets: {', '.join(assets)}")
 
     def notify_position_open(self, asset, direction, size, entry_price, funding_rate):
         pass  # alleen dagrapport

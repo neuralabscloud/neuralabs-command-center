@@ -14,9 +14,8 @@ Gebruikt data uit de centrale Jarvis hub om slechte signalen te filteren:
 import sys
 import time
 import logging
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-hub"))
+sys.path.insert(0, "/root/neuralabs-data")
 from client import HLDataClient
 
 from config import BASE_URL

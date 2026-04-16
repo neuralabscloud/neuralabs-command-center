@@ -21,12 +21,11 @@ from risk_manager import RiskManager
 from notifier import TelegramNotifier
 from logger_setup import setup_logger
 
-logger = setup_logger(name="FundingBot", log_file="logs/funding_bot.log")
+logger = setup_logger(name="FundingBot", log_file="logs/neuralabs_funding_bot.log")
 BASE_URL = constants.TESTNET_API_URL if TESTNET else constants.MAINNET_API_URL
 
 # ── Data client (centraal via Redis, fallback naar directe API) ──
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-hub"))
+sys.path.insert(0, "/root/neuralabs-data")
 from client import HLDataClient
 _data_client = HLDataClient(wallet_address=WALLET_ADDRESS, base_url=BASE_URL)
 
@@ -64,7 +63,7 @@ class Position:
 class FundingArbitrageBot:
     def __init__(self):
         logger.info("=" * 55)
-        logger.info("  Funding Rate Arbitrage Bot")
+        logger.info("  NeuraLabs - Funding Rate Arbitrage Bot")
         logger.info("  Delta-Neutraal: SHORT Perp + LONG Spot")
         logger.info("  Modus: Dynamische asset discovery")
         logger.info("=" * 55)
@@ -121,9 +120,29 @@ class FundingArbitrageBot:
                     if base_name not in found:
                         found[base_name] = spot_id
 
-            self.spot_pair_map = found
-            logger.info(f"Discovery: {len(found)} perp<->spot paren gevonden")
-            for name, sid in sorted(found.items()):
+            # Sanity check: perp en spot prijs moeten binnen 5% van elkaar liggen.
+            # Vangt naamcollisies (bv. UWLD spot @ $1.75 vs WLD perp @ $0.32).
+            try:
+                mids = info_post({"type": "allMids"})
+            except Exception as e:
+                logger.warning(f"Sanity-check mids ophalen mislukt: {e}")
+                mids = {}
+            filtered = {}
+            for asset, spot_id in found.items():
+                perp_px = float(mids.get(asset, 0) or 0)
+                spot_px = float(mids.get(spot_id, 0) or 0)
+                if perp_px <= 0 or spot_px <= 0:
+                    logger.warning(f"  Skip mapping {asset} -> {spot_id}: prijs niet beschikbaar (perp={perp_px}, spot={spot_px})")
+                    continue
+                diff_pct = abs(perp_px - spot_px) / perp_px * 100
+                if diff_pct > 5.0:
+                    logger.warning(f"  Skip mapping {asset} -> {spot_id}: prijs-divergentie {diff_pct:.1f}% (perp=${perp_px:.4f}, spot=${spot_px:.4f})")
+                    continue
+                filtered[asset] = spot_id
+
+            self.spot_pair_map = filtered
+            logger.info(f"Discovery: {len(filtered)} perp<->spot paren gevonden (na sanity check)")
+            for name, sid in sorted(filtered.items()):
                 logger.info(f"  {name:>8} -> {sid}")
 
         except Exception as e:
@@ -212,6 +231,18 @@ class FundingArbitrageBot:
     # ------------------------------------------------------------------
     # Positie openen — bidirectioneel
     # ------------------------------------------------------------------
+
+    def _fill_sz(self, result):
+        """Haal totale gefilled grootte uit een order response."""
+        try:
+            statuses = result.get("response", {}).get("data", {}).get("statuses", [])
+            total = 0.0
+            for s in statuses:
+                if "filled" in s:
+                    total += float(s["filled"].get("totalSz", 0))
+            return total
+        except Exception:
+            return 0.0
 
     def _cancel_open_orders(self, asset):
         """Annuleer alle openstaande orders voor een asset voordat we een nieuwe positie openen."""
@@ -306,7 +337,22 @@ class FundingArbitrageBot:
                 logger.error(f"Spot buy mislukt: {result} — perp wordt teruggedraaid")
                 self._close_perp(asset)
                 return False
-            logger.info(f"Spot buy OK: {spot_pair} {spot_size}")
+            # Verifieer fill: illiquide spots kunnen "ok" terugkeren zonder te vullen.
+            filled_sz = self._fill_sz(result)
+            min_required = spot_size * 0.95
+            if filled_sz < min_required:
+                logger.error(
+                    f"Spot fill te klein voor {asset}: {filled_sz} < {min_required:.6f} (gevraagd {spot_size}) "
+                    f"— partial spot verkopen en perp terugdraaien"
+                )
+                if filled_sz > 0:
+                    try:
+                        self.exchange.market_open(spot_pair, is_buy=False, sz=filled_sz, slippage=0.01)
+                    except Exception as e:
+                        logger.error(f"Partial spot verkoop mislukt: {e} — handmatig controleren")
+                self._close_perp(asset)
+                return False
+            logger.info(f"Spot buy OK: {spot_pair} filled={filled_sz} (gevraagd {spot_size})")
         except Exception as e:
             logger.error(f"Spot buy exceptie voor {asset}: {e} — perp wordt teruggedraaid")
             self._close_perp(asset)
@@ -459,6 +505,26 @@ class FundingArbitrageBot:
                 continue
 
     # ------------------------------------------------------------------
+    # NeuraIntel regime check
+    # ------------------------------------------------------------------
+
+    def _get_regime_multiplier(self, bot_key: str) -> float:
+        """Get size multiplier from NeuraIntel. Fail open = 1.0"""
+        try:
+            directives = _data_client.get_directives()
+            if not directives:
+                return 1.0
+            bot_directive = directives.get("bots", {}).get(bot_key, {})
+            if not bot_directive.get("active", True):
+                logger.info("[NeuraIntel] Bot paused by regime: %s",
+                            directives.get("regime", "unknown"))
+                return 0.0
+            return float(bot_directive.get("size_multiplier", 1.0))
+        except Exception as e:
+            logger.warning("[NeuraIntel] get_directives failed, running normally: %s", e)
+            return 1.0
+
+    # ------------------------------------------------------------------
     # Scan voor nieuwe kansen — bidirectioneel
     # ------------------------------------------------------------------
 
@@ -498,13 +564,24 @@ class FundingArbitrageBot:
             hot_coins.append((asset, rate, oi))
 
         if hot_coins:
+            # NeuraIntel regime check
+            multiplier = self._get_regime_multiplier("funding_bot")
+            if multiplier == 0.0:
+                return  # paused by regime
+
             logger.info(f"Hot coins gevonden: {len(hot_coins)}")
-            for asset, rate, oi in hot_coins:
-                logger.info(
-                    f"  Opportuniteit: {asset} | Funding: {rate:+.2f}% ann. | "
-                    f"OI: ${oi:,.0f} -> SHORT perp + LONG spot"
-                )
-                self.open_position(asset, rate)
+            import config as _cfg
+            original_pct = _cfg.POSITION_SIZE_PCT
+            _cfg.POSITION_SIZE_PCT = original_pct * multiplier
+            try:
+                for asset, rate, oi in hot_coins:
+                    logger.info(
+                        f"  Opportuniteit: {asset} | Funding: {rate:+.2f}% ann. | "
+                        f"OI: ${oi:,.0f} -> SHORT perp + LONG spot"
+                    )
+                    self.open_position(asset, rate)
+            finally:
+                _cfg.POSITION_SIZE_PCT = original_pct
 
     # ------------------------------------------------------------------
     # Status afdrukken

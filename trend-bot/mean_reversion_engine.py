@@ -5,8 +5,7 @@ Signalen op 15m candles:
   LONG:  Prijs <= lower BB + RSI < 30 + ADX < 25
   SHORT: Prijs >= upper BB + RSI > 70 + ADX < 25
 
-Complementair aan Bot 3 (liquidation): handelt alleen in range-bound markten
-waar Bot 3 stil zit.
+Handelt alleen in range-bound markten (ADX < 25).
 """
 
 import time
@@ -27,8 +26,7 @@ logger = logging.getLogger("MeanRevBot")
 
 # Data client (centraal via Redis, fallback naar directe API)
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-hub"))
+sys.path.insert(0, "/root/neuralabs-data")
 from client import HLDataClient as _HLDataClient
 _data_client = _HLDataClient(wallet_address=WALLET_ADDRESS, base_url=BASE_URL)
 
@@ -267,7 +265,7 @@ class MeanReversionEngine:
             last_log = self._last_block_log.get(block_key, 0)
             if time.time() - last_log > 300:
                 logger.info(
-                    "%s: MR signaal geblokkeerd — ADX %.1f >= %d (trending, bot 3 territorium)",
+                    "%s: MR signaal geblokkeerd — ADX %.1f >= %d (trending markt)",
                     asset, ind["adx"], ADX_MAX,
                 )
                 self._last_block_log[block_key] = time.time()

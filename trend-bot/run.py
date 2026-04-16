@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Trend Bot — Mean-Reversion Bot - Entry Point
+NeuraLabs Bot 5 — Mean-Reversion Bot - Entry Point
 
 Gebruik:
     python run.py           Start de bot
@@ -16,9 +16,6 @@ import argparse
 import time
 import json
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -215,7 +212,7 @@ def main():
     global logger
 
     parser = argparse.ArgumentParser(
-        description="Trend Bot — Mean-Reversion Bot"
+        description="NeuraLabs Bot 5 — Mean-Reversion Bot"
     )
     parser.add_argument("--check", action="store_true", help="Test verbinding en toon indicators")
     parser.add_argument("--status", action="store_true", help="Toon posities en statistieken")

@@ -42,7 +42,7 @@ class LiquidationEvent:
 
 
 class HLDataClient:
-    """Client voor de Central data hub. Thread-safe."""
+    """Client voor de NeuraLabs data hub. Thread-safe."""
 
     def __init__(self, wallet_address: str, base_url: str = "https://api.hyperliquid.xyz"):
         self._wallet = wallet_address
@@ -407,6 +407,36 @@ class HLDataClient:
         for channel, t in self._subscribers.items():
             t.join(timeout=3)
         self._subscribers.clear()
+
+    # ── Regime data (NeuraIntel) ─────────────────────────
+
+    def set_regime(self, regime_dict: dict):
+        """Schrijf huidige regime naar Redis (msgpack-encoded)."""
+        if not self._check_redis():
+            log.warning("Redis niet beschikbaar, kan regime niet schrijven")
+            return
+        try:
+            self._rdb.set("hl:regime:current", msgpack.packb(regime_dict, use_bin_type=True))
+        except redis.RedisError as e:
+            log.error(f"Regime schrijven mislukt: {e}")
+
+    def set_directives(self, directives_dict: dict):
+        """Schrijf regime directives naar Redis (msgpack-encoded)."""
+        if not self._check_redis():
+            log.warning("Redis niet beschikbaar, kan directives niet schrijven")
+            return
+        try:
+            self._rdb.set("hl:regime:directives", msgpack.packb(directives_dict, use_bin_type=True))
+        except redis.RedisError as e:
+            log.error(f"Directives schrijven mislukt: {e}")
+
+    def get_regime(self) -> Optional[dict]:
+        """Lees huidige regime uit Redis."""
+        return self._get_from_redis("hl:regime:current")
+
+    def get_directives(self) -> Optional[dict]:
+        """Lees regime directives uit Redis."""
+        return self._get_from_redis("hl:regime:directives")
 
     # ── Generic info_post vervanging ───────────────────
 

@@ -1,22 +1,38 @@
 {
   "name": "command-center",
   "version": "1.0.0",
-  "main": "api-server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node api-server.js"
+    "dev": "vite --host 0.0.0.0 --port 3003",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "NeuraLabs Command Center API Server",
+  "description": "",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@remotion/bundler": "^4.0.448",
+    "@remotion/cli": "^4.0.448",
+    "@remotion/google-fonts": "^4.0.448",
+    "@remotion/media": "^4.0.448",
+    "@remotion/player": "^4.0.448",
+    "@remotion/renderer": "^4.0.448",
+    "@remotion/transitions": "^4.0.448",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "composio-core": "^0.5.39",
     "cookie-parser": "^1.4.7",
-    "dotenv": "^16.5.0",
     "express": "^5.2.1",
     "multer": "^2.1.1",
     "playwright": "^1.58.2",
-    "stripe": "^20.4.1"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remotion": "^4.0.448",
+    "stripe": "^20.4.1",
+    "typescript": "^6.0.2",
+    "unzipper": "^0.12.3",
+    "vite": "^8.0.2"
   }
 }

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEURALABS — Ads Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%); --success-dim: hsla(142 76% 36% / 0.4);
+  --danger: hsl(0 72% 51%); --danger-dim: hsla(0 72% 51% / 0.4);
+  --warning: hsl(45 93% 55%); --warning-dim: hsla(45 93% 55% / 0.4); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.02) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background-image: linear-gradient(var(--text-muted) 1px, transparent 1px), linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+  background-size: 60px 60px; opacity: 0.04; pointer-events: none;
+}
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar {
+  width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+}
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  position: relative; border: 1px solid transparent; text-decoration: none;
+}
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.06); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.06); }
+.nav-item .tooltip {
+  position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text);
+  white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; }
+.header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.section-header {
+  font-family: var(--font-display); font-size: 11px; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+@keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.summary-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; transition: all 0.25s;
+}
+.summary-card:hover { border-color: var(--border-glow); box-shadow: 0 0 24px hsla(264 65% 49% / 0.03); }
+.summary-label { font-family: var(--font-data); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.summary-value { font-family: var(--font-data); font-size: 24px; font-weight: 600; }
+.summary-change { font-family: var(--font-data); font-size: 11px; margin-top: 4px; }
+
+.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th { font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 12px 14px; border-bottom: 1px solid hsla(217 32% 20% / 0.12); font-size: 13px; vertical-align: middle; }
+.data-table tr { transition: background 0.2s; }
+.data-table tr:hover { background: hsla(264 65% 49% / 0.015); }
+.num { font-family: var(--font-data); }
+
+.status-pill { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-family: var(--font-data); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.status-active { background: hsla(142 76% 36% / 0.12); color: var(--success); border: 1px solid hsla(142 76% 36% / 0.3); }
+.status-paused { background: hsla(45 93% 55% / 0.1); color: var(--warning); border: 1px solid hsla(45 93% 55% / 0.3); }
+.status-inactive { background: hsla(217 32% 30% / 0.15); color: var(--text-dim); border: 1px solid var(--border); }
+
+.controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.select, .btn {
+  font-family: var(--font-data); font-size: 11px; padding: 7px 12px; border-radius: 6px;
+  background: var(--bg-card); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+  transition: all 0.2s;
+}
+.select:hover, .btn:hover { border-color: var(--border-glow); }
+.btn-primary { background: hsla(264 65% 49% / 0.06); color: var(--primary); border-color: hsla(264 65% 49% / 0.2); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+.btn-primary:hover { background: hsla(264 65% 49% / 0.12); }
+
+.empty-state {
+  background: var(--bg-card); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 40px 28px; text-align: center; color: var(--text-dim);
+}
+.empty-state h3 { font-family: var(--font-display); font-size: 14px; color: var(--text); margin-bottom: 8px; letter-spacing: 0.06em; }
+.empty-state a { color: var(--primary); text-decoration: none; }
+.empty-state a:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: 100%; min-height: auto; height: auto; flex-direction: row; border-right: none; border-top: 1px solid var(--border); padding: 6px 0 env(safe-area-inset-bottom, 4px); overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; z-index: 120; background: var(--bg-sidebar); scrollbar-width: none; transform: none; }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 36px; height: 36px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .sidebar > .nav-item:last-child { display: none; }
+  .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .table-wrap { overflow-x: auto; }
+  table { min-width: 700px; }
+}
+@media (max-width: 480px) {
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+  <main class="main">
+    <div class="header fade-up delay-1">
+      <div>
+        <div class="header-title">ADS MANAGER</div>
+        <div class="header-sub">Meta (Facebook / Instagram) campaigns &amp; performance</div>
+      </div>
+      <div class="controls">
+        <select id="account-select" class="select"></select>
+        <select id="range-select" class="select">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="last_7d" selected>Last 7 days</option>
+          <option value="last_14d">Last 14 days</option>
+          <option value="last_30d">Last 30 days</option>
+          <option value="this_month">This month</option>
+          <option value="last_month">Last month</option>
+        </select>
+        <button id="refresh-btn" class="btn btn-primary" onclick="loadData()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <section class="fade-up delay-2">
+      <div class="summary-grid" id="summary-grid"></div>
+    </section>
+
+    <section class="fade-up delay-3">
+      <div class="section-header">Campaigns</div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Campaign</th>
+            <th>Status</th>
+            <th>Objective</th>
+            <th style="text-align:right">Spend</th>
+            <th style="text-align:right">Impressions</th>
+            <th style="text-align:right">Clicks</th>
+            <th style="text-align:right">CTR</th>
+            <th style="text-align:right">CPC</th>
+            <th style="text-align:right">ROAS</th>
+          </tr></thead>
+          <tbody id="campaigns-tbody">
+            <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const STATUS_CLASS = { ACTIVE: 'status-active', PAUSED: 'status-paused', DELETED: 'status-inactive', ARCHIVED: 'status-inactive' };
+
+function fmtNum(n) {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+function fmtMoney(n, currency) {
+  n = Number(n) || 0;
+  const sym = { EUR: '€', USD: '$', GBP: '£' }[currency] || (currency ? currency + ' ' : '');
+  return sym + n.toFixed(2);
+}
+function fmtPct(n) { return (Number(n) || 0).toFixed(2) + '%'; }
+
+function extractAction(actions, type) {
+  if (!Array.isArray(actions)) return 0;
+  const a = actions.find(x => x.action_type === type);
+  return a ? Number(a.value) || 0 : 0;
+}
+function extractRoas(row) {
+  if (Array.isArray(row.purchase_roas) && row.purchase_roas[0]) return Number(row.purchase_roas[0].value) || 0;
+  if (Array.isArray(row.website_purchase_roas) && row.website_purchase_roas[0]) return Number(row.website_purchase_roas[0].value) || 0;
+  return 0;
+}
+
+async function loadAccounts() {
+  const res = await fetch('/ads/accounts', { credentials: 'include' });
+  const { accounts } = await res.json();
+  const sel = document.getElementById('account-select');
+  if (!accounts?.length) {
+    renderEmpty();
+    return null;
+  }
+  sel.innerHTML = accounts.map(a => `<option value="${a.account_id}" data-currency="${a.currency}">${a.name} (${a.currency})</option>`).join('');
+  return accounts;
+}
+
+async function renderEmpty() {
+  document.getElementById('summary-grid').innerHTML = '';
+  let metaReady = false;
+  try {
+    const s = await fetch('/api/settings', { credentials: 'include' }).then(r => r.json());
+    metaReady = !!(s?.integrations?.meta?.has_app_id && s?.integrations?.meta?.has_secret && s?.integrations?.meta?.redirect_uri);
+  } catch {}
+  const cta = metaReady
+    ? `<button id="connect-meta-btn" class="btn btn-primary" style="margin-top:12px">+ Connect Meta</button>`
+    : `<a href="/settings.html#integrations" class="btn btn-primary" style="margin-top:12px;text-decoration:none;display:inline-block">Configureer Meta App</a>`;
+  document.getElementById('campaigns-tbody').innerHTML = `
+    <tr><td colspan="9">
+      <div class="empty-state">
+        <h3>Geen ad accounts gekoppeld</h3>
+        <p>Koppel je Meta account — de OAuth flow vraagt automatisch <code>ads_read</code> + <code>ads_management</code> scopes aan en haalt alle ad accounts op die onder je Business Manager vallen.</p>
+        ${cta}
+      </div>
+    </td></tr>`;
+  const btn = document.getElementById('connect-meta-btn');
+  if (btn) btn.addEventListener('click', () => {
+    const w = window.open('/social/meta/auth', 'meta-oauth', 'width=600,height=720');
+    const timer = setInterval(() => { if (!w || w.closed) { clearInterval(timer); location.reload(); } }, 800);
+  });
+}
+
+async function loadData() {
+  const sel = document.getElementById('account-select');
+  const accountId = sel.value;
+  if (!accountId) return;
+  const currency = sel.options[sel.selectedIndex]?.dataset.currency || '';
+  const datePreset = document.getElementById('range-select').value;
+
+  const tbody = document.getElementById('campaigns-tbody');
+  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Fetching ad data...</span></td></tr>`;
+
+  try {
+    const [campRes, insRes] = await Promise.all([
+      fetch('/ads/campaigns?account_id=' + encodeURIComponent(accountId), { credentials: 'include' }),
+      fetch('/ads/insights?account_id=' + encodeURIComponent(accountId) + '&date_preset=' + datePreset + '&level=campaign', { credentials: 'include' }),
+    ]);
+    if (!campRes.ok) throw new Error('Campaigns: ' + (await campRes.json()).error);
+    if (!insRes.ok) throw new Error('Insights: ' + (await insRes.json()).error);
+
+    const { campaigns } = await campRes.json();
+    const { insights } = await insRes.json();
+
+    const insMap = {};
+    insights.forEach(i => { insMap[i.campaign_id] = i; });
+
+    let totalSpend = 0, totalImpr = 0, totalClicks = 0, totalPurchases = 0, totalRevenue = 0;
+    insights.forEach(i => {
+      totalSpend += Number(i.spend) || 0;
+      totalImpr += Number(i.impressions) || 0;
+      totalClicks += Number(i.clicks) || 0;
+      totalPurchases += extractAction(i.actions, 'purchase') + extractAction(i.actions, 'omni_purchase');
+      totalRevenue += extractAction(i.action_values, 'purchase') + extractAction(i.action_values, 'omni_purchase');
+    });
+    const avgCtr = totalImpr > 0 ? (totalClicks / totalImpr * 100) : 0;
+    const combinedRoas = totalSpend > 0 ? (totalRevenue / totalSpend) : 0;
+
+    document.getElementById('summary-grid').innerHTML = [
+      { label: 'Total Spend', value: fmtMoney(totalSpend, currency), sub: campaigns.length + ' campaigns', color: 'var(--primary)' },
+      { label: 'Impressions', value: fmtNum(totalImpr), sub: 'Reach × frequency', color: 'var(--accent)' },
+      { label: 'Clicks', value: fmtNum(totalClicks), sub: 'CTR ' + fmtPct(avgCtr), color: 'var(--success)' },
+      { label: 'Purchases', value: fmtNum(totalPurchases), sub: fmtMoney(totalRevenue, currency) + ' revenue', color: 'var(--warning)' },
+      { label: 'ROAS', value: combinedRoas > 0 ? combinedRoas.toFixed(2) + 'x' : '—', sub: combinedRoas >= 2 ? '✓ Profitable' : (combinedRoas > 0 ? '⚠ Below 2x target' : 'No conversions'), color: combinedRoas >= 2 ? 'var(--success)' : (combinedRoas > 0 ? 'var(--warning)' : 'var(--text-dim)') },
+    ].map(s => `<div class="summary-card">
+      <div class="summary-label">${s.label}</div>
+      <div class="summary-value" style="color:${s.color}">${s.value}</div>
+      <div class="summary-change" style="color:var(--text-dim)">${s.sub}</div>
+    </div>`).join('');
+
+    if (!campaigns.length) {
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)">Geen campagnes gevonden voor dit ad account</td></tr>`;
+      return;
+    }
+
+    const rows = campaigns.map(c => {
+      const i = insMap[c.id] || {};
+      const status = c.effective_status || c.status;
+      const cls = STATUS_CLASS[status] || 'status-inactive';
+      const spend = Number(i.spend) || 0;
+      const impr = Number(i.impressions) || 0;
+      const clicks = Number(i.clicks) || 0;
+      const ctr = Number(i.ctr) || 0;
+      const cpc = Number(i.cpc) || 0;
+      const roas = extractRoas(i);
+      return { c, i, status, cls, spend, impr, clicks, ctr, cpc, roas };
+    }).sort((a, b) => b.spend - a.spend);
+
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td><div style="font-weight:500;color:var(--text)">${escapeHtml(r.c.name)}</div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)">ID ${r.c.id}</div></td>
+      <td><span class="status-pill ${r.cls}">${r.status}</span></td>
+      <td style="font-size:11px;color:var(--text-dim);font-family:var(--font-data)">${r.c.objective || '—'}</td>
+      <td class="num" style="text-align:right">${fmtMoney(r.spend, currency)}</td>
+      <td class="num" style="text-align:right">${fmtNum(r.impr)}</td>
+      <td class="num" style="text-align:right">${fmtNum(r.clicks)}</td>
+      <td class="num" style="text-align:right">${fmtPct(r.ctr)}</td>
+      <td class="num" style="text-align:right">${r.cpc ? fmtMoney(r.cpc, currency) : '—'}</td>
+      <td class="num" style="text-align:right;color:${r.roas >= 2 ? 'var(--success)' : (r.roas > 0 ? 'var(--warning)' : 'var(--text-dim)')}">${r.roas > 0 ? r.roas.toFixed(2) + 'x' : '—'}</td>
+    </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+(async function init() {
+  const accounts = await loadAccounts();
+  if (!accounts) return;
+  document.getElementById('account-select').addEventListener('change', loadData);
+  document.getElementById('range-select').addEventListener('change', loadData);
+  loadData();
+})();
+</script>
+<script src="/auth-guard.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+</body>
+</html>

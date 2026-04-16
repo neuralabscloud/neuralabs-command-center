@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Performance</title>
+<title>NEURALABS — Performance</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -204,21 +204,32 @@ const loadingRow = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:c
 function decodeHtml(s) { return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"'); }
 
 // ── CONFIG ─────────────────────────────────────
-const APIFY_TOKEN = ''; // Set APIFY_API_KEY in .env to enable
-const APIFY_BASE = 'https://api.apify.com/v2';
-const YT_KEY = ''; // Set YOUTUBE_API_KEY in .env to enable
+const YT_KEY = 'REDACTED_YOUTUBE_KEY';
 
-// Configure your social media brands/handles here
 const BRANDS = [
-  // Example:
-  // { name: 'MyBrand', profiles: [
-  //   { type: 'tt', handle: 'myhandle', color: 'hsl(270 95% 65%)' },
-  //   { type: 'ig', handle: 'myhandle', color: 'hsl(330 70% 55%)' },
-  //   { type: 'yt', handle: '@myhandle', color: 'hsl(0 72% 51%)' },
-  // ]},
+  {
+    name: 'METAVERS3',
+    profiles: [
+      { type: 'ig', handle: 'metavers3.nl', color: 'hsl(330 70% 55%)' },
+      { type: 'yt', handle: '@Metavers3nl', color: 'hsl(0 72% 51%)' },
+    ]
+  },
+  {
+    name: 'LEANDRO',
+    profiles: [
+      { type: 'ig', handle: 'leandrovalentino.eth', color: 'hsl(330 70% 55%)' },
+    ]
+  },
+  {
+    name: 'NEURALABS',
+    profiles: [
+      { type: 'ig', handle: 'neuralabscapital', color: 'hsl(330 70% 55%)' },
+      { type: 'yt', handle: '@neuralabscapital', color: 'hsl(0 72% 51%)' },
+    ]
+  },
 ];
 
-const TYPE_LABELS = { tt: 'TIKTOK', ig: 'INSTAGRAM', yt: 'YOUTUBE', x: 'X' };
+const TYPE_LABELS = { ig: 'INSTAGRAM', yt: 'YOUTUBE' };
 
 // ── SUMMARY CARDS ──────────────────────────────
 function renderSummary(data) {
@@ -237,22 +248,6 @@ function showRefreshTime() {
   if (ts && el) el.textContent = 'Last: ' + new Date(parseInt(ts)).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
 }
 
-// ── APIFY: run actor, poll, return dataset items ──
-async function apifyRunAndWait(actorId, input) {
-  const r = await fetch(`${APIFY_BASE}/acts/${actorId}/runs?token=${APIFY_TOKEN}`, {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(input)
-  });
-  const runId = (await r.json()).data.id;
-  for (let i = 0; i < 36; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    const p = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
-    const st = (await p.json()).data.status;
-    if (st === 'SUCCEEDED') break;
-    if (st === 'FAILED' || st === 'ABORTED') throw new Error('Run ' + st);
-  }
-  return (await fetch(`${APIFY_BASE}/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`)).json();
-}
-
 // ── GENERIC FETCH/RENDER PER PROFILE ──────────
 
 function renderTable(tableId, rows, color) {
@@ -267,19 +262,6 @@ function renderTable(tableId, rows, color) {
     <td><span style="font-family:var(--font-data);color:var(--success)">${r.eng}</span></td>
     <td>${sparkline(r.sparkData || [0], color)}</td>
   </tr>`).join('');
-}
-
-function parseTikTokData(data) {
-  if (!data?.length) return { rows: [], stats: {} };
-  const am = data[0].authorMeta || {};
-  const allPlays = data.map(p => p.playCount || 0);
-  const rows = data.map(p => ({
-    title: (p.text||'').substring(0,50) + ((p.text||'').length>50?'...':''),
-    col1: fmtNum(p.playCount||0), col2: fmtNum(p.diggCount||0), col3: fmtNum(p.shareCount||0),
-    eng: (p.playCount||0) > 0 ? (((p.diggCount||0)+(p.shareCount||0)+(p.commentCount||0))/(p.playCount)*100).toFixed(1)+'%' : '—',
-    sparkData: allPlays,
-  }));
-  return { rows, stats: { fans: am.fans||0, totalPlays: allPlays.reduce((a,b)=>a+b,0) } };
 }
 
 function parseInstagramData(data) {
@@ -308,7 +290,7 @@ async function fetchProfile(profile, tableId) {
   if (cached) {
     try {
       const data = JSON.parse(cached);
-      const parsed = profile.type === 'tt' ? parseTikTokData(data.data) : parseInstagramData(data.data);
+      const parsed = parseInstagramData(data.data);
       renderTable(tableId, parsed.rows, profile.color);
       return parsed.stats;
     } catch {}
@@ -327,18 +309,13 @@ async function fetchProfileLive(profile, tableId) {
 
   try {
     let data, parsed;
-    if (profile.type === 'tt') {
-      data = await apifyRunAndWait('clockworks~free-tiktok-scraper', {
-        profiles: [profile.handle], resultsPerPage: 10,
-        shouldDownloadVideos: false, shouldDownloadCovers: false
-      });
-      parsed = parseTikTokData(data);
-    } else if (profile.type === 'ig') {
-      data = await apifyRunAndWait('shu8hvrXbJbY3Eb9W', {
-        directUrls: ['https://www.instagram.com/' + profile.handle + '/'],
-        resultsType: 'details', resultsLimit: 1
-      });
-      data = data[0] || {};
+    if (profile.type === 'ig') {
+      const igRes = await fetch('/social/ig/stats?handle=' + encodeURIComponent(profile.handle), { credentials: 'include' });
+      if (!igRes.ok) {
+        const err = await igRes.json().catch(() => ({}));
+        throw new Error(err.error || 'Instagram account niet gekoppeld — verbind via Settings → Social Connections');
+      }
+      data = await igRes.json();
       parsed = parseInstagramData(data);
     } else if (profile.type === 'yt') {
       return await fetchYouTubeProfile(profile.handle, tableId);
@@ -421,7 +398,7 @@ function buildSections() {
   container.innerHTML = html;
 }
 
-// ── REFRESH ALL (sequential to avoid Apify limits) ──
+// ── REFRESH ALL (sequential) ──
 let refreshing = false;
 async function refreshAllData() {
   if (refreshing) return;
@@ -463,13 +440,7 @@ function updateSummary() {
     if (!raw) return;
     try {
       const { data } = JSON.parse(raw);
-      if (p.type === 'tt') {
-        const d = Array.isArray(data) ? data : [];
-        totalViews += d.reduce((s, t) => s + (t.playCount || 0), 0);
-        totalEng += d.reduce((s, t) => s + (t.diggCount||0) + (t.shareCount||0) + (t.commentCount||0), 0);
-        totalFollowers += d[0]?.authorMeta?.fans || 0;
-        totalPosts += d.length;
-      } else if (p.type === 'ig') {
+      if (p.type === 'ig') {
         const posts = data?.latestPosts || (Array.isArray(data) ? data : []);
         totalViews += posts.reduce((s, t) => s + (t.videoViewCount || t.likesCount || 0), 0);
         totalEng += posts.reduce((s, t) => s + (t.likesCount||0) + (t.commentsCount||0), 0);
@@ -487,7 +458,7 @@ function updateSummary() {
 
   renderSummary([
     { label: 'Combined Views', value: totalViews > 0 ? fmtNum(totalViews) : '—', sub: 'All platforms recent posts', color: 'var(--primary)' },
-    { label: 'Combined Followers', value: totalFollowers > 0 ? fmtNum(totalFollowers) : '—', sub: 'TT + IG combined', color: 'var(--accent)' },
+    { label: 'Combined Followers', value: totalFollowers > 0 ? fmtNum(totalFollowers) : '—', sub: 'Instagram combined', color: 'var(--accent)' },
     { label: 'Avg Engagement', value: avgEng, sub: totalPosts + ' posts analyzed', color: 'var(--success)' },
     { label: 'Total Interactions', value: totalEng > 0 ? fmtNum(totalEng) : '—', sub: 'Likes + comments + shares', color: 'var(--warning)' },
     { label: 'Profiles Synced', value: cached + '/' + totalProfiles, sub: cached === totalProfiles ? 'All up to date' : 'Click Refresh', color: cached === totalProfiles ? 'var(--success)' : 'var(--text-dim)' },
@@ -514,6 +485,5 @@ function updateSummary() {
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Login</title>
+<title>NEURALABS — Login</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -79,7 +79,7 @@ body::after {
 </head>
 <body>
 <div class="login-box">
-  <div class="login-logo"><span data-brand="company">Trading Platform</span></div>
+  <div class="login-logo">NEURALABS</div>
   <div class="login-sub">Command Center</div>
   <label class="login-label">Password</label>
   <input class="login-input" id="pw" type="password" placeholder="Enter password..." autofocus
@@ -103,12 +103,7 @@ async function doLogin() {
       body: JSON.stringify({ password: pw }),
     });
     if (res.ok) {
-      // Check if setup wizard is needed
-      try {
-        const sr = await fetch('/api/setup-status', { credentials: 'include' });
-        const sd = await sr.json();
-        window.location.href = sd.configured ? '/index.html' : '/setup.html';
-      } catch { window.location.href = '/index.html'; }
+      window.location.href = '/index.html';
     } else {
       err.textContent = 'Incorrect password';
       document.getElementById('pw').select();
@@ -119,6 +114,5 @@ async function doLogin() {
   btn.disabled = false;
 }
 </script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

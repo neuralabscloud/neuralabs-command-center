@@ -455,6 +455,7 @@ body::after {
                 <option value="NL">Nederlands</option>
                 <option value="EN">English</option>
               </select>
+              <select id="research-brand" style="background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px 10px;font-size:12px;font-family:var(--font-body);outline:none;"></select>
             </div>
             <textarea class="capture-textarea" id="capture-input" placeholder="Optional: specific topic, competitor handle, or custom research query..."></textarea>
             <div class="capture-actions">
@@ -745,8 +746,8 @@ function renderPostCards(section) {
       <div class="post-card-header">
         <span class="post-card-num">${idx + 1}</span>
         <span class="post-card-title">${escHtml(p.title)}</span>
-        <textarea id="${copyId}" style="position:absolute;left:-9999px">${escHtml(copyText)}</textarea>
-        <button class="post-copy-btn" onclick="copyFromTextarea(this, '${copyId}')">Copy</button>
+        ${!isTwitter ? `<textarea id="${copyId}" style="position:absolute;left:-9999px">${escHtml(copyText)}</textarea>
+        <button class="post-copy-btn" onclick="copyFromTextarea(this, '${copyId}')">Copy</button>` : ''}
       </div>
       ${caption && !isTwitter ? `<div class="post-field"><span class="post-field-label">Caption</span><div class="post-field-value post-caption">${formatMarkdown(caption)}</div></div>` : ''}
       ${!caption && p.fields.hook ? `<div class="post-field"><span class="post-field-label">Hook</span><div class="post-field-value post-hook">${formatMarkdown(p.fields.hook)}</div></div>` : ''}
@@ -910,6 +911,7 @@ async function submitResearch() {
   const query = document.getElementById('capture-input').value.trim();
   const type = document.getElementById('research-type').value;
   const language = document.getElementById('research-lang').value;
+  const brand = document.getElementById('research-brand').value;
   if (!query && type === 'custom') return;
   try {
     await fetch('/research/tasks', {
@@ -920,12 +922,28 @@ async function submitResearch() {
         platforms: ['tiktok', 'x', 'reddit', 'youtube'],
         niche: 'crypto trading',
         language,
+        brand,
       }),
     });
     document.getElementById('capture-input').value = '';
     loadTasks();
   } catch {}
 }
+
+async function loadBrandOptions() {
+  try {
+    const res = await fetch('/brands');
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = Object.keys(data).sort();
+    const sel = document.getElementById('research-brand');
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+    if (current && names.includes(current)) sel.value = current;
+  } catch {}
+}
+loadBrandOptions();
 
 async function runDailyResearch() {
   const btn = document.getElementById('daily-btn');

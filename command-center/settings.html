@@ -111,6 +111,69 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .stat-value.text-danger { color: var(--danger); }
 .stat-label { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
 
+.integration-details code { font-family: monospace; font-size: 11px; color: var(--primary); background: hsla(264 65% 49% / 0.08); padding: 1px 6px; border-radius: 4px; border: 1px solid hsla(264 65% 49% / 0.15); }
+.skill-filter { font-family: var(--font-data); font-size: 11px; font-weight: 500; color: var(--text-dim); background: hsla(217 32% 17% / 0.4); border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; cursor: pointer; transition: all 0.2s; }
+.skill-filter:hover { color: var(--text); border-color: hsla(264 65% 49% / 0.3); }
+.skill-filter.active { color: var(--primary); background: hsla(264 65% 49% / 0.08); border-color: hsla(264 65% 49% / 0.3); }
+
+/* ── BRAND ASSETS ── */
+.brand-assets-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+.brand-card {
+  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
+  border: 1px solid var(--border); border-radius: 12px; padding: 18px; min-width: 220px; flex: 1; max-width: 340px;
+}
+.brand-card-name { font-family: var(--font-data); font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; margin-bottom: 14px; text-transform: uppercase; }
+.brand-asset-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.brand-asset-label { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; width: 72px; flex-shrink: 0; }
+.brand-asset-preview { width: 36px; height: 36px; border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.brand-asset-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.brand-upload-btn {
+  font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
+  border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 3px 8px; cursor: pointer; transition: all 0.2s;
+}
+.brand-upload-btn:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
+.brand-remove-btn {
+  font-family: var(--font-data); font-size: 11px; color: var(--text-muted); background: none; border: none;
+  cursor: pointer; padding: 2px 4px; transition: color 0.2s;
+}
+.brand-remove-btn:hover { color: var(--danger); }
+.brand-section-title { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin: 14px 0 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.brand-colors { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.brand-color-swatch {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; position: relative; transition: all 0.2s;
+}
+.brand-color-swatch:hover { transform: scale(1.15); border-color: var(--primary); }
+.brand-color-swatch .remove-x {
+  position: absolute; top: -6px; right: -6px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--danger); color: white; font-size: 8px; display: none; align-items: center; justify-content: center; cursor: pointer;
+}
+.brand-color-swatch:hover .remove-x { display: flex; }
+.brand-color-add {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px dashed var(--border); background: transparent;
+  color: var(--text-dim); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+}
+.brand-color-add:hover { border-color: var(--primary); color: var(--primary); }
+.brand-color-input { position: absolute; opacity: 0; width: 0; height: 0; }
+.brand-fonts { display: flex; flex-direction: column; gap: 6px; }
+.brand-font-row { display: flex; align-items: center; gap: 8px; }
+.brand-font-name { font-family: var(--font-data); font-size: 11px; color: var(--text); flex: 1; }
+.brand-font-role { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); text-transform: uppercase; }
+.brand-font-add-row { display: flex; gap: 6px; align-items: center; }
+.brand-font-input {
+  flex: 1; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 5px 8px; font-size: 11px; font-family: var(--font-body); outline: none;
+}
+.brand-font-input:focus { border-color: var(--primary); }
+.brand-font-role-select {
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 5px 6px; font-size: 10px; font-family: var(--font-data); outline: none;
+}
+.brand-font-add-btn {
+  font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
+  border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
+}
+.brand-font-add-btn:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
+
 @keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 .fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
@@ -198,11 +261,35 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Apify API Token</label><input type="password" id="cfg-apify" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://jouwdomein.nl/social/meta/callback"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
           </div>
         </div>
       </div>
       <button onclick="saveConfig()" id="cfg-save-btn" style="margin-top:14px;padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;transition:all 0.2s">Save Changes</button>
+    </section>
+
+    <!-- BRAND ASSETS -->
+    <section class="fade-up delay-3" id="brand-assets-section">
+      <div class="section-header">Brand Assets</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="new-brand-name" placeholder="New brand name..." style="flex:0 1 240px;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:12px;outline:none;text-transform:uppercase;letter-spacing:0.06em">
+        <button class="brand-font-add-btn" onclick="addBrand()" style="padding:8px 14px;font-size:10px">+ Add Brand</button>
+      </div>
+      <div class="brand-assets-grid" id="brand-assets-grid"></div>
+    </section>
+
+    <!-- SOCIAL CONNECTIONS -->
+    <section class="fade-up delay-3" id="social-connections-section">
+      <div class="section-header">Social Connections</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
+        Koppel je social accounts voor statistieken (followers, reach, engagement) op de Performance-pagina. Vereist voor Instagram/Facebook: vul eerst Meta App ID + Secret + Redirect URI in onder Configuration. Tokens blijven server-side.
+      </p>
+      <div class="integrations-grid" id="social-grid">
+        <div style="color: var(--text-dim); font-size: 13px;">Loading connections...</div>
+      </div>
     </section>
 
     <!-- INTEGRATIONS -->
@@ -216,9 +303,31 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
     <!-- LOCAL SERVICES -->
     <section class="fade-up delay-4">
       <div class="section-header">Local Services</div>
+      <div style="display:flex;align-items:center;gap:12px;margin:-6px 0 14px;flex-wrap:wrap">
+        <button onclick="restartApiServer()" id="restart-btn" style="padding:8px 16px;border:1px solid hsla(0 72% 51% / 0.3);border-radius:8px;cursor:pointer;font-family:var(--font-data);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:hsla(0 72% 51% / 0.08);color:var(--danger);transition:all 0.2s">↻ Restart API Server</button>
+        <span id="restart-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)"></span>
+      </div>
       <div class="integrations-grid" id="services-grid">
         <div style="color: var(--text-dim); font-size: 13px;">Loading services...</div>
       </div>
+    </section>
+
+    <!-- INSTALLED SKILLS -->
+    <section class="fade-up delay-4">
+      <div class="section-header">Installed Skills</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
+        Skills extend Claude Code with specialized capabilities. Invoke them by typing the slash command in the Claude Code prompt.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px" id="skill-filters">
+        <button class="skill-filter active" data-cat="all" onclick="filterSkills('all',this)">All</button>
+        <button class="skill-filter" data-cat="media" onclick="filterSkills('media',this)">Media & Design</button>
+        <button class="skill-filter" data-cat="marketing" onclick="filterSkills('marketing',this)">Marketing</button>
+        <button class="skill-filter" data-cat="seo" onclick="filterSkills('seo',this)">SEO & Analytics</button>
+        <button class="skill-filter" data-cat="cro" onclick="filterSkills('cro',this)">CRO & Conversion</button>
+        <button class="skill-filter" data-cat="dev" onclick="filterSkills('dev',this)">Development</button>
+        <button class="skill-filter" data-cat="system" onclick="filterSkills('system',this)">System</button>
+      </div>
+      <div class="integrations-grid" id="skills-grid"></div>
     </section>
   </main>
 </div>
@@ -243,7 +352,6 @@ const SERVICE_META = {
   canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Design generation via OAuth + MCP' },
   telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
   inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
-  apify: { icon: '🕷', color: '142 70% 40%', label: 'Apify', desc: 'Social media scraping — TikTok, Instagram, X' },
   composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
 };
 
@@ -405,7 +513,13 @@ async function loadConfig() {
       setPlaceholder('cfg-stripe', d.integrations.stripe);
       setPlaceholder('cfg-inference', d.integrations.inference);
       setPlaceholder('cfg-composio', d.integrations.composio);
-      setPlaceholder('cfg-apify', d.integrations.apify);
+      setPlaceholder('cfg-youtube', d.integrations.youtube);
+      if (d.integrations.meta) {
+        const m = d.integrations.meta;
+        if (m.has_app_id) document.getElementById('cfg-meta-app-id').placeholder = 'Current: ' + (m.app_id_masked || 'set') + ' (leave empty to keep)';
+        if (m.has_secret) document.getElementById('cfg-meta-app-secret').placeholder = 'Configured (leave empty to keep)';
+        if (m.redirect_uri) document.getElementById('cfg-meta-redirect').value = m.redirect_uri;
+      }
       if (d.integrations.telegram) {
         if (d.integrations.telegram.token_masked) {
           document.getElementById('cfg-tg-token').placeholder = 'Current: ' + d.integrations.telegram.token_masked + ' (leave empty to keep)';
@@ -438,7 +552,8 @@ async function saveConfig() {
 
   const fields = {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
-    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', inference_key: 'cfg-inference', composio_key: 'cfg-composio', apify_key: 'cfg-apify',
+    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
+    meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect', youtube_api_key: 'cfg-youtube',
   };
   for (const [key, id] of Object.entries(fields)) {
     const val = document.getElementById(id)?.value?.trim();
@@ -458,9 +573,557 @@ async function saveConfig() {
   btn.disabled = false; btn.textContent = 'Save Changes';
 }
 
+// ── INSTALLED SKILLS ──────────────────────────
+const SKILLS = [
+  // ── Media & Design ──
+  { icon: '🎬', color: '210 90% 55%', name: 'Create Video', cat: 'media',
+    desc: 'Create videos from a text prompt using HeyGen\'s Video Agent',
+    command: '/create-video', tags: ['HeyGen', 'Video'] },
+  { icon: '🧑‍💼', color: '265 65% 60%', name: 'Avatar Video', cat: 'media',
+    desc: 'Precise control over avatars, voices, scripts, scenes & backgrounds via HeyGen v2',
+    command: '/avatar-video', tags: ['HeyGen', 'Avatar'] },
+  { icon: '🎨', color: '142 70% 40%', name: 'Designer', cat: 'media',
+    desc: 'Create carousels, thumbnails, banners & infographics for social media',
+    command: '/designer', tags: ['Canva', 'Nano Banana', 'Playwright'] },
+  { icon: '🍌', color: '45 93% 55%', name: 'Nano Banana 2', cat: 'media',
+    desc: 'Generate images with Google Gemini 3.1 Flash via inference.sh',
+    command: '/nano-banana-2', tags: ['Gemini', 'Image Gen'] },
+  { icon: '🎞️', color: '0 72% 51%', name: 'Remotion Best Practices', cat: 'media',
+    desc: 'Best practices for Remotion — video creation in React',
+    command: '/remotion-best-practices', tags: ['Remotion', 'React'] },
+  { icon: '🖼️', color: '264 65% 49%', name: 'Canvas Design', cat: 'media',
+    desc: 'Create posters, art, designs & static visuals as .png and .pdf',
+    command: '/canvas-design', tags: ['Design', 'PNG', 'PDF'] },
+  { icon: '🌐', color: '210 90% 55%', name: 'Web Artifacts Builder', cat: 'media',
+    desc: 'Create multi-component HTML artifacts with React, Tailwind & shadcn/ui',
+    command: '/web-artifacts-builder', tags: ['React', 'Tailwind', 'shadcn'] },
+  { icon: '🎯', color: '265 65% 60%', name: 'Brand Guidelines', cat: 'media',
+    desc: 'Apply brand colors, typography & visual style guidelines to any artifact',
+    command: '/brand-guidelines', tags: ['Branding', 'Style'] },
+
+  // ── Marketing ──
+  { icon: '💡', color: '45 93% 55%', name: 'Marketing Ideas', cat: 'marketing',
+    desc: '139 proven marketing strategies & tactics for SaaS growth',
+    command: '/marketing-ideas', tags: ['Strategy', 'Growth'] },
+  { icon: '✍️', color: '265 65% 60%', name: 'Copywriting', cat: 'marketing',
+    desc: 'Write or improve marketing copy for any page — homepage, landing, pricing, features',
+    command: '/copywriting', tags: ['Copy', 'Landing Pages'] },
+  { icon: '✂️', color: '215 20% 65%', name: 'Copy Editing', cat: 'marketing',
+    desc: 'Edit, review & polish existing marketing copy through systematic passes',
+    command: '/copy-editing', tags: ['Review', 'Polish'] },
+  { icon: '📧', color: '210 90% 55%', name: 'Email Sequence', cat: 'marketing',
+    desc: 'Create or optimize drip campaigns, welcome sequences & lifecycle emails',
+    command: '/email-sequence', tags: ['Email', 'Automation'] },
+  { icon: '📱', color: '142 70% 40%', name: 'Social Content', cat: 'marketing',
+    desc: 'Create & optimize content for LinkedIn, Twitter/X, Instagram, TikTok',
+    command: '/social-content', tags: ['Social Media', 'Content'] },
+  { icon: '📋', color: '264 65% 49%', name: 'Content Strategy', cat: 'marketing',
+    desc: 'Plan content strategy, topic clusters & decide what to create',
+    command: '/content-strategy', tags: ['Planning', 'Topics'] },
+  { icon: '🚀', color: '0 72% 51%', name: 'Launch Strategy', cat: 'marketing',
+    desc: 'Plan product launches, feature announcements & go-to-market strategy',
+    command: '/launch-strategy', tags: ['Launch', 'GTM'] },
+  { icon: '💰', color: '45 93% 55%', name: 'Pricing Strategy', cat: 'marketing',
+    desc: 'Pricing decisions, packaging, tier structure & monetization strategy',
+    command: '/pricing-strategy', tags: ['Pricing', 'Tiers'] },
+  { icon: '📢', color: '210 90% 55%', name: 'Paid Ads', cat: 'marketing',
+    desc: 'Google Ads, Meta, LinkedIn & other paid advertising campaigns',
+    command: '/paid-ads', tags: ['PPC', 'Ads'] },
+  { icon: '🧠', color: '270 95% 65%', name: 'Marketing Psychology', cat: 'marketing',
+    desc: '70+ mental models & behavioral science principles for marketing',
+    command: '/marketing-psychology', tags: ['Psychology', 'Persuasion'] },
+  { icon: '🤝', color: '142 70% 40%', name: 'Referral Program', cat: 'marketing',
+    desc: 'Create & optimize referral, affiliate & ambassador programs',
+    command: '/referral-program', tags: ['Referral', 'Viral'] },
+  { icon: '🛠️', color: '265 65% 60%', name: 'Free Tool Strategy', cat: 'marketing',
+    desc: 'Plan & build free tools for lead generation, SEO & brand awareness',
+    command: '/free-tool-strategy', tags: ['Lead Gen', 'Tools'] },
+  { icon: '🏷️', color: '264 65% 49%', name: 'Product Marketing Context', cat: 'marketing',
+    desc: 'Create your foundational product marketing context document',
+    command: '/product-marketing-context', tags: ['Foundation', 'Context'] },
+  { icon: '⚔️', color: '0 72% 51%', name: 'Competitor Alternatives', cat: 'marketing',
+    desc: 'Create "vs" and "alternative to" comparison pages for SEO & sales',
+    command: '/competitor-alternatives', tags: ['Comparison', 'Sales'] },
+
+  // ── SEO & Analytics ──
+  { icon: '🔍', color: '142 70% 40%', name: 'SEO Audit', cat: 'seo',
+    desc: 'Audit & diagnose technical SEO issues, meta tags & ranking problems',
+    command: '/seo-audit', tags: ['Technical SEO', 'Audit'] },
+  { icon: '📊', color: '210 90% 55%', name: 'Analytics Tracking', cat: 'seo',
+    desc: 'Set up GA4, GTM, conversion tracking, UTM parameters & event tracking',
+    command: '/analytics-tracking', tags: ['GA4', 'GTM'] },
+  { icon: '🏗️', color: '265 65% 60%', name: 'Programmatic SEO', cat: 'seo',
+    desc: 'Create SEO-driven pages at scale using templates & data',
+    command: '/programmatic-seo', tags: ['Scale', 'Templates'] },
+  { icon: '🏷️', color: '45 93% 55%', name: 'Schema Markup', cat: 'seo',
+    desc: 'Add, fix & optimize JSON-LD structured data & rich snippets',
+    command: '/schema-markup', tags: ['JSON-LD', 'Rich Snippets'] },
+
+  // ── CRO & Conversion ──
+  { icon: '📈', color: '142 70% 40%', name: 'Page CRO', cat: 'cro',
+    desc: 'Optimize conversion rates on any marketing page — homepage, landing, pricing',
+    command: '/page-cro', tags: ['Conversion', 'Optimization'] },
+  { icon: '📝', color: '210 90% 55%', name: 'Signup Flow CRO', cat: 'cro',
+    desc: 'Optimize signup, registration & trial activation flows',
+    command: '/signup-flow-cro', tags: ['Signup', 'Registration'] },
+  { icon: '👋', color: '265 65% 60%', name: 'Onboarding CRO', cat: 'cro',
+    desc: 'Optimize post-signup onboarding, activation & time-to-value',
+    command: '/onboarding-cro', tags: ['Activation', 'Onboarding'] },
+  { icon: '📋', color: '45 93% 55%', name: 'Form CRO', cat: 'cro',
+    desc: 'Optimize lead capture, contact, demo request & checkout forms',
+    command: '/form-cro', tags: ['Forms', 'Lead Capture'] },
+  { icon: '💬', color: '264 65% 49%', name: 'Popup CRO', cat: 'cro',
+    desc: 'Create & optimize popups, modals, slide-ins & exit-intent overlays',
+    command: '/popup-cro', tags: ['Popups', 'Modals'] },
+  { icon: '💎', color: '270 95% 65%', name: 'Paywall Upgrade CRO', cat: 'cro',
+    desc: 'Optimize in-app paywalls, upgrade screens & feature gates',
+    command: '/paywall-upgrade-cro', tags: ['Paywall', 'Upsell'] },
+  { icon: '🧪', color: '0 72% 51%', name: 'A/B Test Setup', cat: 'cro',
+    desc: 'Plan, design & implement A/B tests, split tests & experiments',
+    command: '/ab-test-setup', tags: ['A/B Test', 'Experiments'] },
+
+  // ── Development (Superpowers) ──
+  { icon: '💡', color: '45 93% 55%', name: 'Brainstorming', cat: 'dev',
+    desc: 'Explore user intent, requirements & design before any creative or feature work',
+    command: '/brainstorming', tags: ['Superpowers', 'Planning'] },
+  { icon: '⚡', color: '264 65% 49%', name: 'Parallel Agents', cat: 'dev',
+    desc: 'Dispatch 2+ independent tasks that can run without shared state',
+    command: '/dispatching-parallel-agents', tags: ['Superpowers', 'Agents'] },
+  { icon: '▶️', color: '142 70% 40%', name: 'Executing Plans', cat: 'dev',
+    desc: 'Execute a written implementation plan with review checkpoints',
+    command: '/executing-plans', tags: ['Superpowers', 'Execution'] },
+  { icon: '✅', color: '142 70% 40%', name: 'Finishing Branch', cat: 'dev',
+    desc: 'Guide completion of dev work — merge, PR, or cleanup options',
+    command: '/finishing-a-development-branch', tags: ['Superpowers', 'Git'] },
+  { icon: '📥', color: '210 90% 55%', name: 'Receiving Code Review', cat: 'dev',
+    desc: 'Handle code review feedback with technical rigor, not blind agreement',
+    command: '/receiving-code-review', tags: ['Superpowers', 'Review'] },
+  { icon: '📤', color: '210 90% 55%', name: 'Requesting Code Review', cat: 'dev',
+    desc: 'Verify work meets requirements before merging major features',
+    command: '/requesting-code-review', tags: ['Superpowers', 'Review'] },
+  { icon: '🔀', color: '265 65% 60%', name: 'Subagent Development', cat: 'dev',
+    desc: 'Execute implementation plans with independent tasks via subagents',
+    command: '/subagent-driven-development', tags: ['Superpowers', 'Agents'] },
+  { icon: '🐛', color: '0 72% 51%', name: 'Systematic Debugging', cat: 'dev',
+    desc: 'Methodically debug any bug, test failure, or unexpected behavior',
+    command: '/systematic-debugging', tags: ['Superpowers', 'Debug'] },
+  { icon: '🧪', color: '142 70% 40%', name: 'Test-Driven Development', cat: 'dev',
+    desc: 'Write tests before implementation code for any feature or bugfix',
+    command: '/test-driven-development', tags: ['Superpowers', 'TDD'] },
+  { icon: '🌳', color: '45 93% 55%', name: 'Git Worktrees', cat: 'dev',
+    desc: 'Create isolated git worktrees for feature work or plan execution',
+    command: '/using-git-worktrees', tags: ['Superpowers', 'Git'] },
+  { icon: '🦸', color: '270 95% 65%', name: 'Using Superpowers', cat: 'dev',
+    desc: 'Establish how to find and use all available skills at conversation start',
+    command: '/using-superpowers', tags: ['Superpowers', 'Meta'] },
+  { icon: '🔍', color: '264 65% 49%', name: 'Verification', cat: 'dev',
+    desc: 'Run verification commands before claiming work is complete or passing',
+    command: '/verification-before-completion', tags: ['Superpowers', 'QA'] },
+  { icon: '📝', color: '210 90% 55%', name: 'Writing Plans', cat: 'dev',
+    desc: 'Create multi-step implementation plans from specs before touching code',
+    command: '/writing-plans', tags: ['Superpowers', 'Planning'] },
+  { icon: '🛠️', color: '265 65% 60%', name: 'Writing Skills', cat: 'dev',
+    desc: 'Create, edit & verify new skills before deployment',
+    command: '/writing-skills', tags: ['Superpowers', 'Skills'] },
+
+  // ── System / Built-in ──
+  { icon: '🤖', color: '264 65% 49%', name: 'Claude API', cat: 'system',
+    desc: 'Build apps with the Claude API & Anthropic SDK',
+    command: '/claude-api', tags: ['Anthropic', 'SDK'] },
+  { icon: '⏱️', color: '210 90% 55%', name: 'Loop', cat: 'system',
+    desc: 'Run a prompt or slash command on a recurring interval',
+    command: '/loop', tags: ['Automation', 'Interval'] },
+  { icon: '📅', color: '142 70% 40%', name: 'Schedule', cat: 'system',
+    desc: 'Create scheduled remote agents on a cron schedule',
+    command: '/schedule', tags: ['Cron', 'Remote'] },
+  { icon: '🔍', color: '270 95% 65%', name: 'Find Skills', cat: 'system',
+    desc: 'Discover & install new agent skills from the ecosystem',
+    command: '/find-skills', tags: ['Ecosystem', 'Install'] },
+];
+
+let activeFilter = 'all';
+
+function filterSkills(cat, btn) {
+  activeFilter = cat;
+  document.querySelectorAll('.skill-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSkills();
+}
+
+function renderSkills() {
+  const filtered = activeFilter === 'all' ? SKILLS : SKILLS.filter(s => s.cat === activeFilter);
+  const grid = document.getElementById('skills-grid');
+  if (!filtered.length) { grid.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No skills in this category.</div>'; return; }
+  grid.innerHTML = filtered.map(skill => {
+    return `<div class="integration-card" data-cat="${skill.cat}">
+      <div class="integration-header">
+        <div class="integration-icon" style="${iconBg(skill.color)}">${skill.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div class="integration-name">${skill.name}</div>
+          <div class="integration-desc">${skill.desc}</div>
+        </div>
+      </div>
+      <div class="integration-details">
+        <div class="detail-row">
+          <span class="detail-label">Command</span>
+          <span class="detail-value" style="color:var(--primary);font-weight:600;font-family:monospace;font-size:13px">${skill.command}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+        ${skill.tags.map(t => `<span style="font-size:9px;font-family:var(--font-data);color:var(--text-dim);background:hsla(217 32% 17%/0.5);border:1px solid var(--border);border-radius:4px;padding:2px 8px;text-transform:uppercase;letter-spacing:0.04em">${t}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── BRAND ASSETS ──
+const ASSET_TYPES = [
+  { key: 'logo', label: 'Logo' },
+  { key: 'watermark', label: 'Watermark' },
+  { key: 'icon', label: 'Icon' },
+];
+let brandConfigs = {};
+let brandList = [];
+
+async function loadBrandConfigs() {
+  try {
+    const res = await fetch('/brands/config');
+    if (res.ok) brandConfigs = await res.json();
+  } catch {}
+}
+
+async function loadBrandAssets() {
+  try {
+    await loadBrandConfigs();
+    const res = await fetch('/brands');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const names = new Set([...Object.keys(data), ...Object.keys(brandConfigs)]);
+    brandList = [...names].sort();
+    renderBrandAssets(data);
+  } catch { document.getElementById('brand-assets-grid').innerHTML = ''; }
+}
+
+function renderBrandAssets(data) {
+  document.getElementById('brand-assets-grid').innerHTML = brandList.map(brand => {
+    const assets = data[brand] || [];
+    const config = brandConfigs[brand] || { colors: [], fonts: [] };
+    return `<div class="brand-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px">
+        <div class="brand-card-name" style="margin-bottom:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${brand}</div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="brand-upload-btn" onclick="renameBrand('${brand}')" title="Rename" style="padding:3px 7px">Rename</button>
+          <button class="brand-remove-btn" onclick="deleteBrand('${brand}')" title="Delete brand" style="font-size:13px;padding:2px 6px">&#x2715;</button>
+        </div>
+      </div>
+      ${ASSET_TYPES.map(at => {
+        const asset = assets.find(a => a.name.startsWith(at.key));
+        return `<div class="brand-asset-row">
+          <span class="brand-asset-label">${at.label}</span>
+          <div class="brand-asset-preview">
+            ${asset ? `<img src="${asset.url}" alt="${at.label}" />` : ''}
+          </div>
+          ${asset
+            ? `<button class="brand-remove-btn" onclick="removeBrandAsset('${brand}','${asset.name}')" title="Remove">&#x2715;</button>`
+            : `<label class="brand-upload-btn">Upload<input type="file" accept="image/*" style="display:none" onchange="uploadBrandAsset('${brand}','${at.key}',this.files[0])"></label>`
+          }
+        </div>`;
+      }).join('')}
+      <div class="brand-section-title">Colors</div>
+      <div class="brand-colors">
+        ${(config.colors || []).map((c, i) => `
+          <div class="brand-color-swatch" style="background:${c.hex}" title="${c.label || c.hex}">
+            <span class="remove-x" onclick="removeBrandColor('${brand}',${i})">&#x2715;</span>
+          </div>
+        `).join('')}
+        <label class="brand-color-add" title="Add color">+
+          <input type="color" class="brand-color-input" onchange="addBrandColor('${brand}', this.value)">
+        </label>
+      </div>
+      <div class="brand-section-title">Fonts</div>
+      <div class="brand-fonts">
+        ${(config.fonts || []).map((f, i) => `
+          <div class="brand-font-row">
+            <span class="brand-font-name" style="font-family:'${f.family}',sans-serif">${f.family}</span>
+            <span class="brand-font-role">${f.role || 'body'}</span>
+            <button class="brand-remove-btn" onclick="removeBrandFont('${brand}',${i})" title="Remove">&#x2715;</button>
+          </div>
+        `).join('')}
+        <div class="brand-font-add-row">
+          <input type="text" class="brand-font-input" id="font-input-${brand}" placeholder="Google Font name..." />
+          <select class="brand-font-role-select" id="font-role-${brand}">
+            <option value="display">Display</option>
+            <option value="body">Body</option>
+            <option value="data">Data</option>
+          </select>
+          <button class="brand-font-add-btn" onclick="addBrandFont('${brand}')">Add</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  loadGoogleFonts();
+}
+
+function loadGoogleFonts() {
+  const families = new Set();
+  Object.values(brandConfigs).forEach(c => (c.fonts || []).forEach(f => families.add(f.family)));
+  if (families.size === 0) return;
+  const existing = document.getElementById('google-fonts-link');
+  if (existing) existing.remove();
+  const link = document.createElement('link');
+  link.id = 'google-fonts-link';
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?${[...families].map(f => `family=${f.replace(/ /g, '+')}`).join('&')}&display=swap`;
+  document.head.appendChild(link);
+}
+
+async function saveBrandConfig(brand, config) {
+  await fetch(`/brands/${brand}/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+}
+
+async function addBrandColor(brand, hex) {
+  const label = prompt('Label for this color (e.g. Primary, Accent):', '');
+  const config = brandConfigs[brand] || { colors: [], fonts: [] };
+  config.colors = config.colors || [];
+  config.colors.push({ hex, label: label || '' });
+  brandConfigs[brand] = config;
+  await saveBrandConfig(brand, config);
+  loadBrandAssets();
+}
+
+async function removeBrandColor(brand, index) {
+  const config = brandConfigs[brand] || { colors: [], fonts: [] };
+  config.colors.splice(index, 1);
+  await saveBrandConfig(brand, config);
+  loadBrandAssets();
+}
+
+async function addBrandFont(brand) {
+  const input = document.getElementById(`font-input-${brand}`);
+  const roleSelect = document.getElementById(`font-role-${brand}`);
+  const family = input.value.trim();
+  if (!family) return;
+  const config = brandConfigs[brand] || { colors: [], fonts: [] };
+  config.fonts = config.fonts || [];
+  config.fonts.push({ family, role: roleSelect.value });
+  brandConfigs[brand] = config;
+  await saveBrandConfig(brand, config);
+  loadBrandAssets();
+}
+
+async function removeBrandFont(brand, index) {
+  const config = brandConfigs[brand] || { colors: [], fonts: [] };
+  config.fonts.splice(index, 1);
+  await saveBrandConfig(brand, config);
+  loadBrandAssets();
+}
+
+async function uploadBrandAsset(brand, type, file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch(`/brands/${brand}/assets/${type}`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error();
+    loadBrandAssets();
+  } catch(e) { alert('Upload failed: ' + e.message); }
+}
+
+async function removeBrandAsset(brand, filename) {
+  if (!confirm(`Remove ${filename} from ${brand}?`)) return;
+  await fetch(`/brands/${brand}/assets/${filename}`, { method: 'DELETE' });
+  loadBrandAssets();
+}
+
+async function addBrand() {
+  const input = document.getElementById('new-brand-name');
+  const name = (input.value || '').toUpperCase().trim().replace(/[^A-Z0-9_-]/g, '');
+  if (!name) return;
+  const res = await fetch(`/brands/${encodeURIComponent(name)}`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert('Failed to add brand: ' + (err.error || res.status));
+    return;
+  }
+  input.value = '';
+  loadBrandAssets();
+}
+
+async function renameBrand(oldName) {
+  const input = prompt(`Rename "${oldName}" to:`, oldName);
+  if (!input) return;
+  const newName = input.toUpperCase().trim().replace(/[^A-Z0-9_-]/g, '');
+  if (!newName || newName === oldName) return;
+  const res = await fetch(`/brands/${encodeURIComponent(oldName)}/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert('Failed to rename: ' + (err.error || res.status));
+    return;
+  }
+  loadBrandAssets();
+}
+
+async function deleteBrand(brand) {
+  if (!confirm(`Delete brand "${brand}" including all its assets, colors and fonts?`)) return;
+  const res = await fetch(`/brands/${encodeURIComponent(brand)}`, { method: 'DELETE' });
+  if (!res.ok) { alert('Failed to delete brand'); return; }
+  loadBrandAssets();
+}
+
+async function restartApiServer() {
+  if (!confirm('Restart the API server? The chat and agent APIs will be unavailable for a few seconds.')) return;
+  const btn = document.getElementById('restart-btn');
+  const status = document.getElementById('restart-status');
+  btn.disabled = true;
+  status.textContent = 'Sending restart signal...';
+  try {
+    const res = await fetch('/system/restart', { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+    return;
+  }
+  status.textContent = 'Restarting — waiting for server to come back...';
+  // Poll /system/health until it's up again
+  const startedAt = Date.now();
+  const poll = async () => {
+    try {
+      const r = await fetch('/system/health', { cache: 'no-store' });
+      if (r.ok) {
+        status.textContent = 'API server back online (' + Math.round((Date.now()-startedAt)/100)/10 + 's)';
+        btn.disabled = false;
+        setTimeout(() => { status.textContent = ''; }, 4000);
+        return;
+      }
+    } catch {}
+    if (Date.now() - startedAt > 20000) {
+      status.textContent = 'Timed out waiting for server (check logs)';
+      btn.disabled = false;
+      return;
+    }
+    setTimeout(poll, 500);
+  };
+  setTimeout(poll, 1500);
+}
+
 loadConfig();
 loadIntegrations();
 loadLocalServices();
+renderSkills();
+loadBrandAssets();
+loadSocialConnections();
+
+// ── SOCIAL CONNECTIONS ─────────────────────────
+async function loadSocialConnections() {
+  const grid = document.getElementById('social-grid');
+  if (!grid) return;
+  let connections = [];
+  let metaConfigured = false;
+  let ytConfigured = false;
+  let ytKeyMasked = '';
+  try {
+    const [connRes, intRes] = await Promise.all([
+      fetch('/social/connections', { credentials: 'include' }),
+      fetch('/api/settings', { credentials: 'include' }),
+    ]);
+    connections = (await connRes.json()).connections || [];
+    const int = (await intRes.json()).integrations || {};
+    metaConfigured = int.meta?.has_app_id && int.meta?.has_secret && int.meta?.redirect_uri;
+    ytConfigured = !!int.youtube?.has_key;
+    ytKeyMasked = int.youtube?.masked || '';
+  } catch {}
+
+  const igAccounts = connections.filter(c => c.platform === 'instagram');
+  const adAccounts = connections.filter(c => c.platform === 'meta_ads');
+
+  const platforms = [
+    {
+      id: 'instagram', label: 'Instagram / Facebook', icon: '📷', hue: '330 70% 55%',
+      desc: 'Followers, reach, impressions, engagement — via Meta Graph API',
+      accounts: igAccounts,
+      canConnect: metaConfigured,
+      connectHint: metaConfigured ? null : 'Configureer eerst Meta App ID + Secret + Redirect URI onder Configuration.',
+      authUrl: '/social/meta/auth',
+    },
+    {
+      id: 'meta_ads', label: 'Meta Ads', icon: '📣', hue: '264 65% 49%', isAds: true,
+      desc: 'Campagnes, adsets, spend, ROAS — via Marketing API (gekoppeld bij Meta OAuth)',
+      accounts: adAccounts,
+      canConnect: false,
+      connectHint: adAccounts.length ? null : (igAccounts.length ? 'Je Meta-koppeling mist ads_read/ads_management. Disconnect Instagram hierboven en opnieuw verbinden — OAuth vraagt nu ook ad scopes aan.' : 'Verbind eerst je Meta account via Instagram / Facebook hierboven. Ad accounts worden automatisch meegenomen.'),
+    },
+    {
+      id: 'youtube', label: 'YouTube', icon: '▶', hue: '0 72% 51%',
+      desc: 'Channel stats, views, engagement — YouTube Data API (key gebaseerd, geen OAuth nodig)',
+      accounts: [], canConnect: false,
+      isConfigured: ytConfigured,
+      configuredLabel: ytConfigured ? `API key: ${ytKeyMasked}` : null,
+      connectHint: ytConfigured ? null : 'Zet YouTube Data API Key in Configuration hierboven. Kanalen worden per handle bevraagd op de Performance-pagina.',
+    },
+  ];
+
+  grid.innerHTML = platforms.map(p => {
+    const accountsHtml = p.accounts.length ? `
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+        ${p.accounts.map(a => {
+          const primary = p.isAds ? (a.name || 'Ad account') : ('@' + (a.username || ''));
+          const secondary = p.isAds ? `${a.account_id || ''}${a.currency ? ' · ' + a.currency : ''}${a.business_name ? ' · ' + a.business_name : ''}` : (a.name || '');
+          return `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              ${a.profile_picture ? `<img src="${a.profile_picture}" style="width:24px;height:24px;border-radius:50%;object-fit:cover"/>` : `<div style="width:24px;height:24px;border-radius:50%;background:hsla(${p.hue}/0.15);display:flex;align-items:center;justify-content:center;font-size:11px">${p.icon}</div>`}
+              <div>
+                <div style="font-size:12px;color:var(--text);font-weight:500">${primary}</div>
+                <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)">${secondary}</div>
+              </div>
+            </div>
+            <button onclick="disconnectSocial('${a.id}')" style="padding:4px 10px;border:1px solid hsla(0 72% 51%/0.3);background:hsla(0 72% 51%/0.08);color:var(--danger);border-radius:4px;cursor:pointer;font-size:10px;font-family:var(--font-data);text-transform:uppercase;letter-spacing:0.06em">Disconnect</button>
+          </div>`;
+        }).join('')}
+      </div>` : (p.isConfigured && p.configuredLabel ? `
+      <div style="margin-top:12px;padding:8px 10px;background:var(--bg-deep);border:1px solid hsla(142 76% 36%/0.25);border-radius:6px;display:flex;align-items:center;gap:8px">
+        <div style="width:8px;height:8px;border-radius:50%;background:hsl(142 76% 36%);box-shadow:0 0 8px hsl(142 76% 50%)"></div>
+        <div style="font-size:11px;color:var(--text);font-family:var(--font-data)">${p.configuredLabel}</div>
+      </div>` : '');
+
+    const connectBtn = p.authUrl && p.canConnect
+      ? `<button onclick="connectSocial('${p.authUrl}')" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-family:var(--font-body);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,hsl(${p.hue}),hsl(${p.hue.replace(/(\d+)%\)$/, m => (parseInt(m)+10)+'%)')}));color:#fff">+ Connect ${p.label}</button>`
+      : p.connectHint ? `<div style="margin-top:12px;font-size:11px;color:var(--warning);background:hsla(45 93% 55%/0.06);padding:8px 10px;border-radius:6px;border:1px solid hsla(45 93% 55%/0.15)">${p.connectHint}</div>` : '';
+
+    return `<div class="integration-card">
+      <div class="integration-header">
+        <div class="integration-icon" style="background:hsla(${p.hue}/0.1);border:1px solid hsla(${p.hue}/0.2);color:hsl(${p.hue})">${p.icon}</div>
+        <div>
+          <div class="integration-name">${p.label}</div>
+          <div class="integration-desc">${p.desc}</div>
+        </div>
+        <div style="margin-left:auto;font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:${p.accounts.length || p.isConfigured ? 'var(--success)' : 'var(--text-dim)'}">${p.accounts.length ? p.accounts.length + ' connected' : (p.isConfigured ? 'configured' : 'not connected')}</div>
+      </div>
+      ${accountsHtml}
+      ${connectBtn}
+    </div>`;
+  }).join('');
+}
+
+function connectSocial(url) {
+  const w = window.open(url, 'social-oauth', 'width=600,height=720');
+  const timer = setInterval(() => { if (!w || w.closed) { clearInterval(timer); loadSocialConnections(); } }, 800);
+}
+
+async function disconnectSocial(id) {
+  if (!confirm('Weet je zeker dat je deze connectie wilt verwijderen?')) return;
+  await fetch('/social/connections/' + id, { method: 'DELETE', credentials: 'include' });
+  loadSocialConnections();
+}
 </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>

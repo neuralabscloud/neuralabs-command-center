@@ -1,7 +1,7 @@
 import os
 
-PRIVATE_KEY = os.environ["FUNDING_BOT_PRIVATE_KEY"]
-WALLET_ADDRESS = os.environ["FUNDING_BOT_WALLET_ADDRESS"]
+PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY_BOT1", "")
+WALLET_ADDRESS = os.getenv("HL_WALLET_ADDRESS_BOT1", "")
 
 TESTNET = False
 BASE_URL = "https://api.hyperliquid-testnet.xyz" if TESTNET else "https://api.hyperliquid.xyz"
@@ -30,10 +30,10 @@ MAX_LEVERAGE       = 1     # altijd 1x leverage op perp (delta-neutraal vereist 
 MAX_DAILY_LOSS_PCT = 0.10   # kill switch bij 10% dagverlies (schaalt mee met account)
 MAX_DRAWDOWN_PCT   = 10.0
 
-TELEGRAM_BOT_TOKEN  = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID    = os.environ.get("TELEGRAM_CHAT_ID", "")
-TELEGRAM_ENABLED    = bool(TELEGRAM_BOT_TOKEN)
+TELEGRAM_ENABLED    = True
+TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
 
 LOG_LEVEL = "INFO"
-LOG_FILE  = "logs/funding_bot.log"
+LOG_FILE  = "logs/neuralabs_bot.log"
 DATA_FILE = "data/trade_history.json"

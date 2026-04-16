@@ -3,7 +3,7 @@ import os
 from logging.handlers import RotatingFileHandler
 from config import LOG_LEVEL, LOG_FILE
 
-def setup_logger(name: str = "TradingBot", log_file: str = None) -> logging.Logger:
+def setup_logger(name: str = "NeuraLabsBot", log_file: str = None) -> logging.Logger:
     target_file = log_file or LOG_FILE
     os.makedirs(os.path.dirname(target_file), exist_ok=True)
     logger = logging.getLogger(name)

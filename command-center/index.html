@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — AI Operations Dashboard</title>
+<title>NEURALABS — AI Operations Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/iso-office.css">
 <style>
 /* ── CSS VARIABLES ──────────────────────────────── */
 :root {
@@ -760,6 +761,56 @@ body::after {
   display: inline-block;
   margin-top: 4px;
 }
+.task-feed-row {
+  padding: 10px 0 10px 8px;
+  border-bottom: 1px solid hsla(217 32% 20% / 0.2);
+  border-left: 2px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.task-feed-row.is-processing { border-left-color: var(--primary); }
+.task-feed-row.is-pending { border-left-color: var(--warning); }
+.task-feed-row.is-completed { border-left-color: var(--success); opacity: 0.7; }
+.task-feed-row.is-failed { border-left-color: var(--danger); opacity: 0.7; }
+.task-feed-row.is-cancelled { border-left-color: var(--text-dim); opacity: 0.6; }
+.task-feed-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.task-feed-tag {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.task-feed-time {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.task-feed-desc {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.task-feed-status {
+  font-family: var(--font-data);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 /* ── ANIMATIONS ─────────────────────────────────── */
 @keyframes pulse-glow {
@@ -836,6 +887,7 @@ body::after {
   #stripe-grid { grid-template-columns: repeat(3, 1fr) !important; }
   .social-grid { grid-template-columns: repeat(2, 1fr); }
   .agents-grid { grid-template-columns: repeat(2, 1fr); }
+  .fade-up.delay-6 { grid-template-columns: 1fr !important; }
   .kanban { grid-template-columns: repeat(3, 1fr); }
   .sop-grid { grid-template-columns: repeat(2, 1fr); }
   .mobile-nav { display: flex; gap: 8px; }
@@ -940,7 +992,7 @@ body::after {
     <!-- HEADER -->
     <div class="header fade-up delay-1">
       <div>
-        <div class="header-title"><span data-brand="company">Trading Platform</span> COMMAND CENTER</div>
+        <div class="header-title">NEURALABS COMMAND CENTER</div>
         <div class="header-sub" id="datetime"></div>
       </div>
       <div class="header-right">
@@ -965,11 +1017,20 @@ body::after {
       <div id="stripe-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;transition:filter 0.3s;"></div>
     </section>
 
-    <!-- AGENTS GRID (populated dynamically) -->
-    <div class="agents-grid" id="agents-grid" style="display:none"></div>
+    <!-- ISOMETRIC OFFICE -->
+    <section class="fade-up delay-3 office-section">
+      <div class="section-header">The Office</div>
+      <div data-iso-office></div>
+    </section>
+
+    <!-- AI TEAM -->
+    <section class="fade-up delay-3">
+      <div class="section-header">Team Detail</div>
+      <div class="agents-grid" id="ai-team-grid"></div>
+    </section>
 
     <!-- SOCIAL PERFORMANCE -->
-    <section class="fade-up delay-3">
+    <section class="fade-up delay-5">
       <div class="section-header" style="margin-bottom:0">Social Performance</div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
         <div id="last-refresh" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)"></div>
@@ -980,18 +1041,29 @@ body::after {
       <div class="social-grid" id="social-grid"></div>
     </section>
 
-    <!-- AI TEAM -->
-    <section class="fade-up delay-5">
-      <div class="section-header">AI Team</div>
-      <div class="agents-grid" id="ai-team-grid"></div>
+    <!-- RECENT ACTIVITY + SYSTEM HEALTH side by side -->
+    <section class="fade-up delay-6" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+      <!-- RECENT ACTIVITY -->
+      <div style="background:linear-gradient(180deg,hsl(0 0% 5%) 0%,hsl(0 0% 3%) 100%);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-family:var(--font-data);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim)">Recent Activity</div>
+        <div id="recent-activity" style="max-height:320px;overflow-y:auto;scrollbar-width:thin"></div>
+      </div>
+
+      <!-- SYSTEM HEALTH -->
+      <div style="background:linear-gradient(180deg,hsl(0 0% 5%) 0%,hsl(0 0% 3%) 100%);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-family:var(--font-data);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim)">System Health</div>
+        <div id="system-health" style="padding:14px 16px"></div>
+      </div>
+
     </section>
 
   </main>
 
   <!-- ── RIGHT FEED ────────────────────────────── -->
   <aside class="feed">
-    <div class="feed-title"><span class="live-dot"></span> LIVE ACTIVITY</div>
-    <div id="feed-list"></div>
+    <div class="feed-title"><span class="live-dot"></span> TASK FEED</div>
+    <div id="task-feed-list"></div>
   </aside>
 
 </div>
@@ -1021,20 +1093,30 @@ function fmtNum(n) {
 }
 
 // ── CONFIG ─────────────────────────────────────
-const APIFY_TOKEN = ''; // Set APIFY_API_KEY in .env to enable social media tracking
-const APIFY_BASE = 'https://api.apify.com/v2';
-const YT_KEY = ''; // Set YOUTUBE_API_KEY in .env to enable YouTube tracking
+const YT_KEY = 'REDACTED_YOUTUBE_KEY';
 
 // ── BRANDS CONFIG ─────────────────────────────
-// Configure your social media brands/handles here
 const BRANDS = [
-  // Example:
-  // { name: 'MyBrand', platforms: [
-  //   { type: 'tt', handle: 'myhandle', label: 'TikTok' },
-  //   { type: 'ig', handle: 'myhandle', label: 'Instagram' },
-  //   { type: 'yt', handle: '@myhandle', label: 'YouTube' },
-  //   { type: 'x', handle: 'myhandle', label: 'X' },
-  // ]},
+  {
+    name: 'METAVERS3',
+    platforms: [
+      { type: 'ig', handle: 'metavers3.nl', label: 'Instagram' },
+      { type: 'yt', handle: '@Metavers3nl', label: 'YouTube' },
+    ]
+  },
+  {
+    name: 'LEANDRO',
+    platforms: [
+      { type: 'ig', handle: 'leandrovalentino.eth', label: 'Instagram' },
+    ]
+  },
+  {
+    name: 'NEURALABS',
+    platforms: [
+      { type: 'ig', handle: 'neuralabscapital', label: 'Instagram' },
+      { type: 'yt', handle: '@neuralabscapital', label: 'YouTube' },
+    ]
+  },
 ];
 
 // ── SOCIAL STATE (flat lookup by cache key) ───
@@ -1044,8 +1126,8 @@ BRANDS.forEach(b => b.platforms.forEach(p => {
   platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
 }));
 
-const BRAND_ICONS = {};
-const PLATFORM_LABELS = { tt: 'TikTok', ig: 'Instagram', yt: 'YouTube', x: 'X / Twitter' };
+const BRAND_ICONS = { 'METAVERS3': 'M', 'LEANDRO': 'L', 'NEURALABS': 'N' };
+const PLATFORM_LABELS = { ig: 'Instagram', yt: 'YouTube' };
 
 function renderSocialCards() {
   document.getElementById('social-grid').innerHTML = BRANDS.map(brand => {
@@ -1134,73 +1216,6 @@ function cacheIsFresh(key) {
   return entry && (Date.now() - entry.ts) < CACHE_MAX_AGE;
 }
 
-// ── APIFY: poll run until done, return dataset items ──
-async function apifyRunAndWait(actorId, input) {
-  console.log('[NL] Starting Apify run:', actorId);
-  const startRes = await fetch(`${APIFY_BASE}/acts/${actorId}/runs?token=${APIFY_TOKEN}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input)
-  });
-  if (!startRes.ok) throw new Error('Apify start failed: ' + startRes.status);
-  const startJson = await startRes.json();
-  if (!startJson.data?.id) throw new Error('Apify: no run ID returned');
-  const runId = startJson.data.id;
-  console.log('[NL] Apify run started:', runId);
-
-  // Poll until done (max 3 min)
-  for (let i = 0; i < 36; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    const poll = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
-    if (!poll.ok) { console.warn('[NL] Poll error:', poll.status); continue; }
-    const pollJson = await poll.json();
-    const status = pollJson.data?.status;
-    console.log('[NL] Poll', i + 1, ':', status);
-    if (status === 'SUCCEEDED') break;
-    if (status === 'FAILED' || status === 'ABORTED') throw new Error('Apify run ' + status);
-  }
-
-  const dsRes = await fetch(`${APIFY_BASE}/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`);
-  if (!dsRes.ok) throw new Error('Apify dataset failed: ' + dsRes.status);
-  return dsRes.json();
-}
-
-// ── TIKTOK FETCH (multi-profile, sequential to avoid Apify concurrency limits) ──
-async function fetchTikTok() {
-  const handles = BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'tt').map(p => p.handle));
-  for (const h of handles) {
-    try { await fetchTikTokProfile(h); } catch(e) { console.error('[NL] TT fetch error:', h, e); }
-  }
-}
-
-async function fetchTikTokProfile(handle) {
-  const cacheKey = 'ctrl_tt_' + handle;
-  if (cacheIsFresh(cacheKey)) { console.log('[NL] TT cache fresh:', handle); applyTikTokProfile(cacheGet(cacheKey).data, handle); return; }
-
-  try {
-    const data = await apifyRunAndWait('clockworks~free-tiktok-scraper', {
-      profiles: [handle], resultsPerPage: 10,
-      shouldDownloadVideos: false, shouldDownloadCovers: false
-    });
-    cacheSet(cacheKey, data);
-    applyTikTokProfile(data, handle);
-  } catch(e) { updatePlatform('tt', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
-}
-
-function applyTikTokProfile(data, handle) {
-  if (!data.length) { updatePlatform('tt', handle, { followers: '—', engagement: '—', change: 'No data' }); return; }
-  const am = data[0].authorMeta || {};
-  const fans = am.fans || 0;
-  const plays = data.map(p => p.playCount || 0);
-  const totalPlays = plays.reduce((a,b) => a+b, 0);
-  const totalEng = data.reduce((a,p) => a + (p.diggCount||0) + (p.shareCount||0) + (p.commentCount||0), 0);
-  const eng = totalPlays > 0 ? (totalEng / totalPlays * 100).toFixed(1) + '%' : '—';
-
-  updatePlatform('tt', handle, {
-    followers: fmtNum(fans), engagement: eng,
-    change: fmtNum(totalPlays) + ' plays', up: true, label: 'Followers'
-  });
-}
-
 // ── INSTAGRAM FETCH (multi-profile, sequential) ──
 async function fetchInstagram() {
   const handles = BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'ig').map(p => p.handle));
@@ -1214,14 +1229,15 @@ async function fetchInstagramProfile(handle) {
   if (cacheIsFresh(cacheKey)) { console.log('[NL] IG cache fresh:', handle); applyInstagramProfile(cacheGet(cacheKey).data, handle); return; }
 
   try {
-    // Single run: details includes followersCount + latestPosts
-    const data = await apifyRunAndWait('shu8hvrXbJbY3Eb9W', {
-      directUrls: ['https://www.instagram.com/' + handle + '/'],
-      resultsType: 'details', resultsLimit: 1
-    });
-    cacheSet(cacheKey, data[0] || {});
-    applyInstagramProfile(data[0] || {}, handle);
-  } catch(e) { updatePlatform('ig', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
+    const res = await fetch('/social/ig/stats?handle=' + encodeURIComponent(handle), { credentials: 'include' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Niet gekoppeld');
+    }
+    const data = await res.json();
+    cacheSet(cacheKey, data);
+    applyInstagramProfile(data, handle);
+  } catch(e) { updatePlatform('ig', handle, { followers: '—', engagement: '—', change: e.message, up: false }); }
 }
 
 function applyInstagramProfile(data, handle) {
@@ -1286,52 +1302,6 @@ async function fetchYouTubeProfile(handle) {
   } catch(e) { updatePlatform('yt', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); }
 }
 
-// ── X/TWITTER FETCH (multi-profile, sequential) ──
-async function fetchX() {
-  const handles = [...new Set(BRANDS.flatMap(b => b.platforms.filter(p => p.type === 'x').map(p => p.handle)))];
-  const xDataByHandle = {};
-  for (const h of handles) {
-    try { xDataByHandle[h] = await fetchXProfile(h); } catch(e) { console.error('[NL] X fetch error:', h, e); }
-  }
-  // Apply to all brand platforms that use each handle
-  BRANDS.forEach(b => b.platforms.filter(p => p.type === 'x').forEach(p => {
-    if (xDataByHandle[p.handle]) applyXProfile(xDataByHandle[p.handle], p.handle);
-  }));
-}
-
-async function fetchXProfile(handle) {
-  const cacheKey = 'ctrl_x_' + handle;
-  if (cacheIsFresh(cacheKey)) { console.log('[NL] X cache fresh:', handle); const d = cacheGet(cacheKey).data; applyXProfile(d, handle); return d; }
-
-  try {
-    const data = await apifyRunAndWait('quacker~twitter-scraper', {
-      handles: [handle], tweetsDesired: 5
-    });
-    if (data[0]?.error) { updatePlatform('x', handle, { followers: '—', engagement: '—', change: 'No data', up: true }); return null; }
-    cacheSet(cacheKey, data);
-    applyXProfile(data, handle);
-    return data;
-  } catch(e) { updatePlatform('x', handle, { followers: 'Err', engagement: '—', change: e.message, up: false }); return null; }
-}
-
-function applyXProfile(data, handle) {
-  if (!data || !data.length || data[0]?.error) { updatePlatform('x', handle, { followers: '—', engagement: '—', change: 'No data' }); return; }
-  const user = data[0].user || {};
-  const followers = user.followers_count || 0;
-  const tweets = data.filter(t => t.user);
-  const totalEng = tweets.reduce((a, t) => a + (t.favorite_count || 0) + (t.retweet_count || 0) + (t.reply_count || 0), 0);
-  const avgEng = tweets.length > 0 && followers > 0
-    ? ((totalEng / tweets.length) / followers * 100).toFixed(1) + '%'
-    : '—';
-  const totalLikes = tweets.reduce((a, t) => a + (t.favorite_count || 0), 0);
-
-  updatePlatform('x', handle, {
-    followers: followers ? fmtNum(followers) : '—',
-    engagement: avgEng,
-    change: fmtNum(totalLikes) + ' likes', up: true, label: 'Followers'
-  });
-}
-
 // ── CLEAR CACHE ──────────────────────────────
 function clearSocialCache() {
   const keys = Object.keys(localStorage).filter(k => k.startsWith('ctrl_'));
@@ -1361,13 +1331,9 @@ async function refreshAllData(forceAll) {
   Object.values(platformState).forEach(s => { s.loading = true; });
   renderSocialCards();
 
-  // Run everything sequentially to avoid Apify concurrency limits
-  console.log('[NL] Fetching TikTok...');
-  await fetchTikTok().catch(e => console.error('[NL] TikTok failed:', e));
+  // Run everything sequentially
   console.log('[NL] Fetching Instagram...');
   await fetchInstagram().catch(e => console.error('[NL] Instagram failed:', e));
-  console.log('[NL] Fetching X...');
-  await fetchX().catch(e => console.error('[NL] X failed:', e));
   console.log('[NL] Fetching YouTube...');
   await fetchYouTubeData().catch(e => console.error('[NL] YouTube failed:', e));
   console.log('[NL] All fetches done');
@@ -1388,9 +1354,7 @@ async function refreshAllData(forceAll) {
     const entry = cacheGet(cacheKey);
     if (entry) {
       const data = entry.data;
-      if (p.type === 'tt') applyTikTokProfile(data, p.handle);
-      else if (p.type === 'ig') applyInstagramProfile(data, p.handle);
-      else if (p.type === 'x') applyXProfile(data, p.handle);
+      if (p.type === 'ig') applyInstagramProfile(data, p.handle);
       else if (p.type === 'yt') {
         updatePlatform('yt', p.handle, { followers: fmtNum(data.subs), engagement: data.eng, change: fmtNum(data.totalViews)+' views', up: true, label: 'Subscribers' });
       }
@@ -1412,136 +1376,6 @@ async function refreshAllData(forceAll) {
     console.log('[NL] All caches fresh (< 24h) — skipping fetch');
   }
 })();
-
-// ── LIVE BOT DATA ─────────────────────────────
-const BOT_META = {
-  funding: { name: 'FUNDING BOT', emoji: '💰', role: 'Funding Rate Arbitrage', color: 'var(--success)', hsl: '142 76% 36%' },
-  trend:   { name: 'TREND BOT', emoji: '📈', role: 'Mean-Reversion BB+RSI+ADX', color: 'var(--primary)', hsl: '264 65% 49%' },
-};
-
-const DASHBOARD_API = '/api/status';
-
-function renderBotCards(data) {
-  const bots = Object.entries(BOT_META).map(([id, meta]) => {
-    const bot = data[id] || {};
-    const s = bot.stats || {};
-    const status = bot.online ? 'running' : 'offline';
-    const positions = bot.positions?.length || 0;
-    const lastLine = (bot.recentActivity || []).filter(l => !l.includes('───')).slice(-1)[0] || 'No recent activity';
-    const task = lastLine.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\|\s+\w+\s+\|\s+/, '');
-    const winRate = s.winRate || 0;
-
-    const procOk = bot.processRunning === true;
-    const logOk = bot.logFresh === true;
-
-    const upnl = (bot.positions || []).reduce((sum, p) => sum + (p.unrealizedPnl || 0), 0);
-    return { id, ...meta, status, bot, s, positions, task, winRate, procOk, logOk, upnl };
-  });
-
-  document.getElementById('agents-grid').innerHTML = bots.map(a => `
-    <div class="agent-card ${a.status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-      <div class="agent-card-header">
-        <div class="agent-avatar">
-          <div class="agent-avatar-bg" style="background:${a.color}"></div>
-          <span style="position:relative;z-index:1">${a.emoji}</span>
-        </div>
-        <div class="agent-header-info">
-          <div class="agent-name">${a.name}</div>
-          <div class="agent-role">${a.role}</div>
-        </div>
-        <span class="agent-status ${a.status}">${a.status}</span>
-      </div>
-      <div class="agent-card-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Account</div>
-            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:var(--text)">$${(a.bot.accountValue || 0).toFixed(0)}</div>
-          </div>
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized PnL</div>
-            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:${a.upnl >= 0 ? 'var(--success)' : 'var(--danger)'}">$${a.upnl >= 0 ? '+' : ''}${a.upnl.toFixed(2)}</div>
-          </div>
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div>
-            <div style="font-family:var(--font-data);font-size:16px;font-weight:700;color:${a.s.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'}">$${a.s.totalPnl >= 0 ? '+' : ''}${(a.s.totalPnl || 0).toFixed(2)}</div>
-          </div>
-        </div>
-        <div class="agent-progress-wrap">
-          <div class="agent-progress">
-            <div class="agent-progress-fill" style="width:${a.winRate}%;background:${a.color}"></div>
-          </div>
-          <span class="agent-progress-pct">${a.winRate}%</span>
-        </div>
-        <div class="agent-task">${a.task}</div>
-        <div class="health-row">
-          <span class="health-tag"><span class="dot ${a.procOk ? 'ok' : 'err'}"></span>${a.procOk ? 'Process' : 'No process'}</span>
-          <span class="health-tag"><span class="dot ${a.logOk ? 'ok' : 'err'}"></span>${a.logOk ? 'Log active' : 'Log stale'}</span>
-        </div>
-      </div>
-      <div class="agent-card-footer">
-        <span class="agent-footer-label"><span>${a.s.totalTrades || 0}</span> trades</span>
-        <span class="agent-footer-label"><span>${a.positions}</span> open pos</span>
-        <span class="agent-footer-label">wr <span>${a.winRate}%</span></span>
-      </div>
-    </div>
-  `).join('');
-
-  // Update briefing banner
-  const totalValue = Object.values(data).reduce((s, b) => s + (b.accountValue || 0), 0);
-  const totalDailyPnl = Object.values(data).reduce((s, b) => s + (b.stats?.dailyPnl || 0), 0);
-  const onlineCount = Object.values(data).filter(b => b.online).length;
-  const totalBots = Object.keys(BOT_META).length;
-  const totalTrades = Object.values(data).reduce((s, b) => s + (b.stats?.totalTrades || 0), 0);
-
-  document.getElementById('brief-total-value').textContent = '$' + totalValue.toFixed(2);
-  document.getElementById('brief-total-meta').textContent = totalBots + ' wallets combined';
-  const pnlEl = document.getElementById('brief-daily-pnl');
-  pnlEl.textContent = '$' + (totalDailyPnl >= 0 ? '+' : '') + totalDailyPnl.toFixed(2);
-  pnlEl.style.color = totalDailyPnl >= 0 ? 'var(--success)' : 'var(--danger)';
-  document.getElementById('brief-daily-meta').textContent = totalTrades + ' trades total';
-  const totalPnl = Object.values(data).reduce((s, b) => s + (b.stats?.totalPnl || 0), 0);
-  const totalPnlEl = document.getElementById('brief-total-pnl');
-  totalPnlEl.textContent = '$' + (totalPnl >= 0 ? '+' : '') + totalPnl.toFixed(2);
-  totalPnlEl.style.color = totalPnl >= 0 ? 'var(--success)' : 'var(--danger)';
-  document.getElementById('brief-total-pnl-meta').textContent = 'All time combined';
-  document.getElementById('brief-bots-online').textContent = onlineCount + '/' + totalBots;
-  document.getElementById('brief-bots-online').style.color = onlineCount === totalBots ? 'var(--success)' : 'var(--danger)';
-  const offlineBots = Object.entries(BOT_META).filter(([id]) => !data[id]?.online).map(([,m]) => m.name);
-  document.getElementById('brief-bots-meta').textContent = onlineCount === totalBots ? 'All systems operational' : offlineBots.join(', ') + ' offline';
-
-  // Update live feed with real bot activity
-  const allActivity = Object.entries(BOT_META).flatMap(([id, meta]) => {
-    return (data[id]?.recentActivity || [])
-      .filter(line => line.includes('INFO') && !line.includes('───'))
-      .slice(-5)
-      .map(line => {
-        const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-        const msgMatch = line.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+\|\s+\w+\s+\|\s+/, '');
-        return { time: timeMatch?.[1] || '—', text: '<strong>' + meta.name + '</strong> ' + msgMatch, color: meta.color, tag: id.toUpperCase() };
-      });
-  }).sort((a, b) => b.time.localeCompare(a.time)).slice(0, 15);
-
-  document.getElementById('feed-list').innerHTML = allActivity.map(f => `
-    <div class="feed-item">
-      <div class="feed-item-time">${f.time}</div>
-      <div class="feed-item-text">${f.text}</div>
-      <span class="feed-tag" style="background:hsla(264 65% 49% / 0.08);color:${f.color}">${f.tag}</span>
-    </div>
-  `).join('') || '<div style="color:var(--text-dim);font-size:11px;padding:12px 0">No recent activity</div>';
-}
-
-// Fetch bot data and render
-async function fetchBotData() {
-  try {
-    const res = await fetch(DASHBOARD_API);
-    if (!res.ok) throw new Error('API ' + res.status);
-    const data = await res.json();
-    renderBotCards(data);
-  } catch(e) {
-    console.error('[NL] Bot API error:', e);
-    document.getElementById('agents-grid').innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:20px;text-align:center">Could not connect to trading dashboard (port 3000)</div>';
-  }
-}
 
 // ── REVENUE BLUR TOGGLE ───────────────────────
 function toggleBlur() {
@@ -1588,12 +1422,14 @@ async function renderStripe() {
     const c = v => fmtEur(v / 100); // cents to EUR
     const grossGrowth = d.gross.prev > 0 ? Math.round(((d.gross.mtd - d.gross.prev) / d.gross.prev) * 100) : 0;
     const growthSign = grossGrowth >= 0 ? '+' : '';
-    grid.innerHTML = [
+    const cards = [
       renderStripeCard('Bruto Volume', c(d.gross.mtd), growthSign + grossGrowth + '% vs vorige maand · fees: ' + c(d.gross.fees_mtd), grossGrowth >= 0 ? 'var(--success)' : 'var(--danger)'),
-      renderStripeCard((window.__BRAND_COMPANY || 'Trading Platform') + ' MRR', c(d.mrr.value), d.active_subs.value + ' actieve subs × €9,99', 'var(--primary)'),
-      renderStripeCard('Other Revenue MTD', c(d.other.mtd), 'vorige maand: ' + c(d.other.prev), 'var(--success)'),
-      renderStripeCard('Balance', c(d.balance.available + d.balance.pending), c(d.balance.pending) + ' pending', 'var(--warning)'),
-    ].join('');
+      renderStripeCard('MRR', c(d.mrr.value), 'Subs: ' + c(d.mrr.subs_only || 0) + ' · Plug&Pay: ' + c(d.mrr.plugpay || 0), 'var(--primary)'),
+      renderStripeCard('Subscriptions MTD', c(d.subscriptions?.mtd || 0), 'vorige maand: ' + c(d.subscriptions?.prev || 0), 'var(--success)'),
+      renderStripeCard('Plug&Pay MTD', c(d.other?.mtd || 0), 'vorige maand: ' + c(d.other?.prev || 0), 'var(--success)'),
+      renderStripeCard('Balance', c((d.balance?.available || 0) + (d.balance?.pending || 0)), c(d.balance?.pending || 0) + ' pending', 'var(--warning)'),
+    ];
+    grid.innerHTML = cards.join('');
   } catch (e) {
     console.error('[STRIPE]', e);
   }
@@ -1601,11 +1437,134 @@ async function renderStripe() {
 renderStripe();
 setInterval(renderStripe, 5 * 60 * 1000); // refresh elke 5 min
 
-// Bot data polling removed — trading bots are a separate addon
+// ── RECENT ACTIVITY ──────────────────────────
+async function renderRecentActivity() {
+  const el = document.getElementById('recent-activity');
+  try {
+    const taskFiles = [
+      { api: '/designer/tasks', agent: 'Designer', color: 'var(--warning)' },
+      { api: '/research/tasks', agent: 'Researcher', color: 'var(--accent)' },
+      { api: '/analyst/tasks', agent: 'Analyst', color: 'var(--premium)' },
+      { api: '/scriptwriter/tasks', agent: 'Script Writer', color: 'hsl(30 90% 55%)' },
+      { api: '/video/tasks', agent: 'Video Editor', color: 'var(--danger)' },
+      { api: '/avatar/tasks', agent: 'Content Creator', color: 'hsl(180 70% 45%)' },
+    ];
+    let allTasks = [];
+    await Promise.all(taskFiles.map(async ({ api, agent, color }) => {
+      try {
+        const r = await fetch(api, { credentials: 'include' });
+        if (!r.ok) return;
+        const tasks = await r.json();
+        for (const t of tasks) {
+          allTasks.push({ ...t, _agent: agent, _color: color });
+        }
+      } catch {}
+    }));
+    // Sort by updated_at desc, take last 15
+    allTasks.sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
+    const recent = allTasks.slice(0, 15);
+    if (!recent.length) {
+      el.innerHTML = '<div style="padding:20px;color:var(--text-dim);font-size:12px;text-align:center">No recent activity</div>';
+      return;
+    }
+    el.innerHTML = recent.map(t => {
+      const time = t.updated_at || t.created_at || '';
+      const ago = time ? timeAgo(new Date(time)) : '';
+      const status = t.status || '?';
+      const statusColor = status === 'completed' ? 'var(--success)' : status === 'failed' ? 'var(--danger)' : status === 'processing' ? 'var(--warning)' : 'var(--text-dim)';
+      const desc = (t.description || t.type || t.design_type || '').slice(0, 50);
+      return `<div style="padding:8px 16px;border-bottom:1px solid hsla(217 32% 20% / 0.5);display:flex;align-items:center;gap:10px">
+        <span style="font-size:10px;font-weight:600;color:${t._color};min-width:70px">${t._agent}</span>
+        <span style="font-size:11px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${desc || 'Task'}</span>
+        <span style="font-size:9px;color:${statusColor};text-transform:uppercase;font-weight:600">${status}</span>
+        <span style="font-size:9px;color:var(--text-dim);min-width:50px;text-align:right">${ago}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:11px">Could not load activity</div>';
+  }
+}
+
+function timeAgo(date) {
+  const s = Math.floor((Date.now() - date) / 1000);
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+renderRecentActivity();
+setInterval(renderRecentActivity, 30000);
+
+// ── SYSTEM HEALTH ────────────────────────────
+async function renderSystemHealth() {
+  const el = document.getElementById('system-health');
+  try {
+    const [services, health] = await Promise.all([
+      fetch('/settings/services', { credentials: 'include' }).then(r => r.json()).catch(() => []),
+      fetch('/system/health', { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    ]);
+
+    let html = '';
+
+    // Services
+    for (const svc of services) {
+      const online = svc.status === 'online';
+      const dot = online ? 'var(--success)' : 'var(--danger)';
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid hsla(217 32% 20% / 0.3)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:7px;height:7px;border-radius:50%;background:${dot}"></span>
+          <span style="font-size:11px;color:var(--text)">${svc.label}</span>
+        </div>
+        <span style="font-size:9px;color:${dot};font-weight:600;text-transform:uppercase">${online ? 'Online' : 'Offline'}</span>
+      </div>`;
+    }
+
+    // Server stats
+    if (health.uptime_human) {
+      const memPct = health.memory?.pct || 0;
+      const diskPct = health.disk?.pct || 0;
+      const memColor = memPct > 85 ? 'var(--danger)' : memPct > 70 ? 'var(--warning)' : 'var(--success)';
+      const diskColor = diskPct > 85 ? 'var(--danger)' : diskPct > 70 ? 'var(--warning)' : 'var(--success)';
+
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Uptime</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${health.uptime_human}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Load</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)">${health.load || '—'}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Memory</div>
+          <div style="font-size:12px;font-weight:600;color:${memColor}">${memPct}%</div>
+          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="height:100%;width:${memPct}%;background:${memColor};border-radius:2px"></div></div>
+          <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${health.memory?.used_mb || 0}MB / ${health.memory?.total_mb || 0}MB</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Disk</div>
+          <div style="font-size:12px;font-weight:600;color:${diskColor}">${diskPct}%</div>
+          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="height:100%;width:${diskPct}%;background:${diskColor};border-radius:2px"></div></div>
+          <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${Math.round((health.disk?.used_mb||0)/1024)}GB / ${Math.round((health.disk?.total_mb||0)/1024)}GB</div>
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML = html || '<div style="color:var(--text-dim);font-size:11px">No health data</div>';
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--danger);font-size:11px">Could not load health data</div>';
+  }
+}
+
+renderSystemHealth();
+setInterval(renderSystemHealth, 60000);
 
 // ── AI TEAM ───────────────────────────────────
 const aiTeam = [
+  { name: 'TRADER', emoji: '🤖', role: '2 Live Bots on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
   { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
+  { name: 'ANALYST', emoji: '📊', role: 'Bot Reports & Diagnostics', status: 'idle', color: 'var(--premium)', hsl: '270 95% 65%', task: 'Awaiting assignment' },
   { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
   { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
@@ -1645,18 +1604,20 @@ async function renderAiTeam() {
 
   document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
     if (a.isTrader && botData) {
-      const onlineCount = ['funding','liq','trend'].filter(id => botData[id]?.online).length;
-      const totalEquity = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.accountValue||0), 0);
-      const totalUpnl = ['funding','liq','trend'].reduce((s, id) => s + ((botData[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
-      const totalRealizedPnl = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.stats?.totalPnl||0), 0);
-      const totalTrades = ['funding','liq','trend'].reduce((s, id) => s + (botData[id]?.stats?.totalTrades||0), 0);
-      const status = onlineCount === 3 ? 'running' : onlineCount > 0 ? 'queued' : 'idle';
+      const TRADER_BOTS = ['funding','trend'];
+      const totalBots = TRADER_BOTS.length;
+      const onlineCount = TRADER_BOTS.filter(id => botData[id]?.online).length;
+      const totalEquity = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.accountValue||0), 0);
+      const totalUpnl = TRADER_BOTS.reduce((s, id) => s + ((botData[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
+      const totalRealizedPnl = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.stats?.totalPnl||0), 0);
+      const totalTrades = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.stats?.totalTrades||0), 0);
+      const status = onlineCount === totalBots ? 'running' : onlineCount > 0 ? 'queued' : 'idle';
 
       return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
         <div class="agent-card-header">
           <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
           <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-          <span class="agent-status ${status}">${onlineCount}/3 online</span>
+          <span class="agent-status ${status}">${onlineCount}/${totalBots} online</span>
         </div>
         <div class="agent-card-body">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -1664,11 +1625,11 @@ async function renderAiTeam() {
             <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalUpnl>=0?'var(--success)':'var(--danger)'}">$${totalUpnl>=0?'+':''}${totalUpnl.toFixed(2)}</div></div>
             <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalRealizedPnl>=0?'var(--success)':'var(--danger)'}">$${totalRealizedPnl>=0?'+':''}${totalRealizedPnl.toFixed(2)}</div></div>
           </div>
-          <div class="agent-task">${onlineCount === 3 ? 'All bots operational' : (3-onlineCount)+' bot(s) offline'}</div>
+          <div class="agent-task">${onlineCount === totalBots ? 'All bots operational' : (totalBots-onlineCount)+' bot(s) offline'}</div>
           <div class="health-row">
-            ${['funding','liq','trend'].map(id => {
+            ${TRADER_BOTS.map(id => {
               const b = botData[id] || {};
-              const label = id === 'funding' ? 'Fund' : id === 'liq' ? 'Liq' : 'Trend';
+              const label = id === 'funding' ? 'Fund' : 'Trend';
               const ok = b.online;
               return '<span class="health-tag"><span class="dot ' + (ok ? 'ok' : 'err') + '"></span>' + label + '</span>';
             }).join('')}
@@ -1676,7 +1637,7 @@ async function renderAiTeam() {
         </div>
         <div class="agent-card-footer">
           <span class="agent-footer-label"><span>${totalTrades}</span> trades</span>
-          <span class="agent-footer-label"><span>${onlineCount}/3</span> active</span>
+          <span class="agent-footer-label"><span>${onlineCount}/${totalBots}</span> active</span>
         </div>
       </div>`;
     }
@@ -1693,7 +1654,7 @@ async function renderAiTeam() {
         </div>
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Claude + Skills</span></span>
-          <a href="marketeer.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open marketeer</a>
+          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
         </div>
       </div>`;
     }
@@ -1710,7 +1671,7 @@ async function renderAiTeam() {
         </div>
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
-          <a href="calendar.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open assistant</a>
+          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
         </div>
       </div>`;
     }
@@ -1742,6 +1703,79 @@ async function renderAiTeam() {
 }
 renderAiTeam();
 setInterval(renderAiTeam, 10000);
+
+// ── AGENT TASK FEED (right sidebar) ────────────
+const TASK_FEED_SOURCES = [
+  { api: '/avatar/tasks',       agent: 'CONTENT',  subtype: 'AVATAR',     color: 'hsl(180 70% 45%)' },
+  { api: '/video-agent/tasks',  agent: 'CONTENT',  subtype: 'VIDEO AGENT',color: 'hsl(180 70% 45%)' },
+  { api: '/scriptwriter/tasks', agent: 'SCRIPT',   subtype: 'SCRIPT',     color: 'hsl(30 90% 55%)' },
+  { api: '/designer/tasks',     agent: 'DESIGN',   subtype: 'DESIGN',     color: 'var(--warning)' },
+  { api: '/video/tasks',        agent: 'VIDEO',    subtype: 'REMOTION',   color: 'var(--danger)' },
+  { api: '/video/ai-generate',  agent: 'VIDEO',    subtype: 'AI GEN',     color: 'var(--danger)' },
+  { api: '/research/tasks',     agent: 'RESEARCH', subtype: 'RESEARCH',   color: 'var(--accent)' },
+  { api: '/analyst/tasks',      agent: 'ANALYST',  subtype: 'ANALYST',    color: 'var(--premium)' },
+];
+
+function fmtTaskTime(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  const diff = Date.now() - d;
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return d.toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function escTask(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+async function loadTaskFeed() {
+  const el = document.getElementById('task-feed-list');
+  if (!el) return;
+  const all = [];
+  await Promise.all(TASK_FEED_SOURCES.map(async src => {
+    try {
+      const tasks = await (await fetch(src.api)).json();
+      if (Array.isArray(tasks)) {
+        tasks.forEach(t => all.push({
+          ...t,
+          _agent: src.agent,
+          _subtype: src.subtype,
+          _color: src.color,
+          _desc: t.description || t.topic || t.query || t.prompt || t.design_type || '-',
+        }));
+      }
+    } catch {}
+  }));
+
+  all.sort((a, b) => {
+    const order = { processing: 0, pending: 1, completed: 2, failed: 3, cancelled: 4 };
+    const oa = order[a.status] ?? 5, ob = order[b.status] ?? 5;
+    if (oa !== ob) return oa - ob;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  const list = all.slice(0, 25);
+  if (!list.length) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:11px;padding:12px 0">No tasks yet</div>';
+    return;
+  }
+  el.innerHTML = list.map(t => `
+    <div class="task-feed-row is-${t.status}">
+      <div class="task-feed-meta">
+        <span class="task-feed-tag" style="color:${t._color};background:${t._color}15">${t._subtype}</span>
+        <span class="task-feed-time">${fmtTaskTime(t.created_at)}</span>
+      </div>
+      <div class="task-feed-desc">${escTask(t._desc)}</div>
+      <div class="task-feed-status" style="color:${t._color}">${t.status}</div>
+    </div>
+  `).join('');
+}
+loadTaskFeed();
+setInterval(loadTaskFeed, 10000);
 
 // ── MOBILE NAVIGATION ─────────────────────────
 function toggleSidebar() {
@@ -1775,6 +1809,6 @@ window.addEventListener('resize', function() {
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
+<script src="/iso-office.js"></script>
 </body>
 </html>

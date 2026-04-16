@@ -1,9 +1,8 @@
 """
-Trend Bot — Mean-Reversion Bot
+NeuraLabs Bot 5 — Mean-Reversion Bot
 
 Bollinger Band + RSI mean-reversion strategie op 15m candles.
 Handelt alleen in range-bound markten (ADX < 25).
-Complementair aan Bot 3 (liquidation) die alleen in trending markten handelt.
 """
 
 import os
@@ -25,6 +24,7 @@ from config import (
     TICK_SIZES, SZ_DECIMALS,
     DATA_FILE,
     RSI_OVERSOLD, RSI_OVERBOUGHT, ADX_MAX,
+    BTC_REGIME_ENABLED, BTC_REGIME_LOOKBACK_CANDLES, BTC_REGIME_THRESHOLD_PCT,
 )
 from logger_setup import setup_logger
 from mean_reversion_engine import MeanReversionEngine
@@ -35,10 +35,24 @@ logger = logging.getLogger("MeanRevBot")
 
 # Data client
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-hub"))
+sys.path.insert(0, "/root/neuralabs-data")
 from client import HLDataClient as _HLDataClient
 _data_client = _HLDataClient(wallet_address=WALLET_ADDRESS, base_url=BASE_URL)
+
+
+def _fp(price):
+    """Format price with enough decimals: $71500 → '71500.00', $0.2618 → '0.26180'."""
+    if price is None or price == 0:
+        return "0.00"
+    abs_p = abs(price)
+    if abs_p >= 100:
+        return f"{price:.2f}"
+    elif abs_p >= 1:
+        return f"{price:.3f}"
+    elif abs_p >= 0.01:
+        return f"{price:.5f}"
+    else:
+        return f"{price:.8f}"
 
 
 def _info_post(payload):
@@ -54,9 +68,9 @@ class MeanReversionBot:
 
     def __init__(self):
         logger.info("=" * 60)
-        logger.info("  Trend Bot — Mean-Reversion Bot")
+        logger.info("  NeuraLabs Bot 5 — Mean-Reversion Bot")
         logger.info("  Bollinger Bands + RSI op 15m candles")
-        logger.info("  Complementair aan Bot 3 (range vs trending)")
+        logger.info("  Alleen handelen in range-bound markten (ADX < 25)")
         logger.info("=" * 60)
 
         account = Account.from_key(PRIVATE_KEY)
@@ -132,6 +146,37 @@ class MeanReversionBot:
     def _round_to_tick(self, price, asset):
         tick = TICK_SIZES.get(asset, 0.1)
         return round(round(price / tick) * tick, 10)
+
+    def _btc_1h_change_pct(self):
+        """Return BTC close-to-close % change over the last BTC_REGIME_LOOKBACK_CANDLES
+        (default 4 x 15m = 1h). Returns None if data unavailable."""
+        try:
+            candles = self._mr_engine._fetch_candles("BTC")
+            if not candles or len(candles) < BTC_REGIME_LOOKBACK_CANDLES + 1:
+                return None
+            start = float(candles[-BTC_REGIME_LOOKBACK_CANDLES - 1]["c"])
+            end = float(candles[-1]["c"])
+            if start == 0:
+                return None
+            return (end - start) / start * 100.0
+        except Exception as e:
+            logger.debug("BTC regime check mislukt: %s", e)
+            return None
+
+    def _btc_regime_blocks(self, signal):
+        """Return (blocked, reason) — blokkeer het signaal als het tegen een sterke
+        BTC-beweging van het laatste uur in gaat."""
+        if not BTC_REGIME_ENABLED:
+            return False, None
+        chg = self._btc_1h_change_pct()
+        if chg is None:
+            return False, None
+        thr = BTC_REGIME_THRESHOLD_PCT
+        if signal.direction == "SHORT" and chg >= thr:
+            return True, f"BTC 1h +{chg:.2f}% (>= +{thr}%) — SHORTS geblokkeerd"
+        if signal.direction == "LONG" and chg <= -thr:
+            return True, f"BTC 1h {chg:.2f}% (<= -{thr}%) — LONGS geblokkeerd"
+        return False, None
 
     # -- Risk management --
 
@@ -231,10 +276,10 @@ class MeanReversionBot:
         }
 
         logger.info(
-            "POSITIE GEOPEND: %s %s @ $%.2f | TP: $%.2f (%.2f%%) | SL: $%.2f | Size: $%.2f",
-            signal.direction, signal.asset, price, tp, tp_pct, sl, size_usd,
+            "POSITIE GEOPEND: %s %s @ $%s | TP: $%s (%.2f%%) | SL: $%s | Size: $%.2f",
+            signal.direction, signal.asset, _fp(price), _fp(tp), tp_pct, _fp(sl), size_usd,
         )
-        logger.info("  BB midden: $%.2f | Reden: %s", signal.bb_middle, signal.reason)
+        logger.info("  BB midden: $%s | Reden: %s", _fp(signal.bb_middle), signal.reason)
 
         self._notifier.notify_trade_opened(
             signal.asset, signal.direction, price, size_usd, signal.rsi,
@@ -250,13 +295,13 @@ class MeanReversionBot:
             # TP trigger order
             self._exchange.order(
                 asset, is_buy, size, tp,
-                {"trigger": {"triggerPx": str(tp), "isMarket": True, "tpsl": "tp"}},
+                {"trigger": {"triggerPx": tp, "isMarket": True, "tpsl": "tp"}},
                 reduce_only=True,
             )
             # SL trigger order
             self._exchange.order(
                 asset, is_buy, size, sl,
-                {"trigger": {"triggerPx": str(sl), "isMarket": True, "tpsl": "sl"}},
+                {"trigger": {"triggerPx": sl, "isMarket": True, "tpsl": "sl"}},
                 reduce_only=True,
             )
             logger.info("Exchange TP/SL orders geplaatst voor %s (TP=$%.2f, SL=$%.2f)", asset, tp, sl)
@@ -327,8 +372,8 @@ class MeanReversionBot:
 
         pnl_sign = "+" if pnl >= 0 else ""
         logger.info(
-            "POSITIE GESLOTEN: %s %s | Entry: $%.2f | Exit: $%.2f | PnL: $%s%.2f | Houdtijd: %.0fs | %s",
-            pos["direction"], asset, pos["entry_price"], price,
+            "POSITIE GESLOTEN: %s %s | Entry: $%s | Exit: $%s | PnL: $%s%.2f | Houdtijd: %.0fs | %s",
+            pos["direction"], asset, _fp(pos["entry_price"]), _fp(price),
             pnl_sign, pnl, hold_time, reason,
         )
 
@@ -429,9 +474,9 @@ class MeanReversionBot:
                 dist_upper = (ind["bb_upper"] - ind["price"]) / ind["price"] * 100
                 dist_lower = (ind["price"] - ind["bb_lower"]) / ind["price"] * 100
                 logger.info(
-                    "  %s  BB: $%.2f / $%.2f / $%.2f | RSI: %.1f | ADX: %.1f | Prijs: $%.2f",
-                    asset.ljust(4), ind["bb_lower"], ind["bb_middle"], ind["bb_upper"],
-                    ind["rsi"], ind["adx"], ind["price"],
+                    "  %s  BB: $%s / $%s / $%s | RSI: %.1f | ADX: %.1f | Prijs: $%s",
+                    asset.ljust(4), _fp(ind["bb_lower"]), _fp(ind["bb_middle"]), _fp(ind["bb_upper"]),
+                    ind["rsi"], ind["adx"], _fp(ind["price"]),
                 )
                 logger.info(
                     "  %s  BB-breedte: %.2f%% | Afstand UB: %.2f%% | Afstand LB: %.2f%%",
@@ -457,11 +502,11 @@ class MeanReversionBot:
                 pnl = (pos["entry_price"] - price) / pos["entry_price"] * pos["size_usd"] if price > 0 else 0
             trail_str = f" [TRAILING best={pos['trailing_best_pnl']:.2f}%]" if pos["trailing_active"] else ""
             logger.info(
-                "  POSITIE: %s %s @ $%.2f | PnL: $%+.2f | TP: $%.2f | SL: $%.2f%s",
-                pos["direction"], pos["asset"], pos["entry_price"],
-                pnl, pos["tp"], pos["sl"], trail_str,
+                "  POSITIE: %s %s @ $%s | PnL: $%+.2f | TP: $%s | SL: $%s%s",
+                pos["direction"], pos["asset"], _fp(pos["entry_price"]),
+                pnl, _fp(pos["tp"]), _fp(pos["sl"]), trail_str,
             )
-            logger.info("  BB midden target: $%.2f", pos.get("bb_middle", 0))
+            logger.info("  BB midden target: $%s", _fp(pos.get("bb_middle", 0)))
         else:
             logger.info("  Geen open positie")
 
@@ -558,6 +603,29 @@ class MeanReversionBot:
 
     # -- Main loop --
 
+    def _get_regime_multiplier(self, bot_key: str) -> float:
+        """Get size multiplier from NeuraIntel. Fail open = 1.0.
+        Trend bot is exempt from RISK_OFF pause — mean-reversion
+        works well in fearful/range-bound markets. Still respects
+        size_multiplier for position sizing adjustments."""
+        try:
+            directives = _data_client.get_directives()
+            if not directives:
+                return 1.0
+            regime = directives.get("regime", "unknown")
+            bot_directive = directives.get("bots", {}).get(bot_key, {})
+            if not bot_directive.get("active", True):
+                # Trend bot overrides RISK_OFF — trade at reduced size instead of full pause
+                if regime == "RISK_OFF":
+                    logger.info("[NeuraIntel] RISK_OFF regime — trend bot exempt, trading at 0.5x size")
+                    return 0.5
+                logger.info("[NeuraIntel] Bot paused by regime: %s", regime)
+                return 0.0
+            return float(bot_directive.get("size_multiplier", 1.0))
+        except Exception as e:
+            logger.warning("[NeuraIntel] get_directives failed, running normally: %s", e)
+            return 1.0
+
     def run(self):
         logger.info("Bot starten...")
 
@@ -589,13 +657,33 @@ class MeanReversionBot:
 
                 # Zoek nieuwe signalen (alleen als geen positie open)
                 if self._position is None:
+                    # NeuraIntel regime check
+                    multiplier = self._get_regime_multiplier("trend_bot")
+                    if multiplier == 0.0:
+                        scan_count += 1
+                        time.sleep(SCAN_INTERVAL)
+                        continue
+
                     can, reason = self._can_trade()
                     if can:
-                        for asset in ASSETS:
-                            signal = self._mr_engine.check_signal(asset)
-                            if signal:
-                                if self._open_position(signal):
-                                    break  # max 1 positie
+                        import config as _cfg
+                        original_pct = _cfg.POSITION_SIZE_PCT
+                        _cfg.POSITION_SIZE_PCT = original_pct * multiplier
+                        try:
+                            for asset in ASSETS:
+                                signal = self._mr_engine.check_signal(asset)
+                                if signal:
+                                    blocked, reason = self._btc_regime_blocks(signal)
+                                    if blocked:
+                                        logger.info(
+                                            "%s: %s signaal geblokkeerd — %s",
+                                            asset, signal.direction, reason,
+                                        )
+                                        continue
+                                    if self._open_position(signal):
+                                        break  # max 1 positie
+                        finally:
+                            _cfg.POSITION_SIZE_PCT = original_pct
 
                 # Status loggen elke 5 scans (~5 min)
                 if scan_count % 5 == 0:

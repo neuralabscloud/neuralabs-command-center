@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Agents</title>
+<title>NEURALABS — Agents</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -295,7 +295,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
     <!-- AI TEAM -->
     <section class="fade-up delay-2">
-      <div class="section-header">AI Team</div>
+      <div class="section-header">Team Detail</div>
       <div class="agents-grid" id="ai-team-grid"></div>
     </section>
 
@@ -327,6 +327,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="sched-select" id="sched-agent" onchange="updatePayloadFields()">
               <option value="designer">Designer</option>
               <option value="researcher">Researcher</option>
+              <option value="analyst">Analyst</option>
               <option value="scriptwriter">Script Writer</option>
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
@@ -379,7 +380,9 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
 <script>
 const AI_TEAM = [
+  { name: 'TRADER', emoji: '\u{1F916}', role: '3 Live Bots on Hyperliquid', color: 'var(--success)', hsl: '142 76% 36%', isTrader: true },
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
+  { name: 'ANALYST', emoji: '\u{1F4CA}', role: 'Bot Reports & Diagnostics', color: 'var(--premium)', hsl: '270 95% 65%', taskApi: '/analyst/tasks', type: 'ANALYST' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
@@ -480,7 +483,7 @@ async function loadAiTeam() {
         </div>
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Claude + Skills</span></span>
-          <a href="marketeer.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open marketeer</a>
+          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
         </div>
       </div>`);
       continue;
@@ -498,7 +501,7 @@ async function loadAiTeam() {
         </div>
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
-          <a href="calendar.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open assistant</a>
+          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
         </div>
       </div>`);
       continue;
@@ -752,7 +755,7 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Engine</label>
         <select class="sched-select" id="sp-engine"><option value="nanobanana">Nano Banana</option><option value="playwright">Playwright</option><option value="claude">Claude AI</option></select></div>
       <div><label class="sched-label">Brand</label>
-        <select class="sched-select" id="sp-brand"><option value="DEFAULT">Default</option></select></div>
+        <select class="sched-select" id="sp-brand"><option value="METAVERS3">METAVERS3</option><option value="NEURALABS">NEURALABS</option><option value="LEANDRO">LEANDRO</option></select></div>
     </div>
     <div class="sched-form-row">
       <div><label class="sched-label">Design Type</label>
@@ -912,7 +915,6 @@ async function editSchedule(id) {
   const s = scheds.find(x => x.id === id);
   if (s) openScheduleModal(s);
 }
-
 // ── INIT ──
 async function loadAll() {
   await Promise.allSettled([loadAiTeam(), loadAllTasks()]);
@@ -927,6 +929,5 @@ setInterval(loadSchedules, 30000);
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

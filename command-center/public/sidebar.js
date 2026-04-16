@@ -3,15 +3,14 @@
     { href: 'index.html', label: 'Overview', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
     { href: 'research.html', label: 'Research', icon: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>' },
     { href: 'performance.html', label: 'Performance', icon: '<path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-8"/>' },
+    { href: 'ads.html', label: 'Ads Manager', icon: '<path d="M3 11l18-5v12L3 13v-2z"/><circle cx="7" cy="12" r="2"/>' },
     { href: 'agents.html', label: 'Agents', icon: '<circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/>' },
     { href: 'editor.html', label: 'Video Editor', icon: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>' },
     { href: 'designer.html', label: 'Designer', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },
     { href: 'analyst.html', label: 'Analyst', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/>' },
     { href: 'content-creator.html', label: 'Content Creator', icon: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>' },
     { href: 'scriptwriter.html', label: 'Script Writer', icon: '<path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' },
-    { href: 'marketeer.html', label: 'Marketeer', icon: '<path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/>' },
-    { href: 'calendar.html', label: 'Calendar', icon: '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>' },
-    { href: '/dashboard-link', label: 'Trading Dashboard', icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>', external: true, dashboardLink: true },
+    { href: 'http://147.79.102.153:3000/', label: 'Trading Dashboard', icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>', external: true },
   ];
 
   const BELL_ICON = '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>';
@@ -35,7 +34,11 @@
         return `<a class="nav-item${active}" href="${item.href}"${target}>${svg(item.icon)}<span class="tooltip">${item.label}</span></a>`;
       }).join('\n      ')}
     </nav>
-    <div class="nav-item notif-bell" onclick="toggleNotifPanel()" style="margin-top:auto">
+    <a class="nav-item${currentPage === 'chat.html' ? ' active' : ''}" href="chat.html" style="margin-top:auto">
+      ${svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>')}
+      <span class="tooltip" id="sidebar-assistant-tooltip">Assistant</span>
+    </a>
+    <div class="nav-item notif-bell" onclick="toggleNotifPanel()">
       ${svg(BELL_ICON)}
       <span class="tooltip">Notifications</span>
       <span class="notif-badge" id="notif-badge" style="display:none">0</span>
@@ -46,14 +49,11 @@
     </a>
   `;
 
-  // Dynamically set dashboard link from /brand endpoint
-  fetch('/brand').then(r => r.json()).then(() => {
-    fetch('/settings/services').then(r => r.json()).then(services => {
-      const dash = services.find(s => s.label === 'Trading Dashboard');
-      if (dash) {
-        const link = sidebar.querySelector('a[href="/dashboard-link"]');
-        if (link) link.href = dash.url;
-      }
-    }).catch(() => {});
+  // Dynamically load assistant name from brand config
+  fetch('/brand').then(r => r.json()).then(b => {
+    const name = b && b.assistant_name;
+    if (!name) return;
+    const el = document.getElementById('sidebar-assistant-tooltip');
+    if (el) el.textContent = name;
   }).catch(() => {});
 })();

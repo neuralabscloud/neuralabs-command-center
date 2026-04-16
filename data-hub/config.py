@@ -1,5 +1,5 @@
 """
-Jarvis — Central Data Hub
+Jarvis — NeuraLabs Centrale Data Hub
 De data layer waar alle bots hun marktdata uit halen.
 """
 import os
@@ -19,14 +19,17 @@ WS_URL   = "wss://api.hyperliquid-testnet.xyz/ws" if TESTNET else "wss://api.hyp
 # Bot 2: BTC, ETH
 # Bot 3: BTC, ETH
 # Bot 4: BTC, ETH, SOL
-# Bot 5: BTC, ETH
-ASSETS = ["BTC", "ETH", "SOL"]
+# Bot 5: BTC, ETH, SOL, BNB, HYPE, XRP, AAVE, ADA, WLD, DOGE, AVAX, SUI, LINK
+ASSETS = ["BTC", "ETH", "SOL", "BNB", "HYPE", "XRP", "AAVE", "ADA", "WLD", "DOGE", "AVAX", "SUI", "LINK"]
 
 # ── Wallets per bot ────────────────────────────────────
 # Per-wallet data (clearinghouseState, openOrders, etc.)
 WALLETS = {
-    "funding": os.environ.get("FUNDING_BOT_WALLET_ADDRESS", ""),
-    "trend":   os.environ.get("TREND_BOT_WALLET_ADDRESS", ""),
+    "bot1": os.getenv("HL_WALLET_ADDRESS_BOT1", ""),
+    "bot2": os.getenv("HL_WALLET_ADDRESS_BOT2", ""),
+    "bot3": os.getenv("HL_WALLET_ADDRESS_BOT3", ""),
+    "bot4": os.getenv("HL_WALLET_ADDRESS_BOT4", ""),
+    "bot5": os.getenv("HL_WALLET_ADDRESS_BOT5", ""),
 }
 
 # ── Poll intervals (seconden) ─────────────────────────
@@ -50,6 +53,20 @@ CANDLE_CONFIGS = [
     {"coin": "BTC", "interval": "5m", "count": 40},    # Bot 4 CVD
     {"coin": "ETH", "interval": "5m", "count": 40},    # Bot 4 CVD
     {"coin": "SOL", "interval": "5m", "count": 40},    # Bot 4 CVD
+    # Bot 5 mean-reversion (15m candles, alle assets)
+    {"coin": "BTC",  "interval": "15m", "count": 100},
+    {"coin": "ETH",  "interval": "15m", "count": 100},
+    {"coin": "SOL",  "interval": "15m", "count": 100},
+    {"coin": "BNB",  "interval": "15m", "count": 100},
+    {"coin": "HYPE", "interval": "15m", "count": 100},
+    {"coin": "XRP",  "interval": "15m", "count": 100},
+    {"coin": "AAVE", "interval": "15m", "count": 100},
+    {"coin": "ADA",  "interval": "15m", "count": 100},
+    {"coin": "WLD",  "interval": "15m", "count": 100},
+    {"coin": "DOGE", "interval": "15m", "count": 100},
+    {"coin": "AVAX", "interval": "15m", "count": 100},
+    {"coin": "SUI",  "interval": "15m", "count": 100},
+    {"coin": "LINK", "interval": "15m", "count": 100},
 ]
 
 # ── Redis key TTLs (seconden) ─────────────────────────

@@ -1,5 +1,5 @@
 """
-Jarvis — Central Data Hub
+Jarvis — NeuraLabs Centrale Data Hub
 Start REST poller + WebSocket client, schrijft heartbeat naar Redis.
 """
 import time
@@ -45,7 +45,7 @@ class DataHub:
 
     def start(self):
         log.info("=" * 55)
-        log.info("  Jarvis — Data Hub")
+        log.info("  Jarvis — NeuraLabs Data Hub")
         log.info("  Centrale data layer voor alle bots")
         log.info("=" * 55)
 

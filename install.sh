@@ -95,7 +95,6 @@ TELEGRAM_CHAT_ID=""
 HEYGEN_API_KEY=""
 STRIPE_SECRET_KEY=""
 COMPOSIO_API_KEY=""
-APIFY_API_KEY=""
 DASHBOARD_URL="http://localhost:3000"
 
 # ── INSTALL SYSTEM DEPENDENCIES ───────────────────────────
@@ -181,7 +180,6 @@ TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
 HEYGEN_API_KEY=${HEYGEN_API_KEY}
 STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
 COMPOSIO_API_KEY=${COMPOSIO_API_KEY}
-APIFY_API_KEY=${APIFY_API_KEY}
 BRAND_ASSET_URL=
 INSTALL_DIR=${INSTALL_DIR}
 DASHBOARD_URL=${DASHBOARD_URL}
@@ -199,6 +197,15 @@ bash "$INSTALL_DIR/config/generate-configs.sh"
 info "Installing Command Center dependencies (this may take a few minutes)..."
 cd "$INSTALL_DIR/command-center" && npm install --production 2>&1 | tail -5
 ok "Command Center npm packages installed"
+
+# Playwright browsers (needed for slide designer and browser tools)
+info "Installing Playwright browsers..."
+if npx playwright install chromium 2>&1 | tail -3; then
+  npx playwright install-deps chromium 2>&1 | tail -3
+  ok "Playwright Chromium installed"
+else
+  warn "Playwright install failed — slide designer won't work. Install later with: npx playwright install chromium"
+fi
 
 # ── INSTALL SYSTEMD SERVICES ────────────────────────────
 info "Installing systemd services..."
@@ -264,7 +271,7 @@ echo -e "  De wizard helpt je configureren:"
 echo "    - Branding (naam, kleuren, tagline)"
 echo "    - Anthropic API key (AI functies)"
 echo "    - Telegram notificaties"
-echo "    - Integraties (HeyGen, Stripe, Composio, Apify)"
+echo "    - Integraties (HeyGen, Stripe, Composio)"
 echo ""
 echo -e "  ${YELLOW}Trading Bots:${NC}"
 echo "    Trading bots zijn een aparte addon."

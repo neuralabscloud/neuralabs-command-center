@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Jarvis — Central Data Hub
+Jarvis — NeuraLabs Centrale Data Hub
 
 Gebruik:
     python run.py          # start Jarvis
@@ -9,9 +9,6 @@ Gebruik:
 """
 import sys
 import os
-from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

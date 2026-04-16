@@ -9,7 +9,8 @@ function authMiddleware(): Connect.NextHandleFunction {
     const apiPrefixes = ["/auth/", "/api/", "/designer/", "/video/", "/avatar/", "/analyst/",
       "/research/", "/media/", "/scriptwriter/", "/notifications", "/ctrl/", "/video-agent/",
       "/heygen/", "/stripe/", "/system/", "/canva/", "/settings/", "/brands", "/brand-assets",
-      "/generated-images", "/calendar/", "/marketeer/"];
+      "/generated-images", "/video-projects", "/video-projects-static",
+      "/social/", "/ads/"];
     if (
       url.startsWith("/@") ||
       url.startsWith("/node_modules") ||
@@ -51,8 +52,10 @@ function authMiddleware(): Connect.NextHandleFunction {
 
 export default defineConfig({
   server: {
-    allowedHosts: true,
+    allowedHosts: [".neuralabs.cloud", "localhost"],
     proxy: {
+      "/api/settings": "http://localhost:3004",
+      "/api/setup-status": "http://localhost:3004",
       "/api": "http://localhost:3000",
       "/auth": "http://localhost:3004",
       "/designer/tasks": "http://localhost:3004",
@@ -79,12 +82,13 @@ export default defineConfig({
       "/video/ai-generate": "http://localhost:3004",
       "/brands": "http://localhost:3004",
       "/brand-assets": "http://localhost:3004",
+      "/brand": "http://localhost:3004",
+      "/video-projects": "http://localhost:3004",
+      "/video-projects-static": "http://localhost:3004",
       "/generated-images": "http://localhost:3004",
       "/scheduled-tasks": "http://localhost:3004",
-      "/calendar/chat": "http://localhost:3004",
-      "/calendar/status": "http://localhost:3004",
-      "/marketeer/chat": "http://localhost:3004",
-      "/marketeer/status": "http://localhost:3004",
+      "/social": "http://localhost:3004",
+      "/ads/": "http://localhost:3004",
     },
   },
   plugins: [
@@ -106,8 +110,8 @@ export default defineConfig({
         main: path.resolve(__dirname, "index.html"),
         login: path.resolve(__dirname, "login.html"),
         research: path.resolve(__dirname, "research.html"),
-        pipeline: path.resolve(__dirname, "pipeline.html"),
         performance: path.resolve(__dirname, "performance.html"),
+        ads: path.resolve(__dirname, "ads.html"),
         agents: path.resolve(__dirname, "agents.html"),
         editor: path.resolve(__dirname, "editor.html"),
         designer: path.resolve(__dirname, "designer.html"),
@@ -115,8 +119,6 @@ export default defineConfig({
         contentcreator: path.resolve(__dirname, "content-creator.html"),
         scriptwriter: path.resolve(__dirname, "scriptwriter.html"),
         chat: path.resolve(__dirname, "chat.html"),
-        marketeer: path.resolve(__dirname, "marketeer.html"),
-        calendar: path.resolve(__dirname, "calendar.html"),
         settings: path.resolve(__dirname, "settings.html"),
       },
     },

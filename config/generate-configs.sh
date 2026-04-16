@@ -32,4 +32,12 @@ for task_file in research-tasks analyst-tasks designer-tasks video-tasks avatar-
 done
 [ -f "$ROOT_DIR/command-center/data/research-reports.json" ] || echo "[]" > "$ROOT_DIR/command-center/data/research-reports.json"
 
+# ── 3. Replace placeholders in trading-dashboard config.json ──
+if [ -f "$ROOT_DIR/trading-dashboard/config.json" ]; then
+  sed -i "s|__INSTALL_DIR__|${INSTALL_DIR:-/opt/commandcenter}|g" "$ROOT_DIR/trading-dashboard/config.json"
+  sed -i "s|__HL_WALLET_ADDRESS_BOT1__|${HL_WALLET_ADDRESS_BOT1:-}|g" "$ROOT_DIR/trading-dashboard/config.json"
+  sed -i "s|__HL_WALLET_ADDRESS_BOT5__|${HL_WALLET_ADDRESS_BOT5:-}|g" "$ROOT_DIR/trading-dashboard/config.json"
+  echo "[CONFIG] Updated trading-dashboard/config.json"
+fi
+
 echo "[CONFIG] All configs generated successfully."

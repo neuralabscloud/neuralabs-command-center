@@ -37,7 +37,7 @@
 - HeyGen API key (voor AI avatar video's)
 - Stripe account (voor revenue tracking)
 - Composio API key (voor Google Calendar integratie)
-- Apify API token (voor social media scraping & performance tracking)
+- Meta Developer App (voor Instagram performance tracking via Graph API — verbinden via Settings → Social Connections)
 - Canva account (voor design generatie via de Designer agent)
 
 ---
@@ -265,9 +265,10 @@ Klik op **Skip** als je dit later wilt instellen. Je kunt het altijd toevoegen v
 - **Stripe Secret Key** — Voor revenue & subscription tracking. Key vind je in je [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (begint met `sk_live_` of `sk_test_`)
 - **Inference.sh API Key** — Voor AI image generatie (Nano Banana / Google Gemini). Gebruikt door de Designer agent. Key ophalen via [inference.sh](https://inference.sh) (begint met `1nfsh-`)
 - **Composio API Key** — Voor Google Calendar integratie. Aanmaken via [app.composio.dev](https://app.composio.dev)
-- **Apify API Token** — Voor social media scraping (TikTok, Instagram, X). Token ophalen via [console.apify.com](https://console.apify.com/account/integrations)
 
 Alle velden zijn optioneel. Klik op **Finish** of **Skip** om door te gaan.
+
+> **Social media accounts** (Instagram, TikTok, X, YouTube) verbind je later via **Settings → Social Connections** met OAuth — geen API keys nodig.
 
 ### Na de wizard: Canva koppelen (optioneel)
 
@@ -294,7 +295,7 @@ Na de setup wizard kom je op het Command Center dashboard. In de sidebar vind je
 |--------|----------------|
 | **Overview** | Dashboard met overzicht van alle agents, recente taken en quick actions |
 | **Research** | Marktonderzoek, trend analyse, concurrentie analyse, dagelijkse rapporten |
-| **Performance** | KPI's, revenue (Stripe), social media analytics (Apify), groei metrics |
+| **Performance** | KPI's, revenue (Stripe), social media analytics (Instagram Graph API, YouTube Data API), groei metrics |
 | **Agents** | Overzicht en beheer van alle AI agents en hun taken |
 | **Video Editor** | Video's bewerken, knippen, samenvoegen en exporteren via Remotion |
 | **Designer** | Social media content maken: carousels, thumbnails, banners, infographics. Gebruikt Claude AI, Canva, en Nano Banana (Inference.sh) |
@@ -445,7 +446,8 @@ Voorbeelden:
 **API Keys & Integrations** — pas aan:
 - Anthropic API Key
 - Telegram Bot Token + Chat ID
-- HeyGen, Stripe, Composio, Apify keys
+- HeyGen, Stripe, Composio keys
+- Meta App ID/Secret (voor Instagram Graph API), YouTube Data API key
 
 3. Klik **Save Changes**
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Research Agent — Daily automated trend & competitor research.
+NeuraLabs Research Agent — Daily automated trend & competitor research.
 Triggered by cron, uses Claude API with web search to gather intel,
 posts results to the local command center API.
 """
@@ -12,9 +12,13 @@ import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Load env from central .env
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+# Load env
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    for line in env_path.read_text().strip().split("\n"):
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ[k.strip()] = v.strip()
 
 import anthropic
 
@@ -139,7 +143,7 @@ Doe een uitgebreide dagelijkse scan:
    Beoordeel potentieel 0-100 op basis van viraliteitspotentieel.
 
 2. COMPETITORS (3-5 items): Analyseer top crypto/trading content creators.
-   Focus op: crypto influencers in de Nederlandse/Europese markt.
+   Focus op: metavers3nl, crypto influencers in de Nederlandse/Europese markt.
    Vermeld volgersaantallen, gemiddelde views, groeitrend.
 
 3. HOOKS (6-8 items): Genereer virale hook-formules specifiek voor {niche}, in het Nederlands.
@@ -157,7 +161,7 @@ Do a comprehensive daily scan:
    Rate potential 0-100 based on virality potential.
 
 2. COMPETITORS (3-5 items): Analyze top crypto/trading content creators.
-   Focus on: crypto influencers in the Dutch/European market.
+   Focus on: metavers3nl, crypto influencers in the Dutch/European market.
    Include follower counts, average views, growth trend.
 
 3. HOOKS (6-8 items): Generate viral hook formulas specific to {niche}.

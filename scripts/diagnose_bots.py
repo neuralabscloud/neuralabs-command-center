@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-diagnose_bots.py - Dagelijkse diagnostiek van trading bots.
+diagnose_bots.py - Dagelijkse diagnostiek van alle NeuraLabs bots.
 Controleert: proces actief, log frisheid, recente fouten, bot-specifieke metrics.
 Stuurt volledig rapport naar Telegram.
+
+Gebruik:
+  python3 /root/diagnose_bots.py
 """
 
 import os
@@ -12,32 +15,28 @@ import requests
 import html
 from datetime import datetime, timezone
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Load central .env
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-TELEGRAM_TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+INSTALL_DIR = os.getenv("INSTALL_DIR", "/opt/commandcenter")
 
-INSTALL_DIR = os.environ.get("INSTALL_DIR", str(Path(__file__).resolve().parent.parent))
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 BOTS = [
     {
         "name":   "Funding Bot",
         "script": "run.py",
-        "workdir": os.path.join(INSTALL_DIR, "funding-bot"),
-        "log":    os.path.join(INSTALL_DIR, "funding-bot", "logs", "funding_bot.log"),
-        "emoji":  "F",
+        "workdir": f"{INSTALL_DIR}/funding-bot",
+        "log":    f"{INSTALL_DIR}/funding-bot/logs/neuralabs_funding_bot.log",
+        "emoji":  "💰",
     },
     {
         "name":   "Trend Bot",
         "script": "run.py",
-        "workdir": os.path.join(INSTALL_DIR, "trend-bot"),
-        "log":    os.path.join(INSTALL_DIR, "trend-bot", "logs", "mean_reversion_bot.log"),
-        "emoji":  "T",
+        "workdir": f"{INSTALL_DIR}/trend-bot",
+        "log":    f"{INSTALL_DIR}/trend-bot/logs/mean_reversion_bot.log",
+        "emoji":  "📈",
     },
 ]
 
@@ -61,9 +60,6 @@ ERROR_IGNORE = (
 # ─── TELEGRAM ────────────────────────────────────────────────────────────────
 
 def send_telegram(text: str):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[TELEGRAM] Skipped — no token configured")
-        return
     url     = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id":                  TELEGRAM_CHAT_ID,

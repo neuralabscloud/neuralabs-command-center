@@ -42,12 +42,47 @@ process.on('SIGTERM', () => { releaseLock(); process.exit(0); });
 
 const { execSync } = require('child_process');
 
-const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+
+// ── Load env from known .env files ──────────────────────
+function loadEnvFiles() {
+  const envFiles = [
+    path.join(__dirname, '..', 'command-center', '.env'),
+    path.join(__dirname, '..', '.env'),
+  ];
+  for (const f of envFiles) {
+    try {
+      if (!fs.existsSync(f)) continue;
+      for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
+        const m = line.match(/^([A-Z_]+)=(.+)$/);
+        if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+      }
+    } catch {}
+  }
+  // Also check bot config.py files for Telegram settings
+  const botConfigs = [
+    path.join(__dirname, '..', 'neuralabs-bot', 'config.py'),
+    path.join(__dirname, '..', 'neuralabs-bot-5', 'config.py'),
+  ];
+  for (const f of botConfigs) {
+    try {
+      if (!fs.existsSync(f)) continue;
+      const content = fs.readFileSync(f, 'utf8');
+      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
+    } catch {}
+  }
+}
+loadEnvFiles();
 
 const app    = express();
 const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 
+app.use(express.json());
 app.use((_req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); next(); });
 
 // ── AUTH (shared session with Command Center) ──
@@ -88,6 +123,13 @@ app.use(async (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   if (req.path === '/login') return next();
+  // Setup/config APIs: allow from localhost (initial setup) or with auth
+  if (req.path === '/api/setup-status' || req.path === '/api/bot-config' || req.path.startsWith('/api/analytics')) {
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+    if (await checkAuth(req)) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   if (await checkAuth(req)) return next();
   res.redirect('/login');
 });
@@ -95,11 +137,110 @@ app.use(async (req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/status', (_req, res) => res.json(getSnapshot()));
 
+// ── Bot configuration API ───────────────────────────────
+app.get('/api/setup-status', (_req, res) => {
+  const bots = CONFIG.bots.filter(b => b.enabled !== false && b.type !== 'poly');
+  const configured = bots.every(b => !!b.wallet_address);
+  res.json({ configured, bots: bots.map(b => ({ id: b.id, name: b.name, type: b.type, configured: !!b.wallet_address })),
+    services: {
+      anthropic: { configured: !!process.env.ANTHROPIC_API_KEY, label: 'Claude Code (AI Assistant)' },
+      telegram:  { configured: !!(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID), label: 'Telegram Notificaties' }
+    }
+  });
+});
+
+app.get('/api/bot-config', (_req, res) => {
+  const bots = CONFIG.bots.filter(b => b.enabled !== false && b.type !== 'poly');
+  const ak = process.env.ANTHROPIC_API_KEY || '';
+  const tbt = process.env.TELEGRAM_BOT_TOKEN || '';
+  const tci = process.env.TELEGRAM_CHAT_ID || '';
+  res.json({
+    bots: bots.map(b => ({
+      id: b.id, name: b.name, type: b.type,
+      wallet_address: b.wallet_address || '',
+      has_private_key: !!b.private_key,
+      private_key_masked: b.private_key ? b.private_key.slice(0, 6) + '...' + b.private_key.slice(-4) : ''
+    })),
+    services: {
+      anthropic_key: ak ? ak.slice(0, 8) + '...' + ak.slice(-4) : '',
+      has_anthropic: !!ak,
+      telegram_token: tbt ? tbt.slice(0, 8) + '...' : '',
+      telegram_chat_id: tci,
+      has_telegram: !!(tbt && tci)
+    }
+  });
+});
+
+app.post('/api/bot-config', (req, res) => {
+  const { bots, services } = req.body;
+  if (Array.isArray(bots)) {
+    for (const update of bots) {
+      const bot = CONFIG.bots.find(b => b.id === update.id);
+      if (!bot) continue;
+      if (update.wallet_address !== undefined) bot.wallet_address = update.wallet_address.trim();
+      if (update.private_key !== undefined && update.private_key !== '') bot.private_key = update.private_key.trim();
+    }
+  }
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save config: ' + err.message });
+  }
+});
+
+// ── Analytics API ────────────────────────────────────────
+const REPORTS_DIR = path.join(__dirname, 'data', 'reports');
+
+app.get('/api/analytics', (_req, res) => {
+  try {
+    if (!fs.existsSync(REPORTS_DIR)) return res.json({ report: null, dates: [] });
+    const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
+    const dates = files.map(f => f.replace('.json', ''));
+    let report = null;
+    if (files.length > 0) {
+      report = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, files[0]), 'utf8'));
+    }
+    res.json({ report, dates });
+  } catch (err) {
+    res.json({ report: null, dates: [], error: err.message });
+  }
+});
+
+app.get('/api/analytics/report/:date', (req, res) => {
+  const date = req.params.date.replace(/[^0-9-]/g, '');
+  const filepath = path.join(REPORTS_DIR, date + '.json');
+  try {
+    if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Rapport niet gevonden' });
+    const report = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    res.json(report);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/analytics/generate', (_req, res) => {
+  // For the personal dashboard, use the command center's analyst or a local script
+  const scriptCandidates = [
+    path.join(__dirname, '..', 'scripts', 'ai_analyst.py'),
+    path.join(__dirname, 'scripts', 'ai_analyst.py'),
+  ];
+  let scriptPath = scriptCandidates.find(p => fs.existsSync(p));
+  if (!scriptPath) return res.json({ ok: false, error: 'ai_analyst.py niet gevonden' });
+  try {
+    execSync(`python3 ${scriptPath} 2>&1`, { encoding: 'utf8', timeout: 60000 });
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: false, error: (err.stdout || err.stderr || err.message).slice(-500) });
+  }
+});
+
 // ─── Process-based bot alive check ──────────────────────
-const BOT_CWD_MAP = {};
-for (const bot of CONFIG.bots) {
-  if (bot.workdir) BOT_CWD_MAP[bot.id] = bot.workdir;
-}
+const BOT_CWD_MAP = {
+  funding: '/root/neuralabs-bot',
+  poly:    '/root/polymarket-sniper',
+  trend:   '/root/neuralabs-bot-5',
+};
 
 function checkBotProcesses() {
   const result = {};

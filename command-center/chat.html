@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Assistant</title>
+<title>NEURALABS — Assistant</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -41,9 +41,20 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 }
 .chat-header {
   padding: 20px 32px 16px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; justify-content: space-between;
 }
+.header-left { flex: 1; }
 .header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.new-chat-btn {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  font-family: var(--font-data); font-size: 12px; cursor: pointer; transition: all 0.2s;
+  white-space: nowrap; margin-top: 2px; flex-shrink: 0;
+  -webkit-text-fill-color: var(--text-dim); -webkit-background-clip: unset;
+}
+.new-chat-btn:hover { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.04); -webkit-text-fill-color: var(--primary); }
+.new-chat-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 
 .chat-messages {
   flex: 1; overflow-y: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 16px;
@@ -100,6 +111,87 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 .chat-send:hover { transform: scale(1.05); box-shadow: 0 0 20px var(--primary-glow); }
 .chat-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 .chat-send svg { width: 18px; height: 18px; }
+
+.chat-upload {
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
+}
+.chat-upload:hover { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.04); }
+.chat-upload svg { width: 18px; height: 18px; }
+.chat-upload.uploading { opacity: 0.5; pointer-events: none; }
+
+.chat-skills-btn {
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0; position: relative;
+}
+.chat-skills-btn:hover { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.04); }
+.chat-skills-btn.active { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.08); }
+.chat-skills-btn svg { width: 18px; height: 18px; }
+
+.skills-panel {
+  display: none; position: absolute; bottom: calc(100% + 8px); left: 0; right: 0;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 0; max-height: 420px; overflow: hidden; z-index: 50;
+  box-shadow: 0 -8px 32px hsla(0 0% 0% / 0.6);
+  animation: skills-in 0.2s ease-out;
+}
+.skills-panel.open { display: flex; flex-direction: column; }
+@keyframes skills-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.skills-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.skills-panel-title { font-family: var(--font-data); font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; }
+.skills-panel-close {
+  width: 24px; height: 24px; border-radius: 6px; border: none; background: transparent;
+  color: var(--text-dim); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: all 0.15s;
+}
+.skills-panel-close:hover { color: var(--text); background: hsla(0 0% 100% / 0.05); }
+
+.skills-search {
+  margin: 10px 16px 6px; padding: 8px 12px; background: var(--bg-surface);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+  font-family: var(--font-data); font-size: 12px; outline: none; transition: border-color 0.2s;
+}
+.skills-search:focus { border-color: var(--primary); }
+.skills-search::placeholder { color: var(--text-dim); }
+
+.skills-list { overflow-y: auto; padding: 6px 8px 12px; flex: 1; }
+.skills-list::-webkit-scrollbar { width: 4px; }
+.skills-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.skills-category {
+  font-family: var(--font-data); font-size: 10px; font-weight: 600; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 8px 4px; user-select: none;
+}
+
+.skill-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  cursor: pointer; transition: all 0.15s; border: 1px solid transparent;
+}
+.skill-item:hover { background: hsla(264 65% 49% / 0.06); border-color: hsla(264 65% 49% / 0.15); }
+.skill-item-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.skill-item-text { flex: 1; min-width: 0; }
+.skill-item-name { font-family: var(--font-data); font-size: 12px; font-weight: 500; color: var(--text); }
+.skill-item-desc { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.file-preview {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+  font-size: 12px; color: var(--text-dim); font-family: var(--font-data);
+}
+.file-preview .file-icon { color: var(--primary); flex-shrink: 0; }
+.file-preview .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.file-preview .file-remove {
+  width: 20px; height: 20px; border-radius: 50%; border: none; background: hsla(0 72% 51% / 0.15);
+  color: var(--danger); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; line-height: 1; transition: all 0.2s; flex-shrink: 0;
+}
+.file-preview .file-remove:hover { background: hsla(0 72% 51% / 0.3); }
 
 .typing-indicator { display: flex; gap: 4px; padding: 8px 0; }
 .typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); animation: typing 1.2s infinite; }
@@ -173,6 +265,9 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
   .chat-input-row { gap: 6px; max-width: 100%; }
   .chat-textarea { padding: 10px 12px; font-size: 14px; min-height: 40px; min-width: 0; }
   .chat-send { width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; }
+  .chat-upload { width: 40px; height: 40px; border-radius: 10px; }
+  .chat-skills-btn { width: 40px; height: 40px; border-radius: 10px; }
+  .skills-panel { left: 8px; right: 8px; bottom: auto; max-height: 50vh; }
   .welcome { padding: 0 8px; }
   .welcome-title { font-size: 14px; }
   .quick-actions { gap: 6px; }
@@ -196,35 +291,56 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
   <main class="main">
-    <div class="chat-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    <div class="chat-header">
       <button class="mobile-menu-btn" onclick="toggleSidebar()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <div style="flex:1;min-width:0;">
-        <div class="header-title"><span data-brand="assistant">Assistant</span></div>
-        <div class="header-sub">Je <span data-brand="company">Trading Platform</span> AI assistant — vraag alles over bots, agents, performance & markt</div>
+      <div class="header-left">
+        <div class="header-title" id="chat-assistant-title">ASSISTANT</div>
+        <div class="header-sub">Zet taken uit bij je agents, stel vragen en wees up to date over je business!</div>
       </div>
-      <button onclick="clearChat()" style="background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-dim);font-family:var(--font-data);font-size:11px;padding:6px 14px;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--danger)';this.style.color='var(--danger)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">New chat</button>
+      <button class="new-chat-btn" onclick="clearChat()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New chat
+      </button>
     </div>
 
     <div class="chat-messages" id="chat-messages">
       <div class="welcome">
         <div class="welcome-title">Waarmee kan ik helpen?</div>
         <div class="welcome-sub">
-          Ik heb live toegang tot je bot status, agent taken, en performance data.
-          Stel een vraag of kies een snelle actie.
+          Ik heb live toegang tot je bots, alle agents, 49 skills, calendar en web search.
+          Ik kan taken aanmaken, marketing advies geven, designs maken, en meer.
         </div>
         <div class="quick-actions">
           <button class="quick-btn" onclick="sendQuick('Hoe presteren mijn bots vandaag?')">Bot performance</button>
           <button class="quick-btn" onclick="sendQuick('Welke agents hebben taken openstaan?')">Agent status</button>
-          <button class="quick-btn" onclick="sendQuick('Geef een samenvatting van recente notificaties')">Notificaties</button>
+          <button class="quick-btn" onclick="sendQuick('Maak een Instagram carousel over onze trading resultaten')">Design maken</button>
           <button class="quick-btn" onclick="sendQuick('Wat is de totale PnL en equity?')">Portfolio overzicht</button>
+          <button class="quick-btn" onclick="sendQuick('Welke skills heb ik allemaal beschikbaar?')">Skills overzicht</button>
+          <button class="quick-btn" onclick="sendQuick('Wat staat er vandaag op mijn agenda?')">Agenda</button>
         </div>
       </div>
     </div>
 
-    <div class="chat-input-wrap">
+    <div class="chat-input-wrap" style="position:relative;">
+      <div id="skills-panel" class="skills-panel">
+        <div class="skills-panel-header">
+          <span class="skills-panel-title">Skills</span>
+          <button class="skills-panel-close" onclick="toggleSkillsPanel()">&times;</button>
+        </div>
+        <input type="text" class="skills-search" id="skills-search" placeholder="Zoek skill..." oninput="filterSkills(this.value)">
+        <div class="skills-list" id="skills-list"></div>
+      </div>
+      <div id="file-preview-area"></div>
       <div class="chat-input-row">
+        <input type="file" id="file-input" accept="audio/*,video/*,.mp3,.mp4,.wav,.ogg,.aac,.m4a,.webm,.mkv,.avi,.mov,.flac,.pdf,application/pdf" style="display:none" onchange="handleFileSelect(event)">
+        <button class="chat-skills-btn" id="skills-btn" onclick="toggleSkillsPanel()" title="Skills">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </button>
+        <button class="chat-upload" id="upload-btn" onclick="document.getElementById('file-input').click()" title="Upload bestand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
         <textarea class="chat-textarea" id="chat-input" placeholder="Stel een vraag..." rows="1" onkeydown="handleKey(event)"></textarea>
         <button class="chat-send" id="chat-send" onclick="sendMessage()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -253,10 +369,23 @@ const messagesEl = document.getElementById('chat-messages');
 const inputEl = document.getElementById('chat-input');
 const sendBtn = document.getElementById('chat-send');
 let sending = false;
+let ASSISTANT_NAME = 'Assistant';
+
+// Load assistant name from brand config
+fetch('/brand').then(r => r.json()).then(b => {
+  if (b && b.assistant_name) {
+    ASSISTANT_NAME = b.assistant_name;
+    const titleEl = document.getElementById('chat-assistant-title');
+    if (titleEl) titleEl.textContent = ASSISTANT_NAME.toUpperCase();
+    document.title = 'NEURALABS — ' + ASSISTANT_NAME;
+    // Relabel any already-rendered messages
+    document.querySelectorAll('.msg.assistant .msg-label').forEach(el => { el.textContent = ASSISTANT_NAME; });
+  }
+}).catch(() => {});
 
 // ── Persistent session ──
-const SESSION_KEY = 'assistant_session';
-const HISTORY_KEY = 'assistant_history';
+const SESSION_KEY = 'evlyn_session';
+const HISTORY_KEY = 'evlyn_history';
 let sessionId = localStorage.getItem(SESSION_KEY);
 if (!sessionId) {
   sessionId = 'session_' + Date.now().toString(36);
@@ -283,7 +412,7 @@ function restoreHistory() {
     msgs.forEach(m => {
       const div = document.createElement('div');
       div.className = 'msg ' + m.role;
-      const label = m.role === 'user' ? 'Jij' : (window.__BRAND_ASSISTANT || 'Assistant');
+      const label = m.role === 'user' ? 'Jij' : ASSISTANT_NAME;
       div.innerHTML = `<div class="msg-label">${label}</div><div class="msg-bubble">${m.html}</div>`;
       messagesEl.appendChild(div);
     });
@@ -318,7 +447,7 @@ function appendMsg(role, text, isHtml) {
 
   const div = document.createElement('div');
   div.className = 'msg ' + role;
-  const label = role === 'user' ? 'Jij' : (window.__BRAND_ASSISTANT || 'Assistant');
+  const label = role === 'user' ? 'Jij' : ASSISTANT_NAME;
 
   let html = isHtml ? text : text;
   if (!isHtml && role === 'assistant') {
@@ -339,7 +468,7 @@ function showTyping() {
   const div = document.createElement('div');
   div.className = 'msg assistant';
   div.id = 'typing';
-  div.innerHTML = '<div class="msg-label">' + (window.__BRAND_ASSISTANT || 'Assistant') + '</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
+  div.innerHTML = '<div class="msg-label">' + ASSISTANT_NAME + '</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -364,14 +493,166 @@ function clearChat() {
   localStorage.setItem(SESSION_KEY, sessionId);
   messagesEl.innerHTML = `<div class="welcome">
     <div class="welcome-title">Waarmee kan ik helpen?</div>
-    <div class="welcome-sub">Ik heb live toegang tot je bot status, agent taken, en performance data.<br>Ik kan ook agents aansturen en het web doorzoeken.</div>
+    <div class="welcome-sub">Ik heb live toegang tot je bots, alle agents, 49 skills, calendar en web search.<br>Ik kan taken aanmaken, marketing advies geven, designs maken, en meer.</div>
     <div class="quick-actions">
       <button class="quick-btn" onclick="sendQuick('Hoe presteren mijn bots vandaag?')">Bot performance</button>
       <button class="quick-btn" onclick="sendQuick('Welke agents hebben taken openstaan?')">Agent status</button>
-      <button class="quick-btn" onclick="sendQuick('Geef een samenvatting van recente notificaties')">Notificaties</button>
+      <button class="quick-btn" onclick="sendQuick('Maak een Instagram carousel over onze trading resultaten')">Design maken</button>
       <button class="quick-btn" onclick="sendQuick('Wat is de totale PnL en equity?')">Portfolio overzicht</button>
+      <button class="quick-btn" onclick="sendQuick('Welke skills heb ik allemaal beschikbaar?')">Skills overzicht</button>
+      <button class="quick-btn" onclick="sendQuick('Wat staat er vandaag op mijn agenda?')">Agenda</button>
     </div>
   </div>`;
+}
+
+// ── Skills panel ──
+const SKILLS = [
+  { cat: "SEO & Analytics", icon: "🔍", color: "hsla(210 90% 55% / 0.12)", skills: [
+    { slug: "seo-audit", name: "SEO Audit", desc: "Technische SEO analyse van een website" },
+    { slug: "analytics-tracking", name: "Analytics & Tracking", desc: "GA4, GTM, conversion tracking setup" },
+    { slug: "programmatic-seo", name: "Programmatic SEO", desc: "SEO pagina's genereren op schaal" },
+    { slug: "schema-markup", name: "Schema Markup", desc: "JSON-LD structured data genereren" },
+  ]},
+  { cat: "CRO & Conversie", icon: "📈", color: "hsla(142 76% 36% / 0.12)", skills: [
+    { slug: "page-cro", name: "Landing Page CRO", desc: "Landing page optimalisatie analyse" },
+    { slug: "signup-flow-cro", name: "Signup Flow CRO", desc: "Registratie flow optimalisatie" },
+    { slug: "onboarding-cro", name: "Onboarding CRO", desc: "Post-signup activatie verbeteren" },
+    { slug: "form-cro", name: "Form CRO", desc: "Formulier conversie optimalisatie" },
+    { slug: "popup-cro", name: "Popup CRO", desc: "Popups, modals, exit-intent strategie" },
+    { slug: "paywall-upgrade-cro", name: "Paywall CRO", desc: "In-app paywalls en upgrade flows" },
+    { slug: "ab-test-setup", name: "A/B Test Setup", desc: "A/B tests plannen en configureren" },
+  ]},
+  { cat: "Content & Marketing", icon: "✍️", color: "hsla(45 93% 55% / 0.12)", skills: [
+    { slug: "content-strategy", name: "Content Strategie", desc: "Content planning en topic clusters" },
+    { slug: "copywriting", name: "Copywriting", desc: "Marketing copy en teksten schrijven" },
+    { slug: "copy-editing", name: "Copy Editing", desc: "Teksten reviewen en verbeteren" },
+    { slug: "email-sequence", name: "Email Sequences", desc: "Drip campaigns en welcome flows" },
+    { slug: "social-content", name: "Social Content", desc: "Posts voor LinkedIn, X, Instagram, TikTok" },
+    { slug: "launch-strategy", name: "Launch Strategie", desc: "Product launch en go-to-market plan" },
+    { slug: "pricing-strategy", name: "Pricing Strategie", desc: "Pricing tiers en monetization" },
+    { slug: "paid-ads", name: "Paid Ads", desc: "Google, Meta, LinkedIn campagnes" },
+    { slug: "marketing-psychology", name: "Marketing Psychology", desc: "70+ mentale modellen voor marketing" },
+    { slug: "marketing-ideas", name: "Marketing Ideeën", desc: "139 bewezen marketing tactieken" },
+    { slug: "referral-program", name: "Referral Program", desc: "Referral & affiliate programma's" },
+    { slug: "free-tool-strategy", name: "Free Tool Strategie", desc: "Lead gen tools bouwen" },
+    { slug: "competitor-alternatives", name: "Competitor Pages", desc: "'vs' en 'alternative to' pagina's" },
+    { slug: "youtube-optimizer", name: "YouTube Optimizer", desc: "YouTube video SEO en optimalisatie" },
+  ]},
+  { cat: "Design & Media", icon: "🎨", color: "hsla(265 65% 60% / 0.12)", skills: [
+    { slug: "designer", name: "Designer", desc: "Social media designs en carousels" },
+    { slug: "canvas-design", name: "Canvas Design", desc: "Posters, art, designs als PNG/PDF" },
+    { slug: "nano-banana-2", name: "AI Image Gen", desc: "Afbeeldingen via Gemini 3.1 Flash" },
+    { slug: "brand-guidelines", name: "Brand Guidelines", desc: "Brand styling toepassen op designs" },
+    { slug: "web-artifacts-builder", name: "Web Artifacts", desc: "React + Tailwind + shadcn/ui componenten" },
+    { slug: "create-video", name: "Video Maken", desc: "Video via HeyGen prompt" },
+    { slug: "avatar-video", name: "Avatar Video", desc: "Avatar video met script en stem" },
+  ]},
+  { cat: "Development", icon: "⚡", color: "hsla(0 0% 100% / 0.06)", skills: [
+    { slug: "brainstorming", name: "Brainstorming", desc: "Requirements en design verkennen" },
+    { slug: "writing-plans", name: "Plan Schrijven", desc: "Implementatieplannen opstellen" },
+    { slug: "systematic-debugging", name: "Debugging", desc: "Methodisch bugs opsporen" },
+    { slug: "test-driven-development", name: "TDD", desc: "Test-driven development workflow" },
+  ]},
+];
+
+function renderSkills(filter) {
+  const list = document.getElementById('skills-list');
+  const q = (filter || '').toLowerCase();
+  let html = '';
+  for (const cat of SKILLS) {
+    const filtered = cat.skills.filter(s => !q || s.name.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q) || s.slug.includes(q));
+    if (!filtered.length) continue;
+    html += `<div class="skills-category">${cat.cat}</div>`;
+    for (const s of filtered) {
+      html += `<div class="skill-item" onclick="selectSkill('${s.slug}', '${s.name.replace(/'/g, "\\'")}')">
+        <div class="skill-item-icon" style="background:${cat.color}">${cat.icon}</div>
+        <div class="skill-item-text">
+          <div class="skill-item-name">${s.name}</div>
+          <div class="skill-item-desc">${s.desc}</div>
+        </div>
+      </div>`;
+    }
+  }
+  if (!html) html = '<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px;">Geen skills gevonden</div>';
+  list.innerHTML = html;
+}
+
+function toggleSkillsPanel() {
+  const panel = document.getElementById('skills-panel');
+  const btn = document.getElementById('skills-btn');
+  const isOpen = panel.classList.contains('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+  } else {
+    panel.classList.add('open');
+    btn.classList.add('active');
+    document.getElementById('skills-search').value = '';
+    renderSkills();
+    setTimeout(() => document.getElementById('skills-search').focus(), 50);
+  }
+}
+
+function filterSkills(q) { renderSkills(q); }
+
+function selectSkill(slug, name) {
+  toggleSkillsPanel();
+  inputEl.value = `Gebruik skill /${slug}: `;
+  inputEl.focus();
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + 'px';
+}
+
+// Close skills panel on outside click
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('skills-panel');
+  const btn = document.getElementById('skills-btn');
+  if (panel.classList.contains('open') && !panel.contains(e.target) && !btn.contains(e.target)) {
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+  }
+});
+
+// ── File upload handling ──
+let pendingFile = null;
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  pendingFile = file;
+  showFilePreview(file.name);
+  inputEl.focus();
+  if (!inputEl.value.trim()) {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    inputEl.value = isPdf ? 'Lees en vat dit PDF bestand samen' : 'Transcribeer dit bestand';
+  }
+}
+
+function showFilePreview(name) {
+  const isPdf = name.toLowerCase().endsWith('.pdf');
+  const icon = isPdf
+    ? '<svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
+    : '<svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>';
+  const area = document.getElementById('file-preview-area');
+  area.innerHTML = `<div class="file-preview">
+    ${icon}
+    <span class="file-name">${escHtml(name)}</span>
+    <button class="file-remove" onclick="clearPendingFile()" title="Verwijder">&times;</button>
+  </div>`;
+}
+
+function clearPendingFile() {
+  pendingFile = null;
+  document.getElementById('file-preview-area').innerHTML = '';
+  document.getElementById('file-input').value = '';
+}
+
+async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch('/media/upload', { method: 'POST', body: formData });
+  if (!res.ok) throw new Error('Upload mislukt');
+  return await res.json();
 }
 
 async function sendMessage() {
@@ -383,15 +664,45 @@ async function sendMessage() {
   inputEl.value = '';
   inputEl.style.height = 'auto';
 
-  appendMsg('user', text);
-  showTyping();
+  let messageText = text;
+  let uploadedFileName = null;
+
+  // Upload file first if pending
+  if (pendingFile) {
+    const fileName = pendingFile.name;
+    appendMsg('user', text + '\n📎 ' + fileName);
+    const uploadBtn = document.getElementById('upload-btn');
+    uploadBtn.classList.add('uploading');
+    showTyping();
+    try {
+      const result = await uploadFile(pendingFile);
+      uploadedFileName = result.name;
+      messageText = text + `\n\n[Geüpload bestand: ${uploadedFileName}]`;
+    } catch (e) {
+      removeTyping();
+      appendMsg('assistant', 'Upload mislukt: ' + e.message);
+      sending = false;
+      sendBtn.disabled = false;
+      uploadBtn.classList.remove('uploading');
+      return;
+    }
+    uploadBtn.classList.remove('uploading');
+    clearPendingFile();
+  } else {
+    appendMsg('user', text);
+    showTyping();
+  }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
     const res = await fetch('/ctrl/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, sessionId }),
+      body: JSON.stringify({ message: messageText, sessionId }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
     removeTyping();
 
     if (!res.ok) {
@@ -403,7 +714,7 @@ async function sendMessage() {
     }
   } catch (e) {
     removeTyping();
-    appendMsg('assistant', 'Verbindingsfout: ' + e.message);
+    appendMsg('assistant', e.name === 'AbortError' ? 'Timeout: de transcriptie duurde te lang. Probeer een kleiner model (tiny/base).' : 'Verbindingsfout: ' + e.message);
   }
 
   sending = false;
@@ -411,6 +722,5 @@ async function sendMessage() {
   inputEl.focus();
 }
 </script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>

@@ -1,0 +1,250 @@
+/* ── ISOMETRIC OFFICE (shared widget) ── */
+.office-section { margin-bottom: 6px; }
+.iso-wrap {
+  position: relative;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, hsla(264 65% 49% / 0.07) 0%, transparent 65%),
+    linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 2% / 1) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 10px);
+  overflow: hidden;
+  padding: 0;
+}
+.iso-wrap::before {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(hsla(264 65% 49% / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, hsla(264 65% 49% / 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 50%, black 30%, transparent 85%);
+}
+.iso-wrap::after {
+  content: ''; position: absolute; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 40% 30% at 50% 95%, hsla(264 65% 49% / 0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.iso-topbar {
+  position: relative; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px 10px;
+}
+.iso-topbar-left {
+  font-family: var(--font-display, 'Orbitron', sans-serif);
+  font-size: 10px; letter-spacing: 0.22em;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.iso-topbar-left b { color: var(--primary); text-shadow: 0 0 12px hsla(264 65% 49% / 0.6); }
+.iso-topbar-right {
+  font-family: var(--font-data, 'Inter', sans-serif);
+  font-size: 10px; color: var(--primary);
+  letter-spacing: 0.12em; display: flex; gap: 12px; align-items: center;
+}
+.iso-topbar-right .live-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: hsl(142 76% 45%); box-shadow: 0 0 8px hsl(142 76% 45%);
+  animation: iso-pulse 2s ease-in-out infinite;
+}
+.iso-scene {
+  display: block; width: 100%; height: auto;
+  position: relative; z-index: 1;
+}
+.iso-scene .floor-tile {
+  fill: hsla(0 0% 5% / 0.55);
+  stroke: hsla(264 65% 49% / 0.18);
+  stroke-width: 1;
+}
+.iso-scene .floor-tile.hero {
+  fill: hsla(142 76% 36% / 0.045);
+  stroke: hsla(142 76% 36% / 0.35);
+}
+.iso-scene .floor-accent {
+  fill: none;
+  stroke: hsla(264 65% 49% / 0.3);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.station { cursor: pointer; transition: transform 0.35s cubic-bezier(.2,.7,.3,1); }
+.station:hover { transform: translateY(-5px); }
+.station .station-glow { opacity: 0; transition: opacity 0.3s; mix-blend-mode: screen; }
+.station:hover .station-glow { opacity: 0.35; }
+.station .desk-top { fill: #141414; stroke-width: 1; }
+.station .desk-front { fill: #070707; stroke: #1f1f1f; stroke-width: 1; }
+.station .desk-side { fill: #0c0c0c; stroke: #222; stroke-width: 1; }
+.station .monitor-back { fill: #020202; stroke-width: 1.5; }
+.station .monitor-side { fill: #0a0a0a; stroke-width: 1; }
+.station .monitor-top { fill: #050505; stroke: #1a1a1a; stroke-width: 1; }
+.station .screen-fill { opacity: 0.45; transition: opacity 0.3s; }
+.station:hover .screen-fill { opacity: 0.85; }
+.station .chair { fill: #0c0c0c; stroke: #202020; stroke-width: 1; }
+.station.hero .desk-top { stroke: hsla(142 76% 36% / 0.5); }
+.station.hero .monitor-back { stroke-width: 1.5; }
+
+/* Nameplate (floating labels above each station) */
+.nameplate { cursor: pointer; transition: transform 0.3s cubic-bezier(.2,.7,.3,1); }
+.nameplate:hover { transform: translateY(-3px); }
+.nameplate .np-bg {
+  fill: rgba(0, 0, 0, 0.82);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.nameplate:hover .np-bg {
+  fill: rgba(0, 0, 0, 0.94);
+  stroke: var(--np-color, var(--primary));
+}
+.nameplate .np-accent { fill: var(--np-color, var(--primary)); }
+.nameplate .np-name {
+  font-family: var(--font-display, 'Orbitron', sans-serif);
+  font-size: 8.5px;
+  fill: var(--text);
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  dominant-baseline: middle;
+}
+.nameplate:hover .np-name { fill: var(--np-color, var(--primary)); }
+.nameplate .np-role {
+  font-family: var(--font-data, 'Inter', sans-serif);
+  font-size: 6.5px;
+  fill: var(--text-dim);
+  letter-spacing: 0.1em;
+  dominant-baseline: middle;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.nameplate:hover .np-role { opacity: 1; }
+.nameplate .np-leader {
+  stroke: var(--np-color, var(--primary));
+  stroke-width: 1;
+  stroke-dasharray: 1 2;
+  opacity: 0.35;
+}
+.nameplate:hover .np-leader { opacity: 0.85; }
+.nameplate .status-dot { stroke-width: 0.7; }
+.nameplate .status-dot.online { fill: hsl(142 76% 50%); stroke: hsl(142 76% 65%); animation: iso-pulse 2s ease-in-out infinite; will-change: opacity; }
+.nameplate .status-dot.queued { fill: hsl(45 93% 58%);  stroke: hsl(45 93% 70%); }
+.nameplate .status-dot.recent { fill: hsl(210 80% 58%); stroke: hsl(210 85% 72%); animation: iso-pulse 3.5s ease-in-out infinite; will-change: opacity; }
+.nameplate .status-dot.idle   { fill: hsl(215 15% 45%); stroke: hsl(215 15% 60%); }
+
+@keyframes iso-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ── CONNECTIONS / DATA FLOW ── */
+.iso-scene .conn-line {
+  fill: none;
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-dasharray: 2 6;
+  opacity: 0.35;
+  animation: conn-dash 18s linear infinite;
+}
+@keyframes conn-dash {
+  to { stroke-dashoffset: -160; }
+}
+.iso-scene .conn-glow {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.08;
+  filter: blur(2px);
+}
+.iso-scene .particle {
+  will-change: transform;
+}
+.iso-scene .particle-core { opacity: 0.95; }
+.iso-scene .particle-halo { opacity: 0.35; }
+
+/* ── SCREEN FLASH (data arriving at a station) ── */
+.iso-scene .screen-flash {
+  pointer-events: none;
+  mix-blend-mode: screen;
+  filter: blur(0.5px);
+}
+
+/* ── CHIEF (Evlyn — Chief AI Officer, orchestrator) ── */
+.chief { cursor: pointer; transition: transform 0.35s cubic-bezier(.2,.7,.3,1); }
+.chief:hover { transform: translateY(-4px); }
+.chief .chief-base {
+  fill: hsla(264 65% 49% / 0.12);
+  stroke: hsla(264 65% 65% / 0.55);
+  stroke-width: 1.3;
+}
+.chief .chief-base-glow {
+  fill: hsla(264 65% 55% / 0.15);
+  stroke: hsla(264 65% 55% / 0.45);
+  stroke-width: 2;
+  opacity: 0.45;
+  animation: iso-pulse 3s ease-in-out infinite;
+  will-change: opacity;
+}
+.chief .chief-stem {
+  stroke: hsl(264 65% 60%);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+.chief .chief-orb-outer {
+  fill: hsla(264 65% 55% / 0.28);
+  stroke: hsl(264 65% 72%);
+  stroke-width: 1;
+  animation: iso-pulse 2.6s ease-in-out infinite;
+  will-change: opacity;
+}
+.chief .chief-orb-core {
+  fill: hsl(264 85% 78%);
+}
+.chief .chief-ring {
+  fill: none;
+  stroke: hsl(264 65% 65%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
+  transform-origin: center;
+  animation: chief-ring-spin 18s linear infinite;
+}
+@keyframes chief-ring-spin {
+  to { transform: rotate(360deg); }
+}
+.chief:hover .chief-orb-outer { opacity: 0.9; }
+.chief:hover .chief-base { fill: hsla(264 65% 55% / 0.2); }
+.chief .chief-name {
+  font-family: var(--font-display, 'Orbitron', sans-serif);
+  font-size: 15px;
+  fill: hsl(264 85% 88%);
+  text-anchor: middle;
+  letter-spacing: 0.28em;
+  font-weight: 800;
+}
+.chief .chief-title {
+  font-family: var(--font-data, 'Inter', sans-serif);
+  font-size: 8.5px;
+  fill: hsl(264 40% 70%);
+  text-anchor: middle;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.chief .chief-title-rule {
+  stroke: hsl(264 50% 55%);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+.chief:hover .chief-title-rule { opacity: 0.85; }
+.chief:hover .chief-name { fill: hsl(264 85% 88%); }
+
+
+@media (max-width: 900px) {
+  .iso-topbar { padding: 12px 14px 14px; }
+  .iso-topbar-left, .iso-topbar-right { font-size: 9px; }
+  .office-section .section-header { margin-bottom: 12px; }
+  .office-section .iso-wrap { margin-top: 8px; }
+}
+@media (max-width: 600px) {
+  .iso-topbar { padding: 10px 12px 16px; }
+  .office-section .section-header { margin-bottom: 14px; }
+  .office-section .iso-wrap { margin-top: 10px; }
+}
+</content>
+</invoke>

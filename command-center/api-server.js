@@ -14,6 +14,12 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const { renderSlide, renderCarousel } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
 const { execFile } = require("child_process");
+const {
+  BROWSER_TOOLS,
+  BROWSE_PAGE_TOOL,
+  handleBrowserTool,
+  browsePage,
+} = require("./browser-tools");
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
@@ -34,16 +40,20 @@ if (!CC_PASSWORD || !SESSION_SECRET) {
   console.error("FATAL: CC_PASSWORD and CC_SESSION_SECRET must be set in .env");
   process.exit(1);
 }
-const activeSessions = new Set();
-
 function createSessionToken() {
-  const token = crypto.randomBytes(32).toString("hex");
-  activeSessions.add(token);
-  return token;
+  const payload = Date.now().toString(36) + "." + crypto.randomBytes(16).toString("hex");
+  const sig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+  return payload + "." + sig;
 }
 
 function isValidSession(token) {
-  return token && activeSessions.has(token);
+  if (!token || typeof token !== "string") return false;
+  const lastDot = token.lastIndexOf(".");
+  if (lastDot <= 0) return false;
+  const payload = token.substring(0, lastDot);
+  const sig = token.substring(lastDot + 1);
+  const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
 }
 
 // Login endpoint
@@ -59,8 +69,6 @@ app.post("/auth/login", (req, res) => {
 });
 
 app.post("/auth/logout", (req, res) => {
-  const token = req.cookies?.cc_session;
-  if (token) activeSessions.delete(token);
   res.clearCookie("cc_session");
   res.json({ ok: true });
 });
@@ -69,51 +77,71 @@ app.get("/auth/check", (req, res) => {
   res.json({ authenticated: isValidSession(req.cookies?.cc_session) });
 });
 
-// Allow login page and static assets without auth
-app.use("/login.html", express.static(path.join(__dirname, "login.html")));
-app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
-app.use("/brand-loader.js", express.static(path.join(__dirname, "brand-loader.js")));
-
-// Protect all other routes (API + HTML pages)
+// Protect all other API routes
 app.use((req, res, next) => {
-  // Allow auth endpoints and setup check
-  if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
+  // Allow auth endpoints
+  if (req.path.startsWith("/auth/")) return next();
   // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
   if (isValidSession(req.cookies?.cc_session)) return next();
-  // Unauthenticated: redirect HTML requests to login, reject API calls
-  if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
 });
 
-// Serve all static files (HTML, JS, CSS) — protected by auth middleware above
-app.use(express.static(__dirname));
+// ── SETTINGS API ─────────────────────────────
+const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
-// ── SETUP & SETTINGS API ─────────────────────
-const ENV_PATH = path.join(__dirname, "..", ".env");
+// Populate process.env with values from bot config.py files (for Telegram etc.)
+(function populateEnvFromBotConfigs() {
+  const botConfigs = [
+    path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+    path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+  ];
+  for (const f of botConfigs) {
+    try {
+      if (!fs.existsSync(f)) continue;
+      const content = fs.readFileSync(f, "utf8");
+      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
+    } catch {}
+  }
+})();
 
 function readEnvFile() {
   const env = {};
+  // Read .env file
   try {
     for (const line of fs.readFileSync(ENV_PATH, "utf8").split("\n")) {
       const m = line.match(/^([A-Z_]+)=(.*)$/);
       if (m) env[m[1]] = m[2];
     }
   } catch {}
-  // Merge from process.env (dotenv loaded at startup)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "APIFY_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  // Merge from process.env (picks up vars from other sources like dotenv loading)
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
+  // Check bot config.py files for Telegram if not in .env
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    const botConfigs = [
+      path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+      path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+    ];
+    for (const f of botConfigs) {
+      try {
+        if (!fs.existsSync(f)) continue;
+        const content = fs.readFileSync(f, "utf8");
+        const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+        const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+        if (tokenMatch && tokenMatch[1] && !env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+        if (chatMatch && chatMatch[1] && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = chatMatch[1];
+      } catch {}
+    }
+  }
   return env;
 }
-
-app.get("/api/setup-status", (_req, res) => {
-  const env = readEnvFile();
-  const configured = !!env.COMPANY_NAME;
-  res.json({ configured });
-});
 
 function writeEnvFile(updates) {
   let content = "";
@@ -153,7 +181,8 @@ app.get("/api/settings", (_req, res) => {
       heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
-      apify: { has_key: !!env.APIFY_API_KEY, masked: maskKey(env.APIFY_API_KEY) },
+      meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
+      youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
     }
   });
 });
@@ -179,7 +208,10 @@ app.post("/api/settings", (req, res) => {
       heygen_key: "HEYGEN_API_KEY",
       stripe_key: "STRIPE_SECRET_KEY",
       composio_key: "COMPOSIO_API_KEY",
-      apify_key: "APIFY_API_KEY",
+      meta_app_id: "META_APP_ID",
+      meta_app_secret: "META_APP_SECRET",
+      meta_redirect_uri: "META_REDIRECT_URI",
+      youtube_api_key: "YOUTUBE_API_KEY",
     };
     for (const [field, envKey] of Object.entries(keyMap)) {
       if (integrations[field] !== undefined && integrations[field] !== "") {
@@ -233,6 +265,28 @@ const designerUpload = require("multer")({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+function loadBrandContext(brandName) {
+  const brand = String(brandName || (loadBrand().company_name || "DEFAULT")).toUpperCase();
+  let brandConfig = { colors: [], fonts: [] };
+  try { brandConfig = readBrandConfigs()[brand] || brandConfig; } catch {}
+  const brandAssetsDir = path.join(BRAND_ASSETS_DIR, brand);
+  const logos = [];
+  try {
+    if (fs.existsSync(brandAssetsDir)) {
+      for (const f of fs.readdirSync(brandAssetsDir)) {
+        if (f.startsWith(".")) continue;
+        logos.push({ name: f, url: `/brand-assets/${brand}/${f}` });
+      }
+    }
+  } catch {}
+  return {
+    name: brand,
+    logos,
+    colors: brandConfig.colors || [],
+    fonts: brandConfig.fonts || [],
+  };
+}
+
 app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res) => {
   const tasks = readTaskFile("designer-tasks.json");
   const desc = req.body.description || "";
@@ -245,24 +299,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
   const templateName = req.body.template || "default"; // slide layout template
   const requestedSlideCount = req.body.slide_count || null;
 
-  // Load brand assets (logos, colors, fonts) for this brand
-  const brandConfigs = readBrandConfigs();
-  const brandConfig = brandConfigs[brand.toUpperCase()] || { colors: [], fonts: [] };
-  const brandAssetsDir = path.join(BRAND_ASSETS_DIR, brand.toUpperCase());
-  const brandLogos = [];
-  try {
-    if (fs.existsSync(brandAssetsDir)) {
-      for (const f of fs.readdirSync(brandAssetsDir)) {
-        brandLogos.push({ name: f, url: `/brand-assets/${brand.toUpperCase()}/${f}` });
-      }
-    }
-  } catch {}
-  const brandContext = {
-    name: brand,
-    logos: brandLogos,
-    colors: brandConfig.colors || [],
-    fonts: brandConfig.fonts || [],
-  };
+  const brandContext = loadBrandContext(brand);
 
   // Detect carousel / multi-slide: split numbered slides
   // Supports: **1 — title** — body  OR  1 — title — body  OR  1. title — body
@@ -408,13 +445,14 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
       : (designType === "instagram_carousel" && requestedSlideCount) ? requestedSlideCount : 1;
 
     const createdTasks = [];
+    const carouselParentId = numImages > 1 ? genId() : null;
     for (let i = 0; i < numImages; i++) {
       createdTasks.push({
         id: genId(), status: "processing",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, brand_kit_id: brandKitId, engine: "nanobanana",
         logo_position: logoPosition,
-        carousel_parent: numImages > 1 ? genId() : null,
+        carousel_parent: carouselParentId,
         carousel_slide: numImages > 1 ? i + 1 : null,
         carousel_total: numImages > 1 ? numImages : null,
         description: numImages > 1 && slides[i] ? `Slide ${i+1}/${numImages}: ${slides[i].title}` : desc,
@@ -425,11 +463,12 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
     writeTaskFile("designer-tasks.json", tasks);
     res.status(201).json(createdTasks);
 
-    // Run infsh for each task with staggered delays (avoid rate limits)
-    for (let _qi = 0; _qi < createdTasks.length; _qi++) {
-      const task = createdTasks[_qi];
-      const _delay = _qi * 3000; // 3s between each slide start
-      setTimeout(() => {
+    // Run infsh for each task in sequential batches of 2 (avoid Gemini rate limits)
+    const NB_CONCURRENCY = 2;
+    const runSlideQueue = async () => {
+      for (let _qi = 0; _qi < createdTasks.length; _qi += NB_CONCURRENCY) {
+        const batch = createdTasks.slice(_qi, _qi + NB_CONCURRENCY);
+        await Promise.all(batch.map((task) => new Promise((resolveBatch) => {
       const slideIdx = createdTasks.indexOf(task);
       const slide = slides.length > 1 ? slides[slideIdx] : null;
       let slideDesc;
@@ -539,7 +578,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
           if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
           const allTasks = readTaskFile("designer-tasks.json");
           const idx = allTasks.findIndex(t => t.id === task.id);
-          if (idx === -1) return;
+          if (idx === -1) { resolveBatch(); return; }
 
           if (err) {
             const detail = stderr ? stderr.replace(/\x1b\[[0-9;]*m/g, '').trim() : err.message;
@@ -547,7 +586,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
             allTasks[idx].status = "failed";
             allTasks[idx].error = detail.slice(0, 500);
             writeTaskFile("designer-tasks.json", allTasks);
-            return;
+            resolveBatch(); return;
           }
 
           if (parseError) {
@@ -556,7 +595,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
             allTasks[idx].error = "Failed to parse output: " + parseError.message.slice(0, 200);
             allTasks[idx].updated_at = new Date().toISOString();
             writeTaskFile("designer-tasks.json", allTasks);
-            return;
+            resolveBatch(); return;
           }
 
           if (images.length > 0) {
@@ -578,7 +617,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
                   allTasks[idx].result_thumbnail = imgUrl;
                   allTasks[idx].updated_at = new Date().toISOString();
                   writeTaskFile("designer-tasks.json", allTasks);
-                  return;
+                  resolveBatch(); return;
                 }
                 // Composite logo at chosen position (12% of image width, with padding)
                 execFile("convert", [
@@ -594,6 +633,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
                   allTasks[idx].updated_at = new Date().toISOString();
                   writeTaskFile("designer-tasks.json", allTasks);
                   console.log(`[DESIGNER] Nano Banana task ${task.id} completed (with logo overlay)`);
+                  resolveBatch();
                 });
               });
               return;
@@ -611,11 +651,14 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
         allTasks[idx].updated_at = new Date().toISOString();
         writeTaskFile("designer-tasks.json", allTasks);
         if (allTasks[idx].status === "completed") console.log(`[DESIGNER] Nano Banana task ${task.id} completed`);
+        resolveBatch();
         });
       };
       runInfsh(1);
-      }, _delay);
-    }
+        })));
+      }
+    };
+    runSlideQueue();
     return;
   }
 
@@ -840,12 +883,14 @@ app.get("/video/tasks", (_req, res) => res.json(readTaskFile("video-tasks.json")
 
 app.post("/video/tasks", (req, res) => {
   const tasks = readTaskFile("video-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     template: req.body.template || "social-clip",
     aspect_ratio: req.body.aspect_ratio || "9:16",
-    brand: req.body.brand || (loadBrand().company_name || "DEFAULT").toUpperCase(),
+    brand: brandContext.name,
+    brand_context: brandContext,
     description: req.body.description || "",
     scenes_override: req.body.scenes_override || null,
     media_files: req.body.media_files || [],
@@ -888,11 +933,14 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   const aspectRatio = req.body.aspect_ratio || "16:9";
   const duration = parseInt(req.body.duration) || 8;
   const refImagePath = req.file ? req.file.path : null;
+  const brandContext = loadBrandContext(req.body.brand);
 
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     model, prompt, aspect_ratio: aspectRatio, duration,
+    brand: brandContext.name,
+    brand_context: brandContext,
     ref_image: refImagePath ? true : false,
     result_url: null, error: null,
   };
@@ -1004,6 +1052,7 @@ app.get("/avatar/tasks", (_req, res) => res.json(readTaskFile("avatar-tasks.json
 
 app.post("/avatar/tasks", (req, res) => {
   const tasks = readTaskFile("avatar-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -1013,6 +1062,8 @@ app.post("/avatar/tasks", (req, res) => {
     motion_engine: req.body.motion_engine || "avatar_iii",
     script: req.body.script || "",
     description: req.body.description || "",
+    brand: brandContext.name,
+    brand_context: brandContext,
     result_url: null, result_video_id: null, error: null,
   };
   tasks.unshift(task);
@@ -1039,6 +1090,7 @@ app.get("/video-agent/tasks", (_req, res) => res.json(readTaskFile("video-agent-
 
 app.post("/video-agent/tasks", (req, res) => {
   const tasks = readTaskFile("video-agent-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -1047,6 +1099,8 @@ app.post("/video-agent/tasks", (req, res) => {
     orientation: req.body.orientation || "portrait",
     avatar_id: req.body.avatar_id || null,
     description: req.body.description || "",
+    brand: brandContext.name,
+    brand_context: brandContext,
     result_url: null, result_video_id: null, error: null,
   };
   tasks.unshift(task);
@@ -1115,11 +1169,14 @@ app.get("/analyst/tasks", (_req, res) => res.json(readTaskFile("analyst-tasks.js
 
 app.post("/analyst/tasks", (req, res) => {
   const tasks = readTaskFile("analyst-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     type: req.body.type || "daily_report",
     description: req.body.description || "",
+    brand: brandContext.name,
+    brand_context: brandContext,
     error: null,
   };
   tasks.unshift(task);
@@ -1146,6 +1203,7 @@ app.get("/scriptwriter/tasks", (_req, res) => res.json(readTaskFile("scriptwrite
 
 app.post("/scriptwriter/tasks", (req, res) => {
   const tasks = readTaskFile("scriptwriter-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -1154,6 +1212,8 @@ app.post("/scriptwriter/tasks", (req, res) => {
     format: req.body.format || "short-form",
     tone: req.body.tone || "educational",
     description: req.body.description || "",
+    brand: brandContext.name,
+    brand_context: brandContext,
     result: null, error: null,
   };
   tasks.unshift(task);
@@ -1178,8 +1238,14 @@ app.delete("/scriptwriter/tasks/:id", (req, res) => {
 // ── BOT TRADE HISTORY (reads from bot data files) ──
 const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
 const TRADE_FILES = {
-  funding: path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
-  trend: path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
+  funding: [
+    path.join(__dirname, "..", "neuralabs-bot", "data", "trade_history.json"),
+    path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
+  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
+  trend: [
+    path.join(__dirname, "..", "neuralabs-bot-5", "data", "trade_history.json"),
+    path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
+  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
 };
 
 app.get("/analyst/trades/:botId", (req, res) => {
@@ -1229,6 +1295,7 @@ app.get("/research/tasks", (_req, res) => res.json(readTaskFile("research-tasks.
 
 app.post("/research/tasks", (req, res) => {
   const tasks = readTaskFile("research-tasks.json");
+  const brandContext = loadBrandContext(req.body.brand);
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -1237,6 +1304,8 @@ app.post("/research/tasks", (req, res) => {
     platforms: req.body.platforms || ["tiktok", "x", "reddit"],
     niche: req.body.niche || "crypto trading",
     language: req.body.language || "NL",
+    brand: brandContext.name,
+    brand_context: brandContext,
     error: null,
   };
   tasks.unshift(task);
@@ -1411,18 +1480,7 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
-  // 7. Apify
-  const apifyToken = process.env.APIFY_API_KEY || "";
-  integrations.push({
-    id: "apify", status: apifyToken ? "connected" : "not-configured",
-    details: apifyToken ? [
-      { label: "API Token", value: apifyToken, secret: true },
-      { label: "Actors", value: "TikTok Scraper, Instagram Scraper, Twitter/X Scraper" },
-      { label: "Used by", value: "Performance page, Overview — social media analytics" },
-    ] : [{ label: "Status", value: "Not configured — set APIFY_API_KEY in .env" }],
-  });
-
-  // 8. Composio
+  // 7. Composio
   const composioKey = process.env.COMPOSIO_API_KEY || "";
   integrations.push({
     id: "composio", status: composioKey ? "connected" : "not-configured",
@@ -1461,12 +1519,6 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getMe`);
       const d = await r.json();
       res.json({ ok: d.ok, message: d.ok ? `Bot: @${d.result.username}` : "Auth failed" });
-    } else if (id === "apify") {
-      const apifyKey = process.env.APIFY_API_KEY || "";
-      if (!apifyKey) return res.json({ ok: false, message: "APIFY_API_KEY not set in .env" });
-      const r = await fetch(`https://api.apify.com/v2/acts?token=${apifyKey}&limit=1`);
-      const d = await r.json();
-      res.json({ ok: r.ok, message: r.ok ? `API reachable — ${d.data?.total || "?"} actors available` : "Auth failed" });
     } else if (id === "composio") {
       const r = await fetch("https://backend.composio.dev/api/v2/connectedAccounts?limit=1", {
         headers: { "X-API-Key": process.env.COMPOSIO_API_KEY || "" },
@@ -1486,6 +1538,206 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
     }
   } catch (e) {
     res.json({ ok: false, message: e.message.slice(0, 200) });
+  }
+});
+
+// ── SOCIAL CONNECTIONS (Instagram/Facebook via Meta Graph API) ──
+const SOCIAL_FILE = "social-connections.json";
+function readSocial() { return readTaskFile(SOCIAL_FILE); }
+function writeSocial(list) { writeTaskFile(SOCIAL_FILE, list); }
+
+app.get("/social/connections", (_req, res) => {
+  const list = readSocial().map((c) => ({
+    id: c.id, platform: c.platform, username: c.username, name: c.name,
+    ig_user_id: c.ig_user_id, page_id: c.page_id,
+    account_id: c.account_id, currency: c.currency, account_status: c.account_status, business_name: c.business_name,
+    profile_picture: c.profile_picture,
+    connected_at: c.connected_at,
+  }));
+  res.json({ connections: list });
+});
+
+app.delete("/social/connections/:id", (req, res) => {
+  writeSocial(readSocial().filter((c) => c.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// Start Meta OAuth — redirects user to Facebook login
+app.get("/social/meta/auth", (req, res) => {
+  const appId = process.env.META_APP_ID;
+  const redirect = process.env.META_REDIRECT_URI;
+  if (!appId || !redirect) return res.status(400).send("META_APP_ID en META_REDIRECT_URI niet ingesteld — configureer in Settings.");
+  const state = crypto.randomBytes(16).toString("hex");
+  res.cookie("meta_oauth_state", state, { httpOnly: true, maxAge: 600_000, sameSite: "lax" });
+  const scope = [
+    "instagram_basic", "pages_show_list", "pages_read_engagement",
+    "instagram_manage_insights", "business_management",
+    "ads_read", "ads_management",
+  ].join(",");
+  const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&scope=${scope}&state=${state}&response_type=code`;
+  res.redirect(url);
+});
+
+// Meta OAuth callback — exchange code, discover IG Business accounts, store
+app.get("/social/meta/callback", async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+  if (error) return res.send(`<h2>Connect mislukt</h2><p>${error}: ${error_description || ""}</p><a href="/settings.html">Terug</a>`);
+  if (state !== req.cookies?.meta_oauth_state) return res.status(400).send("Invalid state (CSRF)");
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  const redirect = process.env.META_REDIRECT_URI;
+  try {
+    // 1. code → short-lived user token
+    const tokRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&redirect_uri=${encodeURIComponent(redirect)}&code=${code}`);
+    const tok = await tokRes.json();
+    if (!tok.access_token) throw new Error(tok.error?.message || "Geen user token");
+    // 2. short → long-lived user token (~60 dagen)
+    const llRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tok.access_token}`);
+    const ll = await llRes.json();
+    const userToken = ll.access_token || tok.access_token;
+    // 3. Ophalen pages (incl. page access tokens — die verlopen niet als user token long-lived is)
+    const pagesRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${userToken}`);
+    const pages = (await pagesRes.json()).data || [];
+    // 4. Elk page met IG Business account opslaan
+    const existing = readSocial();
+    let added = 0;
+    for (const p of pages) {
+      const ig = p.instagram_business_account;
+      if (!ig) continue;
+      const record = {
+        id: "ig_" + ig.id,
+        platform: "instagram",
+        ig_user_id: ig.id,
+        username: ig.username,
+        name: ig.name || p.name,
+        profile_picture: ig.profile_picture_url || null,
+        page_id: p.id,
+        page_name: p.name,
+        page_access_token: p.access_token,
+        user_access_token: userToken,
+        connected_at: Date.now(),
+      };
+      const idx = existing.findIndex((c) => c.id === record.id);
+      if (idx >= 0) existing[idx] = record; else existing.push(record);
+      added++;
+    }
+    // 5. Ophalen ad accounts (Marketing API)
+    let adAccountsAdded = 0;
+    try {
+      const adRes = await fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,account_id,name,currency,account_status,business{id,name}&access_token=${userToken}`);
+      const adAccounts = (await adRes.json()).data || [];
+      for (const a of adAccounts) {
+        const record = {
+          id: "ads_" + a.account_id,
+          platform: "meta_ads",
+          ad_account_id: a.id,
+          account_id: a.account_id,
+          name: a.name,
+          currency: a.currency,
+          account_status: a.account_status,
+          business_name: a.business?.name || null,
+          user_access_token: userToken,
+          connected_at: Date.now(),
+        };
+        const idx = existing.findIndex((c) => c.id === record.id);
+        if (idx >= 0) existing[idx] = record; else existing.push(record);
+        adAccountsAdded++;
+      }
+    } catch (e) { console.warn("[META] ad accounts fetch failed:", e.message); }
+
+    writeSocial(existing);
+    res.send(`<!doctype html><meta charset="utf-8"><title>Connected</title><style>body{background:#000;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}a{color:hsl(264 65% 65%)}</style><div><h2>✓ ${added} Instagram account${added===1?"":"s"} + ${adAccountsAdded} ad account${adAccountsAdded===1?"":"s"} gekoppeld</h2><p>Je kunt dit tabblad sluiten.</p><a href="/settings.html">← Terug naar Settings</a><script>setTimeout(()=>window.close(),2000)</script></div>`);
+  } catch (e) {
+    res.status(500).send(`<h2>Connect mislukt</h2><pre>${e.message}</pre><a href="/settings.html">Terug</a>`);
+  }
+});
+
+// Instagram stats via Graph API (gebruikt opgeslagen page access token)
+app.get("/social/ig/stats", async (req, res) => {
+  const { id, handle } = req.query;
+  const conns = readSocial();
+  const conn = id ? conns.find((c) => c.id === id) : conns.find((c) => c.username === handle);
+  if (!conn) return res.status(404).json({ error: "Account niet gekoppeld — verbind eerst via Settings" });
+  try {
+    const fields = "username,followers_count,media_count,media.limit(10){id,caption,like_count,comments_count,media_type,media_url,thumbnail_url,permalink,timestamp,insights.metric(reach,impressions)}";
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ig_user_id}?fields=${encodeURIComponent(fields)}&access_token=${conn.page_access_token}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    // Normaliseren naar bestaande performance.html format
+    const posts = (d.media?.data || []).map((m) => {
+      const insights = (m.insights?.data || []).reduce((a, x) => ({ ...a, [x.name]: x.values?.[0]?.value || 0 }), {});
+      return {
+        caption: m.caption || "",
+        likesCount: m.like_count || 0,
+        commentsCount: m.comments_count || 0,
+        videoViewCount: insights.reach || insights.impressions || 0,
+        reach: insights.reach || 0,
+        impressions: insights.impressions || 0,
+        mediaType: m.media_type,
+        permalink: m.permalink,
+        timestamp: m.timestamp,
+      };
+    });
+    res.json({
+      username: d.username,
+      followersCount: d.followers_count || 0,
+      mediaCount: d.media_count || 0,
+      latestPosts: posts,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── META ADS (Marketing API) — read-only phase 1 ──
+app.get("/ads/accounts", (_req, res) => {
+  const accounts = readSocial()
+    .filter((c) => c.platform === "meta_ads")
+    .map((c) => ({
+      id: c.id,
+      account_id: c.account_id,
+      ad_account_id: c.ad_account_id,
+      name: c.name,
+      currency: c.currency,
+      account_status: c.account_status,
+      business_name: c.business_name,
+      connected_at: c.connected_at,
+    }));
+  res.json({ accounts });
+});
+
+app.get("/ads/campaigns", async (req, res) => {
+  const { account_id } = req.query;
+  const conn = readSocial().find((c) => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account niet gekoppeld" });
+  try {
+    const fields = "id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time,created_time,updated_time";
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/campaigns?fields=${fields}&limit=100&access_token=${conn.user_access_token}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ campaigns: d.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/ads/insights", async (req, res) => {
+  const { account_id, date_preset = "last_7d", level = "campaign" } = req.query;
+  const conn = readSocial().find((c) => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account niet gekoppeld" });
+  try {
+    const fields = [
+      "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
+      "spend", "impressions", "clicks", "ctr", "cpm", "cpc", "reach", "frequency",
+      "actions", "action_values", "purchase_roas", "website_purchase_roas",
+    ].join(",");
+    const url = `https://graph.facebook.com/v21.0/${conn.ad_account_id}/insights?fields=${fields}&date_preset=${date_preset}&level=${level}&limit=200&access_token=${conn.user_access_token}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ insights: d.data || [], currency: conn.currency });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -1584,19 +1836,80 @@ app.delete("/brands/:brand/assets/:filename", (req, res) => {
   catch { res.status(404).json({ error: "File not found" }); }
 });
 
+// ── BRAND CREATE / RENAME / DELETE ──
+function sanitizeBrandName(name) {
+  const clean = String(name || "").toUpperCase().trim().replace(/[^A-Z0-9_-]/g, "");
+  return clean.slice(0, 40);
+}
+
+app.post("/brands/:brand", (req, res) => {
+  const brand = sanitizeBrandName(req.params.brand);
+  if (!brand) return res.status(400).json({ error: "Invalid brand name" });
+  const dir = path.join(BRAND_ASSETS_DIR, brand);
+  if (fs.existsSync(dir)) return res.status(409).json({ error: "Brand already exists" });
+  fs.mkdirSync(dir, { recursive: true });
+  const configs = readBrandConfigs();
+  if (!configs[brand]) { configs[brand] = { colors: [], fonts: [] }; writeBrandConfigs(configs); }
+  console.log(`[BRAND] Created ${brand}`);
+  res.json({ ok: true, brand });
+});
+
+app.delete("/brands/:brand", (req, res) => {
+  const brand = sanitizeBrandName(req.params.brand);
+  if (!brand) return res.status(400).json({ error: "Invalid brand name" });
+  const dir = path.join(BRAND_ASSETS_DIR, brand);
+  try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  const configs = readBrandConfigs();
+  if (configs[brand]) { delete configs[brand]; writeBrandConfigs(configs); }
+  console.log(`[BRAND] Deleted ${brand}`);
+  res.json({ ok: true });
+});
+
+app.post("/brands/:brand/rename", (req, res) => {
+  const oldName = sanitizeBrandName(req.params.brand);
+  const newName = sanitizeBrandName(req.body && req.body.newName);
+  if (!oldName || !newName) return res.status(400).json({ error: "Invalid brand name" });
+  if (oldName === newName) return res.json({ ok: true, brand: newName });
+  const oldDir = path.join(BRAND_ASSETS_DIR, oldName);
+  const newDir = path.join(BRAND_ASSETS_DIR, newName);
+  if (fs.existsSync(newDir)) return res.status(409).json({ error: "Target brand already exists" });
+  try {
+    if (fs.existsSync(oldDir)) fs.renameSync(oldDir, newDir);
+    else fs.mkdirSync(newDir, { recursive: true });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+  const configs = readBrandConfigs();
+  if (configs[oldName]) { configs[newName] = configs[oldName]; delete configs[oldName]; writeBrandConfigs(configs); }
+  console.log(`[BRAND] Renamed ${oldName} → ${newName}`);
+  res.json({ ok: true, brand: newName });
+});
+
 // Upload via multipart (simple: read raw body and save)
 const multer = require("multer") || null;
 try {
-  const upload = require("multer")({ dest: MEDIA_DIR, limits: { fileSize: 100 * 1024 * 1024 } });
-  app.post("/media/upload", upload.single("file"), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: "No file" });
-    const ext = path.extname(req.file.originalname);
-    const finalName = req.file.filename + ext;
-    fs.renameSync(req.file.path, path.join(MEDIA_DIR, finalName));
-    res.json({ name: finalName, path: "/media/" + finalName });
+  if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  const upload = require("multer")({ dest: MEDIA_DIR, limits: { fileSize: 500 * 1024 * 1024 } });
+  app.post("/media/upload", (req, res) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) {
+        console.error("[MEDIA] Upload error:", err.code || err.name, err.message);
+        const msg = err.code === "LIMIT_FILE_SIZE" ? "File too large (max 500MB)" : err.message;
+        return res.status(400).json({ error: msg });
+      }
+      if (!req.file) return res.status(400).json({ error: "No file received" });
+      try {
+        const ext = path.extname(req.file.originalname) || "";
+        const finalName = req.file.filename + ext;
+        fs.renameSync(req.file.path, path.join(MEDIA_DIR, finalName));
+        console.log(`[MEDIA] Uploaded ${req.file.originalname} → ${finalName} (${req.file.size} bytes)`);
+        res.json({ name: finalName, path: "/media/" + finalName });
+      } catch (e) {
+        console.error("[MEDIA] Rename failed:", e.message);
+        res.status(500).json({ error: "Failed to save: " + e.message });
+      }
+    });
   });
-} catch {
-  // multer not installed, skip upload endpoint
+} catch (e) {
+  console.error("[MEDIA] multer init failed:", e.message);
   app.post("/media/upload", (_req, res) => res.status(501).json({ error: "Upload not available, install multer" }));
 }
 
@@ -1672,7 +1985,7 @@ async function handleTgMessage(msg) {
   // Handle /start command
   if (text === "/start") {
     const brand = loadBrand();
-    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nJe kunt me hier alles vragen wat je ook in het Command Center zou vragen:\n- Bot performance & status\n- Agents aansturen (designer, researcher, analyst, etc.)\n- Agenda beheren\n- Marktanalyse & nieuws\n\nStuur gewoon een bericht om te beginnen.`);
+    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- Bot performance & live status\n- 9 agents aansturen (designer, video, researcher, analyst, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/status — Bot status check\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`);
     return;
   }
 
@@ -1981,14 +2294,84 @@ function buildSystemPrompt() {
   const brand = loadBrand();
   return `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}, ingebouwd in het ${brand.company_name} Command Center.
 Je helpt de gebruiker met het aansturen van agents, het monitoren van bots, en het beantwoorden van vragen over het systeem.
+Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE agents en ALLE skills.
 
 TRADING BOTS (Hyperliquid Perps):
 - Funding Bot — Funding rate arbitrage
 - Trend Bot — BB+RSI mean-reversion strategie
 
-COMMAND CENTER:
-- Agents: Designer (Canva), Video Editor (Remotion), Content Creator (HeyGen avatar + Video Agent), Analyst, Researcher, Script Writer
+COMMAND CENTER AGENTS:
+- Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
+- Video Editor — Video editing via Remotion (React-based video)
+- Content Creator — HeyGen avatar video's + AI Video Agent
+- Analyst — Performance analyses, risk reports, dagrapportages
+- Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
+- Script Writer — Video scripts, social posts, threads, newsletters
+- Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
+- Calendar — Google Calendar beheer (events, vrije slots, planning)
 - Alle agents hebben een takenlijst (pending/processing/completed)
+
+GEÏNSTALLEERDE SKILLS (49 totaal):
+Media & Design:
+  /create-video — Video maken via HeyGen prompt
+  /avatar-video — Avatar video met exacte controle over script, stem, scenes
+  /designer — Carousels, thumbnails, banners, infographics
+  /nano-banana-2 — AI image generation via Google Gemini 3.1 Flash
+  /remotion-best-practices — Remotion video creation best practices
+  /canvas-design — Posters, art, designs als PNG/PDF
+  /web-artifacts-builder — Multi-component HTML artifacts (React + Tailwind + shadcn/ui)
+  /brand-guidelines — Brand styling toepassen op designs
+
+Marketing (25 skills via Marketeer agent):
+  /copywriting, /copy-editing — Marketing copy schrijven en reviewen
+  /email-sequence — Drip campaigns, welcome sequences, lifecycle emails
+  /social-content — LinkedIn, Twitter/X, Instagram, TikTok content
+  /content-strategy — Content planning, topic clusters
+  /launch-strategy — Product launches, go-to-market
+  /pricing-strategy — Pricing tiers, packaging, monetization
+  /paid-ads — Google Ads, Meta, LinkedIn campaigns
+  /marketing-psychology — 70+ mental models voor marketing
+  /marketing-ideas — 139 bewezen marketing tactieken
+  /referral-program — Referral & affiliate programma's
+  /free-tool-strategy — Lead gen tools bouwen
+  /product-marketing-context — Positionering & context document
+  /competitor-alternatives — "vs" en "alternative to" pagina's
+
+SEO & Analytics:
+  /seo-audit — Technische SEO audit
+  /analytics-tracking — GA4, GTM, conversion tracking
+  /programmatic-seo — SEO pagina's op schaal
+  /schema-markup — JSON-LD structured data
+
+CRO & Conversion:
+  /page-cro — Landing page optimalisatie
+  /signup-flow-cro — Signup/registratie flows
+  /onboarding-cro — Post-signup activatie
+  /form-cro — Formulier optimalisatie
+  /popup-cro — Popups, modals, exit-intent
+  /paywall-upgrade-cro — In-app paywalls, upgrade screens
+  /ab-test-setup — A/B tests plannen en opzetten
+
+Development (Superpowers):
+  /brainstorming — Requirements & design verkennen voor implementatie
+  /dispatching-parallel-agents — Parallelle taken dispatchen
+  /executing-plans — Implementatieplannen uitvoeren
+  /finishing-a-development-branch — Branch completion (merge/PR/cleanup)
+  /receiving-code-review — Code review feedback verwerken
+  /requesting-code-review — Code review aanvragen
+  /subagent-driven-development — Subagent-driven implementatie
+  /systematic-debugging — Methodisch debuggen
+  /test-driven-development — TDD workflow
+  /using-git-worktrees — Git worktree isolatie
+  /verification-before-completion — Verificatie voor completion claims
+  /writing-plans — Implementatieplannen schrijven
+  /writing-skills — Nieuwe skills maken en testen
+
+System:
+  /claude-api — Claude API / Anthropic SDK apps bouwen
+  /loop — Commands op interval herhalen
+  /schedule — Cron-based scheduled agents
+  /find-skills — Nieuwe skills ontdekken en installeren
 
 Je kunt:
 1. Uitleggen wat bots/agents doen en hoe ze presteren
@@ -2007,11 +2390,16 @@ Je kunt:
    - create_analysis: Analyse laten maken (Analyst)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing strategie, content planning, copywriting, SEO, ads — vraag de Marketeer agent
+8. SKILLS KENNIS — als de gebruiker vraagt over een skill, leg uit wat het doet en hoe het aan te roepen. Skills worden aangeroepen als /skill-name in Claude Code.
+9. MARKETING EXPERTISE — via de marketeer_query tool kun je alle 25 marketing skills inzetten. Route marketing-gerelateerde vragen naar de Marketeer agent.
 
 BELANGRIJK bij het aansturen van agents:
 - Gebruik de tools om taken daadwerkelijk aan te maken, niet alleen beschrijven wat je zou doen
 - Als de gebruiker vraagt om een video te maken, maak dan direct de taak aan
 - Bevestig altijd welke taken je hebt aangemaakt en bij welke agent
+- Bij marketing vragen (SEO, copy, ads, CRO, etc.) → gebruik marketeer_query
+- Bij calendar vragen → gebruik calendar_query
+- Je bent proactief: stel voor om meerdere agents tegelijk in te zetten als dat zinvol is
 
 Je hebt toegang tot web search. Gebruik dit wanneer de gebruiker vraagt naar actueel nieuws, prijsbewegingen, of informatie recenter dan je training data.
 
@@ -2019,7 +2407,7 @@ Je spreekt Nederlands tenzij de gebruiker Engels praat.
 Wees beknopt en direct. Gebruik geen emoji tenzij gevraagd.`;
 }
 
-const SYSTEM_PROMPT = buildSystemPrompt();
+// Built per-request so it always reflects current brand.json
 
 app.post("/ctrl/chat", async (req, res) => {
   const { message, sessionId = "default" } = req.body;
@@ -2036,6 +2424,30 @@ app.post("/ctrl/chat", async (req, res) => {
     history.splice(0, history.length - MAX_HISTORY);
   }
 
+  // Sanitize history: ensure every tool_use has a following tool_result
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      const toolUseIds = msg.content.filter(b => b.type === "tool_use").map(b => b.id);
+      if (toolUseIds.length > 0) {
+        const next = history[i + 1];
+        if (!next || next.role !== "user" || !Array.isArray(next.content)) {
+          console.warn(`[CHAT] Removing orphaned tool_use message at index ${i}`);
+          history.splice(i, 1);
+        } else {
+          const resultIds = new Set(next.content.filter(b => b.type === "tool_result").map(b => b.tool_use_id));
+          const missing = toolUseIds.filter(id => !resultIds.has(id));
+          if (missing.length) {
+            console.warn(`[CHAT] Patching ${missing.length} missing tool_results at index ${i + 1}`);
+            for (const id of missing) {
+              next.content.push({ type: "tool_result", tool_use_id: id, content: "Tool result unavailable." });
+            }
+          }
+        }
+      }
+    }
+  }
+
   try {
     // Fetch live bot data
     let botContext = "";
@@ -2050,10 +2462,12 @@ app.post("/ctrl/chat", async (req, res) => {
       botContext = "\n\nLIVE BOT STATUS:\n" + botLines.join("\n");
     } catch {}
 
-    const systemWithContext = SYSTEM_PROMPT + "\n\nAGENT & TAAK STATUS:\n" + gatherContext() + botContext;
+    const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext() + botContext;
 
     const agentTools = [
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+      // Browser automation tools (Playwright)
+      ...BROWSER_TOOLS.map(t => ({ type: "custom", ...t })),
       {
         type: "custom",
         name: "create_avatar_video",
@@ -2185,6 +2599,57 @@ app.post("/ctrl/chat", async (req, res) => {
           required: ["query"],
         },
       },
+      {
+        type: "custom",
+        name: "transcribe_audio",
+        description: "Transcribeer een audio- of videobestand naar tekst met OpenAI Whisper. Het bestand moet al geüpload zijn in de media library. Geeft het volledige transcript terug, optioneel met tijdcodes (SRT).",
+        input_schema: {
+          type: "object",
+          properties: {
+            file_name: { type: "string", description: "Bestandsnaam in de media library, bijv. 'interview.mp4' of 'podcast.mp3'" },
+            language: { type: "string", description: "Taalcode, bijv. 'nl', 'en', 'de'. Standaard: auto-detect" },
+            format: { type: "string", enum: ["txt", "srt", "vtt", "json"], description: "Output formaat. 'txt' = platte tekst, 'srt' = ondertiteling met tijdcodes. Standaard: txt" },
+            model: { type: "string", enum: ["tiny", "base", "small", "medium", "large"], description: "Whisper model. Groter = nauwkeuriger maar trager. Standaard: medium" },
+          },
+          required: ["file_name"],
+        },
+      },
+      {
+        type: "custom",
+        name: "read_pdf",
+        description: "Lees de tekst uit een PDF bestand dat in de media library is geüpload. Geeft de volledige tekst terug zodat je vragen kunt beantwoorden over de inhoud, samenvattingen kunt maken, etc.",
+        input_schema: {
+          type: "object",
+          properties: {
+            file_name: { type: "string", description: "Bestandsnaam in de media library, bijv. 'rapport.pdf'" },
+          },
+          required: ["file_name"],
+        },
+      },
+      {
+        type: "custom",
+        name: "run_skill",
+        description: `Voer een Claude Code skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, A/B test opzet, content strategie, schema markup, brainstorming, etc.
+
+Beschikbare skills:
+SEO & Analytics: seo-audit, analytics-tracking, programmatic-seo, schema-markup
+CRO & Conversion: page-cro, signup-flow-cro, onboarding-cro, form-cro, popup-cro, paywall-upgrade-cro, ab-test-setup
+Content & Marketing: content-strategy, copywriting, copy-editing, email-sequence, social-content, launch-strategy, pricing-strategy, paid-ads, marketing-psychology, marketing-ideas, referral-program, free-tool-strategy, product-marketing-context, competitor-alternatives, youtube-optimizer
+Design & Media: designer, canvas-design, nano-banana-2, brand-guidelines, web-artifacts-builder, create-video, avatar-video
+Development: brainstorming, writing-plans, executing-plans, systematic-debugging, test-driven-development
+
+Gebruik NIET voor simpele marketing vragen — daarvoor heb je marketeer_query. Gebruik run_skill voor wanneer je een volledige skill-gebaseerde analyse, audit, of plan nodig hebt met diepgaande output.
+
+BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET alle benodigde context meesturen in het prompt veld. Voorbeeld: voor youtube-optimizer moet je het VOLLEDIGE transcript meesturen in het prompt veld, anders kan de skill geen timestamps of titels genereren.`,
+        input_schema: {
+          type: "object",
+          properties: {
+            skill: { type: "string", description: "De skill slug, bijv. 'seo-audit', 'page-cro', 'ab-test-setup', 'brainstorming'" },
+            prompt: { type: "string", description: "De volledige opdracht EN alle benodigde input/context voor de skill. Stuur ALTIJD alle relevante data mee: het volledige transcript, de URL, de paginatekst, etc. De skill draait in een aparte sessie en heeft GEEN toegang tot de chathistorie. Alles wat de skill nodig heeft moet in dit veld staan." },
+          },
+          required: ["skill", "prompt"],
+        },
+      },
     ];
 
     // Map tool names to internal API endpoints and body builders
@@ -2291,9 +2756,168 @@ app.post("/ctrl/chat", async (req, res) => {
       const toolResults = [];
 
       for (const block of response.content) {
-        // Server tools (web search) — handled by Anthropic
-        if (block.type === "server_tool_use") {
-          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: block.content || "" });
+        // Server-side tools (web_search) are handled entirely by Anthropic:
+        // the assistant message already contains server_tool_use + web_search_tool_result
+        // blocks. We must NOT emit user-side tool_results for them, or the next round will
+        // 400 with "unexpected tool_use_id in tool_result blocks: srvtoolu_*".
+        if (block.type === "server_tool_use" || block.type === "web_search_tool_result") {
+          continue;
+        }
+        // Browser automation — Playwright session bound to this chat sessionId
+        if (block.type === "tool_use" && typeof block.name === "string" && block.name.startsWith("browser_")) {
+          try {
+            console.log(`[BROWSER] ${block.name}:`, JSON.stringify(block.input).slice(0, 200));
+            const result = await handleBrowserTool(sessionId, block.name, block.input || {});
+            // Trim very large snapshots so we don't blow the context
+            const content = JSON.stringify(result).slice(0, 12000);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content });
+          } catch (e) {
+            console.error(`[BROWSER] ${block.name} error:`, e.message);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ error: e.message }), is_error: true });
+          }
+          continue;
+        }
+        // Whisper transcription — runs locally
+        if (block.type === "tool_use" && block.name === "transcribe_audio") {
+          try {
+            console.log(`[WHISPER] transcribe_audio:`, JSON.stringify(block.input));
+            const fileName = path.basename(block.input.file_name);
+            // Case-insensitive file lookup (upload may use different case than AI)
+            let filePath = path.join(MEDIA_DIR, fileName);
+            if (!fs.existsSync(filePath)) {
+              const match = fs.readdirSync(MEDIA_DIR).find(f => f.toLowerCase() === fileName.toLowerCase());
+              if (match) {
+                filePath = path.join(MEDIA_DIR, match);
+                console.log(`[WHISPER] Case mismatch resolved: ${fileName} → ${match}`);
+              } else {
+                console.log(`[WHISPER] File not found: ${fileName}`);
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: `Bestand niet gevonden: ${fileName}. Upload het bestand eerst via de media library.` }), is_error: true });
+                continue;
+              }
+            }
+            const actualFileName = path.basename(filePath);
+            const whisperModel = block.input.model || "small";
+            const outputFormat = block.input.format || "txt";
+            const outputDir = path.join(__dirname, "data", "transcripts");
+            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+            const args = [filePath, "--model", whisperModel, "--output_format", outputFormat, "--output_dir", outputDir, "--fp16", "False"];
+            if (block.input.language) args.push("--language", block.input.language);
+            console.log(`[WHISPER] Running: whisper ${args.join(" ")}`);
+            const transcript = await new Promise((resolve, reject) => {
+              const child = execFile("/root/whisper-env/bin/whisper", args, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+                if (err) {
+                  console.error(`[WHISPER] Error:`, stderr || err.message);
+                  return reject(new Error(stderr || err.message));
+                }
+                console.log(`[WHISPER] Done. Checking output...`);
+                const baseName = path.basename(actualFileName, path.extname(actualFileName));
+                const outFile = path.join(outputDir, `${baseName}.${outputFormat}`);
+                if (fs.existsSync(outFile)) {
+                  const content = fs.readFileSync(outFile, "utf8");
+                  console.log(`[WHISPER] Output: ${outFile} (${content.length} chars)`);
+                  resolve(content);
+                } else {
+                  console.log(`[WHISPER] Output file not found: ${outFile}, using stdout`);
+                  resolve(stdout || "Transcript gegenereerd maar output bestand niet gevonden.");
+                }
+              });
+            });
+            const truncated = transcript.length > 12000 ? transcript.substring(0, 12000) + "\n\n[...transcript afgekapt, totaal " + transcript.length + " tekens]" : transcript;
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, transcript: truncated, format: outputFormat, model: whisperModel }) });
+          } catch (e) {
+            console.error(`[WHISPER] Fatal:`, e.message);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: e.message }), is_error: true });
+          }
+          continue;
+        }
+        // PDF text extraction — runs locally
+        if (block.type === "tool_use" && block.name === "read_pdf") {
+          try {
+            console.log(`[PDF] read_pdf:`, JSON.stringify(block.input));
+            const fileName = path.basename(block.input.file_name);
+            let filePath = path.join(MEDIA_DIR, fileName);
+            if (!fs.existsSync(filePath)) {
+              const match = fs.readdirSync(MEDIA_DIR).find(f => f.toLowerCase() === fileName.toLowerCase());
+              if (match) {
+                filePath = path.join(MEDIA_DIR, match);
+              } else {
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: `Bestand niet gevonden: ${fileName}. Upload het bestand eerst via de media library.` }), is_error: true });
+                continue;
+              }
+            }
+            const pdfText = await new Promise((resolve, reject) => {
+              execFile("pdftotext", ["-layout", filePath, "-"], { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+                if (err) return reject(new Error(stderr || err.message));
+                resolve(stdout);
+              });
+            });
+            const truncated = pdfText.length > 15000 ? pdfText.substring(0, 15000) + "\n\n[...tekst afgekapt, totaal " + pdfText.length + " tekens]" : pdfText;
+            console.log(`[PDF] Extracted ${pdfText.length} chars from ${fileName}`);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, text: truncated, total_chars: pdfText.length }) });
+          } catch (e) {
+            console.error(`[PDF] Error:`, e.message);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: e.message }), is_error: true });
+          }
+          continue;
+        }
+        // Run skill — loads SKILL.md as system prompt + sends user prompt to Claude API directly
+        if (block.type === "tool_use" && block.name === "run_skill") {
+          try {
+            const skill = block.input.skill;
+            const prompt = block.input.prompt;
+            console.log(`[SKILL] Running /${skill}: ${prompt.substring(0, 100)}...`);
+
+            // Try to load skill instructions from marketing skills or claude commands
+            let skillContent = null;
+            const marketingPath = path.join(__dirname, "data", "marketingskills", "skills", skill, "SKILL.md");
+            const commandPath = path.join("/root/.claude/commands", skill + ".md");
+            if (fs.existsSync(marketingPath)) {
+              skillContent = fs.readFileSync(marketingPath, "utf8");
+              console.log(`[SKILL] Loaded marketing skill: ${marketingPath}`);
+            } else if (fs.existsSync(commandPath)) {
+              skillContent = fs.readFileSync(commandPath, "utf8");
+              console.log(`[SKILL] Loaded command skill: ${commandPath}`);
+            }
+
+            if (!skillContent) {
+              // Fallback: run via Claude Code CLI
+              console.log(`[SKILL] No SKILL.md found, falling back to CLI`);
+              const cliResult = await new Promise((resolve, reject) => {
+                execFile("/root/.local/bin/claude", ["-p", `/${skill} ${prompt}`, "--output-format", "json", "--max-turns", "8"], {
+                  timeout: 300000, maxBuffer: 10 * 1024 * 1024,
+                  env: { ...process.env, HOME: "/root" },
+                }, (err, stdout) => {
+                  if (err && !stdout) return reject(new Error(err.message));
+                  try { const p = JSON.parse(stdout); resolve(p.result || p.content || stdout); }
+                  catch { resolve(stdout || "Skill voltooid."); }
+                });
+              });
+              const t = typeof cliResult === "string" ? cliResult : JSON.stringify(cliResult);
+              const tr = t.length > 15000 ? t.substring(0, 15000) + "\n\n[...afgekapt, " + t.length + " tekens totaal]" : t;
+              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, skill, output: tr }) });
+              continue;
+            }
+
+            // Direct API call with skill as system prompt and user prompt as message
+            const Anthropic = require("@anthropic-ai/sdk");
+            const skillClient = new Anthropic();
+            const brand = loadBrand();
+            const skillSystem = `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`;
+            const skillResponse = await skillClient.messages.create({
+              model: "claude-sonnet-4-20250514",
+              max_tokens: 8192,
+              system: skillSystem,
+              messages: [{ role: "user", content: prompt }],
+            });
+            const skillOutput = skillResponse.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+            const truncated = skillOutput.length > 15000 ? skillOutput.substring(0, 15000) + "\n\n[...output afgekapt, totaal " + skillOutput.length + " tekens]" : skillOutput;
+            console.log(`[SKILL] /${skill} done (${skillOutput.length} chars)`);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, skill, output: truncated }) });
+          } catch (e) {
+            console.error(`[SKILL] Error:`, e.message);
+            toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: e.message }), is_error: true });
+          }
+          continue;
         }
         // Custom tools (agent actions) — execute locally
         if (block.type === "tool_use" && TOOL_ACTIONS[block.name]) {
@@ -2326,6 +2950,14 @@ app.post("/ctrl/chat", async (req, res) => {
               is_error: true,
             });
           }
+        }
+      }
+
+      // Catch-all: ensure every tool_use block has a matching tool_result
+      for (const block of response.content) {
+        if (block.type === "tool_use" && !toolResults.find(r => r.tool_use_id === block.id)) {
+          console.warn(`[CHAT] Unhandled tool_use: ${block.name} (${block.id}) — returning empty result`);
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: `Tool '${block.name}' is niet beschikbaar.` }), is_error: true });
         }
       }
 
@@ -2383,13 +3015,28 @@ function buildCalendarTools() {
       GOOGLECALENDAR_LIST_CALENDARS: "List all Google Calendars the user has access to.",
       GOOGLECALENDAR_EVENTS_LIST: "List upcoming events from a calendar. Params: calendar_id (default 'primary'), time_min (ISO), time_max (ISO), max_results (int), query (string).",
       GOOGLECALENDAR_FIND_EVENT: "Search for events matching a query. Params: calendar_id, query (string to search for).",
-      GOOGLECALENDAR_CREATE_EVENT: "Create a new calendar event. Params: summary (title), start_datetime (ISO), end_datetime (ISO), description, location, attendees (comma-separated emails), calendar_id.",
+      GOOGLECALENDAR_CREATE_EVENT: "Create a new calendar event. Params: summary (title), start_datetime (ISO 8601 with timezone), end_datetime (ISO 8601 with timezone — MUST reflect the requested duration, e.g. 3 hours = start + 3h), timezone (always 'Europe/Amsterdam'), description, location, attendees (comma-separated emails), calendar_id. CRITICAL: Always calculate end_datetime from the requested duration. If the user says '3 uur' then end = start + 3 hours. Never default to 30 minutes.",
       GOOGLECALENDAR_DELETE_EVENT: "Delete an event. Params: event_id, calendar_id.",
       GOOGLECALENDAR_EVENTS_MOVE: "Move an event to a different calendar or time. Params: event_id, calendar_id, destination_calendar_id.",
       GOOGLECALENDAR_FIND_FREE_SLOTS: "Find free time slots. Params: calendar_id, time_min (ISO), time_max (ISO), duration_minutes (int).",
       GOOGLECALENDAR_GET_CURRENT_DATE_TIME: "Get the current date and time in the user's timezone.",
     }[name] || name,
-    input_schema: { type: "object", properties: {}, additionalProperties: true },
+    input_schema: name === "GOOGLECALENDAR_CREATE_EVENT"
+      ? {
+          type: "object",
+          properties: {
+            summary: { type: "string", description: "Event title" },
+            start_datetime: { type: "string", description: "Start time in ISO 8601 with timezone offset, e.g. 2026-04-10T14:00:00+02:00" },
+            end_datetime: { type: "string", description: "End time in ISO 8601 with timezone offset. MUST reflect requested duration (e.g. 3 hour event: start + 3h). Never default to 30 min." },
+            timezone: { type: "string", description: "Always 'Europe/Amsterdam'" },
+            description: { type: "string", description: "Event description (optional)" },
+            location: { type: "string", description: "Event location (optional)" },
+            attendees: { type: "string", description: "Comma-separated emails (optional)" },
+            calendar_id: { type: "string", description: "Calendar ID, default 'primary'" },
+          },
+          required: ["summary", "start_datetime", "end_datetime", "timezone"],
+        }
+      : { type: "object", properties: {}, additionalProperties: true },
   }));
 }
 
@@ -2402,6 +3049,7 @@ BESCHIKBARE TOOLS:
 - GOOGLECALENDAR_EVENTS_LIST: Toon events. Gebruik calendar_id "primary" tenzij anders gevraagd. Stuur time_min en time_max als ISO 8601 strings.
 - GOOGLECALENDAR_FIND_EVENT: Zoek events op tekst.
 - GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone, bijv. "2026-04-03T14:00:00+02:00"), timezone (altijd "Europe/Amsterdam"). Optioneel: description, location, attendees.
+  KRITIEK DUUR REGEL: Bereken end_datetime ALTIJD op basis van de gevraagde duur. Als de gebruiker zegt "3 uur" → end = start + 3 uur. Als de gebruiker zegt "hele dag" → end = start + 8 uur. NOOIT standaard 30 minuten gebruiken. Als geen duur opgegeven, vraag ernaar of gebruik 1 uur als default.
 - GOOGLECALENDAR_DELETE_EVENT: Verwijder een event (event_id nodig).
 - GOOGLECALENDAR_FIND_FREE_SLOTS: Vind vrije slots (time_min, time_max, duration_minutes).
 
@@ -2563,6 +3211,7 @@ const MARKETING_SKILLS = {
   'free-tool-strategy': 'Free tools as acquisition, viral loops, lead magnets',
   'referral-program': 'Referral mechanics, incentive design, viral coefficients',
   'product-marketing-context': 'Positioning, messaging, go-to-market strategy',
+  'youtube-optimizer': 'Transcript to full YouTube package: 10 clickbait titles, description, timestamps, tags, thumbnail text + AI prompts',
 };
 
 const SKILLS_DIR = path.join(__dirname, "data", "marketingskills", "skills");
@@ -3191,7 +3840,9 @@ ${isNL ? "Platformen" : "Platforms"}: ${(task.platforms || ["tiktok", "x", "redd
 Niche: ${task.niche || "crypto trading"}
 
 ## ${isNL ? "Instructies" : "Instructions"}
-${isNL ? "Gebruik web search om actuele informatie te vinden over dit onderwerp." : "Use web search to find current information about this topic."}
+${isNL
+  ? "Je hebt twee tools: `web_search` (snelle zoekopdracht, geeft snippets) en `browse_page` (opent een URL in een echte headless browser en leest de volledige main-content — ook van JS-heavy sites). Strategie: gebruik web_search om kandidaat-URLs te vinden, en browse_page om die artikelen/pagina's echt uit te lezen voor diepere context. Gebruik browse_page vooral voor kwaliteitsbronnen (CoinDesk, The Block, Messari research, project blogs, exchange dashboards zonder API) waar snippets tekort schieten."
+  : "You have two tools: `web_search` (fast query, returns snippets) and `browse_page` (opens a URL in a real headless browser and reads the full main content — including JS-heavy sites). Strategy: use web_search to find candidate URLs, then browse_page to actually read those articles for deeper context. Prefer browse_page for high-quality sources (CoinDesk, The Block, Messari research, project blogs, exchange dashboards without an API) where snippets are insufficient."}
 
 ${isNL ? "Geef een gestructureerd rapport met deze secties" : "Provide a structured report with these sections"}:
 
@@ -3284,25 +3935,56 @@ ${isNL ? "Wat zou er de komende 3 dagen gepost moeten worden? Geef een mini-plan
 
 ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees concreet, geen vage suggesties. Geef kant-en-klare teksten." : "Be concrete, no vague suggestions. Provide ready-to-use copy."}`;
 
+      const researchTools = [
+        { type: "web_search_20250305", name: "web_search", max_uses: 5 },
+        { type: "custom", ...BROWSE_PAGE_TOOL },
+      ];
+      const researchMessages = [{ role: "user", content: prompt }];
       const researchParams = {
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+        messages: researchMessages,
+        tools: researchTools,
       };
 
       let response = await anthropic.messages.create(researchParams);
 
-      // Handle tool use loop for web search
+      // Tool-use loop — web_search is resolved by Anthropic internally, browse_page is
+      // a custom tool we handle here. We accumulate message history properly so chained
+      // reads work.
       let loops = 0;
-      while (response.stop_reason === "tool_use" && loops < 8) {
+      while (response.stop_reason === "tool_use" && loops < 10) {
         loops++;
-        const msgs = [{ role: "user", content: prompt }, { role: "assistant", content: response.content }];
-        const toolResults = response.content
-          .filter(b => b.type === "server_tool_use")
-          .map(b => ({ type: "tool_result", tool_use_id: b.id, content: b.content || "" }));
-        if (toolResults.length) msgs.push({ role: "user", content: toolResults });
-        response = await anthropic.messages.create({ ...researchParams, messages: msgs });
+        researchMessages.push({ role: "assistant", content: response.content });
+
+        const toolResults = [];
+        for (const block of response.content) {
+          if (block.type === "tool_use" && block.name === "browse_page") {
+            try {
+              console.log(`[RESEARCH] browse_page: ${block.input.url}`);
+              const r = await browsePage(block.input.url, { maxChars: block.input.max_chars || 8000 });
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify(r).slice(0, 12000),
+              });
+            } catch (e) {
+              console.error(`[RESEARCH] browse_page error:`, e.message);
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({ error: e.message }),
+                is_error: true,
+              });
+            }
+          }
+          // server_tool_use / web_search_tool_result: handled by Anthropic, do not emit tool_results
+        }
+
+        if (toolResults.length === 0) break; // no custom tool_uses; nothing to advance with
+
+        researchMessages.push({ role: "user", content: toolResults });
+        response = await anthropic.messages.create(researchParams);
       }
 
       const textBlocks = response.content.filter(b => b.type === "text");
@@ -3688,8 +4370,11 @@ app.get("/stripe/revenue", async (_req, res) => {
     const balanceAvailable = balance.available.reduce((s, b) => s + b.amount, 0);
     const balancePending = balance.pending.reduce((s, b) => s + b.amount, 0);
 
+    // MRR = subscription MRR + Plug&Pay monthly revenue (other revenue = Plug&Pay)
+    const totalMRR = mrr + otherMTD;
+
     const result = {
-      mrr: { value: mrr },
+      mrr: { value: totalMRR, subs_only: mrr, plugpay: otherMTD },
       subscriptions: { mtd: subRevenueMTD, prev: subRevenuePrev, subs: activeSubCount },
       other: { mtd: otherMTD, prev: otherPrev },
       gross: { mtd: grossMTD, prev: grossPrev, fees_mtd: feesMTD, fees_prev: feesPrev, refunds_mtd: refundsMTD },
@@ -3707,8 +4392,499 @@ app.get("/stripe/revenue", async (_req, res) => {
   }
 });
 
+// ── REMOTION VIDEO PROJECTS ──
+const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
+if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recursive: true });
+app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
+
+const STUDIO_PORT = 3150;
+const STUDIO_URL = "https://neuralabs.cloud:3151";
+let currentStudio = null; // { projectId, process, startedAt }
+
+function readProjectMeta(id) {
+  try { return JSON.parse(fs.readFileSync(path.join(VIDEO_PROJECTS_DIR, id, "meta.json"), "utf8")); }
+  catch { return null; }
+}
+function writeProjectMeta(id, meta) {
+  fs.writeFileSync(path.join(VIDEO_PROJECTS_DIR, id, "meta.json"), JSON.stringify(meta, null, 2));
+}
+
+function detectEntryPoint(projectDir) {
+  const candidates = [
+    "src/index.ts", "src/index.tsx", "src/index.js", "src/index.jsx",
+    "src/Root.ts", "src/Root.tsx",
+    "remotion/index.ts", "remotion/index.tsx",
+    "index.ts", "index.tsx", "index.js", "index.jsx",
+    "Root.tsx",
+  ];
+  // First check direct candidates
+  for (const c of candidates) {
+    const p = path.join(projectDir, c);
+    if (fs.existsSync(p)) return p;
+  }
+  // Walk one level deep — sometimes zips have a wrapper dir
+  try {
+    const entries = fs.readdirSync(projectDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !["node_modules", ".git", "_bundle", "renders"].includes(e.name));
+    for (const e of entries) {
+      const sub = path.join(projectDir, e.name);
+      for (const c of candidates) {
+        const p = path.join(sub, c);
+        if (fs.existsSync(p)) return p;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function linkNodeModules(projectDir) {
+  const target = path.join(projectDir, "node_modules");
+  if (fs.existsSync(target)) return;
+  try { fs.symlinkSync(path.join(__dirname, "node_modules"), target, "dir"); }
+  catch (e) { console.warn("[VIDEO-PROJECT] node_modules symlink failed:", e.message); }
+}
+
+// Walk a project dir, transcode any .mov/.mkv/.webm/.avi videos in-place to H.264+AAC
+// so browsers (and Remotion's <OffthreadVideo>) can play them. Keeps the same filename
+// so user code doesn't need to change references. Skips files already marked .transcoded.
+function transcodeProjectVideos(projectDir) {
+  const results = { transcoded: [], failed: [], skipped: [] };
+  const walk = (dir, depth = 0) => {
+    if (depth > 6) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (["node_modules", ".git", "_bundle", "renders", "_incoming"].includes(e.name)) continue;
+        walk(p, depth + 1);
+      } else if (e.isFile()) {
+        const ext = path.extname(e.name).toLowerCase();
+        if (![".mov", ".mkv", ".webm", ".avi"].includes(ext)) continue;
+        const marker = p + ".transcoded";
+        if (fs.existsSync(marker)) { results.skipped.push(p); continue; }
+        const tmpOut = p + ".tmp.mp4";
+        try {
+          console.log(`[VIDEO-PROJECT] Transcoding ${p}...`);
+          // NOTE: stderr must be 'ignore' not 'pipe' — ffmpeg writes MBs of progress
+          // to stderr on long renders and buffering would silently kill the process
+          // via Node's default 1MB maxBuffer, leaving a truncated output file behind.
+          const result = require("child_process").spawnSync("ffmpeg", [
+            "-y", "-i", p,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-c:a", "aac", "-b:a", "128k",
+            "-max_muxing_queue_size", "1024",
+            tmpOut,
+          ], { stdio: "ignore", timeout: 60 * 60 * 1000 });
+          if (result.error) throw result.error;
+          if (result.status !== 0) throw new Error(`ffmpeg exited with code ${result.status}${result.signal ? " (signal " + result.signal + ")" : ""}`);
+          if (!fs.existsSync(tmpOut) || fs.statSync(tmpOut).size < 1024) throw new Error("ffmpeg produced empty output");
+          // Replace original in place (keeping filename/extension)
+          fs.renameSync(tmpOut, p);
+          fs.writeFileSync(marker, new Date().toISOString());
+          results.transcoded.push(p);
+          console.log(`[VIDEO-PROJECT] Transcoded ${p} (${fs.statSync(p).size} bytes)`);
+        } catch (err) {
+          console.error(`[VIDEO-PROJECT] Transcode failed for ${p}:`, err.message);
+          try { fs.unlinkSync(tmpOut); } catch {}
+          results.failed.push({ path: p, error: err.message });
+        }
+      }
+    }
+  };
+  walk(projectDir);
+  return results;
+}
+
+app.get("/video-projects", (_req, res) => {
+  try {
+    const projects = fs.readdirSync(VIDEO_PROJECTS_DIR)
+      .map(id => readProjectMeta(id))
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json({
+      projects,
+      studio: currentStudio ? { projectId: currentStudio.projectId, url: STUDIO_URL, startedAt: currentStudio.startedAt } : null,
+    });
+  } catch (e) { res.json({ projects: [], studio: null }); }
+});
+
+app.get("/video-projects/:id", (req, res) => {
+  const meta = readProjectMeta(req.params.id);
+  if (!meta) return res.status(404).json({ error: "Not found" });
+  res.json(meta);
+});
+
+const videoProjectUpload = require("multer")({
+  storage: require("multer").diskStorage({
+    destination: (req, _file, cb) => {
+      if (!req._projectId) req._projectId = genId();
+      const dir = path.join(VIDEO_PROJECTS_DIR, req._projectId, "_incoming");
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      // Use webkitRelativePath if browser provided it (folder upload), else original
+      const rel = file.originalname;
+      cb(null, rel.replace(/[^a-zA-Z0-9._/-]/g, "_"));
+    },
+  }),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
+
+app.post("/video-projects", (req, res) => {
+  videoProjectUpload.array("files", 500)(req, res, async (err) => {
+    if (err) {
+      console.error("[VIDEO-PROJECT] Upload error:", err.message);
+      return res.status(400).json({ error: err.message });
+    }
+    try {
+      const id = req._projectId || genId();
+      const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
+      const incoming = path.join(projectDir, "_incoming");
+      fs.mkdirSync(projectDir, { recursive: true });
+
+      // Handle uploaded files. Supports: (a) one or more zip files, (b) loose files with paths
+      // We support relative paths passed as form-data field `paths[]` in same order as files
+      const paths = req.body && req.body.paths;
+      const pathArr = Array.isArray(paths) ? paths : (paths ? [paths] : []);
+      const uploadedNames = (req.files || []).map(f => f.originalname);
+      let fileIdx = 0;
+      for (const f of req.files || []) {
+        const ext = path.extname(f.originalname).toLowerCase();
+        if (ext === ".zip") {
+          const unzipper = require("unzipper");
+          await new Promise((resolve, reject) => {
+            fs.createReadStream(f.path)
+              .pipe(unzipper.Extract({ path: projectDir }))
+              .on("close", resolve)
+              .on("error", reject);
+          });
+          try { fs.unlinkSync(f.path); } catch {}
+        } else {
+          // Place file at its intended relative path if provided
+          const rel = pathArr[fileIdx] || f.originalname;
+          const safeRel = rel.replace(/\.\./g, "").replace(/^\/+/, "");
+          const destPath = path.join(projectDir, safeRel);
+          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          fs.renameSync(f.path, destPath);
+        }
+        fileIdx++;
+      }
+      try { fs.rmSync(incoming, { recursive: true, force: true }); } catch {}
+
+      // Symlink node_modules so Remotion deps resolve
+      linkNodeModules(projectDir);
+
+      const entry = detectEntryPoint(projectDir);
+      const meta = {
+        id,
+        name: (req.body && req.body.name) || uploadedNames[0]?.replace(/\.zip$/i, "") || `Project ${id}`,
+        created_at: new Date().toISOString(),
+        entry: entry ? path.relative(projectDir, entry) : null,
+        status: entry ? "ready" : "missing-entry",
+        compositions: [],
+        renders: [],
+        transcode_status: "running",
+        transcode_started_at: new Date().toISOString(),
+      };
+      writeProjectMeta(id, meta);
+      console.log(`[VIDEO-PROJECT] Created ${id} (${meta.name}), entry=${meta.entry} — transcoding in background`);
+      res.json(meta);
+
+      // Run transcoding in background — does not block upload response
+      setImmediate(() => {
+        try {
+          const results = transcodeProjectVideos(projectDir);
+          const latest = readProjectMeta(id);
+          if (latest) {
+            latest.transcoded = results.transcoded.map(p => path.relative(projectDir, p));
+            latest.transcode_failures = results.failed.map(f => ({ path: path.relative(projectDir, f.path), error: f.error }));
+            latest.transcode_status = "done";
+            latest.transcode_finished_at = new Date().toISOString();
+            writeProjectMeta(id, latest);
+          }
+          console.log(`[VIDEO-PROJECT] Background transcode done for ${id}: ${results.transcoded.length} ok, ${results.failed.length} failed`);
+        } catch (e) {
+          console.error(`[VIDEO-PROJECT] Background transcode failed for ${id}:`, e);
+          const latest = readProjectMeta(id);
+          if (latest) {
+            latest.transcode_status = "failed";
+            latest.transcode_error = e.message;
+            writeProjectMeta(id, latest);
+          }
+        }
+      });
+    } catch (e) {
+      console.error("[VIDEO-PROJECT] Create failed:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+});
+
+app.delete("/video-projects/:id", (req, res) => {
+  const id = req.params.id;
+  if (currentStudio && currentStudio.projectId === id) {
+    try { currentStudio.process.kill("SIGTERM"); } catch {}
+    currentStudio = null;
+  }
+  try { fs.rmSync(path.join(VIDEO_PROJECTS_DIR, id), { recursive: true, force: true }); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
+  res.json({ ok: true });
+});
+
+// Given a project dir and its relative entry path, return the "Remotion project root"
+// (the nearest ancestor of the entry file that contains a package.json) plus the entry
+// path relative to that root. Falls back to projectDir if no package.json is found.
+function resolveRemotionRoot(projectDir, entryRel) {
+  const entryAbs = path.join(projectDir, entryRel);
+  let dir = path.dirname(entryAbs);
+  while (dir.startsWith(projectDir) && dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, "package.json"))) {
+      return { root: dir, entry: path.relative(dir, entryAbs) };
+    }
+    dir = path.dirname(dir);
+  }
+  return { root: projectDir, entry: entryRel };
+}
+
+// ── Remotion Studio subprocess (one at a time) ──
+app.post("/video-projects/:id/studio", (req, res) => {
+  const id = req.params.id;
+  const meta = readProjectMeta(id);
+  if (!meta) return res.status(404).json({ error: "Project not found" });
+  if (!meta.entry) return res.status(400).json({ error: "No Remotion entry point detected in project" });
+  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
+  const entryAbs = path.join(projectDir, meta.entry);
+  if (!fs.existsSync(entryAbs)) return res.status(400).json({ error: "Entry file missing: " + meta.entry });
+
+  // Kill any existing studio
+  if (currentStudio && currentStudio.process) {
+    try { currentStudio.process.kill("SIGTERM"); } catch {}
+    currentStudio = null;
+  }
+
+  linkNodeModules(projectDir);
+  // Resolve to the nearest package.json so public/ and project root are correct
+  const { root: remotionRoot, entry: entryRel } = resolveRemotionRoot(projectDir, meta.entry);
+  // Also ensure node_modules is accessible from the inner project root
+  linkNodeModules(remotionRoot);
+  console.log(`[VIDEO-PROJECT] Starting Studio cwd=${remotionRoot} entry=${entryRel}`);
+  const remotionBin = path.join(__dirname, "node_modules", ".bin", "remotion");
+  const { spawn } = require("child_process");
+  const child = spawn(remotionBin, ["studio", entryRel, `--port=${STUDIO_PORT}`, "--host=127.0.0.1", "--no-open"], {
+    cwd: remotionRoot,
+    env: { ...process.env, BROWSER: "none" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", d => process.stdout.write(`[STUDIO ${id}] ${d}`));
+  child.stderr.on("data", d => process.stderr.write(`[STUDIO ${id} ERR] ${d}`));
+  child.on("exit", (code) => {
+    console.log(`[STUDIO ${id}] exited with code ${code}`);
+    if (currentStudio && currentStudio.process === child) currentStudio = null;
+  });
+
+  currentStudio = { projectId: id, process: child, startedAt: new Date().toISOString() };
+  console.log(`[VIDEO-PROJECT] Starting Studio for ${id}`);
+  res.json({ ok: true, url: STUDIO_URL, projectId: id, startedAt: currentStudio.startedAt });
+});
+
+// Re-transcode video assets async — returns immediately, runs in background
+app.post("/video-projects/:id/transcode", (req, res) => {
+  const id = req.params.id;
+  const meta = readProjectMeta(id);
+  if (!meta) return res.status(404).json({ error: "Not found" });
+  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
+
+  if (meta.transcode_status === "running") return res.json({ ok: true, status: "already-running" });
+
+  // Clear markers if force=true
+  if (req.body && req.body.force) {
+    const walk = (dir, depth = 0) => {
+      if (depth > 6) return;
+      try {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (e.isDirectory() && !["node_modules", ".git"].includes(e.name)) walk(path.join(dir, e.name), depth + 1);
+          else if (e.isFile() && e.name.endsWith(".transcoded")) { try { fs.unlinkSync(path.join(dir, e.name)); } catch {} }
+        }
+      } catch {}
+    };
+    walk(projectDir);
+  }
+
+  meta.transcode_status = "running";
+  meta.transcode_started_at = new Date().toISOString();
+  writeProjectMeta(id, meta);
+
+  res.json({ ok: true, status: "running" });
+
+  setImmediate(() => {
+    try {
+      const results = transcodeProjectVideos(projectDir);
+      const latest = readProjectMeta(id);
+      if (latest) {
+        latest.transcoded = [...new Set([...(latest.transcoded || []), ...results.transcoded.map(p => path.relative(projectDir, p))])];
+        latest.transcode_failures = results.failed.map(f => ({ path: path.relative(projectDir, f.path), error: f.error }));
+        latest.transcode_status = "done";
+        latest.transcode_finished_at = new Date().toISOString();
+        writeProjectMeta(id, latest);
+      }
+      console.log(`[VIDEO-PROJECT] Transcode done for ${id}: ${results.transcoded.length} ok, ${results.failed.length} failed`);
+    } catch (e) {
+      console.error(`[VIDEO-PROJECT] Background transcode failed:`, e);
+      const latest = readProjectMeta(id);
+      if (latest) {
+        latest.transcode_status = "failed";
+        latest.transcode_error = e.message;
+        writeProjectMeta(id, latest);
+      }
+    }
+  });
+});
+
+app.post("/video-projects/studio/stop", (_req, res) => {
+  if (currentStudio && currentStudio.process) {
+    try { currentStudio.process.kill("SIGTERM"); } catch {}
+    currentStudio = null;
+  }
+  res.json({ ok: true });
+});
+
+app.get("/video-projects/studio/status", (_req, res) => {
+  if (!currentStudio) return res.json({ running: false });
+  res.json({ running: true, projectId: currentStudio.projectId, url: STUDIO_URL, startedAt: currentStudio.startedAt });
+});
+
+// ── Render to MP4 ──
+app.post("/video-projects/:id/render", async (req, res) => {
+  const id = req.params.id;
+  const meta = readProjectMeta(id);
+  if (!meta) return res.status(404).json({ error: "Not found" });
+  if (!meta.entry) return res.status(400).json({ error: "No entry point" });
+  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
+  const bundleDir = path.join(projectDir, "_bundle");
+  const rendersDir = path.join(projectDir, "renders");
+  fs.mkdirSync(rendersDir, { recursive: true });
+  const renderId = genId();
+  const outPath = path.join(rendersDir, `${renderId}.mp4`);
+
+  // Respond immediately — render runs async
+  res.json({ ok: true, render_id: renderId, status: "processing" });
+
+  const renderRecord = {
+    id: renderId,
+    composition: req.body?.composition_id || null,
+    status: "processing",
+    started_at: new Date().toISOString(),
+  };
+  meta.renders = [renderRecord, ...(meta.renders || [])].slice(0, 20);
+  writeProjectMeta(id, meta);
+
+  try {
+    linkNodeModules(projectDir);
+    const { root: remotionRoot, entry: entryRel } = resolveRemotionRoot(projectDir, meta.entry);
+    linkNodeModules(remotionRoot);
+    const { bundle } = require("@remotion/bundler");
+    const { selectComposition, renderMedia } = require("@remotion/renderer");
+    console.log(`[VIDEO-PROJECT] Bundling ${id} (root=${remotionRoot})...`);
+    const serveUrl = await bundle({
+      entryPoint: path.join(remotionRoot, entryRel),
+      outDir: bundleDir,
+      publicDir: path.join(remotionRoot, "public"),
+      webpackOverride: (c) => c,
+    });
+    let compositionId = req.body?.composition_id;
+    if (!compositionId) {
+      const { getCompositions } = require("@remotion/renderer");
+      const comps = await getCompositions(serveUrl);
+      if (!comps.length) throw new Error("No compositions found in project");
+      compositionId = comps[0].id;
+      meta.compositions = comps.map(c => ({ id: c.id, width: c.width, height: c.height, fps: c.fps, durationInFrames: c.durationInFrames }));
+    }
+    console.log(`[VIDEO-PROJECT] Rendering ${id} composition=${compositionId}`);
+    const composition = await selectComposition({ serveUrl, id: compositionId });
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: "h264",
+      outputLocation: outPath,
+      inputProps: req.body?.input_props || {},
+    });
+    const latest = readProjectMeta(id);
+    const idx = (latest.renders || []).findIndex(r => r.id === renderId);
+    if (idx >= 0) {
+      latest.renders[idx] = {
+        ...latest.renders[idx],
+        status: "completed",
+        composition: compositionId,
+        path: `/video-projects-static/${id}/renders/${renderId}.mp4`,
+        completed_at: new Date().toISOString(),
+      };
+      latest.compositions = meta.compositions;
+      writeProjectMeta(id, latest);
+    }
+    console.log(`[VIDEO-PROJECT] Render complete ${id}/${renderId}`);
+  } catch (e) {
+    console.error(`[VIDEO-PROJECT] Render failed ${id}/${renderId}:`, e.message);
+    const latest = readProjectMeta(id);
+    const idx = (latest.renders || []).findIndex(r => r.id === renderId);
+    if (idx >= 0) {
+      latest.renders[idx] = { ...latest.renders[idx], status: "failed", error: e.message, completed_at: new Date().toISOString() };
+      writeProjectMeta(id, latest);
+    }
+  }
+});
+
 // ── CRON JOBS ENDPOINT ──
 const { execSync } = require("child_process");
+
+// Restart the api-server: spawn a detached child that re-launches after a short delay, then exit
+app.post("/system/restart", (_req, res) => {
+  res.json({ ok: true, message: "Restarting api-server..." });
+  console.log("[SYSTEM] Restart requested — spawning detached successor");
+  try {
+    const { spawn } = require("child_process");
+    const scriptPath = path.resolve(__filename);
+    spawn("sh", ["-c", `sleep 1 && exec node "${scriptPath}"`], {
+      cwd: process.cwd(),
+      env: process.env,
+      detached: true,
+      stdio: "ignore",
+    }).unref();
+  } catch (e) {
+    console.error("[SYSTEM] Failed to spawn successor:", e.message);
+  }
+  setTimeout(() => process.exit(0), 400);
+});
+
+app.get("/system/health", (_req, res) => {
+  const { execSync } = require("child_process");
+  try {
+    const uptime = parseFloat(fs.readFileSync("/proc/uptime", "utf8").split(" ")[0]);
+    const mem = fs.readFileSync("/proc/meminfo", "utf8");
+    const totalMem = parseInt(mem.match(/MemTotal:\s+(\d+)/)?.[1] || 0) / 1024;
+    const availMem = parseInt(mem.match(/MemAvailable:\s+(\d+)/)?.[1] || 0) / 1024;
+    const usedMem = totalMem - availMem;
+    const diskRaw = execSync("df -BM / | tail -1", { encoding: "utf8", timeout: 3000 });
+    const diskParts = diskRaw.trim().split(/\s+/);
+    const diskTotal = parseInt(diskParts[1]) || 0;
+    const diskUsed = parseInt(diskParts[2]) || 0;
+    const loadRaw = fs.readFileSync("/proc/loadavg", "utf8").split(" ");
+    res.json({
+      uptime_seconds: Math.floor(uptime),
+      uptime_human: uptime > 86400 ? Math.floor(uptime/86400) + 'd ' + Math.floor((uptime%86400)/3600) + 'h' : Math.floor(uptime/3600) + 'h ' + Math.floor((uptime%3600)/60) + 'm',
+      memory: { total_mb: Math.round(totalMem), used_mb: Math.round(usedMem), pct: Math.round(usedMem/totalMem*100) },
+      disk: { total_mb: diskTotal, used_mb: diskUsed, pct: diskTotal > 0 ? Math.round(diskUsed/diskTotal*100) : 0 },
+      load: loadRaw[0],
+      node_version: process.version,
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.get("/system/crons", (_req, res) => {
   try {
     const raw = execSync("crontab -l 2>/dev/null", { encoding: "utf8" });

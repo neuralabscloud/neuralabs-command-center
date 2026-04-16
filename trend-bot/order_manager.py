@@ -34,8 +34,7 @@ hyperliquid.utils.signing.get_timestamp_ms = _unique_nonce
 
 # ── Data client (centraal via Redis, fallback naar directe API) ──
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "data-hub"))
+sys.path.insert(0, "/root/neuralabs-data")
 from client import HLDataClient as _HLDataClient
 _data_client = _HLDataClient(wallet_address=WALLET_ADDRESS, base_url=BASE_URL)
 

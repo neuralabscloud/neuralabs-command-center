@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Platform — Script Writer</title>
+<title>NEURALABS — Script Writer</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -182,6 +182,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
           <label class="form-label">Topic</label>
           <input class="form-input" id="f-topic" placeholder="e.g. Funding rate arbitrage uitleg">
         </div>
+        <div class="form-group">
+          <label class="form-label">Brand</label>
+          <select class="form-select" id="f-brand"></select>
+        </div>
         <div class="form-group full">
           <label class="form-label">Description / Brief</label>
           <textarea class="form-textarea" id="f-desc" placeholder="Extra context, doelgroep, key points..."></textarea>
@@ -242,12 +246,27 @@ async function createTask() {
     tone: document.getElementById('f-tone').value,
     topic: document.getElementById('f-topic').value,
     description: document.getElementById('f-desc').value,
+    brand: document.getElementById('f-brand').value,
   };
   await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   document.getElementById('f-topic').value = '';
   document.getElementById('f-desc').value = '';
   loadTasks();
 }
+
+async function loadBrandOptions() {
+  try {
+    const res = await fetch('/brands');
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = Object.keys(data).sort();
+    const sel = document.getElementById('f-brand');
+    const current = sel.value;
+    sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+    if (current && names.includes(current)) sel.value = current;
+  } catch {}
+}
+loadBrandOptions();
 
 async function deleteTask(id) {
   await fetch(API + '/' + id, { method: 'DELETE' });
@@ -259,6 +278,5 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s || 
 loadTasks();
 setInterval(loadTasks, 15000);
 </script>
-<script src="/brand-loader.js"></script>
 </body>
 </html>
