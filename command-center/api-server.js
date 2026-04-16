@@ -97,6 +97,7 @@ app.use((req, res, next) => {
 
 // Serve all static files (HTML, JS, CSS) — protected by auth middleware above
 app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, "public")));
 
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
