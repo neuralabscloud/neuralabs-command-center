@@ -1,4 +1,4 @@
-// NeuraLabs — Isometric Office widget (shared)
+// Command Center — Isometric Office widget
 // Renders an isometric 3x3 office with 9 AI agent stations, connections and live status.
 // Usage: add a container with `data-iso-office` attribute, then load this script.
 (function () {

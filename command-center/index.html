@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEURALABS — AI Operations Dashboard</title>
+<title>Command Center</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/iso-office.css">
 <style>
@@ -992,7 +992,7 @@ body::after {
     <!-- HEADER -->
     <div class="header fade-up delay-1">
       <div>
-        <div class="header-title">NEURALABS COMMAND CENTER</div>
+        <div class="header-title" id="header-title">COMMAND CENTER</div>
         <div class="header-sub" id="datetime"></div>
       </div>
       <div class="header-right">
@@ -1835,5 +1835,15 @@ window.addEventListener('resize', function() {
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
 <script src="/iso-office.js"></script>
+<script>
+// Dynamically set header title from customer's company_name
+fetch('/api/settings', { credentials: 'include' }).then(r => r.json()).then(s => {
+  const name = s && s.brand && s.brand.company_name;
+  if (name) {
+    const el = document.getElementById('header-title');
+    if (el) el.textContent = name.toUpperCase() + ' COMMAND CENTER';
+  }
+}).catch(() => {});
+</script>
 </body>
 </html>

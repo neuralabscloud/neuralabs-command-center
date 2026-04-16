@@ -1,4 +1,4 @@
-# NeuraLabs Command Center — Daily automation tasks
+# Command Center — Daily automation tasks
 # Installed by install.sh — edit with: crontab -e
 
 # Daily task trigger — 07:00 UTC

@@ -58,6 +58,9 @@ command-center/.next/
 # Package lock (customers install fresh)
 command-center/package-lock.json
 
+# Addon directories (installed separately)
+trading-dashboard/
+
 # OS
 .DS_Store
 Thumbs.db

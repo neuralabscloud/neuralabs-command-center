@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# NeuraLabs Command Center — Updater
+# Command Center — Updater
 # Run: chmod +x update.sh && sudo ./update.sh
 # ============================================================
 set -euo pipefail
@@ -18,7 +18,7 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║   NeuraLabs Command Center — Updater     ║${NC}"
+echo -e "${CYAN}║   Command Center — Updater                ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -128,7 +128,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
-echo -e "  ${GREEN}▸${NC} Open ${CYAN}http://${SERVER_IP}:3004${NC} in je browser"
-echo -e "  ${GREEN}▸${NC} Je .env en klantdata zijn behouden"
+echo -e "  ${GREEN}▸${NC} Open ${CYAN}http://${SERVER_IP}:3004${NC} in your browser"
+echo -e "  ${GREEN}▸${NC} Your .env and customer data have been preserved"
 echo ""
 echo -e "${GREEN}Done!${NC}"

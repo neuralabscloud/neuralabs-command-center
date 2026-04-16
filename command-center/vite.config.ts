@@ -52,7 +52,7 @@ function authMiddleware(): Connect.NextHandleFunction {
 
 export default defineConfig({
   server: {
-    allowedHosts: [".neuralabs.cloud", "localhost"],
+    allowedHosts: true,
     proxy: {
       "/api/settings": "http://localhost:3004",
       "/api/setup-status": "http://localhost:3004",

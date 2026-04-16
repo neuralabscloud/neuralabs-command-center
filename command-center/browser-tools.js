@@ -1,4 +1,4 @@
-// NeuraLabs — Browser tools (Playwright-backed)
+// Command Center — Browser tools (Playwright-backed)
 // Provides browser automation tools for the /ctrl/chat agent and a one-shot
 // `browsePage` helper for the Researcher. Uses playwright directly; no MCP
 // protocol bridging, since the Anthropic tool_use API already covers the

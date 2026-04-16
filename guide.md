@@ -1,128 +1,128 @@
-# NeuraLabs Command Center — Complete Installatie Handleiding
+# Command Center — Complete Installation Guide
 
-> Van een lege VPS naar een volledig draaiend AI-gestuurd Command Center.
-> Deze handleiding leidt je stap voor stap door het hele proces.
+> From a blank VPS to a fully running AI-powered Command Center.
+> This guide walks you through the entire process step by step.
 
 ---
 
-## Inhoudsopgave
+## Table of Contents
 
-1. [VPS Aanschaffen](#1-vps-aanschaffen)
-2. [Verbinden met je VPS (SSH)](#2-verbinden-met-je-vps-ssh)
-3. [VPS Voorbereiden](#3-vps-voorbereiden)
-4. [Command Center Installeren](#4-command-center-installeren)
-5. [Setup Wizard — Configuratie via Dashboard](#5-setup-wizard--configuratie-via-dashboard)
-6. [Command Center Overzicht](#6-command-center-overzicht)
-7. [Dagelijks Gebruik](#7-dagelijks-gebruik)
-8. [Instellingen Aanpassen](#8-instellingen-aanpassen)
+1. [Purchase a VPS](#1-purchase-a-vps)
+2. [Connect to your VPS (SSH)](#2-connect-to-your-vps-ssh)
+3. [Prepare your VPS](#3-prepare-your-vps)
+4. [Install the Command Center](#4-install-the-command-center)
+5. [Setup Wizard — Configuration via Dashboard](#5-setup-wizard--configuration-via-dashboard)
+6. [Command Center Overview](#6-command-center-overview)
+7. [Daily Usage](#7-daily-usage)
+8. [Adjusting Settings](#8-adjusting-settings)
 9. [Trading Bots Addon](#9-trading-bots-addon)
-10. [Eigen Domein Koppelen](#10-eigen-domein-koppelen)
-11. [Updaten](#11-updaten)
+10. [Connect a Custom Domain](#10-connect-a-custom-domain)
+11. [Updating](#11-updating)
 12. [Troubleshooting](#12-troubleshooting)
-13. [Veelgestelde Vragen](#13-veelgestelde-vragen)
+13. [Frequently Asked Questions](#13-frequently-asked-questions)
 
 ---
 
-## Wat je nodig hebt
+## What you need
 
-| Item | Waar te krijgen | Kosten |
-|------|----------------|--------|
-| VPS server (Ubuntu 22.04+, 2GB RAM) | Hostinger / Hetzner / DigitalOcean | ~€10-20/maand |
-| SSH client | Terminal (Mac/Linux) of PuTTY (Windows) | Gratis |
-| GitHub account | https://github.com | Gratis |
+| Item | Where to get it | Cost |
+|------|----------------|------|
+| VPS server (Ubuntu 22.04+, 2GB RAM) | Hostinger / Hetzner / DigitalOcean | ~€10-20/month |
+| SSH client | Terminal (Mac/Linux) or PuTTY (Windows) | Free |
+| GitHub account | https://github.com | Free |
 
-**Optioneel (configureer je later via de setup wizard):**
-- Anthropic API key (voor AI functies) — https://console.anthropic.com
-- Telegram bot token (voor notificaties)
-- HeyGen API key (voor AI avatar video's)
-- Stripe account (voor revenue tracking)
-- Composio API key (voor Google Calendar integratie)
-- Meta Developer App (voor Instagram performance tracking via Graph API — verbinden via Settings → Social Connections)
-- Canva account (voor design generatie via de Designer agent)
+**Optional (configure later via the setup wizard):**
+- Anthropic API key (for AI features) — https://console.anthropic.com
+- Telegram bot token (for notifications)
+- HeyGen API key (for AI avatar videos)
+- Stripe account (for revenue tracking)
+- Composio API key (for Google Calendar integration)
+- Meta Developer App (for Instagram performance tracking via Graph API — connect via Settings → Social Connections)
+- Canva account (for design generation via the Designer agent)
 
 ---
 
-## 1. VPS Aanschaffen
+## 1. Purchase a VPS
 
-### Wat is een VPS?
+### What is a VPS?
 
-Een VPS (Virtual Private Server) is een server in de cloud die 24/7 draait. Je Command Center draait hier continu, ook als je laptop uit staat.
+A VPS (Virtual Private Server) is a server in the cloud that runs 24/7. Your Command Center runs here continuously, even when your laptop is off.
 
-### Aanbevolen specificaties
+### Recommended specifications
 
-| Specificatie | Minimum | Aanbevolen |
-|-------------|---------|------------|
+| Specification | Minimum | Recommended |
+|--------------|---------|-------------|
 | OS | Ubuntu 22.04 LTS | Ubuntu 24.04 LTS |
 | RAM | 2 GB | 4 GB |
 | CPU | 1 vCPU | 2 vCPU |
-| Opslag | 20 GB SSD | 40 GB SSD |
-| Locatie | Europa | Amsterdam / Frankfurt |
+| Storage | 20 GB SSD | 40 GB SSD |
+| Location | Europe | Amsterdam / Frankfurt |
 
-### Stap voor stap: VPS bestellen (voorbeeld: Hostinger)
+### Step by step: ordering a VPS (example: Hostinger)
 
-1. Ga naar [hostinger.com](https://www.hostinger.com/vps-hosting)
-2. Kies **KVM 2** of hoger (4 GB RAM aanbevolen)
-3. Kies **Ubuntu 22.04** of **Ubuntu 24.04** als besturingssysteem
-4. Kies een locatie dichtbij je (Amsterdam of Frankfurt)
-5. Stel een **root wachtwoord** in — **bewaar dit goed!**
-6. Rond de bestelling af
+1. Go to [hostinger.com](https://www.hostinger.com/vps-hosting)
+2. Choose **KVM 2** or higher (4 GB RAM recommended)
+3. Choose **Ubuntu 22.04** or **Ubuntu 24.04** as the operating system
+4. Choose a location close to you (Amsterdam or Frankfurt)
+5. Set a **root password** — **keep this safe!**
+6. Complete the order
 
-Na bestelling krijg je:
-- Een **IP-adres** (bijv. `185.123.45.67`)
-- Je **root wachtwoord** (dat je net hebt ingesteld)
+After ordering you will receive:
+- An **IP address** (e.g. `185.123.45.67`)
+- Your **root password** (the one you just set)
 
 ---
 
-## 2. Verbinden met je VPS (SSH)
+## 2. Connect to your VPS (SSH)
 
-### Op Mac / Linux
+### On Mac / Linux
 
-Open je **Terminal** en typ:
+Open your **Terminal** and type:
 
 ```bash
-ssh root@JOUW_IP_ADRES
+ssh root@YOUR_IP_ADDRESS
 ```
 
-Vervang `JOUW_IP_ADRES` met het IP dat je van je VPS provider hebt gekregen.
+Replace `YOUR_IP_ADDRESS` with the IP you received from your VPS provider.
 
-Voorbeeld:
+Example:
 ```bash
 ssh root@185.123.45.67
 ```
 
-- De eerste keer vraagt hij: *"Are you sure you want to continue connecting?"* — typ `yes`
-- Voer je root wachtwoord in (je ziet geen tekens tijdens het typen, dat is normaal)
+- The first time it asks: *"Are you sure you want to continue connecting?"* — type `yes`
+- Enter your root password (you won't see any characters while typing — that's normal)
 
-### Op Windows
+### On Windows
 
-1. Download en installeer [PuTTY](https://www.putty.org/)
+1. Download and install [PuTTY](https://www.putty.org/)
 2. Open PuTTY
-3. Bij "Host Name" vul je je IP-adres in
-4. Klik **Open**
-5. Login als `root` met je wachtwoord
+3. In "Host Name" enter your IP address
+4. Click **Open**
+5. Log in as `root` with your password
 
-### Verbinding testen
+### Testing the connection
 
-Als je dit ziet ben je verbonden:
+If you see this, you are connected:
 ```
 root@server:~#
 ```
 
 ---
 
-## 3. VPS Voorbereiden
+## 3. Prepare your VPS
 
-Kopieer en plak deze commando's een voor een:
+Copy and paste these commands one by one:
 
-### 3.1 Systeem updaten
+### 3.1 Update the system
 
 ```bash
 apt update && apt upgrade -y
 ```
 
-Dit kan 2-5 minuten duren. Als er een paars/blauw scherm verschijnt met vragen, druk gewoon op **Enter**.
+This may take 2-5 minutes. If a purple/blue screen appears with questions, simply press **Enter**.
 
-### 3.2 Essentials installeren
+### 3.2 Install essentials
 
 ```bash
 apt install -y git curl wget unzip build-essential
@@ -130,9 +130,9 @@ apt install -y git curl wget unzip build-essential
 
 ---
 
-## 4. Command Center Installeren
+## 4. Install the Command Center
 
-### 4.1 Repository downloaden
+### 4.1 Download the repository
 
 ```bash
 cd /root
@@ -140,365 +140,365 @@ git clone https://github.com/neuralabscloud/neuralabs-command-center.git
 cd neuralabs-command-center
 ```
 
-Als je om een wachtwoord wordt gevraagd, gebruik je GitHub username en een **Personal Access Token** als wachtwoord. Maak een token aan via: https://github.com/settings/tokens/new (selecteer de `repo` scope).
+If prompted for a password, use your GitHub username and a **Personal Access Token** as the password. Create a token at: https://github.com/settings/tokens/new (select the `repo` scope).
 
-### 4.2 Installer starten
+### 4.2 Start the installer
 
 ```bash
 chmod +x install.sh
 sudo ./install.sh
 ```
 
-De installer stelt twee vragen:
+The installer asks two questions:
 
 ```
 > Dashboard login password:
 ```
-Kies een sterk wachtwoord — hiermee log je later in op het Command Center.
+Choose a strong password — this is what you will use to log in to the Command Center.
 
 ```
 > Install directory [/opt/commandcenter]:
 ```
-Druk op **Enter** voor de standaard locatie.
+Press **Enter** for the default location.
 
-De installer doet nu automatisch:
-1. Node.js, Python, Redis installeren
-2. Claude Code installeren
-3. Node.js packages installeren
-4. Systemd service configureren en starten
+The installer will now automatically:
+1. Install Node.js, Python, Redis
+2. Install Claude Code
+3. Install Node.js packages
+4. Configure and start the systemd service
 
-Dit duurt **2-5 minuten**.
+This takes **2-5 minutes**.
 
-### 4.3 Installatie klaar!
+### 4.3 Installation complete!
 
-Als alles goed gaat zie je:
+If everything goes well you will see:
 
 ```
 ╔══════════════════════════════════════════╗
 ║   Installation Complete!                  ║
 ╚══════════════════════════════════════════╝
 
-  ▸ VOLGENDE STAP:
-  Open http://185.123.45.67:3004 in je browser
+  ▸ NEXT STEP:
+  Open http://185.123.45.67:3004 in your browser
 ```
 
-### Firewall openzetten
+### Open the firewall
 
-Als het dashboard niet laadt, moet je de poort openzetten:
+If the dashboard does not load, you need to open the port:
 ```bash
 ufw allow 3004
 ```
 
 ---
 
-## 5. Setup Wizard — Configuratie via Dashboard
+## 5. Setup Wizard — Configuration via Dashboard
 
-Open je browser en ga naar:
+Open your browser and go to:
 
 ```
-http://JOUW_IP:3004
+http://YOUR_IP:3004
 ```
 
-Log in met het wachtwoord dat je tijdens de installatie hebt gekozen.
+Log in with the password you chose during installation.
 
-De **Setup Wizard** verschijnt automatisch en begeleidt je in 4 stappen:
+The **Setup Wizard** appears automatically and guides you through 4 steps:
 
-### Stap 1: Branding
+### Step 1: Branding
 
-- **Company Name** — Je bedrijfsnaam (wordt getoond in de UI en Telegram berichten)
-- **AI Assistant Name** — Naam van je AI assistant (bijv. "Jarvis", "Atlas")
-- **Tagline** — Korte omschrijving van je platform
-- **Primary Color** — Sleep de slider om je merkkleur te kiezen
+- **Company Name** — Your company name (shown in the UI and Telegram messages)
+- **AI Assistant Name** — Name of your AI assistant (e.g. "Jarvis", "Atlas")
+- **Tagline** — Short description of your platform
+- **Primary Color** — Drag the slider to choose your brand color
 
-### Stap 2: AI (Anthropic API) — optioneel
+### Step 2: AI (Anthropic API) — optional
 
-- **Anthropic API Key** — Vereist voor alle AI functies (research, design, analyse)
+- **Anthropic API Key** — Required for all AI features (research, design, analysis)
 
-Als je dit nog niet hebt, klik op **Skip**. Je kunt het later instellen via Settings.
+If you don't have this yet, click **Skip**. You can set it later via Settings.
 
-**API key aanmaken:**
-1. Ga naar https://console.anthropic.com
-2. Maak een account aan (of log in)
-3. Ga naar **API Keys** in de sidebar
-4. Klik **Create Key**
-5. Kopieer de key (begint met `sk-ant-...`)
+**Create an API key:**
+1. Go to https://console.anthropic.com
+2. Create an account (or log in)
+3. Go to **API Keys** in the sidebar
+4. Click **Create Key**
+5. Copy the key (starts with `sk-ant-...`)
 
-### Stap 3: Telegram Notifications — optioneel
+### Step 3: Telegram Notifications — optional
 
-Om notificaties te ontvangen bij voltooide taken, rapporten en alerts heb je een Telegram bot nodig.
+To receive notifications for completed tasks, reports, and alerts, you need a Telegram bot.
 
-**Bot aanmaken:**
-1. Open Telegram en zoek **@BotFather**
-2. Typ `/newbot`
-3. Geef je bot een naam (bijv. "Mijn Platform Bot")
-4. Geef je bot een username (bijv. `mijn_platform_bot`)
-5. Je krijgt een **Bot Token** — kopieer dit (ziet er zo uit: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+**Create a bot:**
+1. Open Telegram and search for **@BotFather**
+2. Type `/newbot`
+3. Give your bot a name (e.g. "My Platform Bot")
+4. Give your bot a username (e.g. `my_platform_bot`)
+5. You will receive a **Bot Token** — copy it (it looks like this: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
 
-**Chat ID vinden:**
-1. Open een chat met je nieuwe bot in Telegram
-2. Stuur een bericht (bijv. "hallo")
-3. Open deze URL in je browser (vervang JOUW_TOKEN):
+**Find your Chat ID:**
+1. Open a chat with your new bot in Telegram
+2. Send a message (e.g. "hello")
+3. Open this URL in your browser (replace YOUR_TOKEN):
 ```
-https://api.telegram.org/botJOUW_TOKEN/getUpdates
+https://api.telegram.org/botYOUR_TOKEN/getUpdates
 ```
-4. Zoek in de tekst naar `"chat":{"id":` — het getal erachter is je **Chat ID**
+4. Look in the text for `"chat":{"id":` — the number after it is your **Chat ID**
 
-Vul beide velden in de wizard in:
-- **Bot Token** — Het token van @BotFather
-- **Chat ID** — Het getal dat je net hebt gevonden
+Fill in both fields in the wizard:
+- **Bot Token** — The token from @BotFather
+- **Chat ID** — The number you just found
 
-Na het instellen kun je via Telegram direct met je AI assistant chatten. Stuur een bericht naar je bot en je krijgt antwoord van Claude — dezelfde AI die ook in het Command Center draait.
+After setting this up, you can chat directly with your AI assistant via Telegram. Send a message to your bot and you will get a response from Claude — the same AI running inside the Command Center.
 
-**Telegram commando's:**
-| Commando | Wat het doet |
-|----------|-------------|
-| `/start` | Begroeting en uitleg wat de bot kan |
-| `/status` | Bot status en account equity (als trading bots geinstalleerd) |
-| `/clear` | Chat history wissen |
-| *Elk ander bericht* | AI assistant antwoordt via Claude |
+**Telegram commands:**
+| Command | What it does |
+|---------|-------------|
+| `/start` | Greeting and explanation of what the bot can do |
+| `/status` | Bot status and account equity (if trading bots are installed) |
+| `/clear` | Clear chat history |
+| *Any other message* | AI assistant responds via Claude |
 
-Klik op **Skip** als je dit later wilt instellen. Je kunt het altijd toevoegen via Settings.
+Click **Skip** if you want to set this up later. You can always add it via Settings.
 
-### Stap 4: Integrations — optioneel
+### Step 4: Integrations — optional
 
-- **HeyGen API Key** — Voor AI avatar video generatie. Key ophalen via [app.heygen.com/settings](https://app.heygen.com/settings)
-- **Stripe Secret Key** — Voor revenue & subscription tracking. Key vind je in je [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (begint met `sk_live_` of `sk_test_`)
-- **Inference.sh API Key** — Voor AI image generatie (Nano Banana / Google Gemini). Gebruikt door de Designer agent. Key ophalen via [inference.sh](https://inference.sh) (begint met `1nfsh-`)
-- **Composio API Key** — Voor Google Calendar integratie. Aanmaken via [app.composio.dev](https://app.composio.dev)
+- **HeyGen API Key** — For AI avatar video generation. Retrieve your key at [app.heygen.com/settings](https://app.heygen.com/settings)
+- **Stripe Secret Key** — For revenue & subscription tracking. Find your key in your [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (starts with `sk_live_` or `sk_test_`)
+- **Inference.sh API Key** — For AI image generation (Nano Banana / Google Gemini). Used by the Designer agent. Retrieve your key at [inference.sh](https://inference.sh) (starts with `1nfsh-`)
+- **Composio API Key** — For Google Calendar integration. Create one at [app.composio.dev](https://app.composio.dev)
 
-Alle velden zijn optioneel. Klik op **Finish** of **Skip** om door te gaan.
+All fields are optional. Click **Finish** or **Skip** to continue.
 
-> **Social media accounts** (Instagram, TikTok, X, YouTube) verbind je later via **Settings → Social Connections** met OAuth — geen API keys nodig.
+> **Social media accounts** (Instagram, TikTok, X, YouTube) are connected later via **Settings → Social Connections** using OAuth — no API keys needed.
 
-### Na de wizard: Canva koppelen (optioneel)
+### After the wizard: Connect Canva (optional)
 
-Canva wordt gebruikt door de Designer agent voor design generatie. Canva gebruikt OAuth (geen API key):
+Canva is used by the Designer agent for design generation. Canva uses OAuth (no API key):
 
-1. Ga naar **Settings** in het Command Center
-2. Zoek **Canva** in de integratielijst
-3. Klik **Connect** en log in met je Canva account
-4. Autoriseer de koppeling
+1. Go to **Settings** in the Command Center
+2. Find **Canva** in the integrations list
+3. Click **Connect** and log in with your Canva account
+4. Authorize the connection
 
-Na het koppelen kan de Designer agent rechtstreeks designs maken en bewerken in Canva.
+Once connected, the Designer agent can create and edit designs directly in Canva.
 
-> **Dat is alles!** Je Command Center is nu klaar voor gebruik.
+> **That's it!** Your Command Center is now ready to use.
 
 ---
 
-## 6. Command Center Overzicht
+## 6. Command Center Overview
 
-Na de setup wizard kom je op het Command Center dashboard. In de sidebar vind je alle pagina's:
+After the setup wizard you arrive at the Command Center dashboard. In the sidebar you will find all pages:
 
-### Pagina's
+### Pages
 
-| Pagina | Wat je er vindt |
-|--------|----------------|
-| **Overview** | Dashboard met overzicht van alle agents, recente taken en quick actions |
-| **Research** | Marktonderzoek, trend analyse, concurrentie analyse, dagelijkse rapporten |
-| **Performance** | KPI's, revenue (Stripe), social media analytics (Instagram Graph API, YouTube Data API), groei metrics |
-| **Agents** | Overzicht en beheer van alle AI agents en hun taken |
-| **Video Editor** | Video's bewerken, knippen, samenvoegen en exporteren via Remotion |
-| **Designer** | Social media content maken: carousels, thumbnails, banners, infographics. Gebruikt Claude AI, Canva, en Nano Banana (Inference.sh) |
-| **Content Creator** | AI avatar video's genereren via HeyGen |
-| **Script Writer** | Scripts schrijven voor video's, social media posts en content |
-| **Marketeer** | Marketing strategie, campagne planning en content kalender |
-| **Calendar** | Google Calendar beheer via Composio integratie |
-| **Settings** | Branding, API keys, integraties en systeem configuratie |
+| Page | What you'll find |
+|------|----------------|
+| **Overview** | Dashboard with an overview of all agents, recent tasks, and quick actions |
+| **Research** | Market research, trend analysis, competitor analysis, daily reports |
+| **Performance** | KPIs, revenue (Stripe), social media analytics (Instagram Graph API, YouTube Data API), growth metrics |
+| **Agents** | Overview and management of all AI agents and their tasks |
+| **Video Editor** | Edit, cut, merge, and export videos via Remotion |
+| **Designer** | Create social media content: carousels, thumbnails, banners, infographics. Uses Claude AI, Canva, and Nano Banana (Inference.sh) |
+| **Content Creator** | Generate AI avatar videos via HeyGen |
+| **Script Writer** | Write scripts for videos, social media posts, and content |
+| **Marketeer** | Marketing strategy, campaign planning, and content calendar |
+| **Calendar** | Google Calendar management via Composio integration |
+| **Settings** | Branding, API keys, integrations, and system configuration |
 
 ### AI Agents
 
-Elke agent is een gespecialiseerde AI die zelfstandig taken uitvoert:
+Each agent is a specialized AI that performs tasks independently:
 
-| Agent | Wat het doet | Vereist |
+| Agent | What it does | Requires |
 |-------|-------------|---------|
-| **Designer** | Maakt social media content: carousels, thumbnails, banners | Anthropic API key |
-| **Researcher** | Marktonderzoek, trend analyse, concurrentie analyse | Anthropic API key |
-| **Video Editor** | Video's maken en bewerken via Remotion (React-based video framework) | — (ingebouwd) |
-| **Content Creator** | AI avatar video's maken | HeyGen API key |
-| **Script Writer** | Scripts voor video's en content | Anthropic API key |
-| **Marketeer** | Marketing strategie en campagne planning | Anthropic API key |
-| **Calendar** | Google Calendar beheer | Composio API key |
+| **Designer** | Creates social media content: carousels, thumbnails, banners | Anthropic API key |
+| **Researcher** | Market research, trend analysis, competitor analysis | Anthropic API key |
+| **Video Editor** | Create and edit videos via Remotion (React-based video framework) | — (built-in) |
+| **Content Creator** | Create AI avatar videos | HeyGen API key |
+| **Script Writer** | Scripts for videos and content | Anthropic API key |
+| **Marketeer** | Marketing strategy and campaign planning | Anthropic API key |
+| **Calendar** | Google Calendar management | Composio API key |
 
 ---
 
-## 7. Dagelijks Gebruik
+## 7. Daily Usage
 
-### Werken met Agents
+### Working with Agents
 
-Elke agent voert taken voor je uit. Je maakt een taak aan, de agent verwerkt het, en je krijgt het resultaat terug — in het dashboard en optioneel via Telegram.
+Each agent performs tasks for you. You create a task, the agent processes it, and you get the result back — in the dashboard and optionally via Telegram.
 
 **Designer — Social media content**
 
-Ga naar de Designer pagina en maak een nieuwe taak aan. Je kunt kiezen uit:
-- **Carousel** — Meerdere slides voor Instagram, LinkedIn, etc.
-- **Thumbnail** — YouTube of video thumbnails
-- **Banner** — Headers voor social media of website
-- **Infographic** — Data visualisaties
+Go to the Designer page and create a new task. You can choose from:
+- **Carousel** — Multiple slides for Instagram, LinkedIn, etc.
+- **Thumbnail** — YouTube or video thumbnails
+- **Banner** — Headers for social media or website
+- **Infographic** — Data visualizations
 
-Geef een beschrijving van wat je wilt (bijv. "5-slide carousel over AI trends in 2026") en kies een engine:
-- **Claude AI** — Genereert design via code (altijd beschikbaar met Anthropic key)
-- **Nano Banana** — Genereert images via Google Gemini (vereist Inference.sh key)
-- **Canva** — Maakt designs in Canva (vereist Canva koppeling)
+Provide a description of what you want (e.g. "5-slide carousel about AI trends in 2026") and choose an engine:
+- **Claude AI** — Generates design via code (always available with Anthropic key)
+- **Nano Banana** — Generates images via Google Gemini (requires Inference.sh key)
+- **Canva** — Creates designs in Canva (requires Canva connection)
 
-**Researcher — Marktonderzoek**
+**Researcher — Market Research**
 
-Ga naar de Research pagina en maak een nieuw onderzoek aan. Voorbeelden:
-- "Analyseer de top 5 concurrenten in de AI SaaS markt"
-- "Wat zijn de trending topics op social media deze week?"
-- "Maak een rapport over de crypto markt ontwikkelingen"
+Go to the Research page and create a new research task. Examples:
+- "Analyze the top 5 competitors in the AI SaaS market"
+- "What are the trending topics on social media this week?"
+- "Create a report on market developments in your niche"
 
-De Researcher gebruikt Claude AI om informatie te verzamelen, analyseren en een rapport te genereren.
+The Researcher uses Claude AI to gather, analyze, and generate a report.
 
-**Content Creator — AI Video's**
+**Content Creator — AI Videos**
 
-Ga naar Content Creator om AI avatar video's te maken via HeyGen:
-- Kies een avatar en stem
-- Schrijf of genereer een script
-- De video wordt automatisch gegenereerd
+Go to Content Creator to create AI avatar videos via HeyGen:
+- Choose an avatar and voice
+- Write or generate a script
+- The video is generated automatically
 
-**Script Writer — Scripts en teksten**
+**Script Writer — Scripts and copy**
 
-Laat de Script Writer content schrijven:
-- Video scripts voor YouTube, TikTok, Instagram Reels
-- Social media captions en copy
-- Blog posts en artikelen
+Let the Script Writer create content:
+- Video scripts for YouTube, TikTok, Instagram Reels
+- Social media captions and copy
+- Blog posts and articles
 
-**Marketeer — Strategie**
+**Marketeer — Strategy**
 
-De Marketeer helpt met marketing planning:
-- Content kalender opstellen
-- Campagne ideeen genereren
-- Doelgroep analyse
+The Marketeer helps with marketing planning:
+- Building a content calendar
+- Generating campaign ideas
+- Target audience analysis
 
-**Calendar — Agenda beheer**
+**Calendar — Schedule management**
 
-Als Composio is gekoppeld kun je via de Calendar pagina:
-- Afspraken inzien en aanmaken
-- Meetings plannen
-- Agenda overzicht bekijken
+If Composio is connected you can use the Calendar page to:
+- View and create appointments
+- Schedule meetings
+- View your agenda overview
 
-### Automatische taken instellen
+### Setting up automated tasks
 
-Je kunt taken inplannen die automatisch op vaste tijden worden uitgevoerd. Ga naar de **Agents** pagina en maak een nieuw schema aan:
+You can schedule tasks that are executed automatically at fixed times. Go to the **Agents** page and create a new schedule:
 
-| Veld | Uitleg |
-|------|--------|
-| **Name** | Naam van het schema (bijv. "Dagelijkse Instagram post") |
-| **Agent** | Welke agent de taak uitvoert (designer, researcher, scriptwriter, content_creator) |
-| **Hour / Minute** | Tijdstip in UTC waarop de taak wordt uitgevoerd |
-| **Days** | Op welke dagen (ma-zo) |
-| **Payload** | Wat de agent moet doen (beschrijving, type, etc.) |
+| Field | Explanation |
+|-------|------------|
+| **Name** | Name of the schedule (e.g. "Daily Instagram post") |
+| **Agent** | Which agent performs the task (designer, researcher, scriptwriter, content_creator) |
+| **Hour / Minute** | Time in UTC at which the task is executed |
+| **Days** | On which days (Mon-Sun) |
+| **Payload** | What the agent should do (description, type, etc.) |
 
-**Voorbeelden van automatische taken:**
+**Examples of automated tasks:**
 
-- Elke werkdag om 09:00 een Instagram carousel genereren
-- Elke maandag om 08:00 een marktonderzoek rapport
-- Dagelijks om 10:00 een video script schrijven
-- Elke vrijdag om 16:00 een weekoverzicht onderzoek
+- Generate an Instagram carousel every weekday at 09:00
+- Generate a market research report every Monday at 08:00
+- Write a video script daily at 10:00
+- Run a weekly overview research every Friday at 16:00
 
-Taken worden automatisch uitgevoerd en het resultaat verschijnt in het dashboard. Als Telegram is ingesteld krijg je een notificatie als de taak klaar is.
+Tasks are executed automatically and the result appears in the dashboard. If Telegram is configured, you will receive a notification when the task is complete.
 
 ### Telegram AI Assistant
 
-Als je Telegram hebt ingesteld, kun je je AI assistant ook via Telegram bereiken. Stuur gewoon een bericht naar je bot:
+If you have Telegram set up, you can also reach your AI assistant via Telegram. Simply send a message to your bot:
 
-| Commando | Wat het doet |
-|----------|-------------|
-| `/start` | Begroeting en uitleg |
-| `/status` | Bot status en equity (als trading bots geinstalleerd) |
-| `/clear` | Chat history wissen |
-| *Elk bericht* | Claude AI antwoordt — stel vragen, geef opdrachten, vraag om analyses |
+| Command | What it does |
+|---------|-------------|
+| `/start` | Greeting and explanation |
+| `/status` | Bot status and equity (if trading bots are installed) |
+| `/clear` | Clear chat history |
+| *Any message* | Claude AI responds — ask questions, give instructions, request analyses |
 
-Je kunt via Telegram dezelfde dingen doen als in het Command Center — agents aansturen, vragen stellen, rapporten opvragen.
+You can do the same things via Telegram as in the Command Center — direct agents, ask questions, request reports.
 
-### Claude Code in de terminal
+### Claude Code in the terminal
 
-Claude Code is een AI assistent die direct op je server draait. Start het wanneer je wilt:
+Claude Code is an AI assistant that runs directly on your server. Start it whenever you want:
 
 ```bash
 claude
 ```
 
-Voorbeelden:
+Examples:
 
-| Wat je vraagt | Wat Claude doet |
-|--------------|-----------------|
-| *"Maak een carousel post over AI trends"* | Stuurt een design taak naar de Designer agent |
-| *"Wat zijn de trending topics vandaag?"* | Doet marktonderzoek via de Researcher |
-| *"Toon mijn revenue deze maand"* | Haalt Stripe data op en maakt een rapport |
-| *"Plan een meeting morgen om 10u"* | Beheert je Google Calendar via Composio |
-| *"Pas de branding kleur aan naar blauw"* | Wijzigt de configuratie |
-| *"Toon de logs van het Command Center"* | Opent en analyseert de log bestanden |
+| What you ask | What Claude does |
+|-------------|-----------------|
+| *"Create a carousel post about AI trends"* | Sends a design task to the Designer agent |
+| *"What are the trending topics today?"* | Does market research via the Researcher |
+| *"Show my revenue this month"* | Retrieves Stripe data and creates a report |
+| *"Schedule a meeting tomorrow at 10am"* | Manages your Google Calendar via Composio |
+| *"Change the branding color to blue"* | Updates the configuration |
+| *"Show the Command Center logs"* | Opens and analyzes the log files |
 
 ---
 
-## 8. Instellingen Aanpassen
+## 8. Adjusting Settings
 
-### Via het Dashboard
+### Via the Dashboard
 
-1. Ga naar **Settings** in de sidebar van het Command Center
-2. Bovenaan zie je twee secties:
+1. Go to **Settings** in the Command Center sidebar
+2. At the top you will see two sections:
 
-**Branding** — pas aan:
+**Branding** — adjust:
 - Company Name, AI Assistant Name, Tagline
-- Primary Color (met live preview)
+- Primary Color (with live preview)
 
-**API Keys & Integrations** — pas aan:
+**API Keys & Integrations** — adjust:
 - Anthropic API Key
 - Telegram Bot Token + Chat ID
 - HeyGen, Stripe, Composio keys
-- Meta App ID/Secret (voor Instagram Graph API), YouTube Data API key
+- Meta App ID/Secret (for Instagram Graph API), YouTube Data API key
 
-3. Klik **Save Changes**
+3. Click **Save Changes**
 
-Wijzigingen worden direct doorgevoerd.
+Changes take effect immediately.
 
-### Telegram instellen (als je het eerder hebt overgeslagen)
+### Setting up Telegram (if you skipped it earlier)
 
-**Stap 1: Telegram bot aanmaken**
+**Step 1: Create a Telegram bot**
 
-1. Open Telegram en zoek **@BotFather**
-2. Typ `/newbot`
-3. Geef je bot een naam (bijv. "Mijn Platform Bot")
-4. Geef je bot een username (bijv. `mijn_platform_bot`)
-5. Je krijgt een **Bot Token** — kopieer dit
+1. Open Telegram and search for **@BotFather**
+2. Type `/newbot`
+3. Give your bot a name (e.g. "My Platform Bot")
+4. Give your bot a username (e.g. `my_platform_bot`)
+5. You will receive a **Bot Token** — copy it
 
-Het token ziet er zo uit: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`
+The token looks like this: `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`
 
-**Stap 2: Chat ID vinden**
+**Step 2: Find your Chat ID**
 
-1. Open een chat met je nieuwe bot in Telegram
-2. Stuur een bericht (bijv. "hallo")
-3. Open deze URL in je browser (vervang JOUW_TOKEN):
+1. Open a chat with your new bot in Telegram
+2. Send a message (e.g. "hello")
+3. Open this URL in your browser (replace YOUR_TOKEN):
 
 ```
-https://api.telegram.org/botJOUW_TOKEN/getUpdates
+https://api.telegram.org/botYOUR_TOKEN/getUpdates
 ```
 
-4. Zoek in de tekst naar `"chat":{"id":` — het getal erachter is je **Chat ID**
+4. Look in the text for `"chat":{"id":` — the number after it is your **Chat ID**
 
-**Stap 3: Invullen in Command Center**
+**Step 3: Enter in Command Center**
 
-1. Ga naar Settings in het Command Center
-2. Vul **Telegram Bot Token** en **Chat ID** in
-3. Klik **Save Changes**
+1. Go to Settings in the Command Center
+2. Fill in **Telegram Bot Token** and **Chat ID**
+3. Click **Save Changes**
 
 ---
 
 ## 9. Trading Bots Addon
 
-Trading bots zijn een aparte installatie die je later kunt toevoegen aan je Command Center.
+Trading bots are a separate installation that you can add to your Command Center later.
 
-### Wat je krijgt
+### What you get
 
-De Trading Bots addon bevat:
-- **Funding Rate Bot** — Delta-neutrale funding rate arbitrage op Hyperliquid
-- **Trend Bot** — Mean-reversion strategie met RSI + Bollinger Bands
-- **Trading Dashboard** — Live monitoring met posities, PnL, orderbook, liquidaties
-- **Data Hub (Jarvis)** — Centrale marktdata service voor realtime prijzen en funding rates
-- **Analytics pagina** — Performance overzicht met dagelijkse AI rapporten
+The Trading Bots addon includes:
+- **Funding Rate Bot** — Delta-neutral funding rate arbitrage on Hyperliquid
+- **Trend Bot** — Mean-reversion strategy with RSI + Bollinger Bands
+- **Trading Dashboard** — Live monitoring with positions, PnL, order book, liquidations
+- **Data Hub (Jarvis)** — Central market data service for real-time prices and funding rates
+- **Analytics page** — Performance overview with daily AI reports
 
-### Installeren
+### Installing
 
 ```bash
 cd /root
@@ -508,56 +508,56 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-Na installatie open je `http://JOUW_IP:3000` en volg je de setup wizard om je wallets en private keys te configureren.
+After installation, open `http://YOUR_IP:3000` and follow the setup wizard to configure your wallets and private keys.
 
-Zie de **NeuraLabs Trading Bots — Installatie Handleiding** voor de volledige stap-voor-stap guide.
+See the **Trading Bots — Installation Guide** for the complete step-by-step guide.
 
-### Standalone of geintegreerd
+### Standalone or integrated
 
-De trading bots werken volledig **standalone** via het eigen Trading Dashboard op poort 3000. Je hebt het Command Center niet nodig om de bots te draaien.
+The trading bots work fully **standalone** via their own Trading Dashboard on port 3000. You do not need the Command Center to run the bots.
 
-Maar als je het Command Center ook hebt geinstalleerd, worden ze automatisch **geintegreerd**:
+But if you also have the Command Center installed, they are automatically **integrated**:
 
-| Wat er verandert in het Command Center | Uitleg |
-|----------------------------------------|--------|
-| **Sidebar** | Er verschijnt een link naar het Trading Dashboard |
-| **Overview pagina** | Trading bots worden getoond met live status en PnL |
-| **AI Team (Overview)** | De Analyst agent verschijnt als teamlid |
-| **Agents pagina** | Analyst agent card wordt toegevoegd |
-| **Analyst pagina** | Nieuwe pagina in de sidebar voor bot performance analyse, trade history en rapporten |
-| **Telegram** | `/status` commando toont bot equity en open posities |
+| What changes in the Command Center | Explanation |
+|------------------------------------|------------|
+| **Sidebar** | A link to the Trading Dashboard appears |
+| **Overview page** | Trading bots are shown with live status and PnL |
+| **AI Team (Overview)** | The Analyst agent appears as a team member |
+| **Agents page** | Analyst agent card is added |
+| **Analyst page** | New page in the sidebar for bot performance analysis, trade history, and reports |
+| **Telegram** | `/status` command shows bot equity and open positions |
 
-De integratie werkt automatisch — het Command Center detecteert de trading bots via de Trading Dashboard API op `localhost:3000`. Er is geen extra configuratie nodig.
+The integration works automatically — the Command Center detects the trading bots via the Trading Dashboard API on `localhost:3000`. No additional configuration is needed.
 
 ---
 
-## 10. Eigen Domein Koppelen
+## 10. Connect a Custom Domain
 
-Je kunt een eigen domein koppelen aan je Command Center zodat je het bereikt via bijv. `https://mijnbedrijf.com` in plaats van `http://185.123.45.67:3004`.
+You can connect a custom domain to your Command Center so you can reach it via e.g. `https://yourcompany.com` instead of `http://185.123.45.67:3004`.
 
-### Stap 1: DNS instellen
+### Step 1: Configure DNS
 
-Bij je domeinregistrar (Cloudflare, Namecheap, etc.):
-- Maak een **A record** aan dat wijst naar je VPS IP-adres
+At your domain registrar (Cloudflare, Namecheap, etc.):
+- Create an **A record** pointing to your VPS IP address
 
-### Stap 2: Nginx installeren
+### Step 2: Install Nginx
 
 ```bash
 apt install -y nginx
 ```
 
-### Stap 3: Nginx configureren
+### Step 3: Configure Nginx
 
 ```bash
 nano /etc/nginx/sites-available/commandcenter
 ```
 
-Plak dit (vervang `jouwdomein.com`):
+Paste this (replace `yourdomain.com`):
 
 ```nginx
 server {
     listen 80;
-    server_name jouwdomein.com;
+    server_name yourdomain.com;
 
     location / {
         proxy_pass http://127.0.0.1:3004;
@@ -572,135 +572,135 @@ server {
 }
 ```
 
-Activeer en herstart:
+Activate and restart:
 ```bash
 ln -s /etc/nginx/sites-available/commandcenter /etc/nginx/sites-enabled/
 nginx -t
 systemctl restart nginx
 ```
 
-### Stap 4: HTTPS instellen (gratis SSL)
+### Step 4: Set up HTTPS (free SSL)
 
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d jouwdomein.com
+certbot --nginx -d yourdomain.com
 ```
 
-Volg de instructies. Certbot regelt automatisch een SSL certificaat en verlengt het elke 90 dagen.
+Follow the instructions. Certbot automatically arranges an SSL certificate and renews it every 90 days.
 
-Je Command Center is nu bereikbaar via `https://jouwdomein.com`.
+Your Command Center is now accessible via `https://yourdomain.com`.
 
 ---
 
-## 11. Updaten
+## 11. Updating
 
-Als er updates beschikbaar zijn:
+When updates are available:
 
 ```bash
 cd /root/neuralabs-command-center
 bash update.sh
 ```
 
-Dat is alles. Het script:
-1. Haalt de laatste versie op van GitHub
-2. Kopieert nieuwe code naar je installatie
-3. Behoudt je `.env` configuratie
-4. Herstart alle services
+That's all. The script:
+1. Fetches the latest version from GitHub
+2. Copies new code to your installation
+3. Preserves your `.env` configuration
+4. Restarts all services
 
-> **Je instellingen en data worden NOOIT overschreven.**
+> **Your settings and data will NEVER be overwritten.**
 
 ---
 
 ## 12. Troubleshooting
 
-### Service checken
+### Check the service
 
 ```bash
 systemctl status command-center
 ```
 
-### Logs bekijken
+### View logs
 
 ```bash
 journalctl -u command-center -f
 ```
 
-### Service herstarten
+### Restart the service
 
 ```bash
 systemctl restart command-center
 ```
 
-### Veelvoorkomende problemen
+### Common issues
 
-**"Dashboard laadt niet in browser"**
+**"Dashboard doesn't load in browser"**
 ```bash
-# Check of service draait
+# Check if service is running
 systemctl status command-center
 
-# Open firewall poort
+# Open firewall port
 ufw allow 3004
 
 # Check logs
 journalctl -u command-center -n 30
 ```
 
-**"Login werkt niet"**
-- Controleer je wachtwoord
-- Het wachtwoord is wat je hebt ingesteld tijdens de installatie
-- Je kunt het wijzigen in `/opt/commandcenter/.env` (veld `CC_PASSWORD`)
+**"Login doesn't work"**
+- Check your password
+- The password is what you set during installation
+- You can change it in `/opt/commandcenter/.env` (field `CC_PASSWORD`)
 
-**"AI functies werken niet"**
-- Controleer of je Anthropic API key is ingesteld via Settings
-- Test de key: ga naar Settings → klik "Test Connection" bij Anthropic
+**"AI features don't work"**
+- Check that your Anthropic API key is set via Settings
+- Test the key: go to Settings → click "Test Connection" next to Anthropic
 
-**"Telegram berichten komen niet aan"**
-- Controleer of token en chat ID correct zijn via Settings
-- Stuur `/start` naar je bot in Telegram
-- Test handmatig:
+**"Telegram messages aren't arriving"**
+- Check that the token and chat ID are correct via Settings
+- Send `/start` to your bot in Telegram
+- Test manually:
 
 ```bash
-curl -s "https://api.telegram.org/botJOUW_TOKEN/sendMessage" \
-  -d "chat_id=JOUW_CHAT_ID&text=Test"
+curl -s "https://api.telegram.org/botYOUR_TOKEN/sendMessage" \
+  -d "chat_id=YOUR_CHAT_ID&text=Test"
 ```
 
-**"Redis fout"**
+**"Redis error"**
 ```bash
 systemctl restart redis-server
 redis-cli ping
-# Moet PONG tonen
+# Should show PONG
 ```
 
 ---
 
-## 13. Veelgestelde Vragen
+## 13. Frequently Asked Questions
 
-**Hoeveel kost het per maand?**
-- VPS: €10-20/maand
-- Anthropic API: ~€5-20/maand afhankelijk van gebruik
-- Totaal: **~€15-40/maand** (zonder optionele integraties)
+**How much does it cost per month?**
+- VPS: €10-20/month
+- Anthropic API: ~€5-20/month depending on usage
+- Total: **~€15-40/month** (without optional integrations)
 
-**Heb ik trading bots nodig?**
+**Do I need trading bots?**
 
-Nee. Het Command Center werkt volledig zelfstandig voor content creatie, research, marketing en analyse. Trading bots zijn een optionele addon die je later kunt installeren.
+No. The Command Center works fully standalone for content creation, research, marketing, and analysis. Trading bots are an optional addon that you can install later.
 
-**Kan ik meerdere gebruikers toevoegen?**
+**Can I add multiple users?**
 
-Op dit moment gebruikt het Command Center een gedeeld wachtwoord. Iedereen met het wachtwoord heeft volledige toegang.
+Currently the Command Center uses a shared password. Everyone with the password has full access.
 
-**Welke AI functies zijn beschikbaar zonder API keys?**
+**Which AI features are available without API keys?**
 
-Zonder Anthropic API key werken de AI agents niet (Designer, Researcher, Analyst, etc.). De UI en Settings pagina werken wel. Je kunt op elk moment een API key toevoegen via Settings.
+Without an Anthropic API key, the AI agents do not work (Designer, Researcher, Analyst, etc.). The UI and Settings page do work. You can add an API key at any time via Settings.
 
-**Kan ik een eigen domein gebruiken?**
+**Can I use a custom domain?**
 
-Ja, zie sectie 10. Met nginx en Let's Encrypt heb je gratis HTTPS op je eigen domein.
+Yes, see section 10. With nginx and Let's Encrypt you get free HTTPS on your own domain.
 
-**Wat als mijn VPS herstart?**
+**What if my VPS restarts?**
 
-Het Command Center start automatisch opnieuw via systemd. Je hoeft niks te doen.
+The Command Center restarts automatically via systemd. You don't need to do anything.
 
-**Hoe update ik?**
+**How do I update?**
 ```bash
 cd /root/neuralabs-command-center
 bash update.sh
@@ -708,20 +708,20 @@ bash update.sh
 
 ---
 
-## Snelle Referentie
+## Quick Reference
 
-| Actie | Hoe |
-|-------|-----|
-| Command Center | `http://JOUW_IP:3004` |
-| Eerste keer setup | Setup wizard (automatisch na login) |
-| Instellingen wijzigen | Settings pagina in Command Center |
-| Claude Code starten | `claude` in terminal |
-| SSH naar server | `ssh root@JOUW_IP` |
+| Action | How |
+|--------|-----|
+| Command Center | `http://YOUR_IP:3004` |
+| First-time setup | Setup wizard (automatically after login) |
+| Change settings | Settings page in Command Center |
+| Start Claude Code | `claude` in terminal |
+| SSH to server | `ssh root@YOUR_IP` |
 | Service status | `systemctl status command-center` |
-| Logs bekijken | `journalctl -u command-center -f` |
-| Platform updaten | `cd /root/neuralabs-command-center && bash update.sh` |
-| Trading Bots addon | Zie sectie 9 |
+| View logs | `journalctl -u command-center -f` |
+| Update platform | `cd /root/neuralabs-command-center && bash update.sh` |
+| Trading Bots addon | See section 9 |
 
 ---
 
-*Hulp nodig? Start Claude Code met `claude` en stel je vraag in het Nederlands. Je AI assistent kent je hele setup en helpt met alles.*
+*Need help? Start Claude Code with `claude` and ask your question. Your AI assistant knows your entire setup and can help with anything.*

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# NeuraLabs Command Center — Installer
+# Command Center — Installer
 # Run: chmod +x install.sh && sudo ./install.sh
 # ============================================================
 set -euo pipefail
@@ -14,7 +14,7 @@ NC='\033[0m'
 banner() {
   echo ""
   echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-  echo -e "${CYAN}║   NeuraLabs Command Center — Installer   ║${NC}"
+  echo -e "${CYAN}║   Command Center — Installer              ║${NC}"
   echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
   echo ""
 }
@@ -196,6 +196,9 @@ HEYGEN_API_KEY=${HEYGEN_API_KEY}
 STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
 COMPOSIO_API_KEY=${COMPOSIO_API_KEY}
 BRAND_ASSET_URL=
+LANGUAGE=
+TIMEZONE=
+DEFAULT_NICHE=
 INSTALL_DIR=${INSTALL_DIR}
 DASHBOARD_URL=${DASHBOARD_URL}
 EOF
@@ -290,23 +293,19 @@ echo ""
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
-echo -e "  ${GREEN}▸ VOLGENDE STAP:${NC}"
-echo -e "  Open ${CYAN}http://${SERVER_IP}:3004${NC} in je browser"
-echo -e "  Log in met je wachtwoord en volg de setup wizard."
+echo -e "  ${GREEN}▸ NEXT STEP:${NC}"
+echo -e "  Open ${CYAN}http://${SERVER_IP}:3004${NC} in your browser"
+echo -e "  Log in with your password and follow the setup wizard."
 echo ""
-echo -e "  De wizard helpt je configureren:"
-echo "    - Branding (naam, kleuren, tagline)"
-echo "    - Anthropic API key (AI functies)"
-echo "    - Telegram notificaties"
-echo "    - Integraties (HeyGen, Stripe, Composio)"
-echo ""
-echo -e "  ${YELLOW}Trading Bots:${NC}"
-echo "    Trading bots zijn een aparte addon."
-echo "    Installeer ze later via: github.com/neuralabscloud/neuralabs-trading-bots"
+echo -e "  The wizard will help you configure:"
+echo "    - Branding (name, colors, tagline)"
+echo "    - Anthropic API key (AI features)"
+echo "    - Telegram notifications"
+echo "    - Integrations (HeyGen, Stripe, Composio)"
 echo ""
 echo -e "  ${YELLOW}Manage services:${NC}"
 echo "    systemctl status command-center"
 echo "    systemctl restart command-center"
 echo "    journalctl -u command-center -f"
 echo ""
-echo -e "${GREEN}Done! Open http://${SERVER_IP}:3004 om te beginnen.${NC}"
+echo -e "${GREEN}Done! Open http://${SERVER_IP}:3004 to get started.${NC}"

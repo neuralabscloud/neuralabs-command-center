@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEURALABS — Assistant</title>
+<title>Command Center — Assistant</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -377,15 +377,15 @@ fetch('/brand').then(r => r.json()).then(b => {
     ASSISTANT_NAME = b.assistant_name;
     const titleEl = document.getElementById('chat-assistant-title');
     if (titleEl) titleEl.textContent = ASSISTANT_NAME.toUpperCase();
-    document.title = 'NEURALABS — ' + ASSISTANT_NAME;
+    document.title = 'Command Center — ' + ASSISTANT_NAME;
     // Relabel any already-rendered messages
     document.querySelectorAll('.msg.assistant .msg-label').forEach(el => { el.textContent = ASSISTANT_NAME; });
   }
 }).catch(() => {});
 
 // ── Persistent session ──
-const SESSION_KEY = 'evlyn_session';
-const HISTORY_KEY = 'evlyn_history';
+const SESSION_KEY = 'cc_chat_session';
+const HISTORY_KEY = 'cc_chat_history';
 let sessionId = localStorage.getItem(SESSION_KEY);
 if (!sessionId) {
   sessionId = 'session_' + Date.now().toString(36);
