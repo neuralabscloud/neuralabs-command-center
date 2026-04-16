@@ -142,12 +142,12 @@ else
   warn "Claude Code install timed out or failed — install later with: npm install -g @anthropic-ai/claude-code"
 fi
 
-# Inference.sh (optional — timeout after 60s)
-info "Installing Inference.sh..."
-if timeout 60 npm install -g inference.sh 2>&1 | tail -3; then
-  ok "Inference.sh installed"
+# Inference.sh SDK (optional — timeout after 60s)
+info "Installing Inference.sh SDK..."
+if timeout 60 npm install -g @inferencesh/sdk 2>&1 | tail -3; then
+  ok "Inference.sh SDK installed"
 else
-  warn "Inference.sh install timed out or failed — install later with: npm install -g inference.sh"
+  warn "Inference.sh SDK install timed out or failed — install later with: npm install -g @inferencesh/sdk"
 fi
 
 pip3 install -q python-dotenv 2>/dev/null || true
