@@ -77,16 +77,26 @@ app.get("/auth/check", (req, res) => {
   res.json({ authenticated: isValidSession(req.cookies?.cc_session) });
 });
 
-// Protect all other API routes
+// Allow login page and static assets without auth
+app.use("/login.html", express.static(path.join(__dirname, "login.html")));
+app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
+app.use("/brand-loader.js", express.static(path.join(__dirname, "brand-loader.js")));
+
+// Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
-  // Allow auth endpoints
-  if (req.path.startsWith("/auth/")) return next();
+  // Allow auth endpoints and setup check
+  if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
   // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
   // Check session
   if (isValidSession(req.cookies?.cc_session)) return next();
+  // Unauthenticated: redirect HTML requests to login, reject API calls
+  if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
 });
+
+// Serve all static files (HTML, JS, CSS) — protected by auth middleware above
+app.use(express.static(__dirname));
 
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
@@ -248,7 +258,8 @@ app.post("/api/settings", (req, res) => {
 app.get("/api/setup-status", (_req, res) => {
   const env = readEnvFile();
   const brand = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8")); } catch { return {}; } })();
-  const hasCompany = !!(brand.company_name && brand.company_name !== "MyBrand" && brand.company_name !== "");
+  const defaultNames = ["MyBrand", "Command Center", ""];
+  const hasCompany = !!(brand.company_name && !defaultNames.includes(brand.company_name));
   const hasAnthropic = !!env.ANTHROPIC_API_KEY;
   const setupDone = hasCompany || hasAnthropic;
   res.json({ setup_complete: setupDone, has_branding: hasCompany, has_anthropic: hasAnthropic });
