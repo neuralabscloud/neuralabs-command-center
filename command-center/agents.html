@@ -755,7 +755,7 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Engine</label>
         <select class="sched-select" id="sp-engine"><option value="nanobanana">Nano Banana</option><option value="playwright">Playwright</option><option value="claude">Claude AI</option></select></div>
       <div><label class="sched-label">Brand</label>
-        <select class="sched-select" id="sp-brand"><option value="METAVERS3">METAVERS3</option><option value="NEURALABS">NEURALABS</option><option value="LEANDRO">LEANDRO</option></select></div>
+        <select class="sched-select" id="sp-brand"><option value="">Loading...</option></select></div>
     </div>
     <div class="sched-form-row">
       <div><label class="sched-label">Design Type</label>
@@ -921,6 +921,14 @@ async function loadAll() {
 }
 loadAll();
 loadSchedules();
+// Load brands dynamically into designer dropdown
+fetch('/brands', { credentials: 'include' }).then(r => r.json()).then(brands => {
+  const sel = document.getElementById('sp-brand');
+  if (!sel) return;
+  const names = Object.keys(brands);
+  if (!names.length) { sel.innerHTML = '<option value="">No brands configured</option>'; return; }
+  sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+}).catch(() => {});
 checkCanvaStatus();
 setInterval(loadAll, 8000);
 setInterval(checkCanvaStatus, 30000);

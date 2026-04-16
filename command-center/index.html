@@ -1092,44 +1092,44 @@ function fmtNum(n) {
   return String(n);
 }
 
-// ── CONFIG ─────────────────────────────────────
-const YT_KEY = 'REDACTED_YOUTUBE_KEY';
-
-// ── BRANDS CONFIG ─────────────────────────────
-const BRANDS = [
-  {
-    name: 'METAVERS3',
-    platforms: [
-      { type: 'ig', handle: 'metavers3.nl', label: 'Instagram' },
-      { type: 'yt', handle: '@Metavers3nl', label: 'YouTube' },
-    ]
-  },
-  {
-    name: 'LEANDRO',
-    platforms: [
-      { type: 'ig', handle: 'leandrovalentino.eth', label: 'Instagram' },
-    ]
-  },
-  {
-    name: 'NEURALABS',
-    platforms: [
-      { type: 'ig', handle: 'neuralabscapital', label: 'Instagram' },
-      { type: 'yt', handle: '@neuralabscapital', label: 'YouTube' },
-    ]
-  },
-];
-
-// ── SOCIAL STATE (flat lookup by cache key) ───
+// ── CONFIG (loaded dynamically from server) ───
+let YT_KEY = '';
+let BRANDS = [];
 const platformState = {};
-BRANDS.forEach(b => b.platforms.forEach(p => {
-  const key = p.type + '_' + p.handle;
-  platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
-}));
 
-const BRAND_ICONS = { 'METAVERS3': 'M', 'LEANDRO': 'L', 'NEURALABS': 'N' };
+function buildBrandsFromConnections(connections) {
+  // Group connections by brand/name into the BRANDS format
+  const brandMap = {};
+  connections.forEach(c => {
+    const brandName = (c.name || c.username || 'My Brand').toUpperCase();
+    if (!brandMap[brandName]) brandMap[brandName] = { name: brandName, platforms: [] };
+    if (c.platform === 'instagram') {
+      brandMap[brandName].platforms.push({ type: 'ig', handle: c.username, label: 'Instagram' });
+    } else if (c.platform === 'youtube') {
+      brandMap[brandName].platforms.push({ type: 'yt', handle: c.username.startsWith('@') ? c.username : '@' + c.username, label: 'YouTube' });
+    }
+  });
+  return Object.values(brandMap);
+}
+
+function initPlatformState() {
+  Object.keys(platformState).forEach(k => delete platformState[k]);
+  BRANDS.forEach(b => b.platforms.forEach(p => {
+    const key = p.type + '_' + p.handle;
+    platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
+  }));
+}
+
+const BRAND_ICONS = {};
 const PLATFORM_LABELS = { ig: 'Instagram', yt: 'YouTube' };
 
 function renderSocialCards() {
+  const socialSection = document.getElementById('social-grid')?.closest('section');
+  if (!BRANDS.length) {
+    if (socialSection) socialSection.style.display = 'none';
+    return;
+  }
+  if (socialSection) socialSection.style.display = '';
   document.getElementById('social-grid').innerHTML = BRANDS.map(brand => {
     const platformData = brand.platforms.map(p => ({ ...p, state: platformState[p.type + '_' + p.handle] }));
     const totalFollowers = platformData.reduce((sum, p) => {
@@ -1141,7 +1141,7 @@ function renderSocialCards() {
 
     return `<div class="brand-card">
       <div class="brand-header">
-        <div class="brand-avatar">${BRAND_ICONS[brand.name] || brand.name[0]}</div>
+        <div class="brand-avatar">${brand.name[0]}</div>
         <div>
           <div class="brand-name">${brand.name}</div>
           <div class="brand-platforms-count">${brand.platforms.length} platform${brand.platforms.length > 1 ? 's' : ''}</div>
@@ -1345,10 +1345,30 @@ async function refreshAllData(forceAll) {
   refreshing = false;
 }
 
-// ── INIT: load from cache, auto-fetch if stale ──
-(function init() {
-  let needsFetch = false;
+// ── INIT: load social connections from server, then from cache ──
+(async function init() {
+  // Load YouTube API key and social connections from server
+  try {
+    const [settingsRes, connectionsRes] = await Promise.all([
+      fetch('/api/settings', { credentials: 'include' }),
+      fetch('/social/connections', { credentials: 'include' }),
+    ]);
+    const settings = await settingsRes.json();
+    const connData = await connectionsRes.json();
+    YT_KEY = settings.integrations?.youtube?.has_key ? '__FROM_SERVER__' : '';
+    BRANDS = buildBrandsFromConnections(connData.connections || []);
+    initPlatformState();
+  } catch (e) { console.error('[CC] Failed to load social config:', e); }
 
+  if (!BRANDS.length) { renderSocialCards(); return; }
+
+  // Try to load YouTube key from env for direct API calls
+  try {
+    const r = await fetch('/api/youtube-key', { credentials: 'include' });
+    if (r.ok) { const d = await r.json(); YT_KEY = d.key || ''; }
+  } catch {}
+
+  let needsFetch = false;
   BRANDS.forEach(brand => brand.platforms.forEach(p => {
     const cacheKey = 'ctrl_' + p.type + '_' + p.handle;
     const entry = cacheGet(cacheKey);
@@ -1368,12 +1388,11 @@ async function refreshAllData(forceAll) {
   renderSocialCards();
   showRefreshTime();
 
-  // Auto-fetch all stale data (runs once per day effectively)
   if (needsFetch) {
-    console.log('[NL] Cache stale or missing — auto-fetching all platforms');
+    console.log('[CC] Cache stale or missing — auto-fetching all platforms');
     refreshAllData();
   } else {
-    console.log('[NL] All caches fresh (< 24h) — skipping fetch');
+    console.log('[CC] All caches fresh (< 24h) — skipping fetch');
   }
 })();
 

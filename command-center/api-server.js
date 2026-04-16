@@ -254,6 +254,12 @@ app.get("/api/setup-status", (_req, res) => {
   res.json({ setup_complete: setupDone, has_branding: hasCompany, has_anthropic: hasAnthropic });
 });
 
+// ── YOUTUBE API KEY (for frontend social cards) ──
+app.get("/api/youtube-key", (_req, res) => {
+  const env = readEnvFile();
+  res.json({ key: env.YOUTUBE_API_KEY || "" });
+});
+
 // Generic task file helpers
 function readTaskFile(file) {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", file), "utf8")); }
@@ -4408,7 +4414,7 @@ if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recur
 app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
 
 const STUDIO_PORT = 3150;
-const STUDIO_URL = "https://neuralabs.cloud:3151";
+const STUDIO_URL = process.env.STUDIO_URL || `http://localhost:${STUDIO_PORT + 1}`;
 let currentStudio = null; // { projectId, process, startedAt }
 
 function readProjectMeta(id) {

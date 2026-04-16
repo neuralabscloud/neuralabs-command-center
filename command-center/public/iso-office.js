@@ -29,15 +29,39 @@
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
 
-  // Evlyn — Chief AI Officer / orchestrator (lives above the floor)
+  // Chief AI Officer / orchestrator (lives above the floor)
+  // Name is loaded dynamically from brand settings
   const CHIEF = {
-    key: "evlyn",
-    name: "EVLYN",
+    key: "chief",
+    name: "AI",
     title: "CHIEF AI OFFICER",
     href: "chat.html",
     cx: 600,
     cy: 70,
   };
+
+  // Load brand settings to personalize the office
+  let _brandCompany = 'HQ';
+  let _brandAssistant = '';
+  fetch('/api/settings', { credentials: 'include' })
+    .then(r => r.json())
+    .then(s => {
+      if (s.branding?.company_name) _brandCompany = s.branding.company_name;
+      if (s.branding?.assistant_name) {
+        _brandAssistant = s.branding.assistant_name;
+        CHIEF.name = s.branding.assistant_name.toUpperCase();
+        CHIEF.key = s.branding.assistant_name.toLowerCase();
+      }
+      // Re-render topbar labels
+      document.querySelectorAll('.iso-topbar-left').forEach(el => {
+        el.innerHTML = `${_brandCompany} HQ · <b>Floor 01</b> · Live`;
+      });
+      // Re-render chief label
+      document.querySelectorAll('.chief-label').forEach(el => {
+        el.textContent = CHIEF.name;
+      });
+    })
+    .catch(() => {});
 
   function agentByKey(k) { return OFFICE.find(a => a.key === k); }
   function isoGridPos(gx, gy) {
@@ -287,7 +311,7 @@
     container.innerHTML = `
       <div class="iso-wrap">
         <div class="iso-topbar">
-          <div class="iso-topbar-left">NeuraLabs HQ · <b>Floor 01</b> · Live</div>
+          <div class="iso-topbar-left">${_brandCompany} HQ · <b>Floor 01</b> · Live</div>
           <div class="iso-topbar-right"><span class="live-dot"></span><span class="iso-clock">--:--</span></div>
         </div>
         <svg class="iso-scene" viewBox="115 10 965 710" preserveAspectRatio="xMidYMid meet"></svg>
