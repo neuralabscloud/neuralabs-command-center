@@ -150,8 +150,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 mkdir -p "$INSTALL_DIR"
 
-# Copy only Command Center components (no trading bots)
-for component in command-center scripts config; do
+# Copy Command Center components
+for component in command-center config; do
   if [ -d "$SCRIPT_DIR/$component" ]; then
     cp -r "$SCRIPT_DIR/$component" "$INSTALL_DIR/"
   fi

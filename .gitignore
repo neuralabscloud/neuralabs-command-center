@@ -47,9 +47,6 @@ command-center/data/marketingskills/
 command-center/data/transcripts/*
 !command-center/data/transcripts/.gitkeep
 
-# Trading dashboard caches
-trading-dashboard/data/*.json
-
 # Lock files
 .bot*.lock
 .server.lock
