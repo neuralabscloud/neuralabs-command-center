@@ -10,7 +10,6 @@
     { href: 'analyst.html', label: 'Analyst', icon: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/>' },
     { href: 'content-creator.html', label: 'Content Creator', icon: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>' },
     { href: 'scriptwriter.html', label: 'Script Writer', icon: '<path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' },
-    { href: 'http://147.79.102.153:3000/', label: 'Trading Dashboard', icon: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>', external: true },
   ];
 
   const BELL_ICON = '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>';
@@ -26,7 +25,7 @@
   if (!sidebar) return;
 
   sidebar.innerHTML = `
-    <div class="sidebar-logo">NL</div>
+    <div class="sidebar-logo" id="sidebar-logo">CC</div>
     <nav class="sidebar-nav">
       ${NAV_ITEMS.map(item => {
         const active = item.href === currentPage ? ' active' : '';
@@ -49,11 +48,15 @@
     </a>
   `;
 
-  // Dynamically load assistant name from brand config
+  // Dynamically load branding from config
   fetch('/brand').then(r => r.json()).then(b => {
-    const name = b && b.assistant_name;
-    if (!name) return;
-    const el = document.getElementById('sidebar-assistant-tooltip');
-    if (el) el.textContent = name;
+    if (b && b.assistant_name) {
+      const el = document.getElementById('sidebar-assistant-tooltip');
+      if (el) el.textContent = b.assistant_name;
+    }
+    if (b && b.company_name) {
+      const logo = document.getElementById('sidebar-logo');
+      if (logo) logo.textContent = b.company_name.substring(0, 2).toUpperCase();
+    }
   }).catch(() => {});
 })();

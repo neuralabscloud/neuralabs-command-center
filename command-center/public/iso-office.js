@@ -30,7 +30,7 @@
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
 
   // Chief AI Officer / orchestrator (lives above the floor)
-  // Name is loaded dynamically from brand settings
+  // Name is loaded dynamically from brand settings in init()
   const CHIEF = {
     key: "chief",
     name: "AI",
@@ -40,28 +40,7 @@
     cy: 70,
   };
 
-  // Load brand settings to personalize the office
   let _brandCompany = 'HQ';
-  let _brandAssistant = '';
-  fetch('/api/settings', { credentials: 'include' })
-    .then(r => r.json())
-    .then(s => {
-      if (s.branding?.company_name) _brandCompany = s.branding.company_name;
-      if (s.branding?.assistant_name) {
-        _brandAssistant = s.branding.assistant_name;
-        CHIEF.name = s.branding.assistant_name.toUpperCase();
-        CHIEF.key = s.branding.assistant_name.toLowerCase();
-      }
-      // Re-render topbar labels
-      document.querySelectorAll('.iso-topbar-left').forEach(el => {
-        el.innerHTML = `${_brandCompany} HQ · <b>Floor 01</b> · Live`;
-      });
-      // Re-render chief label
-      document.querySelectorAll('.chief-label').forEach(el => {
-        el.textContent = CHIEF.name;
-      });
-    })
-    .catch(() => {});
 
   function agentByKey(k) { return OFFICE.find(a => a.key === k); }
   function isoGridPos(gx, gy) {
@@ -327,14 +306,29 @@
   }
 
   async function init() {
-    // Load assistant name from brand config before rendering
+    // Load brand config and check trading addon before rendering
     try {
       const res = await fetch('/brand');
       if (res.ok) {
         const b = await res.json();
         if (b && b.assistant_name) CHIEF.name = String(b.assistant_name).toUpperCase();
+        if (b && b.company_name) _brandCompany = b.company_name;
       }
     } catch {}
+
+    // Check if trading bots addon is installed — hide trader station if not
+    try {
+      const r = await fetch('/api/status');
+      if (!r.ok) {
+        // Remove trader from office grid
+        const idx = OFFICE.findIndex(a => a.key === 'trader');
+        if (idx !== -1) OFFICE.splice(idx, 1);
+      }
+    } catch {
+      const idx = OFFICE.findIndex(a => a.key === 'trader');
+      if (idx !== -1) OFFICE.splice(idx, 1);
+    }
+
     const containers = document.querySelectorAll('[data-iso-office]');
     containers.forEach(initContainer);
   }

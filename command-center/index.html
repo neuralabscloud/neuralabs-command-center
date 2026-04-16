@@ -1602,9 +1602,15 @@ const TASK_APIS = {
 };
 
 async function renderAiTeam() {
-  // Fetch bot data for Trader card
+  // Fetch bot data for Trader card — if bots not installed, hide trader entirely
   let botData = null;
-  try { botData = await (await fetch('/api/status')).json(); } catch {}
+  let tradingInstalled = false;
+  try {
+    const res = await fetch('/api/status');
+    if (res.ok) { botData = await res.json(); tradingInstalled = true; }
+  } catch {}
+
+  const team = tradingInstalled ? aiTeam : aiTeam.filter(a => !a.isTrader);
 
   // Fetch task counts per agent
   const taskCounts = {};
@@ -1621,7 +1627,7 @@ async function renderAiTeam() {
     } catch { taskCounts[name] = { pending: 0, processing: 0, completed: 0 }; }
   }
 
-  document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
+  document.getElementById('ai-team-grid').innerHTML = team.map(a => {
     if (a.isTrader && botData) {
       const TRADER_BOTS = ['funding','trend'];
       const totalBots = TRADER_BOTS.length;
