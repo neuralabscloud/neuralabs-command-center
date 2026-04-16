@@ -102,6 +102,13 @@ echo ""
 info "Installing system dependencies..."
 
 export DEBIAN_FRONTEND=noninteractive
+
+# Wait for any running apt/dpkg process to finish (e.g. unattended-upgrades on fresh servers)
+while fuser /var/lib/dpkg/lock-frontend &>/dev/null; do
+  info "Waiting for other package manager to finish..."
+  sleep 5
+done
+
 info "Updating package lists..."
 apt-get update -q || { error "apt-get update failed — check your internet connection"; exit 1; }
 
@@ -207,11 +214,20 @@ cd "$INSTALL_DIR/command-center" && npm install --omit=dev 2>&1
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
+# Non-fatal: if this fails the rest of the install must continue
 info "Installing Playwright browsers (this may take a few minutes)..."
 if npx playwright install chromium 2>&1; then
   info "Installing Playwright system dependencies (this may take a few minutes)..."
-  DEBIAN_FRONTEND=noninteractive npx playwright install-deps chromium 2>&1
-  ok "Playwright Chromium installed"
+  # Wait for any running apt/dpkg process to finish (e.g. unattended-upgrades)
+  while fuser /var/lib/dpkg/lock-frontend &>/dev/null; do
+    info "Waiting for other package manager to finish..."
+    sleep 5
+  done
+  if DEBIAN_FRONTEND=noninteractive npx playwright install-deps chromium 2>&1; then
+    ok "Playwright Chromium installed"
+  else
+    warn "Playwright system deps failed — slide designer may not work. Install later with: npx playwright install-deps chromium"
+  fi
 else
   warn "Playwright install failed — slide designer won't work. Install later with: npx playwright install chromium"
 fi
