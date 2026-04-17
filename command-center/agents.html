@@ -331,7 +331,9 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="scriptwriter">Script Writer</option>
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
+              <option value="ads_optimizer">Ads Optimizer</option>
             </select>
+            <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
           <div>
             <label class="sched-label">Time (UTC)</label>
@@ -692,7 +694,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', analyst: 'ANALYST', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT' };
+const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', analyst: 'ANALYST', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   researcher: 'color:hsl(264 65% 49%)',
@@ -700,7 +702,50 @@ const AGENT_STYLES = {
   scriptwriter: 'color:hsl(30 90% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
   assistant: 'color:hsl(210 90% 55%)',
+  ads_optimizer: 'color:hsl(142 76% 36%)',
 };
+const AGENT_DESCRIPTIONS = {
+  designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
+  researcher: 'Scans social platforms (X, Reddit, TikTok) for trending topics, competitor activity, and content ideas in your niche.',
+  analyst: 'Runs diagnostics on trading bots — process health, log errors, performance metrics — and generates reports.',
+  scriptwriter: 'Writes video scripts, social posts, or thread copy based on a topic and tone you specify.',
+  marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
+  assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
+  ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
+};
+
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function buildScheduleSummary(s) {
+  const p = s.payload || {};
+  switch (s.agent) {
+    case 'designer': {
+      const parts = [];
+      if (p.auto_from_research) parts.push('Picks trending topic from latest research');
+      else if (p.description) parts.push(`"${p.description.substring(0, 60)}${p.description.length > 60 ? '...' : ''}"`);
+      parts.push(`${(p.design_type || 'instagram_post').replace(/_/g, ' ')} via ${p.engine || 'nanobanana'}`);
+      if (p.brand) parts.push(`brand: ${p.brand}`);
+      return parts.join(' · ');
+    }
+    case 'researcher': {
+      const lang = p.language === 'EN' ? 'English' : 'Dutch';
+      const platforms = Array.isArray(p.platforms) ? p.platforms.join(', ') : (p.platforms || 'x, reddit, tiktok');
+      return `${lang} ${(p.type || 'daily_full').replace(/_/g, ' ')} scan · niche: ${p.niche || 'crypto'} · platforms: ${platforms}`;
+    }
+    case 'analyst':
+      return `${(p.type || 'daily_diagnose').replace(/_/g, ' ')} — ${p.description || 'automated analysis'}`;
+    case 'scriptwriter':
+      return `${p.language || 'NL'} · type: ${p.type || 'script'}${p.prompt ? ' · "' + p.prompt.substring(0, 50) + '"' : ''}`;
+    case 'marketeer':
+      return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Marketing strategy task';
+    case 'assistant':
+      return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Calendar overview';
+    case 'ads_optimizer':
+      return `Analyzes campaign performance (${p.period || 'last_7d'}), auto-pauses ROAS < 0.8, scales ROAS > 2.5, sends Telegram report`;
+    default:
+      return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
+  }
+}
 
 async function loadSchedules() {
   try {
@@ -712,13 +757,7 @@ async function loadSchedules() {
     el.innerHTML = scheds.map(s => {
       const days = (s.days || []).map(d => d.substring(0,2).toUpperCase()).join(' ');
       const time = `${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} UTC`;
-      const details = [];
-      if (s.payload?.brand) details.push(s.payload.brand);
-      if (s.payload?.engine) details.push(s.payload.engine);
-      if (s.payload?.language) details.push(s.payload.language);
-      if (s.payload?.design_type) details.push(s.payload.design_type.replace(/_/g,' '));
-      if (s.payload?.auto_from_research) details.push('auto from research');
-      if (s.payload?.type) details.push(s.payload.type);
+      const summary = buildScheduleSummary(s);
       const lastRun = s.last_run ? new Date(s.last_run).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'never';
       return `
         <div class="sched-card ${s.enabled ? '' : 'disabled'}">
@@ -727,10 +766,10 @@ async function loadSchedules() {
             <button class="sched-btn" onclick="editSchedule('${s.id}')">Edit</button>
             <button class="sched-btn del" onclick="deleteSchedule('${s.id}')">Del</button>
           </div>
-          <div class="sched-name">${s.name}</div>
+          <div class="sched-name">${escHtml(s.name)}</div>
           <div class="sched-agent" style="${AGENT_STYLES[s.agent] || ''}">${AGENT_LABELS[s.agent] || s.agent}</div>
           <div class="sched-time"><span class="sched-badge ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'active' : 'paused'}</span>${time} &middot; ${days}</div>
-          <div class="sched-details">${details.join(' &middot; ')}</div>
+          <div class="sched-details">${summary}</div>
           <div class="sched-last">Last run: ${lastRun}</div>
         </div>`;
     }).join('');
@@ -755,7 +794,7 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Engine</label>
         <select class="sched-select" id="sp-engine"><option value="nanobanana">Nano Banana</option><option value="playwright">Playwright</option><option value="claude">Claude AI</option></select></div>
       <div><label class="sched-label">Brand</label>
-        <select class="sched-select" id="sp-brand"><option value="">Loading...</option></select></div>
+        <select class="sched-select" id="sp-brand"></select></div>
     </div>
     <div class="sched-form-row">
       <div><label class="sched-label">Design Type</label>
@@ -808,8 +847,8 @@ const PAYLOAD_FIELDS = {
     <div><label class="sched-label">Prompt</label>
       <input class="sched-input" id="sp-prompt" placeholder="What to write about"></div>`,
   marketeer: `
-    <div><label class="sched-label">Marketing opdracht</label>
-      <input class="sched-input" id="sp-query" placeholder="Bijv. 'Maak een weekly social media plan' of 'Analyseer onze content performance'"></div>
+    <div><label class="sched-label">What should the marketeer do?</label>
+      <input class="sched-input" id="sp-query" placeholder="e.g. 'Create a weekly social media plan' or 'Analyze our content performance and suggest improvements'"></div>
     <div class="sched-form-row" style="margin-top:8px">
       <div><label class="sched-label">Skill focus</label>
         <select class="sched-select" id="sp-skill"><option value="auto">Auto-detect</option><option value="social-content">Social Content</option><option value="content-strategy">Content Strategy</option><option value="copywriting">Copywriting</option><option value="seo-audit">SEO Audit</option><option value="paid-ads">Paid Ads</option><option value="marketing-ideas">Marketing Ideas</option></select></div>
@@ -817,22 +856,59 @@ const PAYLOAD_FIELDS = {
         <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
     </div>`,
   assistant: `
-    <div><label class="sched-label">Opdracht</label>
-      <input class="sched-input" id="sp-query" placeholder="Bijv. 'Geef een overzicht van mijn agenda vandaag' of 'Plan een standup elke ochtend om 9:00'"></div>
+    <div><label class="sched-label">What should the assistant do?</label>
+      <input class="sched-input" id="sp-query" placeholder="e.g. 'Give me a daily agenda overview' or 'Remind me to take breaks between meetings'"></div>
     <div class="sched-form-row" style="margin-top:8px">
       <div><label class="sched-label">Notify via Telegram</label>
         <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
+    </div>`,
+  ads_optimizer: `
+    <div style="background:hsla(142 76% 36%/0.06);border:1px solid hsla(142 76% 36%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li>Fetches all campaign performance data from Meta</li>
+        <li>Sends data to Claude AI for analysis</li>
+        <li><b style="color:hsl(0 72% 51%)">Pauses</b> campaigns with ROAS &lt; 0.8 and spend &gt; €5</li>
+        <li><b style="color:hsl(142 76% 36%)">Scales</b> campaigns with ROAS &gt; 2.5 — budget +20%</li>
+        <li>Sends alerts for high spend without conversions</li>
+        <li>Never changes budgets by more than 30% at once</li>
+        <li>Full report via Telegram + notification</li>
+      </ul>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Analysis period</label>
+        <select class="sched-select" id="sp-period">
+          <option value="yesterday">Yesterday</option>
+          <option value="last_3d">Last 3 days</option>
+          <option value="last_7d" selected>Last 7 days</option>
+          <option value="last_14d">Last 14 days</option>
+          <option value="last_30d">Last 30 days</option>
+        </select></div>
     </div>`,
 };
 
 function updatePayloadFields() {
   const agent = document.getElementById('sched-agent').value;
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
-  // Toggle desc visibility for designer
+  document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
+  // Toggle desc visibility for designer + populate brand dropdown
   if (agent === 'designer') {
     const cb = document.getElementById('sp-auto_from_research');
     const descRow = document.getElementById('sp-desc-row');
     cb?.addEventListener('change', () => { descRow.style.display = cb.checked ? 'none' : 'block'; });
+    // Load brands dynamically
+    fetch('/brand-configs', { credentials: 'include' }).then(r => r.json()).then(brands => {
+      const sel = document.getElementById('sp-brand');
+      if (!sel) return;
+      const names = (Array.isArray(brands) ? brands : []).map(b => b.name || b.brand_name).filter(Boolean);
+      if (!names.length) {
+        fetch('/brand', { credentials: 'include' }).then(r => r.json()).then(b => {
+          sel.innerHTML = `<option value="${b.company_name || 'DEFAULT'}">${(b.company_name || 'DEFAULT').toUpperCase()}</option>`;
+        }).catch(() => { sel.innerHTML = '<option value="DEFAULT">DEFAULT</option>'; });
+      } else {
+        sel.innerHTML = names.map(n => `<option value="${n.toUpperCase()}">${n.toUpperCase()}</option>`).join('');
+      }
+    }).catch(() => {});
   }
 }
 
@@ -921,14 +997,6 @@ async function loadAll() {
 }
 loadAll();
 loadSchedules();
-// Load brands dynamically into designer dropdown
-fetch('/brands', { credentials: 'include' }).then(r => r.json()).then(brands => {
-  const sel = document.getElementById('sp-brand');
-  if (!sel) return;
-  const names = Object.keys(brands);
-  if (!names.length) { sel.innerHTML = '<option value="">No brands configured</option>'; return; }
-  sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
-}).catch(() => {});
 checkCanvaStatus();
 setInterval(loadAll, 8000);
 setInterval(checkCanvaStatus, 30000);

@@ -36,9 +36,6 @@ app.use((_req, res, next) => {
 // ── AUTH ──────────────────────────────────────
 const CC_PASSWORD = process.env.CC_PASSWORD;
 const SESSION_SECRET = process.env.CC_SESSION_SECRET;
-const LANGUAGE = process.env.LANGUAGE || "en";
-const TIMEZONE = process.env.TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-const DEFAULT_NICHE = process.env.DEFAULT_NICHE || "";
 if (!CC_PASSWORD || !SESSION_SECRET) {
   console.error("FATAL: CC_PASSWORD and CC_SESSION_SECRET must be set in .env");
   process.exit(1);
@@ -87,13 +84,9 @@ app.use("/brand-loader.js", express.static(path.join(__dirname, "brand-loader.js
 
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
-  // Allow auth endpoints and setup check
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
-  // Allow internal requests (from scheduler)
   if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
-  // Check session
   if (isValidSession(req.cookies?.cc_session)) return next();
-  // Unauthenticated: redirect HTML requests to login, reject API calls
   if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
 });
@@ -105,7 +98,23 @@ app.use(express.static(path.join(__dirname, "public")));
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
-// Telegram config is read from .env
+// Populate process.env with values from bot config.py files (for Telegram etc.)
+(function populateEnvFromBotConfigs() {
+  const botConfigs = [
+    path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+    path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+  ];
+  for (const f of botConfigs) {
+    try {
+      if (!fs.existsSync(f)) continue;
+      const content = fs.readFileSync(f, "utf8");
+      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
+    } catch {}
+  }
+})();
 
 function readEnvFile() {
   const env = {};
@@ -117,9 +126,26 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
+  }
+  // Check bot config.py files for Telegram if not in .env
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    const botConfigs = [
+      path.join(__dirname, "..", "neuralabs-bot", "config.py"),
+      path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+    ];
+    for (const f of botConfigs) {
+      try {
+        if (!fs.existsSync(f)) continue;
+        const content = fs.readFileSync(f, "utf8");
+        const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
+        const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
+        if (tokenMatch && tokenMatch[1] && !env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
+        if (chatMatch && chatMatch[1] && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = chatMatch[1];
+      } catch {}
+    }
   }
   return env;
 }
@@ -133,6 +159,9 @@ function writeEnvFile(updates) {
     else content += `\n${key}=${val}`;
   }
   fs.writeFileSync(ENV_PATH, content.trim() + "\n", { mode: 0o600 });
+  for (const [key, val] of Object.entries(updates)) {
+    process.env[key] = val;
+  }
 }
 
 function maskKey(val) {
@@ -161,6 +190,7 @@ app.get("/api/settings", (_req, res) => {
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
       heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY) },
+      inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
       youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
@@ -189,6 +219,7 @@ app.post("/api/settings", (req, res) => {
       heygen_key: "HEYGEN_API_KEY",
       stripe_key: "STRIPE_SECRET_KEY",
       composio_key: "COMPOSIO_API_KEY",
+      inference_key: "INFERENCE_API_KEY",
       meta_app_id: "META_APP_ID",
       meta_app_secret: "META_APP_SECRET",
       meta_redirect_uri: "META_REDIRECT_URI",
@@ -223,23 +254,6 @@ app.post("/api/settings", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// ── SETUP STATUS ────────────────────────────────
-app.get("/api/setup-status", (_req, res) => {
-  const env = readEnvFile();
-  const brand = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8")); } catch { return {}; } })();
-  const defaultNames = ["MyBrand", "Command Center", ""];
-  const hasCompany = !!(brand.company_name && !defaultNames.includes(brand.company_name));
-  const hasAnthropic = !!env.ANTHROPIC_API_KEY;
-  const setupDone = hasCompany || hasAnthropic;
-  res.json({ setup_complete: setupDone, has_branding: hasCompany, has_anthropic: hasAnthropic });
-});
-
-// ── YOUTUBE API KEY (for frontend social cards) ──
-app.get("/api/youtube-key", (_req, res) => {
-  const env = readEnvFile();
-  res.json({ key: env.YOUTUBE_API_KEY || "" });
 });
 
 // Generic task file helpers
@@ -1236,8 +1250,14 @@ app.delete("/scriptwriter/tasks/:id", (req, res) => {
 // ── BOT TRADE HISTORY (reads from bot data files) ──
 const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
 const TRADE_FILES = {
-  funding: path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
-  trend: path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
+  funding: [
+    path.join(__dirname, "..", "neuralabs-bot", "data", "trade_history.json"),
+    path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
+  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
+  trend: [
+    path.join(__dirname, "..", "neuralabs-bot-5", "data", "trade_history.json"),
+    path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
+  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
 };
 
 app.get("/analyst/trades/:botId", (req, res) => {
@@ -1294,8 +1314,8 @@ app.post("/research/tasks", (req, res) => {
     type: req.body.type || "trending",
     query: req.body.query || "",
     platforms: req.body.platforms || ["tiktok", "x", "reddit"],
-    niche: req.body.niche || DEFAULT_NICHE,
-    language: req.body.language || LANGUAGE.toUpperCase(),
+    niche: req.body.niche || "crypto trading",
+    language: req.body.language || "NL",
     brand: brandContext.name,
     brand_context: brandContext,
     error: null,
@@ -1332,10 +1352,10 @@ app.post("/research/daily", (_req, res) => {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     type: "daily",
-    query: `Daily research — ${today}. Research the latest trends, market developments, trending topics, and generate concrete content suggestions.`,
-    platforms: ["x", "reddit", "tiktok"],
-    niche: DEFAULT_NICHE,
-    language: LANGUAGE.toUpperCase(),
+    query: `Daily crypto & trading research — ${today}. Onderzoek de belangrijkste crypto ontwikkelingen, marktbewegingen, trending topics op X/Reddit/TikTok, en genereer concrete content suggesties voor Instagram en Twitter.`,
+    platforms: ["x", "reddit", "tiktok", "coingecko", "coinmarketcap"],
+    niche: "crypto trading",
+    language: "NL",
     error: null,
   };
   tasks.unshift(task);
@@ -1562,8 +1582,8 @@ app.get("/social/meta/auth", (req, res) => {
   const state = crypto.randomBytes(16).toString("hex");
   res.cookie("meta_oauth_state", state, { httpOnly: true, maxAge: 600_000, sameSite: "lax" });
   const scope = [
-    "instagram_basic", "pages_show_list", "pages_read_engagement",
-    "instagram_manage_insights", "business_management",
+    "pages_show_list", "pages_read_engagement",
+    "business_management",
     "ads_read", "ads_management",
   ].join(",");
   const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&scope=${scope}&state=${state}&response_type=code`;
@@ -1638,7 +1658,7 @@ app.get("/social/meta/callback", async (req, res) => {
     } catch (e) { console.warn("[META] ad accounts fetch failed:", e.message); }
 
     writeSocial(existing);
-    res.send(`<!doctype html><meta charset="utf-8"><title>Connected</title><style>body{background:#000;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}a{color:hsl(264 65% 65%)}</style><div><h2>✓ ${added} Instagram account${added===1?"":"s"} + ${adAccountsAdded} ad account${adAccountsAdded===1?"":"s"} connected</h2><p>You can close this tab.</p><a href="/settings.html">← Back to Settings</a><script>setTimeout(()=>window.close(),2000)</script></div>`);
+    res.send(`<!doctype html><meta charset="utf-8"><title>Connected</title><style>body{background:#000;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}a{color:hsl(264 65% 65%)}</style><div><h2>✓ ${added} Instagram account${added===1?"":"s"} + ${adAccountsAdded} ad account${adAccountsAdded===1?"":"s"} gekoppeld</h2><p>Je kunt dit tabblad sluiten.</p><a href="/settings.html">← Terug naar Settings</a><script>setTimeout(()=>window.close(),2000)</script></div>`);
   } catch (e) {
     res.status(500).send(`<h2>Connect mislukt</h2><pre>${e.message}</pre><a href="/settings.html">Terug</a>`);
   }
@@ -1681,7 +1701,7 @@ app.get("/social/ig/stats", async (req, res) => {
   }
 });
 
-// ── META ADS (Marketing API) — read-only phase 1 ──
+// ── META ADS (Marketing API) ──
 app.get("/ads/accounts", (_req, res) => {
   const accounts = readSocial()
     .filter((c) => c.platform === "meta_ads")
@@ -1731,6 +1751,196 @@ app.get("/ads/insights", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── META ADS — write actions (phase 2) ──
+
+app.post("/ads/campaigns/:campaignId/status", async (req, res) => {
+  const { campaignId } = req.params;
+  const { status, account_id } = req.body;
+  if (!["ACTIVE", "PAUSED"].includes(status)) return res.status(400).json({ error: "Status must be ACTIVE or PAUSED" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${campaignId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, access_token: conn.user_access_token }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/ads/campaigns/:campaignId/budget", async (req, res) => {
+  const { campaignId } = req.params;
+  const { daily_budget, lifetime_budget, account_id } = req.body;
+  if (!daily_budget && !lifetime_budget) return res.status(400).json({ error: "Provide daily_budget or lifetime_budget (in cents)" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const body = { access_token: conn.user_access_token };
+    if (daily_budget) body.daily_budget = Math.round(Number(daily_budget));
+    if (lifetime_budget) body.lifetime_budget = Math.round(Number(lifetime_budget));
+    const r = await fetch(`https://graph.facebook.com/v21.0/${campaignId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── META ADS — adset management (phase 3) ──
+
+app.get("/ads/adsets", async (req, res) => {
+  const { account_id, campaign_id } = req.query;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const fields = "id,name,status,effective_status,daily_budget,lifetime_budget,targeting,optimization_goal,bid_strategy,start_time,end_time,campaign_id";
+    let url = `https://graph.facebook.com/v21.0/${conn.ad_account_id}/adsets?fields=${fields}&limit=200&access_token=${conn.user_access_token}`;
+    if (campaign_id) url += `&filtering=[{"field":"campaign.id","operator":"EQUAL","value":"${campaign_id}"}]`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ adsets: d.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/ads/adsets/:adsetId/status", async (req, res) => {
+  const { adsetId } = req.params;
+  const { status, account_id } = req.body;
+  if (!["ACTIVE", "PAUSED"].includes(status)) return res.status(400).json({ error: "Status must be ACTIVE or PAUSED" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adsetId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, access_token: conn.user_access_token }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/ads/adsets/:adsetId/budget", async (req, res) => {
+  const { adsetId } = req.params;
+  const { daily_budget, lifetime_budget, account_id } = req.body;
+  if (!daily_budget && !lifetime_budget) return res.status(400).json({ error: "Provide daily_budget or lifetime_budget (in cents)" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const body = { access_token: conn.user_access_token };
+    if (daily_budget) body.daily_budget = Math.round(Number(daily_budget));
+    if (lifetime_budget) body.lifetime_budget = Math.round(Number(lifetime_budget));
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adsetId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── META ADS — ad creative management (phase 3) ──
+
+app.get("/ads/ads", async (req, res) => {
+  const { account_id, campaign_id, adset_id } = req.query;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const fields = "id,name,status,effective_status,creative{id,name,title,body,image_url,thumbnail_url,object_story_spec},adset_id,campaign_id";
+    const filtering = [];
+    if (campaign_id) filtering.push(`{"field":"campaign.id","operator":"EQUAL","value":"${campaign_id}"}`);
+    if (adset_id) filtering.push(`{"field":"adset.id","operator":"EQUAL","value":"${adset_id}"}`);
+    let url = `https://graph.facebook.com/v21.0/${conn.ad_account_id}/ads?fields=${fields}&limit=200&access_token=${conn.user_access_token}`;
+    if (filtering.length) url += `&filtering=[${filtering.join(",")}]`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ads: d.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/ads/ads/:adId/status", async (req, res) => {
+  const { adId } = req.params;
+  const { status, account_id } = req.body;
+  if (!["ACTIVE", "PAUSED"].includes(status)) return res.status(400).json({ error: "Status must be ACTIVE or PAUSED" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, access_token: conn.user_access_token }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── META ADS — automated rules (phase 3) ──
+
+app.get("/ads/rules", (_req, res) => {
+  try {
+    const rules = readTaskFile("ads-rules.json");
+    res.json({ rules });
+  } catch { res.json({ rules: [] }); }
+});
+
+app.post("/ads/rules", (req, res) => {
+  const { name, account_id, metric, operator, threshold, action, action_value, check_period, enabled } = req.body;
+  if (!name || !account_id || !metric || !operator || !threshold || !action) {
+    return res.status(400).json({ error: "Missing required fields: name, account_id, metric, operator, threshold, action" });
+  }
+  let rules = [];
+  try { rules = readTaskFile("ads-rules.json"); } catch {}
+  const rule = {
+    id: "rule_" + genId(), name, account_id, metric, operator, threshold: Number(threshold),
+    action, action_value: action_value || null,
+    check_period: check_period || "last_7d", enabled: enabled !== false,
+    created_at: new Date().toISOString(), last_triggered: null, trigger_count: 0,
+  };
+  rules.push(rule);
+  writeTaskFile("ads-rules.json", rules);
+  res.status(201).json(rule);
+});
+
+app.patch("/ads/rules/:id", (req, res) => {
+  const rules = readTaskFile("ads-rules.json");
+  const rule = rules.find(r => r.id === req.params.id);
+  if (!rule) return res.status(404).json({ error: "Rule not found" });
+  for (const key of ["name", "metric", "operator", "threshold", "action", "action_value", "check_period", "enabled"]) {
+    if (req.body[key] !== undefined) rule[key] = req.body[key];
+  }
+  if (rule.threshold !== undefined) rule.threshold = Number(rule.threshold);
+  writeTaskFile("ads-rules.json", rules);
+  res.json(rule);
+});
+
+app.delete("/ads/rules/:id", (req, res) => {
+  writeTaskFile("ads-rules.json", readTaskFile("ads-rules.json").filter(r => r.id !== req.params.id));
+  res.json({ ok: true });
 });
 
 app.get("/settings/services", async (_req, res) => {
@@ -1968,7 +2178,7 @@ async function handleTgMessage(msg) {
 
   // Only respond to authorized user
   if (chatId !== TG_CHAT) {
-    tgSend(chatId, "Unauthorized.");
+    tgSend(chatId, "Niet geautoriseerd.");
     return;
   }
 
@@ -1977,14 +2187,14 @@ async function handleTgMessage(msg) {
   // Handle /start command
   if (text === "/start") {
     const brand = loadBrand();
-    tgSend(chatId, `Hey! I am *${brand.assistant_name}*, your ${brand.company_name} AI assistant.\n\nI have access to everything in the Command Center:\n- Bot performance & live status\n- 9 agents (designer, video, researcher, analyst, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar management\n- Web search for current news & market data\n\nCommands:\n/status — Bot status check\n/clear — Clear chat history\n\nOr just send a message to get started.`);
+    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- Bot performance & live status\n- 9 agents aansturen (designer, video, researcher, analyst, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/status — Bot status check\n/ads — Meta Ads overview & beheer\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`);
     return;
   }
 
   // Handle /clear command
   if (text === "/clear") {
     delete chatSessions["telegram"];
-    tgSend(chatId, "Chat history cleared.");
+    tgSend(chatId, "Chat history gewist.");
     return;
   }
 
@@ -2003,8 +2213,83 @@ async function handleTgMessage(msg) {
         }
         tgSend(chatId, lines.join("\n"));
       } else {
-        tgSend(chatId, "Cannot connect to trading dashboard.");
+        tgSend(chatId, "Kan geen verbinding maken met trading dashboard.");
       }
+    } catch (e) {
+      tgSend(chatId, "Error: " + e.message);
+    }
+    return;
+  }
+
+  // Handle /ads command
+  if (text === "/ads" || text.startsWith("/ads ")) {
+    try {
+      const accounts = readSocial().filter(c => c.platform === "meta_ads");
+      if (!accounts.length) { tgSend(chatId, "Geen Meta ad accounts gekoppeld."); return; }
+      const sub = text.slice(5).trim();
+
+      // /ads — overview of all accounts
+      if (!sub) {
+        const lines = ["*📊 Meta Ads Overview*\n"];
+        for (const acc of accounts) {
+          try {
+            const insUrl = `https://graph.facebook.com/v21.0/${acc.ad_account_id}/insights?fields=spend,impressions,clicks,ctr,actions,purchase_roas&date_preset=last_7d&access_token=${acc.user_access_token}`;
+            const d = await fetch(insUrl).then(r => r.json());
+            const row = d.data?.[0] || {};
+            const spend = Number(row.spend) || 0;
+            const clicks = Number(row.clicks) || 0;
+            const ctr = Number(row.ctr) || 0;
+            let roas = 0;
+            if (Array.isArray(row.purchase_roas) && row.purchase_roas[0]) roas = Number(row.purchase_roas[0].value) || 0;
+            const roasIcon = roas >= 2 ? "🟢" : (roas > 0 ? "🟡" : "⚪");
+            lines.push(`*${acc.name}* (${acc.currency})`);
+            lines.push(`  Spend: €${spend.toFixed(2)} | Clicks: ${clicks} | CTR: ${ctr.toFixed(2)}%`);
+            lines.push(`  ${roasIcon} ROAS: ${roas > 0 ? roas.toFixed(2) + "x" : "—"}\n`);
+          } catch { lines.push(`*${acc.name}* — data unavailable\n`); }
+        }
+        lines.push("_Last 7 days. Commands:_");
+        lines.push("`/ads campaigns` — list campaigns");
+        lines.push("`/ads pause <id>` — pause campaign");
+        lines.push("`/ads activate <id>` — activate campaign");
+        tgSend(chatId, lines.join("\n"));
+        return;
+      }
+
+      const acc = accounts[0]; // default to first account
+
+      // /ads campaigns
+      if (sub === "campaigns" || sub === "camp") {
+        const campUrl = `https://graph.facebook.com/v21.0/${acc.ad_account_id}/campaigns?fields=id,name,status,effective_status,daily_budget&limit=20&access_token=${acc.user_access_token}`;
+        const d = await fetch(campUrl).then(r => r.json());
+        if (!d.data?.length) { tgSend(chatId, "Geen campagnes gevonden."); return; }
+        const lines = [`*Campaigns — ${acc.name}*\n`];
+        for (const c of d.data) {
+          const status = c.effective_status || c.status;
+          const icon = status === "ACTIVE" ? "🟢" : (status === "PAUSED" ? "🟡" : "⚪");
+          const budget = c.daily_budget ? `€${(Number(c.daily_budget)/100).toFixed(2)}/day` : "";
+          lines.push(`${icon} *${c.name}*`);
+          lines.push(`  ID: \`${c.id}\` | ${status} ${budget}`);
+        }
+        tgSend(chatId, lines.join("\n"));
+        return;
+      }
+
+      // /ads pause <id> or /ads activate <id>
+      const pauseMatch = sub.match(/^(pause|activate)\s+(\d+)$/);
+      if (pauseMatch) {
+        const [, action, campId] = pauseMatch;
+        const newStatus = action === "pause" ? "PAUSED" : "ACTIVE";
+        const r = await fetch(`https://graph.facebook.com/v21.0/${campId}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus, access_token: acc.user_access_token }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error.message);
+        tgSend(chatId, `✅ Campaign \`${campId}\` is nu *${newStatus}*`);
+        return;
+      }
+
+      tgSend(chatId, "Gebruik: `/ads`, `/ads campaigns`, `/ads pause <id>`, `/ads activate <id>`");
     } catch (e) {
       tgSend(chatId, "Error: " + e.message);
     }
@@ -2029,13 +2314,13 @@ async function handleTgMessage(msg) {
     });
 
     const data = await res.json();
-    const reply = data.reply || data.error || "No response.";
+    const reply = data.reply || data.error || "Geen antwoord.";
 
     // Delete the ⏳ "typing" message (best effort)
     tgSend(chatId, reply);
   } catch (e) {
     console.error("[TG-BOT] Chat error:", e.message);
-    tgSend(chatId, "Error processing: " + e.message);
+    tgSend(chatId, "Fout bij verwerken: " + e.message);
   }
 }
 
@@ -2267,7 +2552,7 @@ function loadBrand() {
   try {
     return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8"));
   } catch {
-    return { company_name: "Command Center", assistant_name: "Assistant", tagline: "Your Command Center" };
+    return { company_name: "Trading Platform", assistant_name: "Assistant", tagline: "Your Trading Platform" };
   }
 }
 
@@ -2284,118 +2569,119 @@ app.get("/brand", (_req, res) => {
 
 function buildSystemPrompt() {
   const brand = loadBrand();
-  return `You are ${brand.assistant_name}, the AI assistant of ${brand.company_name}, built into the ${brand.company_name} Command Center.
-You help the user manage agents, monitor systems, and answer questions about the platform.
-You are the central intelligence of the Command Center — you have access to ALL agents and ALL skills.
+  return `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}, ingebouwd in het ${brand.company_name} Command Center.
+Je helpt de gebruiker met het aansturen van agents, het monitoren van bots, en het beantwoorden van vragen over het systeem.
+Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE agents en ALLE skills.
 
 TRADING BOTS (Hyperliquid Perps):
 - Funding Bot — Funding rate arbitrage
-- Trend Bot — BB+RSI mean-reversion strategy
+- Trend Bot — BB+RSI mean-reversion strategie
 
 COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — Video editing via Remotion (React-based video)
-- Content Creator — HeyGen avatar videos + AI Video Agent
-- Analyst — Performance analyses, risk reports, daily reports
-- Researcher — Trending content, competitor analysis, market research, keyword research
+- Content Creator — HeyGen avatar video's + AI Video Agent
+- Analyst — Performance analyses, risk reports, dagrapportages
+- Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
 - Script Writer — Video scripts, social posts, threads, newsletters
-- Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
-- Calendar — Google Calendar management (events, free slots, planning)
-- All agents have a task queue (pending/processing/completed)
+- Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
+- Calendar — Google Calendar beheer (events, vrije slots, planning)
+- Alle agents hebben een takenlijst (pending/processing/completed)
 
-INSTALLED SKILLS (49 total):
+GEÏNSTALLEERDE SKILLS (49 totaal):
 Media & Design:
-  /create-video — Create video via HeyGen prompt
-  /avatar-video — Avatar video with exact control over script, voice, scenes
+  /create-video — Video maken via HeyGen prompt
+  /avatar-video — Avatar video met exacte controle over script, stem, scenes
   /designer — Carousels, thumbnails, banners, infographics
   /nano-banana-2 — AI image generation via Google Gemini 3.1 Flash
   /remotion-best-practices — Remotion video creation best practices
-  /canvas-design — Posters, art, designs as PNG/PDF
+  /canvas-design — Posters, art, designs als PNG/PDF
   /web-artifacts-builder — Multi-component HTML artifacts (React + Tailwind + shadcn/ui)
-  /brand-guidelines — Apply brand styling to designs
+  /brand-guidelines — Brand styling toepassen op designs
 
 Marketing (25 skills via Marketeer agent):
-  /copywriting, /copy-editing — Write and review marketing copy
+  /copywriting, /copy-editing — Marketing copy schrijven en reviewen
   /email-sequence — Drip campaigns, welcome sequences, lifecycle emails
   /social-content — LinkedIn, Twitter/X, Instagram, TikTok content
   /content-strategy — Content planning, topic clusters
   /launch-strategy — Product launches, go-to-market
   /pricing-strategy — Pricing tiers, packaging, monetization
   /paid-ads — Google Ads, Meta, LinkedIn campaigns
-  /marketing-psychology — 70+ mental models for marketing
-  /marketing-ideas — 139 proven marketing tactics
-  /referral-program — Referral & affiliate programs
-  /free-tool-strategy — Lead gen tool building
-  /product-marketing-context — Positioning & context document
-  /competitor-alternatives — "vs" and "alternative to" pages
+  /marketing-psychology — 70+ mental models voor marketing
+  /marketing-ideas — 139 bewezen marketing tactieken
+  /referral-program — Referral & affiliate programma's
+  /free-tool-strategy — Lead gen tools bouwen
+  /product-marketing-context — Positionering & context document
+  /competitor-alternatives — "vs" en "alternative to" pagina's
 
 SEO & Analytics:
-  /seo-audit — Technical SEO audit
+  /seo-audit — Technische SEO audit
   /analytics-tracking — GA4, GTM, conversion tracking
-  /programmatic-seo — SEO pages at scale
+  /programmatic-seo — SEO pagina's op schaal
   /schema-markup — JSON-LD structured data
 
 CRO & Conversion:
-  /page-cro — Landing page optimization
-  /signup-flow-cro — Signup/registration flows
-  /onboarding-cro — Post-signup activation
-  /form-cro — Form optimization
+  /page-cro — Landing page optimalisatie
+  /signup-flow-cro — Signup/registratie flows
+  /onboarding-cro — Post-signup activatie
+  /form-cro — Formulier optimalisatie
   /popup-cro — Popups, modals, exit-intent
   /paywall-upgrade-cro — In-app paywalls, upgrade screens
-  /ab-test-setup — Plan and set up A/B tests
+  /ab-test-setup — A/B tests plannen en opzetten
 
 Development (Superpowers):
-  /brainstorming — Explore requirements & design before implementation
-  /dispatching-parallel-agents — Dispatch parallel tasks
-  /executing-plans — Execute implementation plans
+  /brainstorming — Requirements & design verkennen voor implementatie
+  /dispatching-parallel-agents — Parallelle taken dispatchen
+  /executing-plans — Implementatieplannen uitvoeren
   /finishing-a-development-branch — Branch completion (merge/PR/cleanup)
-  /receiving-code-review — Process code review feedback
-  /requesting-code-review — Request code review
-  /subagent-driven-development — Subagent-driven implementation
-  /systematic-debugging — Methodical debugging
+  /receiving-code-review — Code review feedback verwerken
+  /requesting-code-review — Code review aanvragen
+  /subagent-driven-development — Subagent-driven implementatie
+  /systematic-debugging — Methodisch debuggen
   /test-driven-development — TDD workflow
-  /using-git-worktrees — Git worktree isolation
-  /verification-before-completion — Verification before completion claims
-  /writing-plans — Write implementation plans
-  /writing-skills — Create and test new skills
+  /using-git-worktrees — Git worktree isolatie
+  /verification-before-completion — Verificatie voor completion claims
+  /writing-plans — Implementatieplannen schrijven
+  /writing-skills — Nieuwe skills maken en testen
 
 System:
-  /claude-api — Build Claude API / Anthropic SDK apps
-  /loop — Repeat commands on an interval
+  /claude-api — Claude API / Anthropic SDK apps bouwen
+  /loop — Commands op interval herhalen
   /schedule — Cron-based scheduled agents
-  /find-skills — Discover and install new skills
+  /find-skills — Nieuwe skills ontdekken en installeren
 
-You can:
-1. Explain what bots/agents do and how they perform
-2. Advise on bot configuration and strategy
-3. Analyze tasks and make suggestions
-4. Answer questions about trades, PnL, and performance
-5. Propose content ideas and scripts
-6. Search the web for current news, market data, and real-time information
-7. DIRECT AGENTS — you can create tasks for all agents via tools:
-   - create_avatar_video: Have an avatar video made (Content Creator)
-   - create_video_agent: Have an AI-generated video made (Video Agent)
-   - create_script: Have a script written (Script Writer)
-   - create_design: Have a design made (Designer) — IMPORTANT: always use the correct parameters! For carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
-   - create_video_edit: Have a video edited via Remotion (Video Editor)
-   - create_research: Have research done (Researcher)
-   - create_analysis: Have an analysis made (Analyst)
-   - calendar_query: Manage Google Calendar — view, create, delete events, find free slots
-   - marketeer_query: Marketing strategy, content planning, copywriting, SEO, ads — ask the Marketeer agent
-8. SKILLS KNOWLEDGE — if the user asks about a skill, explain what it does and how to invoke it. Skills are invoked as /skill-name in Claude Code.
-9. MARKETING EXPERTISE — via the marketeer_query tool you can deploy all 25 marketing skills. Route marketing-related questions to the Marketeer agent.
+Je kunt:
+1. Uitleggen wat bots/agents doen en hoe ze presteren
+2. Adviseren over bot configuratie en strategie
+3. Taken analyseren en suggesties doen
+4. Vragen beantwoorden over trades, PnL, en performance
+5. Content ideeën en scripts voorstellen
+6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
+7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
+   - create_avatar_video: Avatar video laten maken (Content Creator)
+   - create_video_agent: AI-gegenereerde video laten maken (Video Agent)
+   - create_script: Script laten schrijven (Script Writer)
+   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana.
+   - create_video_edit: Video laten editen via Remotion (Video Editor)
+   - create_research: Onderzoek laten doen (Researcher)
+   - create_analysis: Analyse laten maken (Analyst)
+   - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
+   - marketeer_query: Marketing strategie, content planning, copywriting, SEO, ads — vraag de Marketeer agent
+8. SKILLS KENNIS — als de gebruiker vraagt over een skill, leg uit wat het doet en hoe het aan te roepen. Skills worden aangeroepen als /skill-name in Claude Code.
+9. MARKETING EXPERTISE — via de marketeer_query tool kun je alle 25 marketing skills inzetten. Route marketing-gerelateerde vragen naar de Marketeer agent.
 
-IMPORTANT when directing agents:
-- Use the tools to actually create tasks, not just describe what you would do
-- If the user asks to create a video, create the task directly
-- Always confirm which tasks you have created and for which agent
-- For marketing questions (SEO, copy, ads, CRO, etc.) → use marketeer_query
-- For calendar questions → use calendar_query
-- Be proactive: suggest deploying multiple agents simultaneously when it makes sense
+BELANGRIJK bij het aansturen van agents:
+- Gebruik de tools om taken daadwerkelijk aan te maken, niet alleen beschrijven wat je zou doen
+- Als de gebruiker vraagt om een video te maken, maak dan direct de taak aan
+- Bevestig altijd welke taken je hebt aangemaakt en bij welke agent
+- Bij marketing vragen (SEO, copy, ads, CRO, etc.) → gebruik marketeer_query
+- Bij calendar vragen → gebruik calendar_query
+- Je bent proactief: stel voor om meerdere agents tegelijk in te zetten als dat zinvol is
 
-You have access to web search. Use this when the user asks for current news, price movements, or information more recent than your training data.
+Je hebt toegang tot web search. Gebruik dit wanneer de gebruiker vraagt naar actueel nieuws, prijsbewegingen, of informatie recenter dan je training data.
 
-Be concise and direct. Do not use emoji unless asked.`;
+Je spreekt Nederlands tenzij de gebruiker Engels praat.
+Wees beknopt en direct. Gebruik geen emoji tenzij gevraagd.`;
 }
 
 // Built per-request so it always reflects current brand.json
@@ -2462,15 +2748,15 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_avatar_video",
-        description: "Create an avatar video task for the Content Creator agent. The avatar will speak the provided script.",
+        description: "Maak een avatar video task aan bij de Content Creator agent. De avatar spreekt het opgegeven script in.",
         input_schema: {
           type: "object",
           properties: {
-            script: { type: "string", description: "The full script the avatar should speak" },
-            description: { type: "string", description: "Short description of the video (e.g. 'Trading recap for TikTok')" },
-            avatar_id: { type: "string", description: "Avatar ID. Default: 703a2be1c9ae459e81be99b04636c5dc (Meta Vers3)" },
-            voice_id: { type: "string", description: "Voice ID. Default: cae5f9ad5dec463b83565e8a38b74a09 (Meta Vers3 Clone). Other options: f3a93c83f9ec4294b41bd787ac93a247 (Tijs NL), f728541039564551bad369a6da2445b8 (Eric NL), f89d0301b13840ccb7a1814d77e336c6 (Jann NL), fae30d24656e441fad8864951da79b75 (Lucas NL), f38a635bee7a4d1f9b0a654a31d050d2 (Chill Brian EN), d92994ae0de34b2e8659b456a2f388b8 (John Doe EN)" },
-            voice_engine: { type: "string", enum: ["panda", "coral"], description: "Voice engine. Default: panda" },
+            script: { type: "string", description: "Het volledige script dat de avatar moet spreken" },
+            description: { type: "string", description: "Korte beschrijving van de video (bijv. 'Trading recap voor TikTok')" },
+            avatar_id: { type: "string", description: "Avatar ID. Standaard: 703a2be1c9ae459e81be99b04636c5dc (Meta Vers3)" },
+            voice_id: { type: "string", description: "Voice ID. Standaard: cae5f9ad5dec463b83565e8a38b74a09 (Meta Vers3 Clone). Andere opties: f3a93c83f9ec4294b41bd787ac93a247 (Tijs NL), f728541039564551bad369a6da2445b8 (Eric NL), f89d0301b13840ccb7a1814d77e336c6 (Jann NL), fae30d24656e441fad8864951da79b75 (Lucas NL), f38a635bee7a4d1f9b0a654a31d050d2 (Chill Brian EN), d92994ae0de34b2e8659b456a2f388b8 (John Doe EN)" },
+            voice_engine: { type: "string", enum: ["panda", "coral"], description: "Voice engine. Standaard: panda" },
           },
           required: ["script", "description"],
         },
@@ -2478,14 +2764,14 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_video_agent",
-        description: "Create a Video Agent task. AI automatically generates a complete video based on a prompt (script, avatar, visuals, voiceover).",
+        description: "Maak een Video Agent task aan. AI genereert automatisch een complete video op basis van een prompt (script, avatar, visuals, voiceover).",
         input_schema: {
           type: "object",
           properties: {
-            prompt: { type: "string", description: "Description of the desired video" },
-            duration_sec: { type: "integer", description: "Desired duration in seconds (5-300). Default: 30" },
-            orientation: { type: "string", enum: ["portrait", "landscape"], description: "Orientation. Default: portrait" },
-            avatar_id: { type: "string", description: "Optional: specific avatar ID" },
+            prompt: { type: "string", description: "Beschrijving van de gewenste video" },
+            duration_sec: { type: "integer", description: "Gewenste duur in seconden (5-300). Standaard: 30" },
+            orientation: { type: "string", enum: ["portrait", "landscape"], description: "Orientatie. Standaard: portrait" },
+            avatar_id: { type: "string", description: "Optioneel: specifiek avatar ID" },
           },
           required: ["prompt"],
         },
@@ -2493,15 +2779,15 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_script",
-        description: "Create a scriptwriter task for the Script Writer agent.",
+        description: "Maak een scriptwriter task aan bij de Script Writer agent.",
         input_schema: {
           type: "object",
           properties: {
-            topic: { type: "string", description: "Topic of the script" },
-            description: { type: "string", description: "Extra context and instructions for the script" },
-            format: { type: "string", enum: ["short-form", "long-form", "hook", "thread"], description: "Format. Default: short-form" },
-            tone: { type: "string", enum: ["educational", "casual", "professional", "hype", "storytelling"], description: "Tone. Default: educational" },
-            type: { type: "string", enum: ["video_script", "social_post", "thread", "newsletter"], description: "Type. Default: video_script" },
+            topic: { type: "string", description: "Onderwerp van het script" },
+            description: { type: "string", description: "Extra context en instructies voor het script" },
+            format: { type: "string", enum: ["short-form", "long-form", "hook", "thread"], description: "Formaat. Standaard: short-form" },
+            tone: { type: "string", enum: ["educational", "casual", "professional", "hype", "storytelling"], description: "Toon. Standaard: educational" },
+            type: { type: "string", enum: ["video_script", "social_post", "thread", "newsletter"], description: "Type. Standaard: video_script" },
           },
           required: ["topic", "description"],
         },
@@ -2509,17 +2795,17 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_design",
-        description: "Create a design task for the Designer agent. Supports multiple engines and carousel slides.",
+        description: "Maak een design task aan bij de Designer agent. Ondersteunt meerdere engines en carousel slides.",
         input_schema: {
           type: "object",
           properties: {
-            description: { type: "string", description: "Description of the desired design" },
-            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "infographic", "poster", "presentation", "logo"], description: "Design type. Default: instagram_post. Use instagram_carousel for multiple slides." },
-            brand: { type: "string", description: "Brand name. Loaded from brand configuration." },
-            engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Default: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
-            slide_count: { type: "integer", description: "Number of slides for carousels (2-10). Only needed for instagram_carousel." },
-            logo_position: { type: "string", enum: ["SouthEast", "SouthWest", "NorthEast", "NorthWest", "Center", "none"], description: "Logo position. Default: SouthEast" },
-            template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Default: default" },
+            description: { type: "string", description: "Beschrijving van het gewenste design" },
+            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "infographic", "poster", "presentation", "logo"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides." },
+            brand: { type: "string", description: "Brand naam. Wordt geladen uit brand configuratie." },
+            engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
+            slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
+            logo_position: { type: "string", enum: ["SouthEast", "SouthWest", "NorthEast", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
+            template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Standaard: default" },
           },
           required: ["description"],
         },
@@ -2527,13 +2813,13 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_video_edit",
-        description: "Create a video editing task for the Video Editor agent (Remotion).",
+        description: "Maak een video editing task aan bij de Video Editor agent (Remotion).",
         input_schema: {
           type: "object",
           properties: {
-            description: { type: "string", description: "Description of the video edit" },
-            template: { type: "string", enum: ["social-clip", "recap", "tutorial", "promo"], description: "Template. Default: social-clip" },
-            aspect_ratio: { type: "string", enum: ["9:16", "16:9", "1:1"], description: "Aspect ratio. Default: 9:16" },
+            description: { type: "string", description: "Beschrijving van de video edit" },
+            template: { type: "string", enum: ["social-clip", "recap", "tutorial", "promo"], description: "Template. Standaard: social-clip" },
+            aspect_ratio: { type: "string", enum: ["9:16", "16:9", "1:1"], description: "Aspect ratio. Standaard: 9:16" },
           },
           required: ["description"],
         },
@@ -2541,14 +2827,14 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_research",
-        description: "Create a research task for the Researcher agent.",
+        description: "Maak een research task aan bij de Researcher agent.",
         input_schema: {
           type: "object",
           properties: {
-            query: { type: "string", description: "The research question or search query" },
-            type: { type: "string", enum: ["trending", "competitor", "market", "content_ideas", "keywords"], description: "Research type. Default: trending" },
-            platforms: { type: "array", items: { type: "string" }, description: "Platforms to research. Default: [tiktok, x, reddit]" },
-            niche: { type: "string", description: "Niche/market to research. Defaults to the configured DEFAULT_NICHE." },
+            query: { type: "string", description: "De onderzoeksvraag of zoekopdracht" },
+            type: { type: "string", enum: ["trending", "competitor", "market", "content_ideas", "keywords"], description: "Type onderzoek. Standaard: trending" },
+            platforms: { type: "array", items: { type: "string" }, description: "Platformen om te onderzoeken. Standaard: [tiktok, x, reddit]" },
+            niche: { type: "string", description: "Niche/markt. Standaard: crypto trading" },
           },
           required: ["query"],
         },
@@ -2556,12 +2842,12 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_analysis",
-        description: "Create an analysis task for the Analyst agent.",
+        description: "Maak een analyse task aan bij de Analyst agent.",
         input_schema: {
           type: "object",
           properties: {
-            description: { type: "string", description: "Description of the desired analysis" },
-            type: { type: "string", enum: ["daily_report", "performance", "risk", "strategy"], description: "Analysis type. Default: daily_report" },
+            description: { type: "string", description: "Beschrijving van de gewenste analyse" },
+            type: { type: "string", enum: ["daily_report", "performance", "risk", "strategy"], description: "Type analyse. Standaard: daily_report" },
           },
           required: ["description"],
         },
@@ -2569,11 +2855,11 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "calendar_query",
-        description: "Manage the user's Google Calendar. Use for: viewing agenda, creating/deleting events, finding free slots, planning meetings. Send a natural-language command that the Calendar Assistant will execute.",
+        description: "Beheer de Google Calendar van de gebruiker. Gebruik voor: agenda bekijken, events aanmaken/verwijderen, vrije slots vinden, meetings plannen. Stuur een natuurlijke-taal opdracht die de Calendar Assistant uitvoert.",
         input_schema: {
           type: "object",
           properties: {
-            query: { type: "string", description: "The question or command for the calendar, e.g. 'what is on my agenda today?' or 'schedule a meeting tomorrow at 14:00 for 1 hour called Team Sync'" },
+            query: { type: "string", description: "De vraag of opdracht voor de calendar, bijv. 'wat staat er vandaag op mijn agenda?' of 'plan een meeting morgen om 14:00 voor 1 uur genaamd Teamoverleg'" },
           },
           required: ["query"],
         },
@@ -2581,26 +2867,58 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "marketeer_query",
-        description: "Ask the Marketeer agent for marketing advice, content strategy, copywriting, SEO audits, ad campaigns, social media planning, pricing strategy, and more. The Marketeer has 25 professional marketing skills as a knowledge base.",
+        description: "Vraag de Marketeer agent om marketing advies, content strategie, copywriting, SEO audits, ad campagnes, social media planning, pricing strategie, en meer. De Marketeer heeft 25 professionele marketing skills als kennisbasis.",
         input_schema: {
           type: "object",
           properties: {
-            query: { type: "string", description: "The marketing question or task, e.g. 'create a social media plan for this week' or 'write copy for our landing page'" },
+            query: { type: "string", description: "De marketing vraag of opdracht, bijv. 'maak een social media plan voor deze week' of 'schrijf copy voor onze landing page'" },
           },
           required: ["query"],
         },
       },
       {
         type: "custom",
-        name: "transcribe_audio",
-        description: "Transcribe an audio or video file to text using OpenAI Whisper. The file must already be uploaded to the media library. Returns the full transcript, optionally with timecodes (SRT).",
+        name: "ads_query",
+        description: "Haal Meta Ads data op: accounts, campaigns, adsets, ads, of insights. Gebruik voor performance vragen, ROAS checks, spend overzichten, etc.",
         input_schema: {
           type: "object",
           properties: {
-            file_name: { type: "string", description: "File name in the media library, e.g. 'interview.mp4' or 'podcast.mp3'" },
-            language: { type: "string", description: "Language code, e.g. 'nl', 'en', 'de'. Default: auto-detect" },
-            format: { type: "string", enum: ["txt", "srt", "vtt", "json"], description: "Output format. 'txt' = plain text, 'srt' = subtitle with timecodes. Default: txt" },
-            model: { type: "string", enum: ["tiny", "base", "small", "medium", "large"], description: "Whisper model. Larger = more accurate but slower. Default: medium" },
+            type: { type: "string", enum: ["accounts", "campaigns", "adsets", "ads", "insights"], description: "Type data om op te halen" },
+            account_id: { type: "string", description: "Ad account ID (verplicht voor campaigns/adsets/ads/insights). Haal eerst accounts op om IDs te vinden." },
+            campaign_id: { type: "string", description: "Optioneel: filter op campaign ID (voor adsets/ads)" },
+            date_preset: { type: "string", enum: ["today", "yesterday", "last_7d", "last_14d", "last_30d", "this_month", "last_month"], description: "Periode voor insights. Default: last_7d" },
+          },
+          required: ["type"],
+        },
+      },
+      {
+        type: "custom",
+        name: "ads_action",
+        description: "Voer een actie uit op Meta Ads: campaign/adset/ad pauzeren of activeren, budget aanpassen. Gebruik na ads_query om context te hebben.",
+        input_schema: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["pause", "activate", "set_budget"], description: "De actie" },
+            level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Op welk niveau. Default: campaign" },
+            object_id: { type: "string", description: "Het ID van de campaign/adset/ad" },
+            account_id: { type: "string", description: "Ad account ID" },
+            daily_budget: { type: "number", description: "Nieuw daily budget in euro's (niet centen). Alleen voor set_budget." },
+            lifetime_budget: { type: "number", description: "Nieuw lifetime budget in euro's. Alleen voor set_budget." },
+          },
+          required: ["action", "object_id", "account_id"],
+        },
+      },
+      {
+        type: "custom",
+        name: "transcribe_audio",
+        description: "Transcribeer een audio- of videobestand naar tekst met OpenAI Whisper. Het bestand moet al geüpload zijn in de media library. Geeft het volledige transcript terug, optioneel met tijdcodes (SRT).",
+        input_schema: {
+          type: "object",
+          properties: {
+            file_name: { type: "string", description: "Bestandsnaam in de media library, bijv. 'interview.mp4' of 'podcast.mp3'" },
+            language: { type: "string", description: "Taalcode, bijv. 'nl', 'en', 'de'. Standaard: auto-detect" },
+            format: { type: "string", enum: ["txt", "srt", "vtt", "json"], description: "Output formaat. 'txt' = platte tekst, 'srt' = ondertiteling met tijdcodes. Standaard: txt" },
+            model: { type: "string", enum: ["tiny", "base", "small", "medium", "large"], description: "Whisper model. Groter = nauwkeuriger maar trager. Standaard: medium" },
           },
           required: ["file_name"],
         },
@@ -2608,11 +2926,11 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "read_pdf",
-        description: "Read the text from a PDF file uploaded to the media library. Returns the full text so you can answer questions about the content, create summaries, etc.",
+        description: "Lees de tekst uit een PDF bestand dat in de media library is geüpload. Geeft de volledige tekst terug zodat je vragen kunt beantwoorden over de inhoud, samenvattingen kunt maken, etc.",
         input_schema: {
           type: "object",
           properties: {
-            file_name: { type: "string", description: "File name in the media library, e.g. 'report.pdf'" },
+            file_name: { type: "string", description: "Bestandsnaam in de media library, bijv. 'rapport.pdf'" },
           },
           required: ["file_name"],
         },
@@ -2620,23 +2938,23 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "run_skill",
-        description: `Execute a Claude Code skill with a prompt. Use this for tasks that require a specific skill, such as SEO audits, CRO analyses, A/B test setup, content strategy, schema markup, brainstorming, etc.
+        description: `Voer een Claude Code skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, A/B test opzet, content strategie, schema markup, brainstorming, etc.
 
-Available skills:
+Beschikbare skills:
 SEO & Analytics: seo-audit, analytics-tracking, programmatic-seo, schema-markup
 CRO & Conversion: page-cro, signup-flow-cro, onboarding-cro, form-cro, popup-cro, paywall-upgrade-cro, ab-test-setup
 Content & Marketing: content-strategy, copywriting, copy-editing, email-sequence, social-content, launch-strategy, pricing-strategy, paid-ads, marketing-psychology, marketing-ideas, referral-program, free-tool-strategy, product-marketing-context, competitor-alternatives, youtube-optimizer
 Design & Media: designer, canvas-design, nano-banana-2, brand-guidelines, web-artifacts-builder, create-video, avatar-video
 Development: brainstorming, writing-plans, executing-plans, systematic-debugging, test-driven-development
 
-Do NOT use for simple marketing questions — use marketeer_query for those. Use run_skill when you need a full skill-based analysis, audit, or plan with deep output.
+Gebruik NIET voor simpele marketing vragen — daarvoor heb je marketeer_query. Gebruik run_skill voor wanneer je een volledige skill-gebaseerde analyse, audit, of plan nodig hebt met diepgaande output.
 
-IMPORTANT: The skill runs in a separate session without chat history. You MUST include all necessary context in the prompt field. Example: for youtube-optimizer you must include the FULL transcript in the prompt field, otherwise the skill cannot generate timestamps or titles.`,
+BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET alle benodigde context meesturen in het prompt veld. Voorbeeld: voor youtube-optimizer moet je het VOLLEDIGE transcript meesturen in het prompt veld, anders kan de skill geen timestamps of titels genereren.`,
         input_schema: {
           type: "object",
           properties: {
-            skill: { type: "string", description: "The skill slug, e.g. 'seo-audit', 'page-cro', 'ab-test-setup', 'brainstorming'" },
-            prompt: { type: "string", description: "The full task AND all required input/context for the skill. ALWAYS include all relevant data: the full transcript, the URL, the page text, etc. The skill runs in a separate session with NO access to chat history. Everything the skill needs must be in this field." },
+            skill: { type: "string", description: "De skill slug, bijv. 'seo-audit', 'page-cro', 'ab-test-setup', 'brainstorming'" },
+            prompt: { type: "string", description: "De volledige opdracht EN alle benodigde input/context voor de skill. Stuur ALTIJD alle relevante data mee: het volledige transcript, de URL, de paginatekst, etc. De skill draait in een aparte sessie en heeft GEEN toegang tot de chathistorie. Alles wat de skill nodig heeft moet in dit veld staan." },
           },
           required: ["skill", "prompt"],
         },
@@ -2701,7 +3019,7 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
           query: input.query,
           type: input.type || "trending",
           platforms: input.platforms || ["tiktok", "x", "reddit"],
-          niche: input.niche || DEFAULT_NICHE,
+          niche: input.niche || "crypto trading",
         },
       }),
       create_analysis: (input) => ({
@@ -2727,6 +3045,40 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
         },
         isCalendar: true, // same response format: { reply: "..." }
       }),
+      ads_query: (input) => {
+        const t = input.type || "accounts";
+        const qs = new URLSearchParams();
+        if (input.account_id) qs.set("account_id", input.account_id);
+        if (input.campaign_id) qs.set("campaign_id", input.campaign_id);
+        if (input.date_preset) qs.set("date_preset", input.date_preset);
+        const endpoints = {
+          accounts: "/ads/accounts",
+          campaigns: "/ads/campaigns",
+          adsets: "/ads/adsets",
+          ads: "/ads/ads",
+          insights: "/ads/insights",
+        };
+        return { url: `http://localhost:3004${endpoints[t] || "/ads/accounts"}?${qs}`, method: "GET", isAds: true };
+      },
+      ads_action: (input) => {
+        const level = input.level || "campaign";
+        const endpoints = { campaign: "campaigns", adset: "adsets", ad: "ads" };
+        const seg = endpoints[level] || "campaigns";
+        if (input.action === "set_budget") {
+          return {
+            url: `http://localhost:3004/ads/${seg}/${input.object_id}/budget`,
+            body: {
+              account_id: input.account_id,
+              daily_budget: input.daily_budget ? Math.round(input.daily_budget * 100) : undefined,
+              lifetime_budget: input.lifetime_budget ? Math.round(input.lifetime_budget * 100) : undefined,
+            },
+          };
+        }
+        return {
+          url: `http://localhost:3004/ads/${seg}/${input.object_id}/status`,
+          body: { status: input.action === "pause" ? "PAUSED" : "ACTIVE", account_id: input.account_id },
+        };
+      },
     };
 
     const apiParams = {
@@ -2893,7 +3245,7 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
             const Anthropic = require("@anthropic-ai/sdk");
             const skillClient = new Anthropic();
             const brand = loadBrand();
-            const skillSystem = `You are ${brand.assistant_name}, the AI assistant of ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections.`;
+            const skillSystem = `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`;
             const skillResponse = await skillClient.messages.create({
               model: "claude-sonnet-4-20250514",
               max_tokens: 8192,
@@ -2905,7 +3257,7 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
             console.log(`[SKILL] /${skill} done (${skillOutput.length} chars)`);
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, skill, output: truncated }) });
           } catch (e) {
-            console.error(`[SKILL] Error:`, e.message);
+            console.log(`[SKILL] Error:`, e.message);
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: e.message }), is_error: true });
           }
           continue;
@@ -2918,16 +3270,21 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
             const authHeader = req.cookies?.cc_session
               ? { Cookie: `cc_session=${req.cookies.cc_session}` }
               : { "x-internal": "telegram" };
-            console.log(`[CHAT-TOOL] → ${action.url}`, JSON.stringify(action.body));
-            const taskRes = await fetch(action.url, {
+            const isGet = action.method === "GET";
+            console.log(`[CHAT-TOOL] → ${isGet ? "GET" : "POST"} ${action.url}`, isGet ? "" : JSON.stringify(action.body));
+            const taskRes = await fetch(action.url, isGet ? {
+              headers: { ...authHeader },
+            } : {
               method: "POST",
               headers: { "Content-Type": "application/json", ...authHeader },
               body: JSON.stringify(action.body),
             });
             const task = await taskRes.json();
-            const resultContent = action.isCalendar
-              ? JSON.stringify({ success: true, calendar_response: task.reply || task.error || "No response" })
-              : JSON.stringify({ success: true, task_id: task.id, status: task.status, message: `Task created: ${task.id}` });
+            const resultContent = action.isAds
+              ? JSON.stringify({ success: true, data: task })
+              : action.isCalendar
+              ? JSON.stringify({ success: true, calendar_response: task.reply || task.error || "Geen antwoord" })
+              : JSON.stringify({ success: true, task_id: task.id, status: task.status, message: `Task aangemaakt: ${task.id}` });
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,
@@ -2947,7 +3304,7 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
       // Catch-all: ensure every tool_use block has a matching tool_result
       for (const block of response.content) {
         if (block.type === "tool_use" && !toolResults.find(r => r.tool_use_id === block.id)) {
-          console.warn(`[CHAT] Unhandled tool_use: ${block.name} (${block.id}) — returning empty result`);
+          console.log(`[CHAT] Unhandled tool_use: ${block.name} (${block.id}) — returning empty result`);
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: `Tool '${block.name}' is niet beschikbaar.` }), is_error: true });
         }
       }
@@ -2956,22 +3313,33 @@ IMPORTANT: The skill runs in a separate session without chat history. You MUST i
         history.push({ role: "user", content: toolResults });
       }
 
-      response = await anthropic.messages.create(apiParams);
+      console.log(`[CHAT] Tool loop #${loopCount} — ${toolResults.length} results collected`);
+      const historyChars = JSON.stringify(history).length;
+      console.log(`[CHAT] API call #${loopCount + 1} starting — history: ${historyChars} chars, ${history.length} msgs`);
+      try {
+        response = await anthropic.messages.create(apiParams);
+        console.log(`[CHAT] API call #${loopCount + 1} done — stop_reason: ${response.stop_reason}`);
+      } catch (apiErr) {
+        console.log(`[CHAT] API call #${loopCount + 1} FAILED: ${apiErr?.status || 'no-status'} — ${apiErr?.error?.error?.message || apiErr.message}`);
+        throw apiErr;
+      }
     }
 
     // Extract final text reply
     const textBlocks = response.content.filter(b => b.type === "text");
-    const reply = textBlocks.map(b => b.text).join("\n") || "No response received.";
+    const reply = textBlocks.map(b => b.text).join("\n") || "Geen antwoord ontvangen.";
 
     // Add assistant message to history
     history.push({ role: "assistant", content: response.content });
 
+    console.log(`[CHAT] Reply sent (${reply.length} chars)`);
     res.json({ reply, sessionId });
   } catch (err) {
-    console.error("[CHAT] Error:", err.message);
+    const errDetail = err?.status ? `API ${err.status}: ${err?.error?.error?.message || err.message}` : err.message;
+    console.log("[CHAT] Error:", errDetail);
     // Remove the user message on failure
     history.pop();
-    res.status(500).json({ error: "AI request failed: " + err.message });
+    res.status(500).json({ error: "AI request failed: " + errDetail });
   }
 });
 
@@ -3006,7 +3374,7 @@ function buildCalendarTools() {
       GOOGLECALENDAR_LIST_CALENDARS: "List all Google Calendars the user has access to.",
       GOOGLECALENDAR_EVENTS_LIST: "List upcoming events from a calendar. Params: calendar_id (default 'primary'), time_min (ISO), time_max (ISO), max_results (int), query (string).",
       GOOGLECALENDAR_FIND_EVENT: "Search for events matching a query. Params: calendar_id, query (string to search for).",
-      GOOGLECALENDAR_CREATE_EVENT: `Create a new calendar event. Params: summary (title), start_datetime (ISO 8601 with timezone), end_datetime (ISO 8601 with timezone — MUST reflect the requested duration, e.g. 3 hours = start + 3h), timezone (always '${TIMEZONE}'), description, location, attendees (comma-separated emails), calendar_id. CRITICAL: Always calculate end_datetime from the requested duration. Never default to 30 minutes.`,
+      GOOGLECALENDAR_CREATE_EVENT: "Create a new calendar event. Params: summary (title), start_datetime (ISO 8601 with timezone), end_datetime (ISO 8601 with timezone — MUST reflect the requested duration, e.g. 3 hours = start + 3h), timezone (always 'Europe/Amsterdam'), description, location, attendees (comma-separated emails), calendar_id. CRITICAL: Always calculate end_datetime from the requested duration. If the user says '3 uur' then end = start + 3 hours. Never default to 30 minutes.",
       GOOGLECALENDAR_DELETE_EVENT: "Delete an event. Params: event_id, calendar_id.",
       GOOGLECALENDAR_EVENTS_MOVE: "Move an event to a different calendar or time. Params: event_id, calendar_id, destination_calendar_id.",
       GOOGLECALENDAR_FIND_FREE_SLOTS: "Find free time slots. Params: calendar_id, time_min (ISO), time_max (ISO), duration_minutes (int).",
@@ -3019,7 +3387,7 @@ function buildCalendarTools() {
             summary: { type: "string", description: "Event title" },
             start_datetime: { type: "string", description: "Start time in ISO 8601 with timezone offset, e.g. 2026-04-10T14:00:00+02:00" },
             end_datetime: { type: "string", description: "End time in ISO 8601 with timezone offset. MUST reflect requested duration (e.g. 3 hour event: start + 3h). Never default to 30 min." },
-            timezone: { type: "string", description: `Timezone for the event. Default: '${TIMEZONE}'` },
+            timezone: { type: "string", description: "Always 'Europe/Amsterdam'" },
             description: { type: "string", description: "Event description (optional)" },
             location: { type: "string", description: "Event location (optional)" },
             attendees: { type: "string", description: "Comma-separated emails (optional)" },
@@ -3031,27 +3399,29 @@ function buildCalendarTools() {
   }));
 }
 
-const CALENDAR_SYSTEM = `You are the Calendar Assistant, built into the Command Center.
-You manage the user's Google Calendar via Composio tools.
+const CALENDAR_SYSTEM = `Je bent de Calendar Assistant, ingebouwd in het Command Center.
+Je beheert de Google Calendar van de gebruiker via Composio tools.
 
-AVAILABLE TOOLS:
-- GOOGLECALENDAR_GET_CURRENT_DATE_TIME: Get the current date/time. ALWAYS use this first for relative time references ("tomorrow", "next week", etc.).
-- GOOGLECALENDAR_LIST_CALENDARS: List all calendars.
-- GOOGLECALENDAR_EVENTS_LIST: List events. Use calendar_id "primary" unless otherwise specified. Send time_min and time_max as ISO 8601 strings.
-- GOOGLECALENDAR_FIND_EVENT: Search events by text.
-- GOOGLECALENDAR_CREATE_EVENT: Create an event. Required: summary, start_datetime, end_datetime (ISO 8601 with timezone, e.g. "2026-04-03T14:00:00+02:00"), timezone (always "${TIMEZONE}"). Optional: description, location, attendees.
-  CRITICAL DURATION RULE: ALWAYS calculate end_datetime based on the requested duration. If the user says "3 hours" → end = start + 3 hours. If "all day" → end = start + 8 hours. NEVER default to 30 minutes. If no duration given, ask for it or use 1 hour as default.
-- GOOGLECALENDAR_DELETE_EVENT: Delete an event (event_id required).
-- GOOGLECALENDAR_FIND_FREE_SLOTS: Find free slots (time_min, time_max, duration_minutes).
+BESCHIKBARE TOOLS:
+- GOOGLECALENDAR_GET_CURRENT_DATE_TIME: Haal huidige datum/tijd op. Gebruik dit ALTIJD als eerste bij relatieve tijdsaanduidingen ("morgen", "volgende week", etc.).
+- GOOGLECALENDAR_LIST_CALENDARS: Toon alle calendars.
+- GOOGLECALENDAR_EVENTS_LIST: Toon events. Gebruik calendar_id "primary" tenzij anders gevraagd. Stuur time_min en time_max als ISO 8601 strings.
+- GOOGLECALENDAR_FIND_EVENT: Zoek events op tekst.
+- GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone, bijv. "2026-04-03T14:00:00+02:00"), timezone (altijd "Europe/Amsterdam"). Optioneel: description, location, attendees.
+  KRITIEK DUUR REGEL: Bereken end_datetime ALTIJD op basis van de gevraagde duur. Als de gebruiker zegt "3 uur" → end = start + 3 uur. Als de gebruiker zegt "hele dag" → end = start + 8 uur. NOOIT standaard 30 minuten gebruiken. Als geen duur opgegeven, vraag ernaar of gebruik 1 uur als default.
+- GOOGLECALENDAR_DELETE_EVENT: Verwijder een event (event_id nodig).
+- GOOGLECALENDAR_FIND_FREE_SLOTS: Vind vrije slots (time_min, time_max, duration_minutes).
 
-RULES:
-- Be concise and direct. No emoji unless asked.
-- When showing events, format them clearly with time, title, and location.
-- When creating events, always confirm the details before creating, unless the user has been specific enough.
-- CRITICAL TIMEZONE RULE: Always use timezone "${TIMEZONE}" when creating events. When the user gives a time, treat it as local time in that timezone. Always send timezone: "${TIMEZONE}" as a parameter with CREATE_EVENT.
-- For "today", "tomorrow", "this week" etc.: use GET_CURRENT_DATE_TIME first to determine the correct date.
-- Show times in 24-hour format (14:00 not 2 PM).
-- When you create an event, confirm with the details (title, date, time, duration).`;
+REGELS:
+- Spreek Nederlands tenzij de gebruiker Engels praat.
+- Wees beknopt en direct. Geen emoji tenzij gevraagd.
+- Bij het tonen van events, formatteer ze overzichtelijk met tijd, titel, en locatie.
+- Bij het aanmaken van events, bevestig altijd de details voordat je het aanmaakt, tenzij de gebruiker al specifiek genoeg is.
+- KRITIEK TIMEZONE REGEL: De gebruiker zit in Europe/Amsterdam (CET = UTC+1, CEST = UTC+2). Als de gebruiker zegt "16:30" bedoelt hij 16:30 lokale tijd in Amsterdam. Gebruik ALTIJD de offset +01:00 (winter/CET) of +02:00 (zomer/CEST) in de ISO 8601 datetime string. Stuur ALTIJD timezone: "Europe/Amsterdam" mee als parameter bij CREATE_EVENT. NOOIT UTC (+00:00) gebruiken voor tijden die de gebruiker opgeeft.
+- Huidige timezone offset: van laatste zondag van maart t/m laatste zondag van oktober = CEST (+02:00), rest = CET (+01:00).
+- Bij "vandaag", "morgen", "deze week" etc.: gebruik eerst GET_CURRENT_DATE_TIME om de juiste datum te bepalen.
+- Toon tijden in 24-uurs formaat (14:00 niet 2 PM).
+- Als je een event aanmaakt, bevestig met de details (titel, datum, tijd, duur).`;
 
 async function executeCalendarTool(toolName, params) {
   const composio = new Composio({ apiKey: COMPOSIO_KEY });
@@ -3165,7 +3535,7 @@ app.post("/calendar/chat", async (req, res) => {
       history.push({ role: "assistant", content: finalReply });
     }
 
-    res.json({ reply: finalReply || "No response received." });
+    res.json({ reply: finalReply || "Geen antwoord ontvangen." });
   } catch (err) {
     console.error("[CALENDAR] Chat error:", err.message);
     history.pop();
@@ -3221,23 +3591,24 @@ function buildMarketeerSystem() {
     .join("\n");
 
   const brand = loadBrand();
-  return `You are the Marketeer, the AI marketing strategist of ${brand.company_name}, built into the Command Center.
+  return `Je bent de Marketeer, de AI marketing strategist van ${brand.company_name}, ingebouwd in het Command Center.
 
-You have access to 25 professional marketing skill libraries that you can load with the load_marketing_skill tool. ALWAYS load the relevant skill(s) before giving advice.
+Je hebt toegang tot 25 professionele marketing skill-bibliotheken die je kunt laden met de load_marketing_skill tool. Laad ALTIJD de relevante skill(s) voordat je advies geeft.
 
-AVAILABLE SKILLS:
+BESCHIKBARE SKILLS:
 ${skillList}
 
 TOOLS:
-- load_marketing_skill: Load a specific marketing skill for detailed frameworks and methodologies. ALWAYS load 1-3 relevant skills before giving advice. Use the skill slug as parameter.
-- create_marketing_task: Create a task to be executed by another agent (designer, scriptwriter, researcher, content_creator).
+- load_marketing_skill: Laad een specifieke marketing skill voor gedetailleerde frameworks en methodologieën. Laad ALTIJD 1-3 relevante skills voordat je advies geeft. Gebruik de skill slug als parameter.
+- create_marketing_task: Maak een taak aan die door andere agents uitgevoerd kan worden (designer, scriptwriter, researcher, content_creator).
 
-RULES:
-- Be strategic but practical — give concrete action points, no vague advice.
-- Use frameworks from loaded skills and reference them.
-- When creating plans, give specific timelines and responsibilities.
-- You can delegate tasks to other agents via create_marketing_task.
-- No emoji unless asked.`;
+REGELS:
+- Spreek Nederlands tenzij de gebruiker Engels praat.
+- Wees strategisch maar praktisch — geef concrete actiepunten, geen vage adviezen.
+- Gebruik frameworks uit de geladen skills, verwijs ernaar.
+- Bij het maken van planningen, geef specifieke tijdlijnen en verantwoordelijkheden.
+- Je kunt taken delegeren naar andere agents via create_marketing_task.
+- Geen emoji tenzij gevraagd.`;
 }
 
 const MARKETEER_TOOLS = [
@@ -3350,7 +3721,7 @@ app.post("/marketeer/chat", async (req, res) => {
               continue;
             }
             const taskBody = tu.input.agent === "researcher"
-              ? { query: tu.input.description, type: "trending", platforms: ["x", "reddit", "tiktok"], niche: DEFAULT_NICHE }
+              ? { query: tu.input.description, type: "trending", platforms: ["x", "reddit", "tiktok"], niche: "crypto trading" }
               : { description: tu.input.description };
             const taskRes = await fetch(`http://localhost:3004${apiPath}`, {
               method: "POST",
@@ -3383,7 +3754,7 @@ app.post("/marketeer/chat", async (req, res) => {
       history.push({ role: "assistant", content: finalReply });
     }
 
-    res.json({ reply: finalReply || "No response received." });
+    res.json({ reply: finalReply || "Geen antwoord ontvangen." });
   } catch (err) {
     console.error("[MARKETEER] Chat error:", err.message);
     history.pop();
@@ -3763,19 +4134,18 @@ async function processScriptwriterTasks() {
       task.updated_at = new Date().toISOString();
       writeTaskFile("scriptwriter-tasks.json", tasks);
 
-      const swBrand = loadBrand();
-      const prompt = `You are a professional scriptwriter for ${swBrand.company_name}.
+      const prompt = `Je bent een professionele scriptwriter voor een trading platform.
 
-Write a ${task.format || "short-form"} ${task.type || "video_script"} about: ${task.topic}
+Schrijf een ${task.format || "short-form"} ${task.type || "video_script"} over: ${task.topic}
 
-Additional context: ${task.description}
+Extra context: ${task.description}
 
-Tone: ${task.tone || "educational"}
-Style: Professional but accessible. No hype. Data-driven.
+Toon: ${task.tone || "educational"}
+Stijl: Professioneel maar toegankelijk. Geen hype. Data-driven.
 
-${task.type === "video_script" ? "Format it as a spoken script with clear pauses and sections. Add [SCENE] markers for visual transitions." : ""}
-${task.format === "short-form" ? "Keep it short: max 60 seconds speaking time (~150 words)." : ""}
-${task.format === "hook" ? "Write 5 different hooks/openers that immediately capture attention." : ""}`;
+${task.type === "video_script" ? "Formaat het als een spreekscript met duidelijke pauzes en secties. Voeg [SCENE] markers toe voor visuele overgangen." : ""}
+${task.format === "short-form" ? "Houd het kort: max 60 seconden spreektijd (~150 woorden)." : ""}
+${task.format === "hook" ? "Schrijf 5 verschillende hooks/openers die direct de aandacht pakken." : ""}`;
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -3814,11 +4184,11 @@ async function processResearchTasks() {
       task.updated_at = new Date().toISOString();
       writeTaskFile("research-tasks.json", tasks);
 
-      const lang = task.language || LANGUAGE.toUpperCase();
+      const lang = task.language || "NL";
       const isNL = lang === "NL";
 
       const brand = loadBrand();
-      const prompt = `${isNL ? "Je bent een researcher en content strategist" : "You are a researcher and content strategist"} voor ${brand.company_name}.
+      const prompt = `${isNL ? "Je bent een researcher en content strategist" : "You are a researcher and content strategist"} voor ${brand.company_name} — een trading platform.
 
 ${isNL ? "BELANGRIJK: Schrijf het VOLLEDIGE rapport in het Nederlands. Alle secties, analyses, suggesties, captions, tweets en beschrijvingen moeten in het Nederlands zijn. Alleen merknamen, platformnamen en technische termen (Bitcoin, Ethereum, DeFi, etc.) mogen in het Engels blijven." : "IMPORTANT: Write the FULL report in English."}
 
@@ -3826,7 +4196,7 @@ ${isNL ? "BELANGRIJK: Schrijf het VOLLEDIGE rapport in het Nederlands. Alle sect
 ${isNL ? "Onderwerp" : "Topic"}: ${task.query}
 ${isNL ? "Type" : "Type"}: ${task.type || "trending"}
 ${isNL ? "Platformen" : "Platforms"}: ${(task.platforms || ["tiktok", "x", "reddit"]).join(", ")}
-Niche: ${task.niche || DEFAULT_NICHE || brand.company_name}
+Niche: ${task.niche || "crypto trading"}
 
 ## ${isNL ? "Instructies" : "Instructions"}
 ${isNL
@@ -3988,7 +4358,7 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
       reports.unshift({
         id: genId(), task_id: task.id, created_at: new Date().toISOString(),
         type: task.type || "trending", title: task.query,
-        language: task.language || LANGUAGE.toUpperCase(),
+        language: task.language || "NL",
         sections: sections.length ? sections : [{ title: task.query, content: result }],
       });
       if (reports.length > 30) reports.length = 30;
@@ -4045,24 +4415,24 @@ async function processAnalystTasks() {
         return `${id} (laatste ${recent.length} trades):\n${recent.map(t => `  ${t.symbol || "?"} ${t.side || "?"} | PnL: $${(t.pnl||0).toFixed(2)} | ${t.timestamp || ""}`).join("\n")}`;
       }).join("\n\n");
 
-      const prompt = `You are a trading analyst. Analyze the following data and provide a report.
+      const prompt = `Je bent een trading analyst. Analyseer de volgende data en geef een rapport.
 
-Assignment: ${task.description}
+Opdracht: ${task.description}
 Type: ${task.type || "daily_report"}
 
 LIVE BOT STATUS:
-${botContext || "No bot data available"}
+${botContext || "Geen bot data beschikbaar"}
 
-RECENT TRADES:
-${tradeContext || "No trade data available"}
+RECENTE TRADES:
+${tradeContext || "Geen trade data beschikbaar"}
 
-Provide a structured report with:
-${task.type === "daily_report" ? "1. Daily summary\n2. Bot performance per bot\n3. Notable trades\n4. Risk indicators\n5. Recommendations" : ""}
-${task.type === "performance" ? "1. Performance metrics per bot\n2. Win rate analysis\n3. PnL breakdown\n4. Comparison between bots\n5. Improvement points" : ""}
-${task.type === "risk" ? "1. Current risk exposure\n2. Drawdown analysis\n3. Position concentration\n4. Volatility risk\n5. Recommendations for risk reduction" : ""}
-${task.type === "strategy" ? "1. Strategy evaluation per bot\n2. Market conditions analysis\n3. Parameter optimization suggestions\n4. New opportunities\n5. Strategic recommendations" : ""}
+Geef een gestructureerd rapport met:
+${task.type === "daily_report" ? "1. Dagelijkse samenvatting\n2. Bot performance per bot\n3. Opvallende trades\n4. Risico-indicatoren\n5. Aanbevelingen" : ""}
+${task.type === "performance" ? "1. Performance metrics per bot\n2. Win rate analyse\n3. PnL breakdown\n4. Vergelijking tussen bots\n5. Verbeterpunten" : ""}
+${task.type === "risk" ? "1. Huidige risico-exposure\n2. Drawdown analyse\n3. Positie-concentratie\n4. Volatiliteitsrisico\n5. Aanbevelingen voor risicovermindering" : ""}
+${task.type === "strategy" ? "1. Strategie-evaluatie per bot\n2. Marktcondities analyse\n3. Parameter optimalisatie suggesties\n4. Nieuwe kansen\n5. Strategische aanbevelingen" : ""}
 
-Be data-driven and direct.`;
+Schrijf in het Nederlands. Wees data-driven en direct.`;
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -4972,6 +5342,8 @@ async function executeSchedule(schedule) {
       await executeMarketeerSchedule(schedule, today);
     } else if (schedule.agent === "assistant") {
       await executeAssistantSchedule(schedule, today);
+    } else if (schedule.agent === "ads_optimizer") {
+      await executeAdsOptimizerSchedule(schedule, today);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -4985,8 +5357,8 @@ async function executeDesignerSchedule(schedule, today) {
   let description = p.description || "";
   if (p.auto_from_research) {
     const reports = readTaskFile("research-reports.json");
-    const lang = p.language || LANGUAGE.toUpperCase();
-    const report = reports.find(r => (r.language || LANGUAGE.toUpperCase()) === lang);
+    const lang = p.language || "NL";
+    const report = reports.find(r => (r.language || "NL") === lang);
     if (report && report.sections?.length) {
       const allContent = report.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n");
       const designType = p.design_type || "instagram_post";
@@ -5076,7 +5448,7 @@ INSTRUCTIONS:
 
 async function executeResearcherSchedule(schedule, today) {
   const p = schedule.payload;
-  const lang = p.language || LANGUAGE.toUpperCase();
+  const lang = p.language || "NL";
   const isNL = lang === "NL";
   const tasks = readTaskFile("research-tasks.json");
   const taskId = genId();
@@ -5084,9 +5456,11 @@ async function executeResearcherSchedule(schedule, today) {
     id: taskId, status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     type: p.type || "daily_full",
-    query: p.query || `Daily research — ${today}. Research the latest trends, market developments, trending topics, and generate concrete content suggestions.`,
+    query: p.query || (isNL
+      ? `Daily crypto & trading research — ${today}. Onderzoek de belangrijkste crypto ontwikkelingen, marktbewegingen, trending topics op X/Reddit/TikTok, en genereer concrete content suggesties voor Instagram en Twitter.`
+      : `Daily crypto & trading research — ${today}. Research the latest crypto developments, market movements, trending topics on X/Reddit/TikTok, and generate concrete content suggestions for Instagram and Twitter.`),
     platforms: p.platforms || ["x", "reddit", "tiktok"],
-    niche: p.niche || DEFAULT_NICHE,
+    niche: p.niche || "crypto trading",
     language: lang,
     error: null,
   });
@@ -5134,7 +5508,7 @@ async function executeScriptwriterSchedule(schedule, today) {
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     type: p.type || "script",
     prompt: p.prompt || "",
-    language: p.language || LANGUAGE.toUpperCase(),
+    language: p.language || "NL",
     error: null,
   });
   writeTaskFile("scriptwriter-tasks.json", tasks);
@@ -5151,7 +5525,7 @@ async function executeScriptwriterSchedule(schedule, today) {
 
 async function executeMarketeerSchedule(schedule, today) {
   const p = schedule.payload;
-  const query = p.query || "Give marketing suggestions for this week";
+  const query = p.query || "Geef marketing suggesties voor deze week";
   console.log(`[SCHEDULER] Marketeer query: ${query}`);
 
   try {
@@ -5161,7 +5535,7 @@ async function executeMarketeerSchedule(schedule, today) {
       body: JSON.stringify({ message: query, sessionId: "scheduler_marketeer" }),
     });
     const data = await res.json();
-    const reply = data.reply || "No response.";
+    const reply = data.reply || "Geen antwoord.";
 
     if (p.notify !== "false") {
       sendTelegram(`📣 ${schedule.name}`, reply, "info");
@@ -5182,7 +5556,7 @@ async function executeMarketeerSchedule(schedule, today) {
 
 async function executeAssistantSchedule(schedule, today) {
   const p = schedule.payload;
-  const query = p.query || "Give an overview of my calendar today";
+  const query = p.query || "Geef een overzicht van mijn agenda vandaag";
   console.log(`[SCHEDULER] Assistant query: ${query}`);
 
   try {
@@ -5192,7 +5566,7 @@ async function executeAssistantSchedule(schedule, today) {
       body: JSON.stringify({ message: query, sessionId: "scheduler_assistant" }),
     });
     const data = await res.json();
-    const reply = data.reply || "No response.";
+    const reply = data.reply || "Geen antwoord.";
 
     // Send result via Telegram if enabled
     if (p.notify !== "false") {
@@ -5203,6 +5577,301 @@ async function executeAssistantSchedule(schedule, today) {
   } catch (e) {
     console.error(`[SCHEDULER] Assistant failed:`, e.message);
     sendTelegram(`📅 ${schedule.name} — FOUT`, e.message, "danger");
+  }
+
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+}
+
+// ── ADS RULES ENGINE (checks every 5 minutes) ──
+async function evaluateAdsRules() {
+  let rules = [];
+  try { rules = readTaskFile("ads-rules.json"); } catch { return; }
+  const enabled = rules.filter(r => r.enabled);
+  if (!enabled.length) return;
+
+  for (const rule of enabled) {
+    try {
+      const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === rule.account_id || c.ad_account_id === rule.account_id));
+      if (!conn) continue;
+      const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values,purchase_roas,website_purchase_roas";
+      const url = `https://graph.facebook.com/v21.0/${conn.ad_account_id}/insights?fields=${fields}&date_preset=${rule.check_period}&level=campaign&limit=200&access_token=${conn.user_access_token}`;
+      const r = await fetch(url);
+      const d = await r.json();
+      if (d.error || !d.data) continue;
+
+      for (const row of d.data) {
+        let metricVal = 0;
+        if (rule.metric === "roas") {
+          if (Array.isArray(row.purchase_roas) && row.purchase_roas[0]) metricVal = Number(row.purchase_roas[0].value) || 0;
+          else if (Array.isArray(row.website_purchase_roas) && row.website_purchase_roas[0]) metricVal = Number(row.website_purchase_roas[0].value) || 0;
+        } else if (rule.metric === "spend") {
+          metricVal = Number(row.spend) || 0;
+        } else if (rule.metric === "ctr") {
+          metricVal = Number(row.ctr) || 0;
+        } else if (rule.metric === "cpc") {
+          metricVal = Number(row.cpc) || 0;
+        } else if (rule.metric === "cpm") {
+          metricVal = Number(row.cpm) || 0;
+        }
+
+        let triggered = false;
+        if (rule.operator === "<" && metricVal < rule.threshold && Number(row.spend) > 0) triggered = true;
+        if (rule.operator === ">" && metricVal > rule.threshold) triggered = true;
+        if (rule.operator === "<=" && metricVal <= rule.threshold && Number(row.spend) > 0) triggered = true;
+        if (rule.operator === ">=" && metricVal >= rule.threshold) triggered = true;
+
+        if (!triggered) continue;
+
+        const campName = row.campaign_name || row.campaign_id;
+        let actionDesc = "";
+
+        if (rule.action === "pause") {
+          await fetch(`https://graph.facebook.com/v21.0/${row.campaign_id}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "PAUSED", access_token: conn.user_access_token }),
+          });
+          actionDesc = `Campaign *${campName}* paused`;
+        } else if (rule.action === "activate") {
+          await fetch(`https://graph.facebook.com/v21.0/${row.campaign_id}`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "ACTIVE", access_token: conn.user_access_token }),
+          });
+          actionDesc = `Campaign *${campName}* activated`;
+        } else if (rule.action === "adjust_budget" && rule.action_value) {
+          const pct = Number(rule.action_value);
+          const campRes = await fetch(`https://graph.facebook.com/v21.0/${row.campaign_id}?fields=daily_budget,lifetime_budget&access_token=${conn.user_access_token}`);
+          const campData = await campRes.json();
+          const budgetField = campData.daily_budget ? "daily_budget" : "lifetime_budget";
+          const current = Number(campData[budgetField]) || 0;
+          if (current > 0) {
+            const newBudget = Math.round(current * (1 + pct / 100));
+            await fetch(`https://graph.facebook.com/v21.0/${row.campaign_id}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ [budgetField]: newBudget, access_token: conn.user_access_token }),
+            });
+            actionDesc = `Campaign *${campName}* budget ${pct > 0 ? "+" : ""}${pct}% (${(current/100).toFixed(2)} → ${(newBudget/100).toFixed(2)})`;
+          }
+        } else if (rule.action === "alert") {
+          actionDesc = `Alert: *${campName}* — ${rule.metric} = ${metricVal.toFixed(2)} (threshold: ${rule.operator} ${rule.threshold})`;
+        }
+
+        if (actionDesc) {
+          // Create notification
+          const notifs = readTaskFile("notifications.json");
+          notifs.unshift({
+            id: genId(), type: "system", agent: "ads_rules",
+            title: `Ad Rule: ${rule.name}`, message: actionDesc,
+            severity: rule.action === "alert" ? "info" : "success", read: false,
+            created_at: new Date().toISOString(),
+          });
+          if (notifs.length > 100) notifs.length = 100;
+          writeTaskFile("notifications.json", notifs);
+
+          // Send Telegram notification
+          if (TG_TOKEN && TG_CHAT) {
+            sendTelegram(`📊 <b>Ad Rule: ${rule.name}</b>\n${actionDesc.replace(/\*/g, "")}`);
+          }
+
+          // Update rule trigger count
+          rule.last_triggered = new Date().toISOString();
+          rule.trigger_count = (rule.trigger_count || 0) + 1;
+        }
+      }
+    } catch (e) {
+      console.error(`[ADS-RULES] Error evaluating rule ${rule.name}:`, e.message);
+    }
+  }
+  writeTaskFile("ads-rules.json", rules);
+}
+
+setInterval(() => evaluateAdsRules(), 5 * 60_000);
+
+// ── ADS OPTIMIZER (AI-driven scheduled optimization) ──
+async function executeAdsOptimizerSchedule(schedule, today) {
+  const p = schedule.payload || {};
+  const period = p.period || "last_7d";
+  console.log(`[SCHEDULER] Ads Optimizer: ${schedule.name} (period: ${period})`);
+
+  try {
+    // Gather all campaign data
+    const accounts = readSocial().filter(c => c.platform === "meta_ads");
+    if (!accounts.length) { console.log("[ADS-OPT] No ad accounts connected"); return; }
+
+    let allData = [];
+    for (const acc of accounts) {
+      try {
+        const campUrl = `https://graph.facebook.com/v21.0/${acc.ad_account_id}/campaigns?fields=id,name,status,effective_status,daily_budget,lifetime_budget,objective&limit=100&access_token=${acc.user_access_token}`;
+        const insUrl = `https://graph.facebook.com/v21.0/${acc.ad_account_id}/insights?fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values,purchase_roas&date_preset=${period}&level=campaign&limit=200&access_token=${acc.user_access_token}`;
+        const [campRes, insRes] = await Promise.all([fetch(campUrl), fetch(insUrl)]);
+        const campaigns = (await campRes.json()).data || [];
+        const insights = (await insRes.json()).data || [];
+        const insMap = {};
+        insights.forEach(i => insMap[i.campaign_id] = i);
+
+        for (const c of campaigns) {
+          const ins = insMap[c.id] || {};
+          const spend = Number(ins.spend) || 0;
+          let roas = 0;
+          if (Array.isArray(ins.purchase_roas) && ins.purchase_roas[0]) roas = Number(ins.purchase_roas[0].value) || 0;
+          let purchases = 0;
+          if (Array.isArray(ins.actions)) {
+            const pa = ins.actions.find(a => a.action_type === "purchase" || a.action_type === "omni_purchase");
+            if (pa) purchases = Number(pa.value) || 0;
+          }
+          allData.push({
+            account: acc.name, account_id: acc.account_id, currency: acc.currency,
+            campaign_id: c.id, campaign_name: c.name, status: c.effective_status || c.status,
+            objective: c.objective, daily_budget_cents: Number(c.daily_budget) || 0,
+            lifetime_budget_cents: Number(c.lifetime_budget) || 0,
+            spend, impressions: Number(ins.impressions) || 0, clicks: Number(ins.clicks) || 0,
+            ctr: Number(ins.ctr) || 0, cpc: Number(ins.cpc) || 0, roas, purchases,
+          });
+        }
+      } catch (e) { console.error(`[ADS-OPT] Error fetching ${acc.name}:`, e.message); }
+    }
+
+    if (!allData.length) { console.log("[ADS-OPT] No campaign data"); return; }
+
+    // Send to Claude for analysis + optimization decisions
+    const brand = loadBrand();
+    const systemPrompt = `Je bent de Ads Optimizer van ${brand.company_name}. Je analyseert Meta Ads campaign performance en neemt optimalisatie-beslissingen.
+
+REGELS:
+- Pauzeer campaigns met ROAS < 0.8 en spend > €5 (ze verliezen geld)
+- Scale campaigns met ROAS > 2.5 door budget +20% te verhogen (ze zijn winstgevend)
+- Stuur een alert voor campaigns met hoge spend maar geen conversies
+- Verander NOOIT budgets met meer dan 30% per keer
+- Raak PAUSED campaigns niet aan tenzij ze eerder goede ROAS hadden
+- Wees conservatief — liever een alert dan een verkeerde actie
+
+BESCHIKBARE ACTIES (gebruik het tool):
+- pause: pauzeer een campaign
+- activate: activeer een campaign
+- set_daily_budget: stel daily budget in (in euro's)
+- alert: stuur alleen een melding, geen actie
+
+Analyseer de data en voer acties uit. Geef een kort rapport.`;
+
+    const userMsg = `Campaign performance data (${period}):\n\n${JSON.stringify(allData, null, 2)}\n\nAnalyseer elke campaign en neem de juiste acties. Geef een kort rapport van wat je hebt gedaan en waarom.`;
+
+    const tools = [{
+      type: "custom",
+      name: "ads_optimize_action",
+      description: "Voer een optimalisatie-actie uit op een campaign",
+      input_schema: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["pause", "activate", "set_daily_budget", "alert"], description: "De actie" },
+          campaign_id: { type: "string", description: "Campaign ID" },
+          account_id: { type: "string", description: "Account ID" },
+          daily_budget_euros: { type: "number", description: "Nieuw daily budget in euro's (alleen voor set_daily_budget)" },
+          reason: { type: "string", description: "Reden voor de actie (wordt opgenomen in notificatie)" },
+        },
+        required: ["action", "campaign_id", "account_id", "reason"],
+      },
+    }];
+
+    let response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMsg }],
+      tools,
+    });
+
+    const actions = [];
+    let report = "";
+    let loopCount = 0;
+
+    while (response.stop_reason === "tool_use" && loopCount < 15) {
+      loopCount++;
+      const toolResults = [];
+
+      for (const block of response.content) {
+        if (block.type === "text") report += block.text;
+        if (block.type !== "tool_use" || block.name !== "ads_optimize_action") continue;
+
+        const input = block.input;
+        const conn = accounts.find(a => a.account_id === input.account_id);
+        let result = { success: false, error: "Unknown action" };
+
+        try {
+          if (input.action === "pause" && conn) {
+            await fetch(`https://graph.facebook.com/v21.0/${input.campaign_id}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "PAUSED", access_token: conn.user_access_token }),
+            });
+            result = { success: true, action: "paused" };
+          } else if (input.action === "activate" && conn) {
+            await fetch(`https://graph.facebook.com/v21.0/${input.campaign_id}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "ACTIVE", access_token: conn.user_access_token }),
+            });
+            result = { success: true, action: "activated" };
+          } else if (input.action === "set_daily_budget" && conn && input.daily_budget_euros) {
+            const cents = Math.round(input.daily_budget_euros * 100);
+            await fetch(`https://graph.facebook.com/v21.0/${input.campaign_id}`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ daily_budget: cents, access_token: conn.user_access_token }),
+            });
+            result = { success: true, action: "budget_set", budget: input.daily_budget_euros };
+          } else if (input.action === "alert") {
+            result = { success: true, action: "alert" };
+          }
+        } catch (e) { result = { success: false, error: e.message }; }
+
+        actions.push({ ...input, result });
+        toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+      }
+
+      response = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: userMsg },
+          { role: "assistant", content: response.content },
+          { role: "user", content: toolResults },
+        ],
+        tools,
+      });
+    }
+
+    // Extract final report text
+    for (const block of response.content) {
+      if (block.type === "text") report += block.text;
+    }
+
+    const actionCount = actions.filter(a => a.result?.success && a.action !== "alert").length;
+    const alertCount = actions.filter(a => a.action === "alert").length;
+
+    // Create notification
+    const notifs = readTaskFile("notifications.json");
+    notifs.unshift({
+      id: genId(), type: "system", agent: "ads_optimizer",
+      title: `Ads Optimizer: ${actionCount} actions, ${alertCount} alerts`,
+      message: report.substring(0, 500),
+      severity: actionCount > 0 ? "success" : "info", read: false,
+      created_at: new Date().toISOString(),
+    });
+    if (notifs.length > 100) notifs.length = 100;
+    writeTaskFile("notifications.json", notifs);
+
+    // Send Telegram report
+    if (TG_TOKEN && TG_CHAT) {
+      const tgReport = `📊 <b>Ads Optimizer — ${schedule.name}</b>\n\n${report.substring(0, 3500).replace(/[*_]/g, "")}`;
+      sendTelegram(tgReport);
+    }
+
+    console.log(`[ADS-OPT] Done: ${actionCount} actions, ${alertCount} alerts`);
+  } catch (e) {
+    console.error(`[ADS-OPT] Failed:`, e.message);
+    if (TG_TOKEN && TG_CHAT) sendTelegram(`⚠️ <b>Ads Optimizer fout</b>\n${e.message}`);
   }
 
   const schedules = readTaskFile("scheduled-tasks.json");

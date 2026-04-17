@@ -263,7 +263,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://yourdomain.com/social/meta/callback"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://jouwdomein.nl/social/meta/callback"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
           </div>
         </div>
@@ -502,31 +502,54 @@ async function loadConfig() {
       document.getElementById('cfg-hue-val').textContent = hue;
     }
     if (d.integrations) {
-      // Show masked values as placeholders with current key indicator
-      const setPlaceholder = (id, int) => {
+      // Show masked key as value in the field so users see what's configured
+      const showMasked = (id, int) => {
         const el = document.getElementById(id);
-        if (el && int.has_key && int.masked) el.placeholder = 'Current: ' + int.masked + ' (leave empty to keep)';
-        else if (el && int.has_key) el.placeholder = 'Configured (leave empty to keep)';
+        if (!el) return;
+        el.value = '';
+        if (int && int.has_key && int.masked) {
+          el.placeholder = int.masked + '  —  leave empty to keep';
+        } else {
+          el.placeholder = 'Not configured';
+        }
       };
-      setPlaceholder('cfg-anthropic', d.integrations.anthropic);
-      setPlaceholder('cfg-heygen', d.integrations.heygen);
-      setPlaceholder('cfg-stripe', d.integrations.stripe);
-      setPlaceholder('cfg-inference', d.integrations.inference);
-      setPlaceholder('cfg-composio', d.integrations.composio);
-      setPlaceholder('cfg-youtube', d.integrations.youtube);
+      showMasked('cfg-anthropic', d.integrations.anthropic);
+      showMasked('cfg-heygen', d.integrations.heygen);
+      showMasked('cfg-stripe', d.integrations.stripe);
+      showMasked('cfg-inference', d.integrations.inference);
+      showMasked('cfg-composio', d.integrations.composio);
+      showMasked('cfg-youtube', d.integrations.youtube);
       if (d.integrations.meta) {
         const m = d.integrations.meta;
-        if (m.has_app_id) document.getElementById('cfg-meta-app-id').placeholder = 'Current: ' + (m.app_id_masked || 'set') + ' (leave empty to keep)';
-        if (m.has_secret) document.getElementById('cfg-meta-app-secret').placeholder = 'Configured (leave empty to keep)';
-        if (m.redirect_uri) document.getElementById('cfg-meta-redirect').value = m.redirect_uri;
+        const metaId = document.getElementById('cfg-meta-app-id');
+        const metaSecret = document.getElementById('cfg-meta-app-secret');
+        const metaRedirect = document.getElementById('cfg-meta-redirect');
+        metaId.value = '';
+        metaSecret.value = '';
+        if (m.has_app_id && m.app_id_masked) {
+          metaId.placeholder = m.app_id_masked + '  —  leave empty to keep';
+        } else {
+          metaId.placeholder = 'Not configured';
+        }
+        if (m.has_secret) {
+          metaSecret.placeholder = 'Configured  —  leave empty to keep';
+        } else {
+          metaSecret.placeholder = 'Not configured';
+        }
+        metaRedirect.value = m.redirect_uri || '';
+        if (!m.redirect_uri) metaRedirect.placeholder = 'https://yourdomain.com/social/meta/callback';
       }
       if (d.integrations.telegram) {
+        const tgToken = document.getElementById('cfg-tg-token');
+        const tgChat = document.getElementById('cfg-tg-chatid');
+        tgToken.value = '';
         if (d.integrations.telegram.token_masked) {
-          document.getElementById('cfg-tg-token').placeholder = 'Current: ' + d.integrations.telegram.token_masked + ' (leave empty to keep)';
+          tgToken.placeholder = d.integrations.telegram.token_masked + '  —  leave empty to keep';
+        } else {
+          tgToken.placeholder = 'Not configured';
         }
-        if (d.integrations.telegram.chat_id) {
-          document.getElementById('cfg-tg-chatid').value = d.integrations.telegram.chat_id;
-        }
+        tgChat.value = d.integrations.telegram.chat_id || '';
+        if (!d.integrations.telegram.chat_id) tgChat.placeholder = 'Not configured';
       }
     }
   } catch {}
@@ -567,6 +590,7 @@ async function saveConfig() {
     saved.style.display = 'block';
     setTimeout(() => saved.style.display = 'none', 3000);
     loadIntegrations(); // Refresh status cards
+    loadConfig();       // Re-populate config fields with saved values
   } catch (e) {
     alert('Error: ' + e.message);
   }

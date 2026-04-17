@@ -110,6 +110,72 @@ body::after {
 .btn-primary { background: hsla(264 65% 49% / 0.06); color: var(--primary); border-color: hsla(264 65% 49% / 0.2); letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
 .btn-primary:hover { background: hsla(264 65% 49% / 0.12); }
 
+.action-btn {
+  font-family: var(--font-data); font-size: 10px; padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.04em; font-weight: 500;
+}
+.action-btn:hover { border-color: var(--border-glow); color: var(--text); background: hsla(264 65% 49% / 0.06); }
+.action-btn.pause:hover { color: var(--warning); border-color: hsla(45 93% 55% / 0.4); }
+.action-btn.activate:hover { color: var(--success); border-color: hsla(142 76% 36% / 0.4); }
+.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.actions-cell { display: flex; gap: 4px; justify-content: flex-end; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000;
+  display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 24px 28px; width: 380px; max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 32px hsla(264 65% 49% / 0.08);
+}
+.modal h3 { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.15em; color: var(--primary); margin-bottom: 16px; }
+.modal label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 4px; }
+.modal input[type="number"] {
+  width: 100%; padding: 8px 12px; background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: var(--font-data); font-size: 14px; outline: none;
+}
+.modal input[type="number"]:focus { border-color: var(--primary); }
+.modal-hint { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
+.modal-actions .btn { padding: 8px 16px; font-size: 11px; }
+.btn-confirm { background: linear-gradient(135deg, var(--primary), hsl(264 65% 65%)); color: #fff; border: none; font-weight: 600; }
+.btn-confirm:hover { opacity: 0.9; }
+
+.view-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.view-tab { font-family: var(--font-data); font-size: 11px; padding: 8px 16px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid var(--border); background: transparent; color: var(--text-dim); }
+.view-tab:hover { color: var(--text); border-color: var(--primary-dim); }
+.view-tab.active { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.06); }
+.view-panel { display: none; }
+.view-panel.active { display: block; }
+
+.creative-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; transition: all 0.25s; }
+.creative-card:hover { border-color: var(--border-glow); }
+.creative-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.creative-thumb { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; background: var(--bg-deep); margin-bottom: 10px; }
+.creative-name { font-weight: 500; font-size: 13px; margin-bottom: 4px; }
+.creative-body { font-size: 11px; color: var(--text-dim); line-height: 1.4; max-height: 40px; overflow: hidden; }
+
+.rule-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; align-items: center; gap: 14px; transition: all 0.25s; }
+.rule-card:hover { border-color: var(--border-glow); }
+.rule-info { flex: 1; }
+.rule-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.rule-desc { font-size: 11px; color: var(--text-dim); }
+.rule-meta { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.rule-toggle { width: 40px; height: 22px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg-deep); cursor: pointer; position: relative; transition: all 0.2s; }
+.rule-toggle.on { background: hsla(142 76% 36% / 0.2); border-color: var(--success); }
+.rule-toggle::after { content:''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-dim); transition: all 0.2s; }
+.rule-toggle.on::after { left: 20px; background: var(--success); }
+
+.rule-form { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+.rule-form select, .rule-form input { font-family: var(--font-data); font-size: 12px; padding: 6px 10px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; }
+.rule-form select:focus, .rule-form input:focus { border-color: var(--primary); }
+.rule-form label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 3px; }
+.rule-form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 10px; }
+.rule-form-row > div { flex: 1; min-width: 120px; }
+
 .empty-state {
   background: var(--bg-card); border: 1px dashed var(--border); border-radius: var(--radius);
   padding: 40px 28px; text-align: center; color: var(--text-dim);
@@ -131,6 +197,8 @@ body::after {
   .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .table-wrap { overflow-x: auto; }
   table { min-width: 700px; }
+  .view-tabs { flex-wrap: wrap; gap: 4px; }
+  .creative-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
   .summary-grid { grid-template-columns: 1fr 1fr; }
@@ -166,27 +234,79 @@ body::after {
     </section>
 
     <section class="fade-up delay-3">
-      <div class="section-header">Campaigns</div>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr>
-            <th>Campaign</th>
-            <th>Status</th>
-            <th>Objective</th>
-            <th style="text-align:right">Spend</th>
-            <th style="text-align:right">Impressions</th>
-            <th style="text-align:right">Clicks</th>
-            <th style="text-align:right">CTR</th>
-            <th style="text-align:right">CPC</th>
-            <th style="text-align:right">ROAS</th>
-          </tr></thead>
-          <tbody id="campaigns-tbody">
-            <tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)">Loading...</td></tr>
-          </tbody>
-        </table>
+      <div class="view-tabs">
+        <button class="view-tab active" onclick="switchTab('campaigns')">Campaigns</button>
+        <button class="view-tab" onclick="switchTab('adsets')">Ad Sets</button>
+        <button class="view-tab" onclick="switchTab('ads')">Ads</button>
+        <button class="view-tab" onclick="switchTab('rules')">Rules</button>
+      </div>
+
+      <div class="view-panel active" id="panel-campaigns">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>Campaign</th><th>Status</th><th>Objective</th>
+              <th style="text-align:right">Budget</th><th style="text-align:right">Spend</th>
+              <th style="text-align:right">Impressions</th><th style="text-align:right">Clicks</th>
+              <th style="text-align:right">CTR</th><th style="text-align:right">CPC</th>
+              <th style="text-align:right">ROAS</th><th style="text-align:right">Actions</th>
+            </tr></thead>
+            <tbody id="campaigns-tbody">
+              <tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view-panel" id="panel-adsets">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>Ad Set</th><th>Campaign</th><th>Status</th>
+              <th style="text-align:right">Budget</th><th>Optimization</th>
+              <th style="text-align:right">Actions</th>
+            </tr></thead>
+            <tbody id="adsets-tbody">
+              <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-dim)">Select an account and click Refresh</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="view-panel" id="panel-ads">
+        <div class="creative-grid" id="ads-grid">
+          <div style="text-align:center;padding:24px;color:var(--text-dim);grid-column:1/-1">Select an account and click Refresh</div>
+        </div>
+      </div>
+
+      <div class="view-panel" id="panel-rules">
+        <div id="rule-form-container"></div>
+        <button class="btn btn-primary" onclick="showRuleForm()" id="add-rule-btn" style="margin-bottom:14px">+ New Rule</button>
+        <div id="rules-list"></div>
       </div>
     </section>
   </main>
+</div>
+
+<div class="modal-overlay" id="budget-modal">
+  <div class="modal">
+    <h3>EDIT BUDGET</h3>
+    <div style="font-size:12px;color:var(--text);margin-bottom:14px;font-weight:500" id="budget-campaign-name"></div>
+    <div id="budget-daily-group">
+      <label>Daily budget</label>
+      <input type="number" id="budget-daily-input" step="0.01" min="0" placeholder="0.00">
+      <div class="modal-hint">Current: <span id="budget-daily-current">—</span></div>
+    </div>
+    <div id="budget-lifetime-group" style="margin-top:12px">
+      <label>Lifetime budget</label>
+      <input type="number" id="budget-lifetime-input" step="0.01" min="0" placeholder="0.00">
+      <div class="modal-hint">Current: <span id="budget-lifetime-current">—</span></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeBudgetModal()">Cancel</button>
+      <button class="btn btn-confirm" id="budget-save-btn" onclick="saveBudget()">Save Budget</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -239,7 +359,7 @@ async function renderEmpty() {
     ? `<button id="connect-meta-btn" class="btn btn-primary" style="margin-top:12px">+ Connect Meta</button>`
     : `<a href="/settings.html#integrations" class="btn btn-primary" style="margin-top:12px;text-decoration:none;display:inline-block">Configureer Meta App</a>`;
   document.getElementById('campaigns-tbody').innerHTML = `
-    <tr><td colspan="9">
+    <tr><td colspan="11">
       <div class="empty-state">
         <h3>Geen ad accounts gekoppeld</h3>
         <p>Koppel je Meta account — de OAuth flow vraagt automatisch <code>ads_read</code> + <code>ads_management</code> scopes aan en haalt alle ad accounts op die onder je Business Manager vallen.</p>
@@ -261,7 +381,7 @@ async function loadData() {
   const datePreset = document.getElementById('range-select').value;
 
   const tbody = document.getElementById('campaigns-tbody');
-  tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Fetching ad data...</span></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Fetching ad data...</span></td></tr>`;
 
   try {
     const [campRes, insRes] = await Promise.all([
@@ -272,6 +392,7 @@ async function loadData() {
     if (!insRes.ok) throw new Error('Insights: ' + (await insRes.json()).error);
 
     const { campaigns } = await campRes.json();
+    _cachedCampaigns = campaigns || [];
     const { insights } = await insRes.json();
 
     const insMap = {};
@@ -301,7 +422,7 @@ async function loadData() {
     </div>`).join('');
 
     if (!campaigns.length) {
-      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-dim)">Geen campagnes gevonden voor dit ad account</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)">Geen campagnes gevonden voor dit ad account</td></tr>`;
       return;
     }
 
@@ -315,27 +436,364 @@ async function loadData() {
       const ctr = Number(i.ctr) || 0;
       const cpc = Number(i.cpc) || 0;
       const roas = extractRoas(i);
-      return { c, i, status, cls, spend, impr, clicks, ctr, cpc, roas };
+      const dailyBudget = Number(c.daily_budget) || 0;
+      const lifetimeBudget = Number(c.lifetime_budget) || 0;
+      return { c, i, status, cls, spend, impr, clicks, ctr, cpc, roas, dailyBudget, lifetimeBudget };
     }).sort((a, b) => b.spend - a.spend);
 
-    tbody.innerHTML = rows.map(r => `<tr>
+    tbody.innerHTML = rows.map(r => {
+      const canToggle = r.status === 'ACTIVE' || r.status === 'PAUSED';
+      const toggleLabel = r.status === 'ACTIVE' ? 'Pause' : 'Activate';
+      const toggleClass = r.status === 'ACTIVE' ? 'pause' : 'activate';
+      const budgetDisplay = r.dailyBudget > 0
+        ? fmtMoney(r.dailyBudget / 100, currency) + '/day'
+        : (r.lifetimeBudget > 0 ? fmtMoney(r.lifetimeBudget / 100, currency) + ' lifetime' : '—');
+      return `<tr>
       <td><div style="font-weight:500;color:var(--text)">${escapeHtml(r.c.name)}</div>
           <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)">ID ${r.c.id}</div></td>
       <td><span class="status-pill ${r.cls}">${r.status}</span></td>
       <td style="font-size:11px;color:var(--text-dim);font-family:var(--font-data)">${r.c.objective || '—'}</td>
+      <td class="num" style="text-align:right;font-size:11px">${budgetDisplay}</td>
       <td class="num" style="text-align:right">${fmtMoney(r.spend, currency)}</td>
       <td class="num" style="text-align:right">${fmtNum(r.impr)}</td>
       <td class="num" style="text-align:right">${fmtNum(r.clicks)}</td>
       <td class="num" style="text-align:right">${fmtPct(r.ctr)}</td>
       <td class="num" style="text-align:right">${r.cpc ? fmtMoney(r.cpc, currency) : '—'}</td>
       <td class="num" style="text-align:right;color:${r.roas >= 2 ? 'var(--success)' : (r.roas > 0 ? 'var(--warning)' : 'var(--text-dim)')}">${r.roas > 0 ? r.roas.toFixed(2) + 'x' : '—'}</td>
-    </tr>`).join('');
+      <td style="text-align:right"><div class="actions-cell">
+        ${canToggle ? `<button class="action-btn ${toggleClass}" onclick="toggleCampaign('${r.c.id}','${r.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}',this)">${toggleLabel}</button>` : ''}
+        <button class="action-btn" data-id="${r.c.id}" data-name="${escapeHtml(r.c.name)}" data-daily="${r.dailyBudget}" data-lifetime="${r.lifetimeBudget}" onclick="openBudgetModal(this.dataset.id,this.dataset.name,+this.dataset.daily,+this.dataset.lifetime)">Budget</button>
+      </div></td>
+    </tr>`}).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
   }
 }
 
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function getAccountId() { return document.getElementById('account-select').value; }
+function getCurrency() { return document.getElementById('account-select').options[document.getElementById('account-select').selectedIndex]?.dataset.currency || ''; }
+
+let currentTab = 'campaigns';
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.view-tab').forEach((t, i) => t.classList.toggle('active', ['campaigns','adsets','ads','rules'][i] === tab));
+  document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  if (tab === 'adsets' && getAccountId()) loadAdsets();
+  if (tab === 'ads' && getAccountId()) loadAds();
+  if (tab === 'rules') loadRules();
+}
+
+async function toggleCampaign(campaignId, newStatus, btn) {
+  const label = newStatus === 'PAUSED' ? 'pause' : 'activate';
+  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this campaign?`)) return;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`/ads/campaigns/${campaignId}/status`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, account_id: getAccountId() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    loadData();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  }
+}
+
+let _budgetCampaignId = null;
+let _budgetLevel = 'campaign'; // 'campaign' or 'adset'
+function openBudgetModal(campaignId, name, dailyCents, lifetimeCents) {
+  _budgetCampaignId = campaignId;
+  _budgetLevel = 'campaign';
+  const currency = getCurrency();
+  document.getElementById('budget-campaign-name').textContent = name;
+  document.getElementById('budget-daily-input').value = '';
+  document.getElementById('budget-lifetime-input').value = '';
+  document.getElementById('budget-daily-current').textContent = dailyCents > 0 ? fmtMoney(dailyCents / 100, currency) + '/day' : 'not set';
+  document.getElementById('budget-lifetime-current').textContent = lifetimeCents > 0 ? fmtMoney(lifetimeCents / 100, currency) : 'not set';
+  // Show only the relevant budget type, hide the other
+  document.getElementById('budget-daily-group').style.display = lifetimeCents > 0 && dailyCents === 0 ? 'none' : 'block';
+  document.getElementById('budget-lifetime-group').style.display = dailyCents > 0 && lifetimeCents === 0 ? 'none' : 'block';
+  document.getElementById('budget-modal').classList.add('open');
+}
+function closeBudgetModal() {
+  document.getElementById('budget-modal').classList.remove('open');
+  _budgetCampaignId = null;
+}
+async function saveBudget() {
+  const dailyVal = document.getElementById('budget-daily-input').value;
+  const lifetimeVal = document.getElementById('budget-lifetime-input').value;
+  if (!dailyVal && !lifetimeVal) { alert('Enter a budget amount'); return; }
+  const body = { account_id: getAccountId() };
+  if (dailyVal) body.daily_budget = Math.round(Number(dailyVal) * 100);
+  if (lifetimeVal) body.lifetime_budget = Math.round(Number(lifetimeVal) * 100);
+  const btn = document.getElementById('budget-save-btn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const seg = _budgetLevel === 'adset' ? 'adsets' : 'campaigns';
+    const r = await fetch(`/ads/${seg}/${_budgetCampaignId}/budget`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    closeBudgetModal();
+    if (_budgetLevel === 'adset') loadAdsets(); else loadData();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = 'Save Budget';
+}
+// Close modal on overlay click
+document.getElementById('budget-modal').addEventListener('click', function(e) { if (e.target === this) closeBudgetModal(); });
+
+// ── ADSETS TAB ──
+let _cachedCampaigns = [];
+async function loadAdsets() {
+  const tbody = document.getElementById('adsets-tbody');
+  const accountId = getAccountId();
+  if (!accountId) return;
+  const currency = getCurrency();
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Loading adsets...</span></td></tr>`;
+  try {
+    const r = await fetch('/ads/adsets?account_id=' + encodeURIComponent(accountId), { credentials: 'include' });
+    if (!r.ok) throw new Error((await r.json()).error);
+    const { adsets } = await r.json();
+    if (!adsets.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-dim)">No ad sets found</td></tr>`; return; }
+
+    // Build campaign name map
+    const campMap = {};
+    _cachedCampaigns.forEach(c => campMap[c.id] = c.name);
+
+    tbody.innerHTML = adsets.map(a => {
+      const status = a.effective_status || a.status;
+      const cls = STATUS_CLASS[status] || 'status-inactive';
+      const canToggle = status === 'ACTIVE' || status === 'PAUSED';
+      const toggleLabel = status === 'ACTIVE' ? 'Pause' : 'Activate';
+      const toggleClass = status === 'ACTIVE' ? 'pause' : 'activate';
+      const daily = Number(a.daily_budget) || 0;
+      const lifetime = Number(a.lifetime_budget) || 0;
+      const budgetStr = daily > 0 ? fmtMoney(daily/100, currency) + '/day' : (lifetime > 0 ? fmtMoney(lifetime/100, currency) + ' lifetime' : '—');
+      const campName = campMap[a.campaign_id] || a.campaign_id || '—';
+      return `<tr>
+        <td><div style="font-weight:500">${escapeHtml(a.name)}</div><div style="font-size:10px;color:var(--text-dim)">ID ${a.id}</div></td>
+        <td style="font-size:11px;color:var(--text-dim);max-width:150px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(campName)}</td>
+        <td><span class="status-pill ${cls}">${status}</span></td>
+        <td class="num" style="text-align:right;font-size:11px">${budgetStr}</td>
+        <td style="font-size:11px;color:var(--text-dim)">${(a.optimization_goal || '—').replace(/_/g,' ').toLowerCase()}</td>
+        <td style="text-align:right"><div class="actions-cell">
+          ${canToggle ? `<button class="action-btn ${toggleClass}" onclick="toggleAdset('${a.id}','${status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}',this)">${toggleLabel}</button>` : ''}
+          <button class="action-btn" data-id="${a.id}" data-name="${escapeHtml(a.name)}" data-daily="${daily}" data-lifetime="${lifetime}" onclick="openAdsetBudgetModal(this)">Budget</button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function toggleAdset(adsetId, newStatus, btn) {
+  const label = newStatus === 'PAUSED' ? 'pause' : 'activate';
+  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this ad set?`)) return;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`/ads/adsets/${adsetId}/status`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, account_id: getAccountId() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    loadAdsets();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  }
+}
+
+function openAdsetBudgetModal(el) {
+  _budgetCampaignId = el.dataset.id;
+  _budgetLevel = 'adset';
+  const currency = getCurrency();
+  document.getElementById('budget-campaign-name').textContent = el.dataset.name;
+  document.getElementById('budget-daily-input').value = '';
+  document.getElementById('budget-lifetime-input').value = '';
+  const daily = +el.dataset.daily, lifetime = +el.dataset.lifetime;
+  document.getElementById('budget-daily-current').textContent = daily > 0 ? fmtMoney(daily / 100, currency) + '/day' : 'not set';
+  document.getElementById('budget-lifetime-current').textContent = lifetime > 0 ? fmtMoney(lifetime / 100, currency) : 'not set';
+  document.getElementById('budget-daily-group').style.display = lifetime > 0 && daily === 0 ? 'none' : 'block';
+  document.getElementById('budget-lifetime-group').style.display = daily > 0 && lifetime === 0 ? 'none' : 'block';
+  document.getElementById('budget-modal').classList.add('open');
+}
+
+// ── ADS (CREATIVES) TAB ──
+async function loadAds() {
+  const grid = document.getElementById('ads-grid');
+  const accountId = getAccountId();
+  if (!accountId) return;
+  grid.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);grid-column:1/-1"><span style="animation:pulse-glow 1.5s infinite">◌ Loading ads...</span></div>`;
+  try {
+    const r = await fetch('/ads/ads?account_id=' + encodeURIComponent(accountId), { credentials: 'include' });
+    if (!r.ok) throw new Error((await r.json()).error);
+    const { ads } = await r.json();
+    if (!ads.length) { grid.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);grid-column:1/-1">No ads found</div>`; return; }
+
+    grid.innerHTML = ads.map(ad => {
+      const status = ad.effective_status || ad.status;
+      const cls = STATUS_CLASS[status] || 'status-inactive';
+      const canToggle = status === 'ACTIVE' || status === 'PAUSED';
+      const c = ad.creative || {};
+      const imgUrl = c.image_url || c.thumbnail_url || '';
+      const title = c.title || c.name || ad.name || 'Untitled';
+      const body = c.body || '';
+      const toggleLabel = status === 'ACTIVE' ? 'Pause' : 'Activate';
+      const toggleClass = status === 'ACTIVE' ? 'pause' : 'activate';
+      return `<div class="creative-card">
+        ${imgUrl ? `<img class="creative-thumb" src="${escapeHtml(imgUrl)}" alt="" onerror="this.style.display='none'">` : `<div class="creative-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:11px">No preview</div>`}
+        <div class="creative-name">${escapeHtml(title)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span class="status-pill ${cls}" style="font-size:9px">${status}</span>
+          <span style="font-size:10px;color:var(--text-dim)">ID ${ad.id}</span>
+        </div>
+        ${body ? `<div class="creative-body">${escapeHtml(body)}</div>` : ''}
+        <div style="margin-top:10px;display:flex;gap:4px">
+          ${canToggle ? `<button class="action-btn ${toggleClass}" onclick="toggleAd('${ad.id}','${status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}',this)">${toggleLabel}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);grid-column:1/-1">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function toggleAd(adId, newStatus, btn) {
+  const label = newStatus === 'PAUSED' ? 'pause' : 'activate';
+  if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this ad?`)) return;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`/ads/ads/${adId}/status`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus, account_id: getAccountId() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    loadAds();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  }
+}
+
+// ── RULES TAB ──
+async function loadRules() {
+  const list = document.getElementById('rules-list');
+  try {
+    const r = await fetch('/ads/rules', { credentials: 'include' });
+    const { rules } = await r.json();
+    if (!rules.length) {
+      list.innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-dim);border:1px dashed var(--border);border-radius:var(--radius)">No rules yet. Click "+ New Rule" to create automated ad management rules.</div>`;
+      return;
+    }
+    const actionLabels = { pause: 'Pause campaign', activate: 'Activate campaign', adjust_budget: 'Adjust budget', alert: 'Send alert' };
+    list.innerHTML = rules.map(r => {
+      const desc = `When ${r.metric.toUpperCase()} ${r.operator} ${r.threshold} → ${actionLabels[r.action] || r.action}${r.action === 'adjust_budget' && r.action_value ? ' (' + (Number(r.action_value) > 0 ? '+' : '') + r.action_value + '%)' : ''}`;
+      const meta = `Period: ${r.check_period} | Triggered: ${r.trigger_count || 0}x${r.last_triggered ? ' | Last: ' + new Date(r.last_triggered).toLocaleDateString() : ''}`;
+      return `<div class="rule-card">
+        <div class="rule-toggle ${r.enabled ? 'on' : ''}" onclick="toggleRule('${r.id}',${!r.enabled})"></div>
+        <div class="rule-info">
+          <div class="rule-name">${escapeHtml(r.name)}</div>
+          <div class="rule-desc">${escapeHtml(desc)}</div>
+          <div class="rule-meta">${meta}</div>
+        </div>
+        <button class="action-btn" onclick="deleteRule('${r.id}')" style="color:var(--danger)">Delete</button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div style="color:var(--danger);padding:12px">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function showRuleForm() {
+  document.getElementById('rule-form-container').innerHTML = `<div class="rule-form">
+    <div class="rule-form-row">
+      <div><label>Rule name</label><input type="text" id="rf-name" placeholder="e.g. Auto-pause low ROAS" style="width:100%"></div>
+    </div>
+    <div class="rule-form-row">
+      <div><label>Metric</label><select id="rf-metric">
+        <option value="roas">ROAS</option><option value="spend">Spend (€)</option>
+        <option value="ctr">CTR (%)</option><option value="cpc">CPC (€)</option><option value="cpm">CPM (€)</option>
+      </select></div>
+      <div><label>Operator</label><select id="rf-op">
+        <option value="<">&lt; Less than</option><option value=">">&gt; Greater than</option>
+        <option value="<=">&lt;= Less or equal</option><option value=">=">&gt;= Greater or equal</option>
+      </select></div>
+      <div><label>Threshold</label><input type="number" id="rf-threshold" step="0.01" placeholder="1.0" style="width:100%"></div>
+    </div>
+    <div class="rule-form-row">
+      <div><label>Action</label><select id="rf-action" onchange="document.getElementById('rf-budget-pct').style.display=this.value==='adjust_budget'?'block':'none'">
+        <option value="pause">Pause campaign</option><option value="activate">Activate campaign</option>
+        <option value="adjust_budget">Adjust budget %</option><option value="alert">Alert only</option>
+      </select></div>
+      <div id="rf-budget-pct" style="display:none"><label>Budget change %</label><input type="number" id="rf-pct" placeholder="-20 or +30" style="width:100%"></div>
+      <div><label>Check period</label><select id="rf-period">
+        <option value="today">Today</option><option value="yesterday">Yesterday</option>
+        <option value="last_7d" selected>Last 7 days</option><option value="last_14d">Last 14 days</option>
+        <option value="last_30d">Last 30 days</option>
+      </select></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-confirm" onclick="saveRule()">Create Rule</button>
+      <button class="btn" onclick="document.getElementById('rule-form-container').innerHTML=''">Cancel</button>
+    </div>
+  </div>`;
+}
+
+async function saveRule() {
+  const name = document.getElementById('rf-name').value.trim();
+  if (!name) { alert('Enter a rule name'); return; }
+  const body = {
+    name,
+    account_id: getAccountId(),
+    metric: document.getElementById('rf-metric').value,
+    operator: document.getElementById('rf-op').value,
+    threshold: document.getElementById('rf-threshold').value,
+    action: document.getElementById('rf-action').value,
+    action_value: document.getElementById('rf-pct')?.value || null,
+    check_period: document.getElementById('rf-period').value,
+  };
+  try {
+    const r = await fetch('/ads/rules', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.json()).error);
+    document.getElementById('rule-form-container').innerHTML = '';
+    loadRules();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function toggleRule(id, enabled) {
+  await fetch(`/ads/rules/${id}`, {
+    method: 'PATCH', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  loadRules();
+}
+
+async function deleteRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  await fetch(`/ads/rules/${id}`, { method: 'DELETE', credentials: 'include' });
+  loadRules();
+}
 
 (async function init() {
   const accounts = await loadAccounts();
