@@ -151,6 +151,13 @@ if ! command -v crontab &>/dev/null; then
 fi
 ok "Cron installed"
 
+# rsync (required by update.sh for atomic file sync with preserve-excludes)
+if ! command -v rsync &>/dev/null; then
+  info "Installing rsync..."
+  apt-get install -y -q rsync || { error "Failed to install rsync"; exit 1; }
+fi
+ok "rsync installed"
+
 # Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
 if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1; then

@@ -51,7 +51,9 @@ ok "Found installation at $INSTALL_DIR"
 # ── BACKUP CUSTOMER DATA (safety net) ───────────
 BACKUP_DIR="/var/backups/commandcenter"
 mkdir -p "$BACKUP_DIR"
-BACKUP_FILE="$BACKUP_DIR/data-$(date +%Y%m%d-%H%M%S).tar.gz"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_FILE="$BACKUP_DIR/data-${STAMP}.tar.gz"
+ENV_BACKUP_FILE="$BACKUP_DIR/env-${STAMP}.bak"
 info "Creating safety backup of customer data..."
 if [ -d "$INSTALL_DIR/command-center/data" ]; then
   tar -czf "$BACKUP_FILE" \
@@ -59,12 +61,12 @@ if [ -d "$INSTALL_DIR/command-center/data" ]; then
     2>/dev/null || true
 fi
 if [ -f "$INSTALL_DIR/.env" ]; then
-  tar -rzf "$BACKUP_FILE" -C "$INSTALL_DIR" .env 2>/dev/null || \
-    cp "$INSTALL_DIR/.env" "$BACKUP_DIR/env-$(date +%Y%m%d-%H%M%S).bak"
+  cp "$INSTALL_DIR/.env" "$ENV_BACKUP_FILE" 2>/dev/null || true
 fi
-# Keep only last 5 backups
+# Keep only last 5 of each backup family
 ls -1t "$BACKUP_DIR"/data-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
-ok "Backup saved to $BACKUP_FILE"
+ls -1t "$BACKUP_DIR"/env-*.bak 2>/dev/null | tail -n +6 | xargs -r rm -f
+ok "Backup saved to $BACKUP_FILE (and $ENV_BACKUP_FILE)"
 
 # ── PULL LATEST CODE ────────────────────────────
 info "Pulling latest code..."
