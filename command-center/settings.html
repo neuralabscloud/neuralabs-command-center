@@ -359,7 +359,7 @@ const SERVICE_META = {
   anthropic: { icon: '🧠', color: '264 65% 49%', label: 'Anthropic / Claude', desc: 'AI chat, research, design generation' },
   heygen: { icon: '🎬', color: '210 90% 55%', label: 'HeyGen', desc: 'AI avatar video generation' },
   stripe: { icon: '💳', color: '265 65% 60%', label: 'Stripe', desc: 'Payments, subscriptions & revenue' },
-  canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Design generation via OAuth + MCP' },
+  canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Design generation via OAuth + MCP (Canva requires localhost redirect — works best when browsing the Command Center from the same machine it runs on, or over SSH port-forward)' },
   telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
   inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
   composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
@@ -418,13 +418,32 @@ function renderIntegrations(integrations) {
           </div>
         `).join('')}
       </div>
-      <button class="btn-test" onclick="testIntegration('${int.id}', this)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        Test Connection
-      </button>
+      ${int.id === 'canva' ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-test" onclick="connectCanva()" style="background:hsla(142 70% 40% / 0.15);border-color:hsla(142 70% 40% / 0.4);color:hsl(142 70% 50%)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            ${int.status === 'connected' ? 'Reconnect Canva' : 'Connect Canva'}
+          </button>
+          <button class="btn-test" onclick="testIntegration('${int.id}', this)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Test Connection
+          </button>
+        </div>
+      ` : `
+        <button class="btn-test" onclick="testIntegration('${int.id}', this)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Test Connection
+        </button>
+      `}
       <div class="test-result" id="test-${int.id}"></div>
     </div>`;
   }).join('');
+}
+
+function connectCanva() {
+  // Canva MCP requires the redirect to go to localhost, so we launch the flow
+  // in a new tab/window and let the callback hand off back to this page.
+  window.location.href = '/canva/connect';
 }
 
 function toggleKey(btn) {
