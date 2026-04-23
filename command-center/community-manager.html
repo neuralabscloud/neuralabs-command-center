@@ -169,12 +169,12 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
             <input class="edit-input" id="np-trigger" placeholder="e.g. PREMIUM">
           </div>
           <div class="full">
-            <label class="edit-label">Link labels (from archetype set)</label>
+            <label class="edit-label">Link labels (from archetype set) — selected labels are appended as footer on publish</label>
             <div id="np-links" style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;background:hsl(0 0% 3%);border:1px solid var(--border);border-radius:6px;min-height:40px;align-items:center">
               <span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">Loading…</span>
             </div>
             <div class="post-actions" style="margin-top:6px">
-              <button class="btn-sm" type="button" onclick="insertNewPostLinks()">Insert selected links at cursor</button>
+              <button class="btn-sm" type="button" onclick="insertNewPostLinks()">Insert at cursor instead (for mid-body placement)</button>
             </div>
           </div>
           <div class="full">
@@ -1071,10 +1071,21 @@ function toggleEmojiPicker(textareaId, anchorBtn) {
   pop.style.top = Math.max(8, top) + 'px';
 }
 
-function insertNewPostLinks() {
+function buildNewPostLinkFooter() {
   const boxes = Array.from(document.querySelectorAll('#np-links input[type=checkbox]:checked'));
-  if (!boxes.length) { alert('Select one or more link labels first.'); return; }
-  const footer = boxes.map(b => `${b.dataset.emoji} [${b.dataset.name}](${b.dataset.url})`).join(' | ');
+  if (!boxes.length) return '';
+  return boxes.map(b => `${b.dataset.emoji} [${b.dataset.name}](${b.dataset.url})`).join(' | ');
+}
+
+function appendFooterToText(text, footer) {
+  if (!footer) return text;
+  const base = text.replace(/\s+$/, '');
+  return (base ? base + '\n\n' : '') + footer;
+}
+
+function insertNewPostLinks() {
+  const footer = buildNewPostLinkFooter();
+  if (!footer) { alert('Select one or more link labels first.'); return; }
   const ta = document.getElementById('np-text');
   const pos = ta.selectionStart ?? ta.value.length;
   const before = ta.value.slice(0, pos);
@@ -1085,6 +1096,8 @@ function insertNewPostLinks() {
   const newPos = before.length + insertion.length;
   ta.selectionStart = ta.selectionEnd = newPos;
   ta.focus();
+  // Clear checkboxes so submit doesn't append the same footer a second time
+  document.querySelectorAll('#np-links input[type=checkbox]').forEach(b => b.checked = false);
   updateNewPostCharCount();
 }
 
@@ -1175,7 +1188,8 @@ async function submitNewPost(mode) {
   const channel_id = document.getElementById('np-channel').value;
   const archetype = document.getElementById('np-archetype').value.trim() || null;
   const trigger_word = document.getElementById('np-trigger').value.trim() || null;
-  const text = document.getElementById('np-text').value;
+  const footer = buildNewPostLinkFooter();
+  const text = appendFooterToText(document.getElementById('np-text').value, footer);
   const whenLocal = document.getElementById('np-when').value;
   if (!channel_id) { alert('Select a channel first.'); return; }
   if (!text.trim()) { alert('Write some text first.'); return; }
