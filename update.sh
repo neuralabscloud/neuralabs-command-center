@@ -79,6 +79,9 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/ads-rules.json' \
         --exclude='data/video-projects/' \
         --exclude='data/generated-images/' \
+        --exclude='data/community/' \
+        --exclude='data/social-media/' \
+        --exclude='public/media/' \
         --exclude='logs' \
         "$SCRIPT_DIR/$component/" "$INSTALL_DIR/$component/"
     fi

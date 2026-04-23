@@ -90,6 +90,7 @@ PRIMARY_COLOR_HUE=264
 PRIMARY_COLOR_SAT=65
 PRIMARY_COLOR_LIT=49
 ANTHROPIC_API_KEY=""
+INFERENCE_API_KEY=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 HEYGEN_API_KEY=""
@@ -125,9 +126,9 @@ if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt
 fi
 ok "Node.js $(node -v)"
 
-# Python 3
-if ! command -v python3 &>/dev/null; then
-  info "Installing Python 3..."
+# Python 3 + pip (Ubuntu minimal ships python3 without pip3)
+if ! command -v python3 &>/dev/null || ! command -v pip3 &>/dev/null; then
+  info "Installing Python 3 + pip..."
   apt-get install -y -q python3 python3-venv python3-pip || { error "Failed to install Python 3"; exit 1; }
 fi
 ok "Python $(python3 --version)"
@@ -140,6 +141,15 @@ if ! command -v redis-server &>/dev/null; then
   systemctl start redis-server
 fi
 ok "Redis installed"
+
+# Cron (daily research/analyst scheduler needs crontab)
+if ! command -v crontab &>/dev/null; then
+  info "Installing cron..."
+  apt-get install -y -q cron || { error "Failed to install cron"; exit 1; }
+  systemctl enable cron 2>/dev/null || true
+  systemctl start cron 2>/dev/null || true
+fi
+ok "Cron installed"
 
 # Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
@@ -157,7 +167,16 @@ else
   warn "Inference.sh SDK install timed out or failed — install later with: npm install -g @inferencesh/sdk"
 fi
 
-pip3 install -q python-dotenv 2>/dev/null || true
+info "Installing Python dependencies for research-agent.py..."
+# Ubuntu 24.04+ enforces PEP 668 (externally-managed-environment) — use --break-system-packages
+# on a dedicated CC VPS this is safe; we don't share the system Python with other apps.
+if pip3 install -q --break-system-packages python-dotenv anthropic requests 2>/dev/null; then
+  ok "Python deps installed"
+elif pip3 install -q python-dotenv anthropic requests 2>/dev/null; then
+  ok "Python deps installed"
+else
+  warn "pip3 install failed — research-agent.py will not work until you run: pip3 install --break-system-packages python-dotenv anthropic requests"
+fi
 
 # ── COPY FILES ────────────────────────────────────────────
 info "Installing to ${INSTALL_DIR}..."
@@ -190,6 +209,7 @@ PRIMARY_COLOR_LIT=${PRIMARY_COLOR_LIT}
 CC_PASSWORD=${CC_PASSWORD}
 CC_SESSION_SECRET=${CC_SESSION_SECRET}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+INFERENCE_API_KEY=${INFERENCE_API_KEY}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
 TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
 HEYGEN_API_KEY=${HEYGEN_API_KEY}

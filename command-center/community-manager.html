@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --success: hsl(142 76% 36%); --danger: hsl(0 72% 51%);
+  --warning: hsl(45 93% 55%); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --agent-color: hsl(200 90% 55%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(200 90% 55% / 0.02) 0%, transparent 60%); pointer-events: none; }
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar { width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; }
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s; position: relative; border: 1px solid transparent; text-decoration: none; }
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.063); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.063); }
+.nav-item .tooltip { position: absolute; left: 52px; top: 50%; transform: translateY(-50%); background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, hsl(200 90% 55%), hsl(200 90% 70%)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.tab { padding: 10px 16px; font-family: var(--font-data); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; background: transparent; border-left: none; border-right: none; border-top: none; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-panel { display: none; flex-direction: column; gap: 16px; }
+.tab-panel.active { display: flex; }
+
+.section-header { font-family: var(--font-display); font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 14px; }
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+.status-bar { display: flex; gap: 12px; align-items: center; font-family: var(--font-data); font-size: 12px; color: var(--text-dim); padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); flex-wrap: wrap; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.status-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+.status-dot.unk { background: var(--warning); }
+.btn-sm { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text-dim); cursor: pointer; font-family: var(--font-data); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.btn-sm:hover { color: var(--text); border-color: var(--primary-dim); }
+.btn-sm.primary { color: var(--agent-color); border-color: hsla(200 90% 55% / 0.4); }
+.btn-sm.danger { color: var(--danger); border-color: hsla(0 72% 51% / 0.4); }
+.btn-sm.success { color: var(--success); border-color: hsla(142 76% 36% / 0.4); }
+
+.queue { display: flex; flex-direction: column; gap: 12px; }
+.post-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; transition: all 0.2s; }
+.post-card:hover { border-color: hsla(200 90% 55% / 0.3); }
+.post-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.post-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.post-arch { font-family: var(--font-data); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--agent-color); font-weight: 600; }
+.post-time { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+.post-trigger { font-family: var(--font-data); font-size: 9px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--warning); letter-spacing: 0.08em; }
+.post-channel { font-family: var(--font-data); font-size: 9px; padding: 2px 6px; border: 1px solid hsla(200 90% 55% / 0.3); border-radius: 4px; color: var(--agent-color); letter-spacing: 0.08em; text-transform: uppercase; }
+.post-status { font-family: var(--font-data); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+.post-status.draft { color: var(--text-dim); background: hsla(217 32% 20% / 0.3); }
+.post-status.scheduled { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
+.post-status.published { color: var(--success); background: hsla(142 76% 36% / 0.08); }
+.post-status.failed { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
+.post-status.cancelled { color: var(--text-dim); background: hsla(217 32% 20% / 0.3); text-decoration: line-through; }
+.post-status.manual { color: var(--premium); background: hsla(270 95% 65% / 0.08); }
+.group-title { font-family: var(--font-display); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin: 24px 0 10px; padding-top: 16px; border-top: 1px dashed var(--border); }
+.group-title:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.post-body { font-family: var(--font-data); font-size: 12px; color: var(--text-dim); line-height: 1.6; white-space: pre-wrap; max-height: 160px; overflow: auto; padding: 10px 12px; background: hsl(0 0% 3%); border: 1px solid var(--border); border-radius: 6px; }
+.post-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.post-err { font-family: var(--font-data); font-size: 11px; color: var(--danger); }
+.post-media { display: flex; gap: 10px; align-items: center; padding: 8px 12px; background: hsl(0 0% 3%); border: 1px solid var(--border); border-radius: 6px; }
+.post-media img, .post-media video { max-height: 80px; max-width: 140px; border-radius: 4px; border: 1px solid var(--border); }
+.post-media-info { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); flex: 1; }
+.post-media-info .fn { color: var(--text); font-weight: 500; }
+.edit-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.edit-grid .full { grid-column: 1 / -1; }
+.edit-label { font-family: var(--font-data); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 4px; display: block; }
+.edit-input, .edit-textarea, .edit-select { width: 100%; background: hsl(0 0% 3%); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--font-data); font-size: 12px; outline: none; }
+.edit-input:focus, .edit-textarea:focus, .edit-select:focus { border-color: var(--agent-color); }
+.edit-textarea { min-height: 200px; resize: vertical; line-height: 1.6; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.char-count { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+.char-count.warn { color: var(--warning); }
+.empty { text-align: center; padding: 32px; font-family: var(--font-data); color: var(--text-dim); font-size: 12px; }
+
+.channel-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.channel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.channel-title { font-family: var(--font-data); font-size: 13px; color: var(--text); font-weight: 600; }
+.channel-platform { font-family: var(--font-data); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+.channel-platform.telegram { color: var(--agent-color); background: hsla(200 90% 55% / 0.08); }
+.channel-platform.discord { color: hsl(227 58% 65%); background: hsla(227 58% 65% / 0.08); }
+.channel-platform.disabled { color: var(--text-dim); background: hsla(217 32% 20% / 0.3); }
+.discord-banner { font-family: var(--font-data); font-size: 11px; color: var(--warning); padding: 8px 12px; border: 1px dashed hsla(45 93% 55% / 0.3); border-radius: 6px; background: hsla(45 93% 55% / 0.04); }
+
+.arch-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.arch-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arch-name { font-family: var(--font-data); font-size: 13px; font-weight: 600; color: var(--text); }
+.arch-meta { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); }
+.arch-editor { display: none; flex-direction: column; gap: 8px; }
+.arch-editor.open { display: flex; }
+.arch-editor textarea { min-height: 360px; }
+
+.new-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border: 1px dashed var(--border); border-radius: var(--radius); background: hsla(264 65% 49% / 0.02); }
+.new-row input, .new-row select { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-data); font-size: 12px; outline: none; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="sidebar"></div>
+  <div class="main">
+    <div class="fade-up">
+      <div class="header-title">COMMUNITY MANAGER</div>
+      <div class="header-sub">Schedule and publish posts to Telegram/Discord channels your assistant manages</div>
+    </div>
+
+    <div class="tabs fade-up">
+      <button class="tab active" data-tab="queue" onclick="switchTab('queue')">Queue</button>
+      <button class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</button>
+      <button class="tab" data-tab="archetypes" onclick="switchTab('archetypes')">Archetype Sets</button>
+    </div>
+
+    <!-- QUEUE TAB -->
+    <div class="tab-panel active" id="tab-queue">
+      <div class="status-bar">
+        <span class="status-dot unk" id="status-dot"></span>
+        <span id="status-text">Select a channel…</span>
+        <select class="edit-select" id="queue-channel-filter" onchange="onChannelFilterChange()" style="max-width:240px"></select>
+        <button class="btn-sm" onclick="validateSelectedChannel()">Validate chat</button>
+        <button class="btn-sm primary" onclick="toggleNewPostForm()" id="new-post-btn" style="margin-left:auto">+ New post</button>
+        <button class="btn-sm" onclick="sendReview()">Send review batch</button>
+        <button class="btn-sm" onclick="loadTasks()">Refresh</button>
+      </div>
+
+      <div class="post-card" id="new-post-form" style="display:none">
+        <div class="post-top">
+          <div class="post-meta"><span class="post-arch">New post</span></div>
+          <span class="post-status draft">draft</span>
+        </div>
+        <div class="edit-grid">
+          <div>
+            <label class="edit-label">Channel</label>
+            <select class="edit-select" id="np-channel" onchange="loadNewPostLinks()"></select>
+          </div>
+          <div>
+            <label class="edit-label">Archetype (optional)</label>
+            <input class="edit-input" id="np-archetype" placeholder="e.g. A, B, E, G">
+          </div>
+          <div>
+            <label class="edit-label">Trigger word (optional)</label>
+            <input class="edit-input" id="np-trigger" placeholder="e.g. PREMIUM">
+          </div>
+          <div class="full">
+            <label class="edit-label">Link labels (from archetype set)</label>
+            <div id="np-links" style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;background:hsl(0 0% 3%);border:1px solid var(--border);border-radius:6px;min-height:40px;align-items:center">
+              <span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">Loading…</span>
+            </div>
+            <div class="post-actions" style="margin-top:6px">
+              <button class="btn-sm" type="button" onclick="insertNewPostLinks()">Insert selected links at cursor</button>
+            </div>
+          </div>
+          <div class="full">
+            <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
+            <textarea class="edit-textarea" id="np-text" oninput="updateNewPostCharCount()" placeholder="Write your post here…"></textarea>
+            <div class="char-count" id="np-cc">0 chars</div>
+          </div>
+          <div class="full">
+            <label class="edit-label">Media (optional — image or mp4)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="file" id="np-file" accept="image/*,video/mp4" style="display:none" onchange="attachNewPostMedia(this.files[0])">
+              <button class="btn-sm" type="button" onclick="document.getElementById('np-file').click()">Choose file…</button>
+              <span id="np-media-info" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No file selected</span>
+            </div>
+          </div>
+          <div class="full">
+            <label class="edit-label">Schedule for (local) — leave empty to publish now</label>
+            <input class="edit-input" type="datetime-local" id="np-when">
+          </div>
+        </div>
+        <div class="post-actions">
+          <button class="btn-sm primary" id="np-publish-btn" onclick="submitNewPost('publish')">Publish now</button>
+          <button class="btn-sm" id="np-schedule-btn" onclick="submitNewPost('schedule')">Schedule</button>
+          <button class="btn-sm" onclick="resetNewPostForm()">Clear</button>
+          <button class="btn-sm danger" onclick="toggleNewPostForm()" style="margin-left:auto">Close</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-header">Queue</div>
+        <div class="queue" id="queue"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- CHANNELS TAB -->
+    <div class="tab-panel" id="tab-channels">
+      <div class="section-header">Channels</div>
+      <div id="channels-list"><div class="empty">Loading…</div></div>
+      <div class="new-row">
+        <input type="text" id="new-chan-name" placeholder="Channel name (e.g. Main Community)">
+        <select id="new-chan-platform">
+          <option value="telegram">Telegram</option>
+          <option value="discord">Discord (config only — publishing later)</option>
+        </select>
+        <button class="btn-sm primary" onclick="createChannel()">+ Add Channel</button>
+      </div>
+    </div>
+
+    <!-- ARCHETYPE SETS TAB -->
+    <div class="tab-panel" id="tab-archetypes">
+      <div class="section-header">Archetype Sets</div>
+      <div id="archetypes-list"><div class="empty">Loading…</div></div>
+      <div class="new-row">
+        <input type="text" id="new-set-name" placeholder="new-set-name (lowercase, no spaces)">
+        <button class="btn-sm primary" onclick="createArchetypeSet()">+ Create Set</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/public/sidebar.js"></script>
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = t => {
+  if (!t) return "—";
+  try {
+    const d = new Date(t);
+    return d.toLocaleString('nl-NL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }) + ' CEST';
+  } catch { return t; }
+};
+
+let channelsCache = [];
+let archetypeSetsCache = [];
+
+async function fetchJson(url, opts) {
+  const r = await fetch(url, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, opts || {}));
+  if (r.status === 401) { location.href = '/login.html'; throw new Error('Not authenticated — redirecting to login'); }
+  const ct = r.headers.get('content-type') || '';
+  if (!r.ok) {
+    let msg = `HTTP ${r.status} ${url}`;
+    if (ct.includes('application/json')) { try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {} }
+    throw new Error(msg);
+  }
+  if (!ct.includes('application/json')) {
+    const body = await r.text().catch(() => '');
+    const preview = body.slice(0, 80).replace(/\s+/g, ' ');
+    console.error('[community] non-JSON response', { url, status: r.status, contentType: ct, preview });
+    throw new Error(`Non-JSON from ${url} [${ct || 'no ct'}]: ${preview}`);
+  }
+  return r.json();
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  if (name === 'channels') loadChannels();
+  if (name === 'archetypes') loadArchetypeSets();
+}
+
+// ── CHANNELS ──
+async function loadChannels() {
+  const container = document.getElementById('channels-list');
+  try {
+    const [channels, sets] = await Promise.all([fetchJson('/community/channels'), fetchJson('/community/archetype-sets')]);
+    channelsCache = channels;
+    archetypeSetsCache = sets;
+    refreshChannelFilter();
+    if (!channelsCache.length) { container.innerHTML = '<div class="empty">No channels configured. Add one below.</div>'; return; }
+    container.innerHTML = channelsCache.map(renderChannelCard).join('');
+  } catch (e) { container.innerHTML = `<div class="empty">Load error: ${esc(e.message)}</div>`; }
+}
+
+function renderChannelCard(c) {
+  const isDiscord = c.platform === 'discord';
+  const discordNote = isDiscord ? `<div class="discord-banner">⚠ Discord publishing is not implemented yet. Settings are saved so you can wire up a bot later.</div>` : '';
+  const setNames = archetypeSetsCache.map(s => typeof s === 'string' ? s : s.name);
+  const setOptions = ['<option value="">— none —</option>', ...setNames.map(s => `<option value="${esc(s)}"${c.archetype_set === s ? ' selected' : ''}>${esc(s)}</option>`)].join('');
+  const dayOptions = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => `<option value="${d}"${(c.review?.day||'sunday') === d ? ' selected' : ''}>${d}</option>`).join('');
+  const platformBadge = c.enabled === false ? 'disabled' : c.platform;
+  const platformLabel = c.enabled === false ? 'disabled' : c.platform;
+  return `
+    <div class="channel-card" data-id="${esc(c.id)}">
+      <div class="channel-head">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span class="channel-title">${esc(c.name)}</span>
+          <span class="channel-platform ${platformBadge}">${esc(platformLabel)}</span>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">id: ${esc(c.id)}</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${c.platform === 'telegram' ? `<button class="btn-sm" onclick="validateChannel('${esc(c.id)}')">Validate</button>` : ''}
+          <button class="btn-sm danger" onclick="deleteChannel('${esc(c.id)}')">Delete</button>
+        </div>
+      </div>
+      ${discordNote}
+      <div class="edit-grid">
+        <div>
+          <label class="edit-label">Name</label>
+          <input class="edit-input" id="ch-name-${esc(c.id)}" value="${esc(c.name)}">
+        </div>
+        <div>
+          <label class="edit-label">Platform</label>
+          <select class="edit-select" id="ch-platform-${esc(c.id)}">
+            <option value="telegram"${c.platform === 'telegram' ? ' selected' : ''}>Telegram</option>
+            <option value="discord"${c.platform === 'discord' ? ' selected' : ''}>Discord</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Enabled</label>
+          <select class="edit-select" id="ch-enabled-${esc(c.id)}">
+            <option value="true"${c.enabled !== false ? ' selected' : ''}>Yes</option>
+            <option value="false"${c.enabled === false ? ' selected' : ''}>No</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">${isDiscord ? 'Channel ID' : 'Chat ID'}</label>
+          <input class="edit-input" id="ch-chatid-${esc(c.id)}" value="${esc(c.chat_id)}" placeholder="${isDiscord ? '1234567890123456' : '-1001234567890'}">
+        </div>
+        <div>
+          <label class="edit-label">${isDiscord ? 'Guild ID (optional)' : 'Topic ID (optional, Telegram forum)'}</label>
+          <input class="edit-input" id="ch-topicid-${esc(c.id)}" value="${esc(isDiscord ? (c.guild_id || '') : (c.topic_id || ''))}" placeholder="${isDiscord ? 'Guild / server ID' : 'e.g. 9501'}">
+        </div>
+        <div>
+          <label class="edit-label">Archetype Set</label>
+          <select class="edit-select" id="ch-arch-${esc(c.id)}">${setOptions}</select>
+        </div>
+        ${isDiscord ? `
+        <div class="full">
+          <label class="edit-label">Webhook URL (optional — for future Discord publisher)</label>
+          <input class="edit-input" id="ch-webhook-${esc(c.id)}" value="${esc(c.webhook_url || '')}" placeholder="https://discord.com/api/webhooks/...">
+        </div>` : ''}
+        <div>
+          <label class="edit-label">Review enabled</label>
+          <select class="edit-select" id="ch-rev-enabled-${esc(c.id)}">
+            <option value="true"${c.review?.enabled !== false ? ' selected' : ''}>Yes</option>
+            <option value="false"${c.review?.enabled === false ? ' selected' : ''}>No</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Review day</label>
+          <select class="edit-select" id="ch-rev-day-${esc(c.id)}">${dayOptions}</select>
+        </div>
+        <div>
+          <label class="edit-label">Review time (HH:MM, timezone = server)</label>
+          <input class="edit-input" id="ch-rev-time-${esc(c.id)}" value="${esc(c.review?.time || '18:00')}" placeholder="18:00">
+        </div>
+        <div>
+          <label class="edit-label">Review DM chat (blank = TELEGRAM_CHAT_ID)</label>
+          <input class="edit-input" id="ch-rev-dm-${esc(c.id)}" value="${esc(c.review?.dm_chat_id || '')}" placeholder="123456789">
+        </div>
+        <div>
+          <label class="edit-label">Schedule window (days)</label>
+          <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
+        </div>
+      </div>
+      <div class="post-actions">
+        <button class="btn-sm primary" onclick="saveChannel('${esc(c.id)}')">Save</button>
+      </div>
+    </div>
+  `;
+}
+
+async function saveChannel(id) {
+  const gv = k => document.getElementById(`ch-${k}-${id}`);
+  const platform = gv('platform').value;
+  const payload = {
+    name: gv('name').value,
+    platform,
+    enabled: gv('enabled').value === 'true',
+    chat_id: gv('chatid').value.trim(),
+    archetype_set: gv('arch').value,
+    schedule_window_days: Number(gv('window').value) || 7,
+    review: {
+      enabled: gv('rev-enabled').value === 'true',
+      day: gv('rev-day').value,
+      time: gv('rev-time').value.trim() || '18:00',
+      dm_chat_id: gv('rev-dm').value.trim(),
+    },
+  };
+  if (platform === 'telegram') {
+    payload.topic_id = gv('topicid').value.trim();
+  } else {
+    payload.guild_id = gv('topicid').value.trim();
+    const wh = gv('webhook'); if (wh) payload.webhook_url = wh.value.trim();
+  }
+  try {
+    const r = await fetch(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('PATCH failed');
+    await loadChannels();
+  } catch (e) { alert('Save error: ' + e.message); }
+}
+
+async function createChannel() {
+  const name = document.getElementById('new-chan-name').value.trim();
+  const platform = document.getElementById('new-chan-platform').value;
+  if (!name) { alert('Channel name required'); return; }
+  try {
+    const r = await fetch('/community/channels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, platform }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'create failed'); }
+    document.getElementById('new-chan-name').value = '';
+    await loadChannels();
+  } catch (e) { alert('Create error: ' + e.message); }
+}
+
+async function deleteChannel(id) {
+  if (!confirm(`Delete channel "${id}"? Tasks assigned to it will fail on publish until reassigned.`)) return;
+  try { await fetch(`/community/channels/${encodeURIComponent(id)}`, { method: 'DELETE' }); await loadChannels(); }
+  catch (e) { alert('Delete error: ' + e.message); }
+}
+
+async function validateChannel(id) {
+  try {
+    const d = await fetchJson(`/community/channels/${encodeURIComponent(id)}/validate`, { method: 'POST' });
+    if (d.ok) alert(`✅ ${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`);
+    else alert(`❌ ${d.error}`);
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── QUEUE ──
+function refreshChannelFilter() {
+  const sel = document.getElementById('queue-channel-filter');
+  const prev = sel.value;
+  const opts = ['<option value="">All channels</option>', ...channelsCache.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(c.platform)})</option>`)];
+  sel.innerHTML = opts.join('');
+  if (prev && channelsCache.some(c => c.id === prev)) sel.value = prev;
+  else if (channelsCache.length) sel.value = channelsCache[0].id;
+}
+
+function onChannelFilterChange() {
+  loadTasks();
+  validateSelectedChannel();
+}
+
+async function validateSelectedChannel() {
+  const id = document.getElementById('queue-channel-filter').value;
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (!id) return validateAllChannels();
+  const c = channelsCache.find(x => x.id === id);
+  if (!c) { dot.className = 'status-dot err'; txt.textContent = 'Channel not found'; return; }
+  if (c.platform !== 'telegram') { dot.className = 'status-dot unk'; txt.textContent = `${c.name} — ${c.platform} (validation only for Telegram)`; return; }
+  dot.className = 'status-dot unk'; txt.textContent = 'Checking…';
+  try {
+    const d = await fetchJson(`/community/channels/${encodeURIComponent(id)}/validate`, { method: 'POST' });
+    if (d.ok) { dot.className = 'status-dot ok'; txt.textContent = `${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`; }
+    else { dot.className = 'status-dot err'; txt.textContent = `Chat error: ${d.error}`; }
+  } catch (e) { dot.className = 'status-dot err'; txt.textContent = `Network error: ${e.message}`; }
+}
+
+async function validateAllChannels() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  const telegramChannels = channelsCache.filter(c => c.platform === 'telegram' && c.enabled !== false);
+  if (!telegramChannels.length) { dot.className = 'status-dot unk'; txt.textContent = 'No enabled Telegram channels to validate'; return; }
+  dot.className = 'status-dot unk'; txt.textContent = `Checking ${telegramChannels.length} channel(s)…`;
+  const results = await Promise.all(telegramChannels.map(async c => {
+    try {
+      const d = await fetchJson(`/community/channels/${encodeURIComponent(c.id)}/validate`, { method: 'POST' });
+      return { c, ok: !!d.ok, detail: d.ok ? d.title : d.error };
+    } catch (e) { return { c, ok: false, detail: e.message }; }
+  }));
+  const bad = results.filter(r => !r.ok);
+  if (!bad.length) { dot.className = 'status-dot ok'; txt.textContent = `All ${results.length} channel(s) reachable`; }
+  else { dot.className = 'status-dot err'; txt.textContent = `${bad.length}/${results.length} failed: ${bad.map(r => `${r.c.name} (${r.detail})`).join(', ')}`; }
+}
+
+async function loadTasks() {
+  const queue = document.getElementById('queue');
+  if (!channelsCache.length) {
+    try { channelsCache = await fetchJson('/community/channels'); refreshChannelFilter(); } catch {}
+  }
+  const channelId = document.getElementById('queue-channel-filter').value;
+  try {
+    const url = '/community/tasks' + (channelId ? `?channel_id=${encodeURIComponent(channelId)}` : '');
+    const tasks = await fetchJson(url);
+    if (!tasks.length) { queue.innerHTML = '<div class="empty">No posts in queue.</div>'; return; }
+    tasks.sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+    const autoPosts = tasks.filter(t => t.status !== 'manual');
+    const manualPosts = tasks.filter(t => t.status === 'manual');
+    const draftCount = autoPosts.filter(t => t.status === 'draft').length;
+    let html = '';
+    if (autoPosts.length) {
+      const bulkBtn = draftCount > 0
+        ? `<button class="btn-sm primary" onclick="approveAllDrafts()">Approve all ${draftCount} draft${draftCount === 1 ? '' : 's'}</button>`
+        : '';
+      html += `<div class="group-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <span>Auto-publish queue</span>
+        ${bulkBtn}
+      </div>` + autoPosts.map(renderPost).join('');
+    }
+    if (manualPosts.length) { html += `<div class="group-title">Manual Suggestions — copy &amp; paste yourself</div>` + manualPosts.map(renderPost).join(''); }
+    queue.innerHTML = html;
+  } catch (e) { queue.innerHTML = `<div class="empty">Load error: ${esc(e.message)}</div>`; }
+}
+
+const editingPosts = new Set();
+
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function channelLabel(id) {
+  const c = channelsCache.find(x => x.id === id);
+  return c ? c.name : (id || '—');
+}
+
+function renderPost(t) {
+  if (editingPosts.has(t.id)) return renderEditForm(t);
+  const trigger = t.trigger_word ? `<span class="post-trigger">${esc(t.trigger_word)}</span>` : '';
+  const arch = t.archetype ? `<span class="post-arch">${esc(t.archetype)}</span>` : '';
+  const chan = t.channel_id ? `<span class="post-channel">📡 ${esc(channelLabel(t.channel_id))}</span>` : '';
+  const when = t.scheduled_local || fmt(t.scheduled_at);
+  const err = t.error ? `<div class="post-err">Error: ${esc(t.error)} (attempts ${t.attempts || 0})</div>` : '';
+  const isManual = t.status === 'manual';
+  const canPublish = !isManual && t.status !== 'published' && t.status !== 'cancelled';
+  const canEdit = t.status !== 'published';
+  const textLen = (t.text || '').length;
+  const lenWarn = t.media_path && textLen > 1024 ? ` <span style="color:var(--warning)">(text ${textLen}/1024 — sent as follow-up msg)</span>` : '';
+  let mediaBlock = '';
+  if (t.media_path) {
+    const isVideo = /\.(mp4|mov|m4v)$/i.test(t.media_path);
+    const preview = isVideo
+      ? `<video src="${esc(t.media_path)}" muted></video>`
+      : `<img src="${esc(t.media_path)}" alt="media">`;
+    mediaBlock = `
+      <div class="post-media">
+        ${preview}
+        <div class="post-media-info">
+          <div class="fn">${esc(t.media_path.split('/').pop())}</div>
+          <div>${isVideo ? 'video' : 'image'}${lenWarn}</div>
+        </div>
+        <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove</button>
+      </div>`;
+  }
+  const uploadBtn = canPublish ? `
+    <input type="file" id="file-${esc(t.id)}" accept="image/*,video/mp4" style="display:none" onchange="uploadMedia('${esc(t.id)}', this.files[0])">
+    <button class="btn-sm" onclick="document.getElementById('file-${esc(t.id)}').click()">${t.media_path ? 'Replace' : 'Add'} Media</button>
+  ` : '';
+  const copyBtn = isManual ? `<button class="btn-sm primary" id="copy-${esc(t.id)}" onclick="copyText('${esc(t.id)}')">Copy text</button>` : '';
+  const approveBtn = t.status === 'draft'
+    ? `<button class="btn-sm primary" onclick="approvePost('${esc(t.id)}')">Approve</button>`
+    : '';
+  const unscheduleBtn = t.status === 'scheduled'
+    ? `<button class="btn-sm" onclick="unapprovePost('${esc(t.id)}')">Move to draft</button>`
+    : '';
+  const actions = `
+    ${approveBtn}
+    ${canEdit ? `<button class="btn-sm" onclick="startEdit('${esc(t.id)}')">Edit</button>` : ''}
+    ${uploadBtn}
+    ${copyBtn}
+    ${unscheduleBtn}
+    ${canPublish ? `<button class="btn-sm primary" onclick="publishNow('${esc(t.id)}')">Publish Now</button>` : ''}
+    <button class="btn-sm danger" onclick="deleteTask('${esc(t.id)}')">Delete</button>
+  `;
+  return `
+    <div class="post-card">
+      <div class="post-top">
+        <div class="post-meta">${arch}${chan}<span class="post-time">${esc(when)}</span>${trigger}</div>
+        <span class="post-status ${esc(t.status)}">${esc(t.status)}</span>
+      </div>
+      <div class="post-body">${esc(t.text)}</div>
+      ${mediaBlock}
+      ${err}
+      <div class="post-actions">${actions}</div>
+    </div>
+  `;
+}
+
+function renderEditForm(t) {
+  const localTime = toLocalInput(t.scheduled_at);
+  const textLen = (t.text || '').length;
+  const warn = t.media_path && textLen > 1024 ? ' warn' : '';
+  const chanOptions = channelsCache.map(c => `<option value="${esc(c.id)}"${t.channel_id === c.id ? ' selected' : ''}>${esc(c.name)} (${esc(c.platform)})</option>`).join('');
+  return `
+    <div class="post-card">
+      <div class="post-top">
+        <div class="post-meta"><span class="post-arch">Editing — ${esc(t.id)}</span></div>
+        <span class="post-status ${esc(t.status)}">${esc(t.status)}</span>
+      </div>
+      <div class="edit-grid">
+        <div>
+          <label class="edit-label">Channel</label>
+          <select class="edit-select" id="edit-chan-${esc(t.id)}">${chanOptions}</select>
+        </div>
+        <div>
+          <label class="edit-label">Archetype</label>
+          <input class="edit-input" id="edit-arch-${esc(t.id)}" value="${esc(t.archetype)}">
+        </div>
+        <div>
+          <label class="edit-label">Trigger word</label>
+          <input class="edit-input" id="edit-trig-${esc(t.id)}" value="${esc(t.trigger_word)}" placeholder="e.g. PREMIUM">
+        </div>
+        <div class="full">
+          <label class="edit-label">Scheduled (local)</label>
+          <input class="edit-input" type="datetime-local" id="edit-when-${esc(t.id)}" value="${localTime}">
+        </div>
+        <div class="full">
+          <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
+          <textarea class="edit-textarea" id="edit-text-${esc(t.id)}" oninput="updateCharCount('${esc(t.id)}')">${esc(t.text)}</textarea>
+          <div class="char-count${warn}" id="cc-${esc(t.id)}">${textLen} chars${t.media_path ? ` · media caption limit 1024` : ''}</div>
+        </div>
+      </div>
+      <div class="post-actions">
+        <button class="btn-sm primary" onclick="saveEdit('${esc(t.id)}')">Save</button>
+        <button class="btn-sm" onclick="cancelEdit('${esc(t.id)}')">Cancel</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateCharCount(id) {
+  const ta = document.getElementById(`edit-text-${id}`);
+  const cc = document.getElementById(`cc-${id}`);
+  if (!ta || !cc) return;
+  const n = ta.value.length;
+  cc.textContent = `${n} chars`;
+  cc.classList.toggle('warn', n > 1024);
+}
+
+function startEdit(id) { editingPosts.add(id); loadTasks(); }
+function cancelEdit(id) { editingPosts.delete(id); loadTasks(); }
+
+async function copyText(id) {
+  try {
+    const tasks = await fetchJson('/community/tasks');
+    const t = tasks.find(x => x.id === id);
+    if (!t) return alert('Not found');
+    await navigator.clipboard.writeText(t.text);
+    const btn = document.getElementById(`copy-${id}`);
+    if (btn) { const prev = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => btn.textContent = prev, 1500); }
+  } catch (e) { alert('Copy failed: ' + e.message); }
+}
+
+async function saveEdit(id) {
+  const channel_id = document.getElementById(`edit-chan-${id}`)?.value || null;
+  const archetype = document.getElementById(`edit-arch-${id}`).value.trim() || null;
+  const trigger_word = document.getElementById(`edit-trig-${id}`).value.trim() || null;
+  const whenLocal = document.getElementById(`edit-when-${id}`).value;
+  const text = document.getElementById(`edit-text-${id}`).value;
+  const payload = { archetype, trigger_word, text };
+  if (channel_id) payload.channel_id = channel_id;
+  if (whenLocal) {
+    const d = new Date(whenLocal);
+    if (isNaN(d)) { alert('Invalid date'); return; }
+    payload.scheduled_at = d.toISOString();
+    payload.scheduled_local = d.toLocaleString('nl-NL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }) + ' CEST';
+  }
+  try {
+    const r = await fetch(`/community/tasks/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('PATCH failed');
+    editingPosts.delete(id);
+  } catch (e) { alert('Save error: ' + e.message); }
+  loadTasks();
+}
+
+async function uploadMedia(taskId, file) {
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const upD = await fetchJson('/media/upload', { method: 'POST', body: fd });
+    if (!upD.path) throw new Error(upD.error || 'upload failed');
+    const r = await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_path: upD.path }) });
+    if (!r.ok) throw new Error('PATCH failed');
+  } catch (e) { alert('Upload error: ' + e.message); }
+  loadTasks();
+}
+
+async function removeMedia(taskId) {
+  if (!confirm('Remove media from this post?')) return;
+  try { await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_path: null }) }); }
+  catch (e) { alert('Error: ' + e.message); }
+  loadTasks();
+}
+
+async function sendReview() {
+  const id = document.getElementById('queue-channel-filter').value;
+  const scope = id ? `channel "${channelLabel(id)}"` : 'all channels with review enabled';
+  if (!confirm(`Send review batch for ${scope}?`)) return;
+  try {
+    const d = await fetchJson('/community/send-review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: id || null }) });
+    if (d.ok) alert(`Review batch sent: ${d.sent} post(s)`);
+    else alert('Failed: ' + (d.error || 'unknown'));
+  } catch (e) { alert('Error: ' + e.message); }
+  loadTasks();
+}
+
+async function publishNow(id) {
+  if (!confirm('Publish this post now?')) return;
+  try {
+    const d = await fetchJson(`/community/tasks/${id}/publish-now`, { method: 'POST' });
+    if (!d.ok) alert('Failed: ' + (d.error || 'unknown'));
+  } catch (e) { alert('Error: ' + e.message); }
+  loadTasks();
+}
+
+async function deleteTask(id) {
+  if (!confirm('Delete this post from the queue?')) return;
+  try { await fetch(`/community/tasks/${id}`, { method: 'DELETE' }); } catch {}
+  loadTasks();
+}
+
+async function approvePost(id) {
+  try {
+    const r = await fetch(`/community/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'scheduled', error: null }),
+    });
+    if (!r.ok) throw new Error('PATCH failed');
+  } catch (e) { alert('Approve failed: ' + e.message); }
+  loadTasks();
+}
+
+async function unapprovePost(id) {
+  try {
+    const r = await fetch(`/community/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'draft' }),
+    });
+    if (!r.ok) throw new Error('PATCH failed');
+  } catch (e) { alert('Unschedule failed: ' + e.message); }
+  loadTasks();
+}
+
+async function approveAllDrafts() {
+  const channelId = document.getElementById('queue-channel-filter').value;
+  const url = '/community/tasks' + (channelId ? `?channel_id=${encodeURIComponent(channelId)}` : '');
+  let tasks;
+  try { tasks = await fetchJson(url); }
+  catch (e) { alert('Load error: ' + e.message); return; }
+  const drafts = tasks.filter(t => t.status === 'draft');
+  if (!drafts.length) return;
+  if (!confirm(`Approve ${drafts.length} draft${drafts.length === 1 ? '' : 's'} — they will auto-publish at their scheduled time. Continue?`)) return;
+  let ok = 0, fail = 0;
+  for (const d of drafts) {
+    try {
+      const r = await fetch(`/community/tasks/${d.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled', error: null }),
+      });
+      if (r.ok) ok++; else fail++;
+    } catch { fail++; }
+  }
+  loadTasks();
+  if (fail) alert(`${ok} approved, ${fail} failed.`);
+}
+
+// ── ARCHETYPE SETS ──
+const openEditors = new Set();
+async function loadArchetypeSets() {
+  const list = document.getElementById('archetypes-list');
+  try {
+    const [setsRaw, channels] = await Promise.all([fetchJson('/community/archetype-sets'), fetchJson('/community/channels')]);
+    archetypeSetsCache = setsRaw;
+    channelsCache = channels;
+    if (!archetypeSetsCache.length) { list.innerHTML = '<div class="empty">No archetype sets yet. Create one below.</div>'; return; }
+    list.innerHTML = archetypeSetsCache.map(renderArchetypeCard).join('');
+    for (const s of archetypeSetsCache) loadArchetypeContent(typeof s === 'string' ? s : s.name);
+  } catch (e) { list.innerHTML = `<div class="empty">Load error: ${esc(e.message)}</div>`; }
+}
+
+function renderArchetypeCard(entry) {
+  const name = typeof entry === 'string' ? entry : entry.name;
+  const linked = (typeof entry === 'string' ? [] : (entry.channels || []));
+  const linkedIds = new Set(linked.map(c => c.id));
+  const chips = linked.length
+    ? linked.map(c => `<span style="font-family:var(--font-data);font-size:10px;padding:3px 8px;border-radius:4px;background:hsla(200 90% 55% / 0.08);color:var(--agent-color);border:1px solid hsla(200 90% 55% / 0.25)">📡 ${esc(c.name)} <span style="color:var(--text-dim)">(${esc(c.platform)})</span></span>`).join(' ')
+    : `<span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);font-style:italic">not linked to any channel</span>`;
+  const chanCheckboxes = channelsCache.length
+    ? channelsCache.map(c => `<label style="display:flex;gap:6px;align-items:center;font-family:var(--font-data);font-size:12px;color:var(--text);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px"><input type="checkbox" id="arch-link-${esc(name)}-${esc(c.id)}"${linkedIds.has(c.id) ? ' checked' : ''}> ${esc(c.name)} <span style="color:var(--text-dim);font-size:10px">(${esc(c.platform)})</span></label>`).join('')
+    : `<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No channels configured yet</span>`;
+  return `
+    <div class="arch-card" data-name="${esc(name)}">
+      <div class="arch-head">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span class="arch-name">${esc(name)}</span>
+          <span class="arch-meta" id="arch-meta-${esc(name)}">…</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sm" onclick="toggleArchetypeEditor('${esc(name)}')">Open editor</button>
+          <button class="btn-sm danger" onclick="deleteArchetypeSet('${esc(name)}')">Delete</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:hsl(0 0% 3%);border:1px solid var(--border);border-radius:6px">
+        <span style="font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Linked to:</span>
+        ${chips}
+      </div>
+      <div class="edit-grid">
+        <div class="full">
+          <label class="edit-label">Rename</label>
+          <div style="display:flex;gap:8px">
+            <input class="edit-input" id="arch-rename-${esc(name)}" value="${esc(name)}" placeholder="new-name (lowercase, a-z 0-9 _ -)" style="flex:1">
+            <button class="btn-sm primary" onclick="renameArchetypeSet('${esc(name)}')">Rename</button>
+          </div>
+        </div>
+        <div class="full">
+          <label class="edit-label">Linked channels</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${chanCheckboxes}</div>
+          <div class="post-actions" style="margin-top:8px"><button class="btn-sm" onclick="saveArchetypeLinks('${esc(name)}')">Save channel links</button></div>
+        </div>
+      </div>
+      <div class="arch-editor${openEditors.has(name) ? ' open' : ''}" id="arch-ed-${esc(name)}">
+        <textarea class="edit-textarea" id="arch-txt-${esc(name)}" placeholder="Loading…"></textarea>
+        <div class="post-actions"><button class="btn-sm primary" onclick="saveArchetypeSet('${esc(name)}')">Save content</button></div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadArchetypeContent(name) {
+  try {
+    const d = await fetchJson(`/community/archetype-sets/${encodeURIComponent(name)}`);
+    const txt = document.getElementById(`arch-txt-${name}`);
+    if (txt) txt.value = d.content || '';
+    const meta = document.getElementById(`arch-meta-${name}`);
+    if (meta) meta.textContent = `${(d.content || '').length} chars`;
+  } catch {}
+}
+
+function toggleArchetypeEditor(name) {
+  if (openEditors.has(name)) openEditors.delete(name); else openEditors.add(name);
+  const el = document.getElementById(`arch-ed-${name}`);
+  if (el) el.classList.toggle('open');
+}
+
+async function saveArchetypeSet(name) {
+  const txt = document.getElementById(`arch-txt-${name}`).value;
+  try {
+    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: txt }) });
+    if (!r.ok) throw new Error('save failed');
+    const meta = document.getElementById(`arch-meta-${name}`);
+    if (meta) meta.textContent = `${txt.length} chars — saved`;
+    setTimeout(() => { if (meta) meta.textContent = `${txt.length} chars`; }, 1500);
+  } catch (e) { alert('Save error: ' + e.message); }
+}
+
+async function renameArchetypeSet(oldName) {
+  const newName = document.getElementById(`arch-rename-${oldName}`).value.trim();
+  if (!newName || newName === oldName) return;
+  if (!confirm(`Rename archetype set "${oldName}" to "${newName}"? Channels currently linked to it will be updated.`)) return;
+  try {
+    await fetchJson(`/community/archetype-sets/${encodeURIComponent(oldName)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_name: newName }) });
+    await loadArchetypeSets();
+  } catch (e) { alert('Rename error: ' + e.message); }
+}
+
+async function saveArchetypeLinks(name) {
+  const channel_ids = channelsCache.filter(c => document.getElementById(`arch-link-${name}-${c.id}`)?.checked).map(c => c.id);
+  try {
+    await fetchJson(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_ids }) });
+    await loadArchetypeSets();
+  } catch (e) { alert('Link save error: ' + e.message); }
+}
+
+async function createArchetypeSet() {
+  const name = document.getElementById('new-set-name').value.trim();
+  if (!name) { alert('Name required'); return; }
+  try {
+    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: `# ${name}\n\nDescribe your archetypes here.\n` }) });
+    if (!r.ok) throw new Error('create failed');
+    document.getElementById('new-set-name').value = '';
+    await loadArchetypeSets();
+  } catch (e) { alert('Create error: ' + e.message); }
+}
+
+async function deleteArchetypeSet(name) {
+  if (!confirm(`Delete archetype set "${name}"? This removes the .md file.`)) return;
+  try { await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'DELETE' }); await loadArchetypeSets(); }
+  catch (e) { alert('Delete error: ' + e.message); }
+}
+
+// ── NEW POST FORM ──
+const newPostState = { mediaPath: null, linksByChannel: new Map() };
+
+function toggleNewPostForm() {
+  const form = document.getElementById('new-post-form');
+  const btn = document.getElementById('new-post-btn');
+  const open = form.style.display === 'none';
+  form.style.display = open ? 'flex' : 'none';
+  btn.textContent = open ? '× Close' : '+ New post';
+  if (open) {
+    populateNewPostChannels();
+    loadNewPostLinks();
+  }
+}
+
+function populateNewPostChannels() {
+  const sel = document.getElementById('np-channel');
+  const current = document.getElementById('queue-channel-filter').value;
+  const writable = channelsCache.filter(c => c.enabled !== false && c.platform === 'telegram');
+  if (!writable.length) {
+    sel.innerHTML = '<option value="">— no publish-capable channels —</option>';
+    return;
+  }
+  sel.innerHTML = writable.map(c => `<option value="${esc(c.id)}"${c.id === current ? ' selected' : ''}>${esc(c.name)} (${esc(c.platform)})</option>`).join('');
+  if (!writable.some(c => c.id === current) && writable[0]) sel.value = writable[0].id;
+}
+
+function parseArchetypeLinks(md) {
+  if (!md) return [];
+  const lines = md.split('\n');
+  const links = [];
+  const seen = new Set();
+  const rowRe = /^\|\s*([^\|\s][^\|]*?)\s*\|\s*([^\|]+?)\s*\|\s*`?([^`|\s]+)`?\s*\|/;
+  for (const line of lines) {
+    const m = line.match(rowRe);
+    if (!m) continue;
+    const [, emoji, name, url] = m;
+    if (!/^https?:\/\//i.test(url)) continue;
+    const key = emoji.trim() + '|' + name.trim() + '|' + url.trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ emoji: emoji.trim(), name: name.trim(), url: url.trim() });
+  }
+  return links;
+}
+
+async function loadNewPostLinks() {
+  const container = document.getElementById('np-links');
+  const channelId = document.getElementById('np-channel').value;
+  const channel = channelsCache.find(c => c.id === channelId);
+  const setName = channel?.archetype_set;
+  if (!setName) {
+    container.innerHTML = '<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No archetype set linked to this channel — configure one in Channels tab.</span>';
+    return;
+  }
+  let links = newPostState.linksByChannel.get(setName);
+  if (!links) {
+    try {
+      const d = await fetchJson(`/community/archetype-sets/${encodeURIComponent(setName)}`);
+      links = parseArchetypeLinks(d.content || '');
+      newPostState.linksByChannel.set(setName, links);
+    } catch (e) {
+      container.innerHTML = `<span style="font-family:var(--font-data);font-size:11px;color:var(--danger)">Load error: ${esc(e.message)}</span>`;
+      return;
+    }
+  }
+  if (!links.length) {
+    container.innerHTML = `<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No link table found in archetype set <b>${esc(setName)}</b>. Add a table with columns Emoji | Name | URL.</span>`;
+    return;
+  }
+  container.innerHTML = links.map((l, i) => `
+    <label style="display:flex;gap:6px;align-items:center;font-family:var(--font-data);font-size:12px;color:var(--text);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card)">
+      <input type="checkbox" id="np-link-${i}" data-emoji="${esc(l.emoji)}" data-name="${esc(l.name)}" data-url="${esc(l.url)}">
+      ${esc(l.emoji)} ${esc(l.name)}
+    </label>
+  `).join('');
+}
+
+function insertNewPostLinks() {
+  const boxes = Array.from(document.querySelectorAll('#np-links input[type=checkbox]:checked'));
+  if (!boxes.length) { alert('Select one or more link labels first.'); return; }
+  const footer = boxes.map(b => `${b.dataset.emoji} [${b.dataset.name}](${b.dataset.url})`).join(' | ');
+  const ta = document.getElementById('np-text');
+  const pos = ta.selectionStart ?? ta.value.length;
+  const before = ta.value.slice(0, pos);
+  const after = ta.value.slice(pos);
+  const sep = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+  const insertion = sep + footer;
+  ta.value = before + insertion + after;
+  const newPos = before.length + insertion.length;
+  ta.selectionStart = ta.selectionEnd = newPos;
+  ta.focus();
+  updateNewPostCharCount();
+}
+
+function updateNewPostCharCount() {
+  const ta = document.getElementById('np-text');
+  const cc = document.getElementById('np-cc');
+  const n = ta.value.length;
+  const hasMedia = !!newPostState.mediaPath;
+  cc.textContent = `${n} chars${hasMedia ? ' · media caption limit 1024' : ''}`;
+  cc.classList.toggle('warn', hasMedia && n > 1024);
+}
+
+async function attachNewPostMedia(file) {
+  if (!file) return;
+  const info = document.getElementById('np-media-info');
+  info.textContent = `Uploading ${file.name}…`;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const d = await fetchJson('/media/upload', { method: 'POST', body: fd });
+    if (!d.path) throw new Error(d.error || 'upload failed');
+    newPostState.mediaPath = d.path;
+    info.innerHTML = `<span style="color:var(--text)">✓ ${esc(file.name)}</span> <button class="btn-sm" type="button" onclick="clearNewPostMedia()" style="padding:2px 6px;font-size:9px">Remove</button>`;
+    updateNewPostCharCount();
+  } catch (e) {
+    info.textContent = `Upload failed: ${e.message}`;
+    newPostState.mediaPath = null;
+  }
+}
+
+function clearNewPostMedia() {
+  newPostState.mediaPath = null;
+  document.getElementById('np-file').value = '';
+  document.getElementById('np-media-info').textContent = 'No file selected';
+  updateNewPostCharCount();
+}
+
+function resetNewPostForm() {
+  document.getElementById('np-archetype').value = '';
+  document.getElementById('np-trigger').value = '';
+  document.getElementById('np-text').value = '';
+  document.getElementById('np-when').value = '';
+  clearNewPostMedia();
+  document.querySelectorAll('#np-links input[type=checkbox]').forEach(b => b.checked = false);
+  updateNewPostCharCount();
+}
+
+async function submitNewPost(mode) {
+  const channel_id = document.getElementById('np-channel').value;
+  const archetype = document.getElementById('np-archetype').value.trim() || null;
+  const trigger_word = document.getElementById('np-trigger').value.trim() || null;
+  const text = document.getElementById('np-text').value;
+  const whenLocal = document.getElementById('np-when').value;
+  if (!channel_id) { alert('Select a channel first.'); return; }
+  if (!text.trim()) { alert('Write some text first.'); return; }
+
+  let scheduled_at, scheduled_local;
+  if (mode === 'schedule') {
+    if (!whenLocal) { alert('Pick a date/time to schedule, or use "Publish now".'); return; }
+    const d = new Date(whenLocal);
+    if (isNaN(d)) { alert('Invalid date'); return; }
+    if (d.getTime() < Date.now() - 60_000) { alert('Scheduled time is in the past — use "Publish now" instead.'); return; }
+    scheduled_at = d.toISOString();
+    scheduled_local = d.toLocaleString('nl-NL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }) + ' CEST';
+  } else {
+    const now = new Date();
+    scheduled_at = now.toISOString();
+    scheduled_local = now.toLocaleString('nl-NL', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }) + ' CEST';
+  }
+
+  const pubBtn = document.getElementById('np-publish-btn');
+  const schBtn = document.getElementById('np-schedule-btn');
+  pubBtn.disabled = schBtn.disabled = true;
+  const originalLabel = mode === 'publish' ? pubBtn.textContent : schBtn.textContent;
+  (mode === 'publish' ? pubBtn : schBtn).textContent = mode === 'publish' ? 'Publishing…' : 'Scheduling…';
+
+  try {
+    const payload = {
+      channel_id,
+      status: mode === 'publish' ? 'draft' : 'scheduled',
+      scheduled_at,
+      scheduled_local,
+      archetype,
+      trigger_word,
+      text,
+      media_path: newPostState.mediaPath,
+    };
+    const r = await fetch('/community/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
+    const task = await r.json();
+
+    if (mode === 'publish') {
+      const pr = await fetch(`/community/tasks/${task.id}/publish-now`, { method: 'POST' });
+      const pd = await pr.json().catch(() => ({}));
+      if (!pr.ok || !pd.ok) throw new Error(pd.error || `Publish failed (HTTP ${pr.status})`);
+    }
+
+    resetNewPostForm();
+    toggleNewPostForm();
+    await loadTasks();
+    alert(mode === 'publish' ? '✅ Published' : '✅ Scheduled');
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    pubBtn.disabled = schBtn.disabled = false;
+    (mode === 'publish' ? pubBtn : schBtn).textContent = originalLabel;
+  }
+}
+
+// ── INIT ──
+loadChannels().then(() => { loadTasks(); validateSelectedChannel(); });
+setInterval(() => { if (editingPosts.size === 0 && document.querySelector('.tab-panel.active')?.id === 'tab-queue') loadTasks(); }, 20000);
+</script>
+</body>
+</html>

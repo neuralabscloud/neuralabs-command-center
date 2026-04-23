@@ -1,15 +1,19 @@
 (async function() {
-  if (window.location.pathname === '/login.html') return;
-  if (window.location.pathname === '/setup.html') return;
+  const p = window.location.pathname;
+  if (p === '/login.html' || p === '/setup.html') return;
   try {
     const res = await fetch('/auth/check', { credentials: 'include' });
     const data = await res.json();
     if (!data.authenticated) { window.location.href = '/login.html'; return; }
-    // Redirect to setup wizard if not yet configured (first login)
-    const sr = await fetch('/api/setup-status', { credentials: 'include' });
-    const setup = await sr.json();
-    if (!setup.setup_complete) { window.location.href = '/setup.html'; return; }
   } catch {
     window.location.href = '/login.html';
+    return;
   }
+  try {
+    const r = await fetch('/api/setup-status', { credentials: 'include' });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.needs_setup) window.location.href = '/setup.html';
+    }
+  } catch {}
 })();

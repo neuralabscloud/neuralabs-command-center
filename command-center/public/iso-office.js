@@ -1,5 +1,5 @@
 // Command Center — Isometric Office widget
-// Renders an isometric 3x3 office with 9 AI agent stations, connections and live status.
+// Renders an isometric 4x3 office with AI agent stations, connections and live status.
 // Usage: add a container with `data-iso-office` attribute, then load this script.
 (function () {
   const OFFICE = [
@@ -12,6 +12,7 @@
     { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[0,2], href:'ads.html' },
     { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[1,2], href:'designer.html',        taskApi:'/designer/tasks' },
     { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[2,2], href:'chat.html' },
+    { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[3,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
   ];
 
   const CONNECTIONS = [
@@ -25,6 +26,9 @@
     ['designer',   'marketeer',   3.4],
     ['marketeer',  'assistant',   3.0],
     ['trader',     'assistant',   4.0],
+    ['scriptwriter','community',  4.4],
+    ['designer',   'community',   3.8],
+    ['assistant',  'community',   3.2],
   ];
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
@@ -120,19 +124,29 @@
     `;
   }
 
+  function gridBounds() {
+    const maxGx = OFFICE.length ? Math.max(...OFFICE.map(a => a.pos[0])) : 2;
+    const maxGy = OFFICE.length ? Math.max(...OFFICE.map(a => a.pos[1])) : 2;
+    return { maxGx, maxGy };
+  }
+
   function renderFloor() {
     const halfW = ISO_TW / 2, halfH = ISO_TH / 2;
+    const { maxGx, maxGy } = gridBounds();
     let tiles = '';
-    const c00 = isoGridPos(0, 0), c20 = isoGridPos(2, 0), c02 = isoGridPos(0, 2), c22 = isoGridPos(2, 2);
+    const c00 = isoGridPos(0, 0);
+    const cR0 = isoGridPos(maxGx, 0);
+    const c0B = isoGridPos(0, maxGy);
+    const cRB = isoGridPos(maxGx, maxGy);
     const outer = [
       { x: c00.x, y: c00.y - halfH },
-      { x: c20.x + halfW, y: c20.y },
-      { x: c22.x, y: c22.y + halfH },
-      { x: c02.x - halfW, y: c02.y },
+      { x: cR0.x + halfW, y: cR0.y },
+      { x: cRB.x, y: cRB.y + halfH },
+      { x: c0B.x - halfW, y: c0B.y },
     ];
     tiles += `<polygon class="floor-accent" points="${outer.map(p=>p.x+','+p.y).join(' ')}"/>`;
-    for (let gy = 0; gy <= 2; gy++) {
-      for (let gx = 0; gx <= 2; gx++) {
+    for (let gy = 0; gy <= maxGy; gy++) {
+      for (let gx = 0; gx <= maxGx; gx++) {
         const p = isoGridPos(gx, gy);
         const cls = (gx === 1 && gy === 1) ? 'floor-tile hero' : 'floor-tile';
         tiles += `<polygon class="${cls}" points="${p.x-halfW},${p.y} ${p.x},${p.y-halfH} ${p.x+halfW},${p.y} ${p.x},${p.y+halfH}"/>`;
@@ -258,6 +272,26 @@
         } catch {}
       } else if (agent.alwaysOn) {
         state = 'online';
+      } else if (agent.isCommunity) {
+        try {
+          const tasks = await (await fetch(agent.taskApi)).json();
+          const nowMs = Date.now();
+          const hourAgo = nowMs - 3600000;
+          const firingSoon = tasks.some(t => {
+            if (t.status !== 'scheduled') return false;
+            const when = Date.parse(t.scheduled_at || '');
+            return isFinite(when) && when - nowMs <= 15*60*1000 && when - nowMs > -60*1000;
+          });
+          const queued = tasks.some(t => ['scheduled','draft','manual'].includes(t.status));
+          const recent = tasks.some(t => {
+            if (t.status !== 'published') return false;
+            const ts = t.published_at || t.updated_at || t.completed_at;
+            if (!ts) return false;
+            const when = new Date(ts).getTime();
+            return isFinite(when) && when >= hourAgo;
+          });
+          state = firingSoon ? 'online' : queued ? 'queued' : recent ? 'recent' : 'idle';
+        } catch {}
       } else {
         let tasks = [];
         if (agent.taskApis) {
@@ -287,13 +321,15 @@
   }
 
   function initContainer(container) {
+    const { maxGx } = gridBounds();
+    const vbW = maxGx >= 3 ? 1115 : 965;
     container.innerHTML = `
       <div class="iso-wrap">
         <div class="iso-topbar">
           <div class="iso-topbar-left">${_brandCompany} HQ · <b>Floor 01</b> · Live</div>
           <div class="iso-topbar-right"><span class="live-dot"></span><span class="iso-clock">--:--</span></div>
         </div>
-        <svg class="iso-scene" viewBox="115 10 965 710" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg class="iso-scene" viewBox="115 10 ${vbW} 720" preserveAspectRatio="xMidYMid meet"></svg>
       </div>
     `;
     const svg = container.querySelector('svg.iso-scene');
@@ -305,8 +341,13 @@
     setInterval(() => tickClock(clock), 30000);
   }
 
+  function removeAgent(key) {
+    const idx = OFFICE.findIndex(a => a.key === key);
+    if (idx !== -1) OFFICE.splice(idx, 1);
+  }
+
   async function init() {
-    // Load brand config and check trading addon before rendering
+    // Load brand config before rendering
     try {
       const res = await fetch('/brand');
       if (res.ok) {
@@ -316,17 +357,23 @@
       }
     } catch {}
 
-    // Check if trading bots addon is installed — hide trader station if not
+    // Hide agents that aren't configured (ANTHROPIC/HEYGEN/Meta/Canva/Telegram+channel)
+    try {
+      const r = await fetch('/office/agents');
+      if (r.ok) {
+        const cfg = await r.json();
+        for (const key of Object.keys(cfg)) {
+          if (cfg[key] === false) removeAgent(key);
+        }
+      }
+    } catch {}
+
+    // Hide trader station if trading bots addon isn't reachable
     try {
       const r = await fetch('/api/status');
-      if (!r.ok) {
-        // Remove trader from office grid
-        const idx = OFFICE.findIndex(a => a.key === 'trader');
-        if (idx !== -1) OFFICE.splice(idx, 1);
-      }
+      if (!r.ok) removeAgent('trader');
     } catch {
-      const idx = OFFICE.findIndex(a => a.key === 'trader');
-      if (idx !== -1) OFFICE.splice(idx, 1);
+      removeAgent('trader');
     }
 
     const containers = document.querySelectorAll('[data-iso-office]');

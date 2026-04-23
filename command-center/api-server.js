@@ -6,6 +6,7 @@ require("dotenv").config({ path: _envPath });
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const crypto = require("crypto");
 const cookieParser = require("cookie-parser");
 const Stripe = require("stripe");
@@ -13,7 +14,7 @@ const Stripe = require("stripe");
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const { renderSlide, renderCarousel } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const {
   BROWSER_TOOLS,
   BROWSE_PAGE_TOOL,
@@ -33,6 +34,8 @@ app.use((_req, res, next) => {
   next();
 });
 
+const PORT = Number(process.env.PORT) || 3004;
+
 // ── AUTH ──────────────────────────────────────
 const CC_PASSWORD = process.env.CC_PASSWORD;
 const SESSION_SECRET = process.env.CC_SESSION_SECRET;
@@ -40,6 +43,26 @@ if (!CC_PASSWORD || !SESSION_SECRET) {
   console.error("FATAL: CC_PASSWORD and CC_SESSION_SECRET must be set in .env");
   process.exit(1);
 }
+
+// Shared secret for internal callers (scheduler, Telegram worker, etc.) that need to
+// bypass the auth-cookie check. Auto-generated on first boot and persisted to .env.
+const _INTERNAL_ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
+if (!process.env.INTERNAL_SECRET) {
+  const generated = crypto.randomBytes(32).toString("hex");
+  try {
+    let content = "";
+    try { content = fs.readFileSync(_INTERNAL_ENV_PATH, "utf8"); } catch {}
+    if (!/^INTERNAL_SECRET=/m.test(content)) {
+      content = content.replace(/\s+$/, "") + `\nINTERNAL_SECRET=${generated}\n`;
+      fs.writeFileSync(_INTERNAL_ENV_PATH, content, { mode: 0o600 });
+      console.log(`[AUTH] Generated INTERNAL_SECRET and persisted to ${_INTERNAL_ENV_PATH}`);
+    }
+  } catch (e) {
+    console.warn("[AUTH] Could not persist INTERNAL_SECRET to .env:", e.message);
+  }
+  process.env.INTERNAL_SECRET = generated;
+}
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 function createSessionToken() {
   const payload = Date.now().toString(36) + "." + crypto.randomBytes(16).toString("hex");
   const sig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
@@ -52,8 +75,12 @@ function isValidSession(token) {
   if (lastDot <= 0) return false;
   const payload = token.substring(0, lastDot);
   const sig = token.substring(lastDot + 1);
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return false;
   const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  const sigBuf = Buffer.from(sig, "hex");
+  const expBuf = Buffer.from(expected, "hex");
+  if (sigBuf.length !== expBuf.length) return false;
+  try { return crypto.timingSafeEqual(sigBuf, expBuf); } catch { return false; }
 }
 
 // Login endpoint
@@ -77,15 +104,31 @@ app.get("/auth/check", (req, res) => {
   res.json({ authenticated: isValidSession(req.cookies?.cc_session) });
 });
 
+// Returns whether the installation has completed initial setup.
+// Setup is considered incomplete if brand.json is missing, company_name is empty,
+// or company_name matches one of the placeholder values.
+app.get("/api/setup-status", (_req, res) => {
+  const placeholders = new Set(["", "MyBrand", "Command Center"]);
+  let companyName = "";
+  try {
+    const brand = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8"));
+    companyName = (brand && typeof brand.company_name === "string") ? brand.company_name.trim() : "";
+  } catch {}
+  const needs_setup = placeholders.has(companyName);
+  res.json({ needs_setup, company_name: companyName });
+});
+
 // Allow login page and static assets without auth
 app.use("/login.html", express.static(path.join(__dirname, "login.html")));
 app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
-app.use("/brand-loader.js", express.static(path.join(__dirname, "brand-loader.js")));
 
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
-  if (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") return next();
+  if (
+    (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") &&
+    req.headers["x-internal-secret"] === INTERNAL_SECRET
+  ) return next();
   if (isValidSession(req.cookies?.cc_session)) return next();
   if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
@@ -98,11 +141,26 @@ app.use(express.static(path.join(__dirname, "public")));
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
+// Resolve bot directories (configurable via env; defaults preserve legacy layout)
+const FUNDING_BOT_PATH = process.env.FUNDING_BOT_PATH || path.join(__dirname, "..", "neuralabs-bot");
+const TREND_BOT_PATH = process.env.TREND_BOT_PATH || path.join(__dirname, "..", "neuralabs-bot-5");
+
+// Avatar / voice config for HeyGen. Read from data/avatars.json so customers can
+// replace vendor defaults with their own avatar/voice IDs without editing code.
+function getAvatarsConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "avatars.json"), "utf8"));
+  } catch { return {}; }
+}
+function defaultAvatarId() { return getAvatarsConfig().default_avatar_id || ""; }
+function defaultVoiceId() { return getAvatarsConfig().default_voice_id || ""; }
+function defaultVoiceEngine() { return getAvatarsConfig().default_voice_engine || "panda"; }
+
 // Populate process.env with values from bot config.py files (for Telegram etc.)
 (function populateEnvFromBotConfigs() {
   const botConfigs = [
-    path.join(__dirname, "..", "neuralabs-bot", "config.py"),
-    path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+    path.join(FUNDING_BOT_PATH, "config.py"),
+    path.join(TREND_BOT_PATH, "config.py"),
   ];
   for (const f of botConfigs) {
     try {
@@ -133,8 +191,8 @@ function readEnvFile() {
   // Check bot config.py files for Telegram if not in .env
   if (!env.TELEGRAM_BOT_TOKEN) {
     const botConfigs = [
-      path.join(__dirname, "..", "neuralabs-bot", "config.py"),
-      path.join(__dirname, "..", "neuralabs-bot-5", "config.py"),
+      path.join(FUNDING_BOT_PATH, "config.py"),
+      path.join(TREND_BOT_PATH, "config.py"),
     ];
     for (const f of botConfigs) {
       try {
@@ -265,6 +323,125 @@ function writeTaskFile(file, tasks) {
   fs.writeFileSync(path.join(__dirname, "data", file), JSON.stringify(tasks, null, 2));
 }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// ── COMMUNITY MANAGER DATA LAYER ──
+const COMMUNITY_DIR = path.join(__dirname, "data", "community");
+const COMMUNITY_ARCHETYPE_DIR = path.join(COMMUNITY_DIR, "archetypes");
+const COMMUNITY_CHANNELS_FILE = path.join(COMMUNITY_DIR, "channels.json");
+const COMMUNITY_TASKS_FILE = "community-tasks.json";
+
+function readChannels() {
+  try { return JSON.parse(fs.readFileSync(COMMUNITY_CHANNELS_FILE, "utf8")); }
+  catch { return []; }
+}
+function writeChannels(channels) {
+  fs.mkdirSync(COMMUNITY_DIR, { recursive: true });
+  fs.writeFileSync(COMMUNITY_CHANNELS_FILE, JSON.stringify(channels, null, 2));
+}
+function getChannel(id) {
+  return readChannels().find(c => c.id === id) || null;
+}
+function sanitizeSetName(name) {
+  const safe = String(name || "").trim().replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
+  if (!safe) throw new Error("Invalid archetype set name");
+  return safe;
+}
+function listArchetypeSets() {
+  try {
+    return fs.readdirSync(COMMUNITY_ARCHETYPE_DIR)
+      .filter(f => f.endsWith(".md"))
+      .map(f => f.slice(0, -3))
+      .sort();
+  } catch { return []; }
+}
+function readArchetypeSet(name) {
+  return fs.readFileSync(path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md"), "utf8");
+}
+function writeArchetypeSet(name, content) {
+  fs.mkdirSync(COMMUNITY_ARCHETYPE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md"), content);
+}
+function deleteArchetypeSet(name) {
+  const p = path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md");
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+}
+function renameArchetypeSet(oldName, newName) {
+  const from = sanitizeSetName(oldName);
+  const to = sanitizeSetName(newName);
+  if (from === to) return to;
+  const fromPath = path.join(COMMUNITY_ARCHETYPE_DIR, from + ".md");
+  const toPath = path.join(COMMUNITY_ARCHETYPE_DIR, to + ".md");
+  if (!fs.existsSync(fromPath)) throw new Error(`Archetype set "${from}" does not exist`);
+  if (fs.existsSync(toPath)) throw new Error(`Archetype set "${to}" already exists`);
+  fs.renameSync(fromPath, toPath);
+  const channels = readChannels();
+  let dirty = false;
+  for (const c of channels) {
+    if (c.archetype_set === from) { c.archetype_set = to; c.updated_at = new Date().toISOString(); dirty = true; }
+  }
+  if (dirty) writeChannels(channels);
+  return to;
+}
+function channelsUsingArchetypeSet(name) {
+  const n = sanitizeSetName(name);
+  return readChannels().filter(c => c.archetype_set === n).map(c => ({ id: c.id, name: c.name, platform: c.platform }));
+}
+
+// One-time migration from legacy "social-media" naming to "community"
+function migrateSocialToCommunity() {
+  if (fs.existsSync(COMMUNITY_CHANNELS_FILE)) return;
+  try {
+    fs.mkdirSync(COMMUNITY_ARCHETYPE_DIR, { recursive: true });
+
+    const legacyArch = path.join(__dirname, "data", "social-media", "archetypes.md");
+    const newArch = path.join(COMMUNITY_ARCHETYPE_DIR, "default.md");
+    if (fs.existsSync(legacyArch) && !fs.existsSync(newArch)) {
+      fs.copyFileSync(legacyArch, newArch);
+    }
+
+    const legacyPosts = path.join(__dirname, "data", "social-media", "posts_week17.md");
+    const newPosts = path.join(COMMUNITY_DIR, "posts_week17.md");
+    if (fs.existsSync(legacyPosts) && !fs.existsSync(newPosts)) {
+      fs.copyFileSync(legacyPosts, newPosts);
+    }
+
+    const defaultChannel = {
+      id: "default",
+      name: "Main Community",
+      platform: "telegram",
+      chat_id: process.env.SOCIAL_TARGET_CHAT_ID || "",
+      topic_id: process.env.SOCIAL_TOPIC_ID || "",
+      archetype_set: fs.existsSync(newArch) ? "default" : "",
+      enabled: true,
+      review: {
+        enabled: true,
+        day: "sunday",
+        time: "18:00",
+        dm_chat_id: "",
+      },
+      schedule_window_days: 7,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    writeChannels([defaultChannel]);
+
+    const legacyTasks = path.join(__dirname, "data", "social-media-tasks.json");
+    const newTasks = path.join(__dirname, "data", COMMUNITY_TASKS_FILE);
+    if (!fs.existsSync(newTasks)) {
+      let tasks = [];
+      if (fs.existsSync(legacyTasks)) {
+        try { tasks = JSON.parse(fs.readFileSync(legacyTasks, "utf8")); } catch {}
+      }
+      for (const t of tasks) if (!t.channel_id) t.channel_id = "default";
+      fs.writeFileSync(newTasks, JSON.stringify(tasks, null, 2));
+    }
+
+    console.log("[MIGRATION] Community manager initialized (default channel + archetype set)");
+  } catch (e) {
+    console.error("[MIGRATION] Community manager migration failed:", e.message);
+  }
+}
+migrateSocialToCommunity();
 
 // ── DESIGNER TASKS ────────────────────────────
 app.get("/designer/tasks", (_req, res) => res.json(readTaskFile("designer-tasks.json")));
@@ -1068,9 +1245,9 @@ app.post("/avatar/tasks", (req, res) => {
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    avatar_id: req.body.avatar_id || "703a2be1c9ae459e81be99b04636c5dc",
-    voice_id: req.body.voice_id || "cae5f9ad5dec463b83565e8a38b74a09",
-    voice_engine: req.body.voice_engine || "panda",
+    avatar_id: req.body.avatar_id || defaultAvatarId(),
+    voice_id: req.body.voice_id || defaultVoiceId(),
+    voice_engine: req.body.voice_engine || defaultVoiceEngine(),
     motion_engine: req.body.motion_engine || "avatar_iii",
     script: req.body.script || "",
     description: req.body.description || "",
@@ -1247,15 +1424,228 @@ app.delete("/scriptwriter/tasks/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── COMMUNITY MANAGER: CHANNELS ───────────────
+app.get("/community/channels", (_req, res) => res.json(readChannels()));
+
+app.post("/community/channels", (req, res) => {
+  const channels = readChannels();
+  const id = (req.body.id || genId()).toString().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  if (channels.some(c => c.id === id)) return res.status(409).json({ error: "Channel id already exists" });
+  const platform = req.body.platform === "discord" ? "discord" : "telegram";
+  const channel = {
+    id,
+    name: req.body.name || "Unnamed channel",
+    platform,
+    chat_id: req.body.chat_id || "",
+    topic_id: req.body.topic_id || "",
+    guild_id: req.body.guild_id || "",
+    webhook_url: req.body.webhook_url || "",
+    archetype_set: req.body.archetype_set || "",
+    enabled: req.body.enabled !== false,
+    review: {
+      enabled: req.body.review?.enabled !== false,
+      day: req.body.review?.day || "sunday",
+      time: req.body.review?.time || "18:00",
+      dm_chat_id: req.body.review?.dm_chat_id || "",
+    },
+    schedule_window_days: Number(req.body.schedule_window_days) || 7,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  channels.push(channel);
+  writeChannels(channels);
+  res.status(201).json(channel);
+});
+
+app.patch("/community/channels/:id", (req, res) => {
+  const channels = readChannels();
+  const idx = channels.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Not found" });
+  const current = channels[idx];
+  const next = { ...current, ...req.body, id: current.id, updated_at: new Date().toISOString() };
+  if (req.body.review) next.review = { ...current.review, ...req.body.review };
+  channels[idx] = next;
+  writeChannels(channels);
+  res.json(next);
+});
+
+app.delete("/community/channels/:id", (req, res) => {
+  const channels = readChannels().filter(c => c.id !== req.params.id);
+  writeChannels(channels);
+  res.json({ ok: true });
+});
+
+// Validate a channel's configured chat (Telegram only)
+app.post("/community/channels/:id/validate", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel) return res.status(404).json({ ok: false, error: "Channel not found" });
+  if (channel.platform !== "telegram") {
+    return res.status(400).json({ ok: false, error: `Validation not available for ${channel.platform}` });
+  }
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || !channel.chat_id) return res.status(400).json({ ok: false, error: "TELEGRAM_BOT_TOKEN or channel.chat_id missing" });
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(channel.chat_id)}`);
+    const d = await r.json();
+    if (!d.ok) return res.status(400).json({ ok: false, error: d.description });
+    res.json({ ok: true, title: d.result.title, type: d.result.type, chat_id: channel.chat_id, topic_id: channel.topic_id || null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── COMMUNITY MANAGER: ARCHETYPE SETS ─────────
+app.get("/community/archetype-sets", (_req, res) => {
+  const names = listArchetypeSets();
+  res.json(names.map(name => ({ name, channels: channelsUsingArchetypeSet(name) })));
+});
+
+app.get("/community/archetype-sets/:name", (req, res) => {
+  try {
+    res.json({
+      name: sanitizeSetName(req.params.name),
+      content: readArchetypeSet(req.params.name),
+      channels: channelsUsingArchetypeSet(req.params.name),
+    });
+  } catch (e) { res.status(404).json({ error: e.message }); }
+});
+
+app.put("/community/archetype-sets/:name", (req, res) => {
+  try {
+    writeArchetypeSet(req.params.name, req.body?.content || "");
+    res.json({ ok: true, name: sanitizeSetName(req.params.name) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.patch("/community/archetype-sets/:name", (req, res) => {
+  try {
+    const { new_name, channel_ids } = req.body || {};
+    let currentName = sanitizeSetName(req.params.name);
+    if (new_name && sanitizeSetName(new_name) !== currentName) {
+      currentName = renameArchetypeSet(currentName, new_name);
+    }
+    if (Array.isArray(channel_ids)) {
+      const wanted = new Set(channel_ids);
+      const channels = readChannels();
+      let dirty = false;
+      for (const c of channels) {
+        const currentlyLinked = c.archetype_set === currentName;
+        const shouldBeLinked = wanted.has(c.id);
+        if (shouldBeLinked && !currentlyLinked) { c.archetype_set = currentName; c.updated_at = new Date().toISOString(); dirty = true; }
+        else if (!shouldBeLinked && currentlyLinked) { c.archetype_set = null; c.updated_at = new Date().toISOString(); dirty = true; }
+      }
+      if (dirty) writeChannels(channels);
+    }
+    res.json({ ok: true, name: currentName, channels: channelsUsingArchetypeSet(currentName) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/community/archetype-sets/:name", (req, res) => {
+  try { deleteArchetypeSet(req.params.name); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── COMMUNITY MANAGER: TASKS ──────────────────
+app.get("/community/tasks", (req, res) => {
+  const all = readTaskFile(COMMUNITY_TASKS_FILE);
+  const filtered = req.query.channel_id ? all.filter(t => t.channel_id === req.query.channel_id) : all;
+  res.json(filtered);
+});
+
+app.get("/community-manager/tasks", (_req, res) => {
+  res.json(readTaskFile("community-manager-tasks.json"));
+});
+
+app.post("/community/tasks", (req, res) => {
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const allowedStatus = ["draft", "scheduled", "manual"];
+  const status = allowedStatus.includes(req.body.status) ? req.body.status : "draft";
+  const channels = readChannels();
+  const channel_id = req.body.channel_id || (channels[0] && channels[0].id) || null;
+  if (!channel_id) return res.status(400).json({ error: "No channels configured; create a channel first" });
+  if (!channels.some(c => c.id === channel_id)) return res.status(400).json({ error: `Unknown channel_id: ${channel_id}` });
+  const mediaPaths = Array.isArray(req.body.media_paths) ? req.body.media_paths.filter(Boolean) : [];
+  const mediaPath = req.body.media_path || mediaPaths[0] || null;
+  const task = {
+    id: req.body.id || genId(),
+    channel_id,
+    status,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    scheduled_at: req.body.scheduled_at || new Date().toISOString(),
+    scheduled_local: req.body.scheduled_local || null,
+    archetype: req.body.archetype || null,
+    trigger_word: req.body.trigger_word || null,
+    media_path: mediaPath,
+    media_paths: mediaPaths,
+    text: req.body.text || "",
+    published_at: null,
+    message_id: null,
+    attempts: 0,
+    error: null,
+  };
+  tasks.push(task);
+  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  res.status(201).json(task);
+});
+
+app.patch("/community/tasks/:id", (req, res) => {
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const idx = tasks.findIndex(t => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Not found" });
+  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
+  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  res.json(tasks[idx]);
+});
+
+app.delete("/community/tasks/:id", (req, res) => {
+  writeTaskFile(COMMUNITY_TASKS_FILE, readTaskFile(COMMUNITY_TASKS_FILE).filter(t => t.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+app.post("/community/tasks/:id/publish-now", async (req, res) => {
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const task = tasks.find(t => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "Not found" });
+  if (task.status === "published") return res.status(400).json({ error: "Already published" });
+  try {
+    const channel = getChannel(task.channel_id);
+    const result = await publishToChannel(task, channel);
+    task.status = "published";
+    task.published_at = new Date().toISOString();
+    task.message_id = result.message_id;
+    task.attempts = (task.attempts || 0) + 1;
+    task.updated_at = task.published_at;
+    task.error = null;
+    writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (e) {
+    task.attempts = (task.attempts || 0) + 1;
+    task.error = e.message;
+    task.updated_at = new Date().toISOString();
+    writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post("/community/send-review", async (req, res) => {
+  try {
+    const count = await sendCommunityReviewBatch({ channel_id: req.body?.channel_id || null, force: true });
+    res.json({ ok: true, sent: count });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── BOT TRADE HISTORY (reads from bot data files) ──
 const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
 const TRADE_FILES = {
   funding: [
-    path.join(__dirname, "..", "neuralabs-bot", "data", "trade_history.json"),
+    path.join(FUNDING_BOT_PATH, "data", "trade_history.json"),
     path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
   ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
   trend: [
-    path.join(__dirname, "..", "neuralabs-bot-5", "data", "trade_history.json"),
+    path.join(TREND_BOT_PATH, "data", "trade_history.json"),
     path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
   ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
 };
@@ -1563,10 +1953,40 @@ app.get("/social/connections", (_req, res) => {
     id: c.id, platform: c.platform, username: c.username, name: c.name,
     ig_user_id: c.ig_user_id, page_id: c.page_id,
     account_id: c.account_id, currency: c.currency, account_status: c.account_status, business_name: c.business_name,
-    profile_picture: c.profile_picture,
+    profile_picture: c.profile_picture, handle: c.handle,
     connected_at: c.connected_at,
   }));
   res.json({ connections: list });
+});
+
+app.post("/social/yt/add", express.json(), async (req, res) => {
+  const raw = (req.body?.handle || "").trim();
+  if (!raw) return res.status(400).json({ error: "Handle vereist" });
+  const handle = raw.startsWith("@") ? raw : "@" + raw;
+  const ytKey = process.env.YOUTUBE_API_KEY;
+  let name = handle.replace(/^@/, "");
+  let profile_picture = null;
+  try {
+    if (ytKey) {
+      const r = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&forHandle=${encodeURIComponent(handle)}&key=${ytKey}`);
+      const d = await r.json();
+      const ch = d.items?.[0];
+      if (!ch) return res.status(404).json({ error: "Channel not found" });
+      name = ch.snippet?.title || name;
+      profile_picture = ch.snippet?.thumbnails?.default?.url || null;
+    }
+  } catch (e) { /* fall through — add without metadata */ }
+  const existing = readSocial();
+  const record = {
+    id: "yt_" + handle.replace(/^@/, ""),
+    platform: "youtube",
+    handle, name, profile_picture,
+    connected_at: Date.now(),
+  };
+  const idx = existing.findIndex(c => c.id === record.id);
+  if (idx >= 0) existing[idx] = record; else existing.push(record);
+  writeSocial(existing);
+  res.json({ ok: true, connection: record });
 });
 
 app.delete("/social/connections/:id", (req, res) => {
@@ -1578,13 +1998,14 @@ app.delete("/social/connections/:id", (req, res) => {
 app.get("/social/meta/auth", (req, res) => {
   const appId = process.env.META_APP_ID;
   const redirect = process.env.META_REDIRECT_URI;
-  if (!appId || !redirect) return res.status(400).send("META_APP_ID en META_REDIRECT_URI niet ingesteld — configureer in Settings.");
+  if (!appId || !redirect) return res.status(400).send("META_APP_ID and META_REDIRECT_URI are not set — configure them in Settings.");
   const state = crypto.randomBytes(16).toString("hex");
   res.cookie("meta_oauth_state", state, { httpOnly: true, maxAge: 600_000, sameSite: "lax" });
   const scope = [
     "pages_show_list", "pages_read_engagement",
     "business_management",
     "ads_read", "ads_management",
+    "instagram_basic", "instagram_manage_insights",
   ].join(",");
   const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&scope=${scope}&state=${state}&response_type=code`;
   res.redirect(url);
@@ -1593,7 +2014,7 @@ app.get("/social/meta/auth", (req, res) => {
 // Meta OAuth callback — exchange code, discover IG Business accounts, store
 app.get("/social/meta/callback", async (req, res) => {
   const { code, state, error, error_description } = req.query;
-  if (error) return res.send(`<h2>Connect mislukt</h2><p>${error}: ${error_description || ""}</p><a href="/settings.html">Terug</a>`);
+  if (error) return res.send(`<h2>Connect failed</h2><p>${error}: ${error_description || ""}</p><a href="/settings.html">Back</a>`);
   if (state !== req.cookies?.meta_oauth_state) return res.status(400).send("Invalid state (CSRF)");
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
@@ -1602,14 +2023,20 @@ app.get("/social/meta/callback", async (req, res) => {
     // 1. code → short-lived user token
     const tokRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&client_secret=${appSecret}&redirect_uri=${encodeURIComponent(redirect)}&code=${code}`);
     const tok = await tokRes.json();
-    if (!tok.access_token) throw new Error(tok.error?.message || "Geen user token");
+    if (!tok.access_token) throw new Error(tok.error?.message || "No user token");
     // 2. short → long-lived user token (~60 dagen)
     const llRes = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tok.access_token}`);
     const ll = await llRes.json();
     const userToken = ll.access_token || tok.access_token;
     // 3. Ophalen pages (incl. page access tokens — die verlopen niet als user token long-lived is)
     const pagesRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${userToken}`);
-    const pages = (await pagesRes.json()).data || [];
+    const pagesJson = await pagesRes.json();
+    const pages = pagesJson.data || [];
+    console.log(`[META OAuth] /me/accounts returned ${pages.length} page(s)`);
+    if (pagesJson.error) console.log(`[META OAuth] /me/accounts error:`, pagesJson.error);
+    for (const p of pages) {
+      console.log(`[META OAuth] Page: ${p.name} (id=${p.id}) — IG linked: ${p.instagram_business_account ? 'YES (' + p.instagram_business_account.username + ')' : 'NO'}`);
+    }
     // 4. Elk page met IG Business account opslaan
     const existing = readSocial();
     let added = 0;
@@ -1658,9 +2085,9 @@ app.get("/social/meta/callback", async (req, res) => {
     } catch (e) { console.warn("[META] ad accounts fetch failed:", e.message); }
 
     writeSocial(existing);
-    res.send(`<!doctype html><meta charset="utf-8"><title>Connected</title><style>body{background:#000;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}a{color:hsl(264 65% 65%)}</style><div><h2>✓ ${added} Instagram account${added===1?"":"s"} + ${adAccountsAdded} ad account${adAccountsAdded===1?"":"s"} gekoppeld</h2><p>Je kunt dit tabblad sluiten.</p><a href="/settings.html">← Terug naar Settings</a><script>setTimeout(()=>window.close(),2000)</script></div>`);
+    res.send(`<!doctype html><meta charset="utf-8"><title>Connected</title><style>body{background:#000;color:#eee;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}a{color:hsl(264 65% 65%)}</style><div><h2>✓ ${added} Instagram account${added===1?"":"s"} + ${adAccountsAdded} ad account${adAccountsAdded===1?"":"s"} connected</h2><p>You can close this tab.</p><a href="/settings.html">← Back to Settings</a><script>setTimeout(()=>window.close(),2000)</script></div>`);
   } catch (e) {
-    res.status(500).send(`<h2>Connect mislukt</h2><pre>${e.message}</pre><a href="/settings.html">Terug</a>`);
+    res.status(500).send(`<h2>Connect failed</h2><pre>${e.message}</pre><a href="/settings.html">Back</a>`);
   }
 });
 
@@ -1669,7 +2096,7 @@ app.get("/social/ig/stats", async (req, res) => {
   const { id, handle } = req.query;
   const conns = readSocial();
   const conn = id ? conns.find((c) => c.id === id) : conns.find((c) => c.username === handle);
-  if (!conn) return res.status(404).json({ error: "Account niet gekoppeld — verbind eerst via Settings" });
+  if (!conn) return res.status(404).json({ error: "Account not connected — connect it first via Settings" });
   try {
     const fields = "username,followers_count,media_count,media.limit(10){id,caption,like_count,comments_count,media_type,media_url,thumbnail_url,permalink,timestamp,insights.metric(reach,impressions)}";
     const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ig_user_id}?fields=${encodeURIComponent(fields)}&access_token=${conn.page_access_token}`);
@@ -1721,7 +2148,7 @@ app.get("/ads/accounts", (_req, res) => {
 app.get("/ads/campaigns", async (req, res) => {
   const { account_id } = req.query;
   const conn = readSocial().find((c) => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
-  if (!conn) return res.status(404).json({ error: "Ad account niet gekoppeld" });
+  if (!conn) return res.status(404).json({ error: "Ad account not connected" });
   try {
     const fields = "id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time,created_time,updated_time";
     const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/campaigns?fields=${fields}&limit=100&access_token=${conn.user_access_token}`);
@@ -1736,7 +2163,7 @@ app.get("/ads/campaigns", async (req, res) => {
 app.get("/ads/insights", async (req, res) => {
   const { account_id, date_preset = "last_7d", level = "campaign" } = req.query;
   const conn = readSocial().find((c) => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
-  if (!conn) return res.status(404).json({ error: "Ad account niet gekoppeld" });
+  if (!conn) return res.status(404).json({ error: "Ad account not connected" });
   try {
     const fields = [
       "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
@@ -2184,6 +2611,29 @@ async function handleTgMessage(msg) {
 
   if (!text) return;
 
+  // Community manager review: edit-text capture
+  if (communityEditState.has(chatId)) {
+    const { postId } = communityEditState.get(chatId);
+    if (text === "/cancel") {
+      communityEditState.delete(chatId);
+      tgSend(chatId, "Edit geannuleerd.");
+      return;
+    }
+    const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+    const task = tasks.find(t => t.id === postId);
+    if (!task) {
+      communityEditState.delete(chatId);
+      tgSend(chatId, `Post \`${postId}\` niet meer gevonden.`);
+      return;
+    }
+    task.text = text;
+    task.updated_at = new Date().toISOString();
+    writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+    communityEditState.delete(chatId);
+    tgSend(chatId, `✏ Tekst bijgewerkt voor *${task.archetype || postId}*.\n_Status blijft \`draft\`. Trigger opnieuw /review om te approven._`);
+    return;
+  }
+
   // Handle /start command
   if (text === "/start") {
     const brand = loadBrand();
@@ -2195,6 +2645,17 @@ async function handleTgMessage(msg) {
   if (text === "/clear") {
     delete chatSessions["telegram"];
     tgSend(chatId, "Chat history gewist.");
+    return;
+  }
+
+  // Handle /review — trigger community review batch manually (all channels)
+  if (text === "/review") {
+    try {
+      const sent = await sendCommunityReviewBatch({ force: true });
+      if (sent === 0) tgSend(chatId, "Geen drafts voor komende week.");
+    } catch (e) {
+      tgSend(chatId, "Review error: " + e.message);
+    }
     return;
   }
 
@@ -2309,7 +2770,7 @@ async function handleTgMessage(msg) {
 
     const res = await fetch("http://localhost:3004/ctrl/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal": "telegram" },
+      headers: { "Content-Type": "application/json", "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET },
       body: JSON.stringify({ message: text, sessionId: "telegram" }),
     });
 
@@ -2324,6 +2785,245 @@ async function handleTgMessage(msg) {
   }
 }
 
+// ── COMMUNITY MANAGER REVIEW FLOW ──
+const communityEditState = new Map();
+const DAY_NUM = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+const DAY_SHORT_TO_NUM = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function tgApiCall(method, body) {
+  return fetch(`${TG_API}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
+
+function formatScheduled(task) {
+  return task.scheduled_local || (task.scheduled_at ? new Date(task.scheduled_at).toISOString() : "—");
+}
+
+async function sendCommunityReviewCard(chatId, task, channel) {
+  if (task.media_path) {
+    try {
+      const { full, name } = resolveMediaPath(task.media_path);
+      const kind = mediaKindFor(name);
+      const buffer = fs.readFileSync(full);
+      const form = new FormData();
+      form.append("chat_id", String(chatId));
+      form.append("caption", `📎 Media voor review — ${task.archetype || task.id}`);
+      form.append(kind.field, new Blob([buffer]), name);
+      await fetch(`${TG_API}/${kind.method}`, { method: "POST", body: form });
+    } catch (e) {
+      console.error(`[COMMUNITY-REVIEW] Media preview failed for ${task.id}: ${e.message}`);
+    }
+  }
+  const mediaNote = task.media_path ? `🖼 ${path.basename(task.media_path)}\n` : "";
+  const channelNote = channel ? `📡 ${channel.name}\n` : "";
+  const header = `*Review — ${task.archetype || "post"}*\n${channelNote}📅 ${formatScheduled(task)}${task.trigger_word ? `  |  🔑 ${task.trigger_word}` : ""}\n${mediaNote}\n`;
+  const body = task.text || "";
+  const maxBody = 3500 - header.length;
+  const text = header + (body.length > maxBody ? body.slice(0, maxBody) + "…" : body);
+  const keyboard = {
+    inline_keyboard: [[
+      { text: "✅ Approve", callback_data: `sm:approve:${task.id}` },
+      { text: "❌ Skip", callback_data: `sm:skip:${task.id}` },
+      { text: "✏ Edit", callback_data: `sm:edit:${task.id}` },
+    ]],
+  };
+  const r = await tgApiCall("sendMessage", {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+    disable_web_page_preview: true,
+    reply_markup: keyboard,
+  });
+  if (!r.ok) {
+    await tgApiCall("sendMessage", {
+      chat_id: chatId,
+      text: `Review — ${task.id} (Markdown faalde; ruwe tekst volgt)\n\n${task.text}`,
+      reply_markup: keyboard,
+      disable_web_page_preview: true,
+    });
+  }
+  return r;
+}
+
+async function sendChannelReviewBatch(channel, { force = false } = {}) {
+  const dmChatId = (channel.review && channel.review.dm_chat_id) || process.env.TELEGRAM_CHAT_ID;
+  if (!dmChatId) { console.error(`[COMMUNITY-REVIEW] No DM chat for channel ${channel.id}`); return 0; }
+
+  const now = Date.now();
+  const windowDays = Number(channel.schedule_window_days) || 7;
+  const windowEnd = now + windowDays * 24 * 60 * 60 * 1000;
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+
+  const dueWithinWindow = t => {
+    const when = Date.parse(t.scheduled_at || "");
+    return when && when >= now && when <= windowEnd;
+  };
+  const belongsToChannel = t => t.channel_id === channel.id;
+
+  const drafts = tasks.filter(t => belongsToChannel(t) && t.status === "draft" && dueWithinWindow(t))
+    .sort((a, b) => (a.scheduled_at || "").localeCompare(b.scheduled_at || ""));
+  const manuals = tasks.filter(t => belongsToChannel(t) && t.status === "manual" && dueWithinWindow(t))
+    .sort((a, b) => (a.scheduled_at || "").localeCompare(b.scheduled_at || ""));
+
+  const total = drafts.length + manuals.length;
+  if (!total) {
+    if (force) await tgApiCall("sendMessage", { chat_id: dmChatId, text: `Geen drafts voor channel *${channel.name}* (${windowDays} dagen).`, parse_mode: "Markdown" });
+    return 0;
+  }
+
+  await tgApiCall("sendMessage", {
+    chat_id: dmChatId,
+    text: `*📬 Community review — ${channel.name}*\n\n${drafts.length} draft${drafts.length === 1 ? "" : "s"} (Approve / Skip / Edit)\n${manuals.length} handmatige suggestie${manuals.length === 1 ? "" : "s"} (copy/paste zelf posten)`,
+    parse_mode: "Markdown",
+  });
+
+  let changed = false;
+  for (const task of drafts) {
+    await sendCommunityReviewCard(dmChatId, task, channel);
+    task.review_sent_at = new Date().toISOString();
+    changed = true;
+  }
+
+  if (manuals.length) {
+    await tgApiCall("sendMessage", {
+      chat_id: dmChatId,
+      text: `*📝 Handmatig plaatsen (${manuals.length})*\n\nOnderstaande posts zijn voor jou om zelf te plaatsen. Copy-paste de tekst als reply naar je groep.`,
+      parse_mode: "Markdown",
+    });
+    for (const task of manuals) {
+      await sendManualSuggestion(dmChatId, task);
+      task.review_sent_at = new Date().toISOString();
+      changed = true;
+    }
+  }
+
+  if (changed) writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  return total;
+}
+
+async function sendCommunityReviewBatch({ channel_id = null, force = false } = {}) {
+  const allChannels = readChannels();
+  const selected = allChannels.filter(c => {
+    if (!c.enabled) return false;
+    if (channel_id) return c.id === channel_id;
+    return c.review && c.review.enabled !== false;
+  });
+  if (!selected.length) {
+    if (force && process.env.TELEGRAM_CHAT_ID) {
+      await tgApiCall("sendMessage", { chat_id: process.env.TELEGRAM_CHAT_ID, text: channel_id ? `Channel \`${channel_id}\` niet gevonden of disabled.` : "Geen channels met review enabled." });
+    }
+    return 0;
+  }
+  let total = 0;
+  for (const channel of selected) total += await sendChannelReviewBatch(channel, { force });
+  return total;
+}
+
+async function sendManualSuggestion(chatId, task) {
+  const header = `*${task.archetype || "Manual post"}*  |  📅 ${formatScheduled(task)}\n\n`;
+  await tgApiCall("sendMessage", {
+    chat_id: chatId,
+    text: header + (task.text || ""),
+    parse_mode: "Markdown",
+    disable_web_page_preview: true,
+  });
+}
+
+async function handleTgCallback(cq) {
+  const chatId = String(cq.message?.chat?.id || cq.from?.id || "");
+  const data = cq.data || "";
+  const msgId = cq.message?.message_id;
+
+  if (chatId !== TG_CHAT) {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Niet geautoriseerd." });
+    return;
+  }
+
+  if (!data.startsWith("sm:")) {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id });
+    return;
+  }
+
+  const [, action, postId] = data.split(":");
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const task = tasks.find(t => t.id === postId);
+  if (!task) {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Post niet gevonden.", show_alert: true });
+    return;
+  }
+
+  if (action === "approve") {
+    task.status = "scheduled";
+    task.updated_at = new Date().toISOString();
+    task.error = null;
+    writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "✅ Approved" });
+    await tgApiCall("editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: msgId,
+      reply_markup: { inline_keyboard: [[{ text: `✅ Approved — fires ${formatScheduled(task)}`, callback_data: "sm:noop" }]] },
+    });
+  } else if (action === "skip") {
+    task.status = "cancelled";
+    task.updated_at = new Date().toISOString();
+    writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "❌ Skipped" });
+    await tgApiCall("editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: msgId,
+      reply_markup: { inline_keyboard: [[{ text: "❌ Skipped", callback_data: "sm:noop" }]] },
+    });
+  } else if (action === "edit") {
+    communityEditState.set(chatId, { postId, startedAt: Date.now() });
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Stuur de nieuwe tekst" });
+    await tgApiCall("sendMessage", {
+      chat_id: chatId,
+      text: `✏ *Edit mode — ${task.archetype || postId}*\n\nStuur de nieuwe volledige post-tekst als reply. /cancel om af te breken.`,
+      parse_mode: "Markdown",
+    });
+  } else {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id });
+  }
+}
+
+// Per-channel review cron: each channel has its own day/time
+const lastReviewFireByChannel = new Map();
+function maybeFireCommunityReviewCron() {
+  try {
+    const channels = readChannels().filter(c => c.enabled && c.review && c.review.enabled !== false);
+    if (!channels.length) return;
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: process.env.TIMEZONE || "Europe/Amsterdam",
+        weekday: "short", hour: "2-digit", minute: "2-digit", year: "numeric", month: "2-digit", day: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date()).map(p => [p.type, p.value])
+    );
+    const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
+    const currentDayNum = DAY_SHORT_TO_NUM[parts.weekday];
+    const hour = parseInt(parts.hour, 10);
+    const minute = parseInt(parts.minute, 10);
+
+    for (const channel of channels) {
+      const targetDay = DAY_NUM[(channel.review.day || "sunday").toLowerCase()];
+      if (targetDay == null || targetDay !== currentDayNum) continue;
+      const [th, tm = 0] = (channel.review.time || "18:00").split(":").map(n => parseInt(n, 10));
+      if (hour !== th) continue;
+      if (minute < tm || minute >= tm + 5) continue;
+      if (lastReviewFireByChannel.get(channel.id) === dateKey) continue;
+      lastReviewFireByChannel.set(channel.id, dateKey);
+      console.log(`[COMMUNITY-REVIEW] ${channel.id} — ${channel.review.day} ${channel.review.time} trigger`);
+      sendChannelReviewBatch(channel).catch(e => console.error(`[COMMUNITY-REVIEW] ${channel.id} error:`, e.message));
+    }
+  } catch (e) {
+    console.error("[COMMUNITY-REVIEW] Cron check failed:", e.message);
+  }
+}
+setInterval(maybeFireCommunityReviewCron, 60_000);
+
 async function tgPoll() {
   if (tgPollingActive) return;
   tgPollingActive = true;
@@ -2331,7 +3031,7 @@ async function tgPoll() {
 
   while (tgPollingActive) {
     try {
-      const r = await fetch(`${TG_API}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message"]`, {
+      const r = await fetch(`${TG_API}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message","callback_query"]`, {
         signal: AbortSignal.timeout(35000),
       });
       const data = await r.json();
@@ -2341,6 +3041,8 @@ async function tgPoll() {
           tgOffset = update.update_id + 1;
           if (update.message) {
             handleTgMessage(update.message).catch(e => console.error("[TG-BOT] Handler error:", e.message));
+          } else if (update.callback_query) {
+            handleTgCallback(update.callback_query).catch(e => console.error("[TG-BOT] Callback error:", e.message));
           }
         }
       }
@@ -2552,7 +3254,7 @@ function loadBrand() {
   try {
     return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8"));
   } catch {
-    return { company_name: "Trading Platform", assistant_name: "Assistant", tagline: "Your Trading Platform" };
+    return { company_name: "Command Center", assistant_name: "Assistant", tagline: "" };
   }
 }
 
@@ -2569,6 +3271,49 @@ app.get("/brand", (_req, res) => {
 
 function buildSystemPrompt() {
   const brand = loadBrand();
+  if (!IS_NL) {
+    return `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}, built into the ${brand.company_name} Command Center.
+You help the user orchestrate agents and answer questions about the system.
+You are the central brain of the Command Center — you have access to ALL agents and ALL skills.
+
+COMMAND CENTER AGENTS:
+- Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
+- Video Editor — video editing via Remotion
+- Content Creator — HeyGen avatar videos + AI Video Agent
+- Analyst — performance analyses, risk reports, daily reports
+- Researcher — trending content, competitor analysis, market research, keyword research
+- Script Writer — video scripts, social posts, threads, newsletters
+- Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
+- Calendar — Google Calendar management (events, free slots, planning)
+- Every agent has a task list (pending/processing/completed)
+
+You can:
+1. Explain what agents do and how they perform
+2. Analyze tasks and make suggestions
+3. Answer questions about performance and results
+4. Propose content ideas and scripts
+5. Search the web for current news, market data, and real-time information
+6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
+   - create_avatar_video: produce an avatar video (Content Creator)
+   - create_video_agent: produce an AI-generated video (Video Agent)
+   - create_script: write a script (Script Writer)
+   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
+   - create_video_edit: edit a video via Remotion (Video Editor)
+   - create_research: run research (Researcher)
+   - create_analysis: run analysis (Analyst)
+   - calendar_query: manage Google Calendar — view, create, delete events, find free slots
+   - marketeer_query: marketing strategy, content planning, copywriting, SEO, ads — ask the Marketeer agent
+
+IMPORTANT when orchestrating agents:
+- Use the tools to actually create tasks, don't just describe what you would do
+- Always confirm which tasks you created and at which agent
+- For marketing questions → use marketeer_query
+- For calendar questions → use calendar_query
+
+You have access to web search. Use it when the user asks for current news, price movement, or information more recent than your training data.
+
+Reply in the user's language. Be concise and direct. Do not use emoji unless asked.`;
+  }
   return `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}, ingebouwd in het ${brand.company_name} Command Center.
 Je helpt de gebruiker met het aansturen van agents, het monitoren van bots, en het beantwoorden van vragen over het systeem.
 Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE agents en ALLE skills.
@@ -2741,6 +3486,19 @@ app.post("/ctrl/chat", async (req, res) => {
 
     const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext() + botContext;
 
+    const _av = getAvatarsConfig();
+    const _avatarDesc = _av.default_avatar_id
+      ? `Avatar ID. Default: ${_av.default_avatar_id}${_av.default_avatar_label ? ` (${_av.default_avatar_label})` : ""}`
+      : "Avatar ID (see data/avatars.json for available options).";
+    const _voiceDesc = (() => {
+      let base = _av.default_voice_id
+        ? `Voice ID. Default: ${_av.default_voice_id}${_av.default_voice_label ? ` (${_av.default_voice_label})` : ""}`
+        : "Voice ID (see data/avatars.json for available options).";
+      const extra = Array.isArray(_av.voices) ? _av.voices.filter(v => v.id !== _av.default_voice_id) : [];
+      if (extra.length) base += ". Other options: " + extra.map(v => `${v.id} (${v.label})`).join(", ");
+      return base;
+    })();
+
     const agentTools = [
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
       // Browser automation tools (Playwright)
@@ -2754,9 +3512,9 @@ app.post("/ctrl/chat", async (req, res) => {
           properties: {
             script: { type: "string", description: "Het volledige script dat de avatar moet spreken" },
             description: { type: "string", description: "Korte beschrijving van de video (bijv. 'Trading recap voor TikTok')" },
-            avatar_id: { type: "string", description: "Avatar ID. Standaard: 703a2be1c9ae459e81be99b04636c5dc (Meta Vers3)" },
-            voice_id: { type: "string", description: "Voice ID. Standaard: cae5f9ad5dec463b83565e8a38b74a09 (Meta Vers3 Clone). Andere opties: f3a93c83f9ec4294b41bd787ac93a247 (Tijs NL), f728541039564551bad369a6da2445b8 (Eric NL), f89d0301b13840ccb7a1814d77e336c6 (Jann NL), fae30d24656e441fad8864951da79b75 (Lucas NL), f38a635bee7a4d1f9b0a654a31d050d2 (Chill Brian EN), d92994ae0de34b2e8659b456a2f388b8 (John Doe EN)" },
-            voice_engine: { type: "string", enum: ["panda", "coral"], description: "Voice engine. Standaard: panda" },
+            avatar_id: { type: "string", description: _avatarDesc },
+            voice_id: { type: "string", description: _voiceDesc },
+            voice_engine: { type: "string", enum: ["panda", "coral"], description: `Voice engine. Default: ${_av.default_voice_engine || "panda"}` },
           },
           required: ["script", "description"],
         },
@@ -2949,7 +3707,9 @@ Development: brainstorming, writing-plans, executing-plans, systematic-debugging
 
 Gebruik NIET voor simpele marketing vragen — daarvoor heb je marketeer_query. Gebruik run_skill voor wanneer je een volledige skill-gebaseerde analyse, audit, of plan nodig hebt met diepgaande output.
 
-BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET alle benodigde context meesturen in het prompt veld. Voorbeeld: voor youtube-optimizer moet je het VOLLEDIGE transcript meesturen in het prompt veld, anders kan de skill geen timestamps of titels genereren.`,
+BELANGRIJK: Het originele bericht van de gebruiker (inclusief geplakte content, transcripten, links) wordt AUTOMATISCH als context toegevoegd aan de skill. Je hoeft het transcript of lange content NIET over te typen in het prompt veld. Schrijf in het prompt veld alleen een korte instructie, bijv. "Optimaliseer dit transcript voor YouTube volgens de skill regels".
+
+KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebruiker. Toon die output VERBATIM in je antwoord. NIET samenvatten, NIET herformuleren, NIET inkorten, NIET sectiekoppen of opmaak wijzigen. Hooguit 1 regel intro toevoegen (bijv. "Hier is je YouTube pakket:"), daarna exact de skill-output.`,
         input_schema: {
           type: "object",
           properties: {
@@ -2968,8 +3728,8 @@ BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET al
         body: {
           script: input.script,
           description: input.description,
-          avatar_id: input.avatar_id || "703a2be1c9ae459e81be99b04636c5dc",
-          voice_id: input.voice_id || "cae5f9ad5dec463b83565e8a38b74a09",
+          avatar_id: input.avatar_id || defaultAvatarId(),
+          voice_id: input.voice_id || defaultVoiceId(),
           voice_engine: input.voice_engine || "panda",
         },
       }),
@@ -3083,13 +3843,15 @@ BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET al
 
     const apiParams = {
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemWithContext,
       messages: history,
       tools: agentTools,
     };
 
+    console.log(`[CHAT] API call #1 starting — history: ${JSON.stringify(history).length} chars, ${history.length} msgs`);
     let response = await anthropic.messages.create(apiParams);
+    console.log(`[CHAT] API call #1 done — stop_reason: ${response.stop_reason}, blocks: [${response.content.map(b => b.type).join(",")}], text_len: ${response.content.filter(b => b.type === "text").map(b => (b.text||"").length).reduce((a,b) => a+b, 0)}`);
     // Handle tool use loop (web search + agent actions)
     let loopCount = 0;
     while (response.stop_reason === "tool_use" && loopCount < 10) {
@@ -3207,8 +3969,14 @@ BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET al
         if (block.type === "tool_use" && block.name === "run_skill") {
           try {
             const skill = block.input.skill;
-            const prompt = block.input.prompt;
-            console.log(`[SKILL] Running /${skill}: ${prompt.substring(0, 100)}...`);
+            const aiPrompt = block.input.prompt;
+            // Auto-inject the user's original message (which may contain transcripts, URLs, pasted content)
+            const lastUserMsg = [...history].reverse().find(m => m.role === "user" && typeof m.content === "string");
+            const userContext = lastUserMsg ? lastUserMsg.content : "";
+            const prompt = userContext
+              ? `${aiPrompt}\n\n=== ORIGINEEL GEBRUIKERSBERICHT (volledige context) ===\n${userContext}`
+              : aiPrompt;
+            console.log(`[SKILL] Running /${skill}: ${aiPrompt.substring(0, 100)}... (+ ${userContext.length} chars user context)`);
 
             // Try to load skill instructions from marketing skills or claude commands
             let skillContent = null;
@@ -3245,7 +4013,9 @@ BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET al
             const Anthropic = require("@anthropic-ai/sdk");
             const skillClient = new Anthropic();
             const brand = loadBrand();
-            const skillSystem = `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`;
+            const skillSystem = IS_NL
+              ? `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`
+              : `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections. Reply in the user's language.`;
             const skillResponse = await skillClient.messages.create({
               model: "claude-sonnet-4-20250514",
               max_tokens: 8192,
@@ -3269,7 +4039,7 @@ BELANGRIJK: De skill draait in een aparte sessie zonder chathistorie. Je MOET al
             const action = TOOL_ACTIONS[block.name](block.input);
             const authHeader = req.cookies?.cc_session
               ? { Cookie: `cc_session=${req.cookies.cc_session}` }
-              : { "x-internal": "telegram" };
+              : { "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET };
             const isGet = action.method === "GET";
             console.log(`[CHAT-TOOL] → ${isGet ? "GET" : "POST"} ${action.url}`, isGet ? "" : JSON.stringify(action.body));
             const taskRes = await fetch(action.url, isGet ? {
@@ -3353,6 +4123,7 @@ const { Composio } = require("composio-core");
 const COMPOSIO_KEY = process.env.COMPOSIO_API_KEY || "";
 const COMPOSIO_ENTITY = "default";
 const COMPOSIO_ACCOUNT_ID = "30f9a8b5-8eae-4368-ad0f-da973486a34d";
+const TIMEZONE = process.env.TIMEZONE || "Europe/Amsterdam";
 
 const calendarSessions = {};
 
@@ -3374,7 +4145,7 @@ function buildCalendarTools() {
       GOOGLECALENDAR_LIST_CALENDARS: "List all Google Calendars the user has access to.",
       GOOGLECALENDAR_EVENTS_LIST: "List upcoming events from a calendar. Params: calendar_id (default 'primary'), time_min (ISO), time_max (ISO), max_results (int), query (string).",
       GOOGLECALENDAR_FIND_EVENT: "Search for events matching a query. Params: calendar_id, query (string to search for).",
-      GOOGLECALENDAR_CREATE_EVENT: "Create a new calendar event. Params: summary (title), start_datetime (ISO 8601 with timezone), end_datetime (ISO 8601 with timezone — MUST reflect the requested duration, e.g. 3 hours = start + 3h), timezone (always 'Europe/Amsterdam'), description, location, attendees (comma-separated emails), calendar_id. CRITICAL: Always calculate end_datetime from the requested duration. If the user says '3 uur' then end = start + 3 hours. Never default to 30 minutes.",
+      GOOGLECALENDAR_CREATE_EVENT: `Create a new calendar event. Params: summary (title), start_datetime (ISO 8601 with timezone offset), end_datetime (ISO 8601 with timezone offset — MUST reflect the requested duration, e.g. 3 hours = start + 3h), timezone (always '${TIMEZONE}'), description, location, attendees (comma-separated emails), calendar_id. CRITICAL: Always calculate end_datetime from the requested duration. If the user asks for '3 hours' then end = start + 3 hours. Never default to 30 minutes.`,
       GOOGLECALENDAR_DELETE_EVENT: "Delete an event. Params: event_id, calendar_id.",
       GOOGLECALENDAR_EVENTS_MOVE: "Move an event to a different calendar or time. Params: event_id, calendar_id, destination_calendar_id.",
       GOOGLECALENDAR_FIND_FREE_SLOTS: "Find free time slots. Params: calendar_id, time_min (ISO), time_max (ISO), duration_minutes (int).",
@@ -3387,7 +4158,7 @@ function buildCalendarTools() {
             summary: { type: "string", description: "Event title" },
             start_datetime: { type: "string", description: "Start time in ISO 8601 with timezone offset, e.g. 2026-04-10T14:00:00+02:00" },
             end_datetime: { type: "string", description: "End time in ISO 8601 with timezone offset. MUST reflect requested duration (e.g. 3 hour event: start + 3h). Never default to 30 min." },
-            timezone: { type: "string", description: "Always 'Europe/Amsterdam'" },
+            timezone: { type: "string", description: `Always '${TIMEZONE}'` },
             description: { type: "string", description: "Event description (optional)" },
             location: { type: "string", description: "Event location (optional)" },
             attendees: { type: "string", description: "Comma-separated emails (optional)" },
@@ -3399,7 +4170,9 @@ function buildCalendarTools() {
   }));
 }
 
-const CALENDAR_SYSTEM = `Je bent de Calendar Assistant, ingebouwd in het Command Center.
+const IS_NL = (process.env.LANGUAGE || "").toUpperCase() === "NL";
+
+const CALENDAR_SYSTEM = IS_NL ? `Je bent de Calendar Assistant, ingebouwd in het Command Center.
 Je beheert de Google Calendar van de gebruiker via Composio tools.
 
 BESCHIKBARE TOOLS:
@@ -3407,21 +4180,36 @@ BESCHIKBARE TOOLS:
 - GOOGLECALENDAR_LIST_CALENDARS: Toon alle calendars.
 - GOOGLECALENDAR_EVENTS_LIST: Toon events. Gebruik calendar_id "primary" tenzij anders gevraagd. Stuur time_min en time_max als ISO 8601 strings.
 - GOOGLECALENDAR_FIND_EVENT: Zoek events op tekst.
-- GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone, bijv. "2026-04-03T14:00:00+02:00"), timezone (altijd "Europe/Amsterdam"). Optioneel: description, location, attendees.
-  KRITIEK DUUR REGEL: Bereken end_datetime ALTIJD op basis van de gevraagde duur. Als de gebruiker zegt "3 uur" → end = start + 3 uur. Als de gebruiker zegt "hele dag" → end = start + 8 uur. NOOIT standaard 30 minuten gebruiken. Als geen duur opgegeven, vraag ernaar of gebruik 1 uur als default.
+- GOOGLECALENDAR_CREATE_EVENT: Maak een event aan. Vereist: summary, start_datetime, end_datetime (ISO 8601 met timezone offset), timezone (altijd "${TIMEZONE}"). Optioneel: description, location, attendees.
+  KRITIEK DUUR REGEL: Bereken end_datetime ALTIJD op basis van de gevraagde duur. Als de gebruiker zegt "3 uur" → end = start + 3 uur. NOOIT standaard 30 minuten gebruiken. Als geen duur opgegeven, vraag ernaar of gebruik 1 uur als default.
 - GOOGLECALENDAR_DELETE_EVENT: Verwijder een event (event_id nodig).
 - GOOGLECALENDAR_FIND_FREE_SLOTS: Vind vrije slots (time_min, time_max, duration_minutes).
 
 REGELS:
 - Spreek Nederlands tenzij de gebruiker Engels praat.
 - Wees beknopt en direct. Geen emoji tenzij gevraagd.
-- Bij het tonen van events, formatteer ze overzichtelijk met tijd, titel, en locatie.
-- Bij het aanmaken van events, bevestig altijd de details voordat je het aanmaakt, tenzij de gebruiker al specifiek genoeg is.
-- KRITIEK TIMEZONE REGEL: De gebruiker zit in Europe/Amsterdam (CET = UTC+1, CEST = UTC+2). Als de gebruiker zegt "16:30" bedoelt hij 16:30 lokale tijd in Amsterdam. Gebruik ALTIJD de offset +01:00 (winter/CET) of +02:00 (zomer/CEST) in de ISO 8601 datetime string. Stuur ALTIJD timezone: "Europe/Amsterdam" mee als parameter bij CREATE_EVENT. NOOIT UTC (+00:00) gebruiken voor tijden die de gebruiker opgeeft.
-- Huidige timezone offset: van laatste zondag van maart t/m laatste zondag van oktober = CEST (+02:00), rest = CET (+01:00).
+- KRITIEK TIMEZONE REGEL: De gebruiker zit in ${TIMEZONE}. Gebruik ALTIJD de juiste UTC-offset in ISO 8601 datetimes. Stuur ALTIJD timezone: "${TIMEZONE}" mee als parameter bij CREATE_EVENT. NOOIT UTC (+00:00) gebruiken voor tijden die de gebruiker opgeeft.
 - Bij "vandaag", "morgen", "deze week" etc.: gebruik eerst GET_CURRENT_DATE_TIME om de juiste datum te bepalen.
 - Toon tijden in 24-uurs formaat (14:00 niet 2 PM).
-- Als je een event aanmaakt, bevestig met de details (titel, datum, tijd, duur).`;
+- Als je een event aanmaakt, bevestig met de details (titel, datum, tijd, duur).` : `You are the Calendar Assistant, built into the Command Center.
+You manage the user's Google Calendar via Composio tools.
+
+AVAILABLE TOOLS:
+- GOOGLECALENDAR_GET_CURRENT_DATE_TIME: Get the current date/time. ALWAYS call this first for relative references ("tomorrow", "next week", etc.).
+- GOOGLECALENDAR_LIST_CALENDARS: List all calendars.
+- GOOGLECALENDAR_EVENTS_LIST: List events. Use calendar_id "primary" unless specified. Pass time_min and time_max as ISO 8601 strings.
+- GOOGLECALENDAR_FIND_EVENT: Search events by text.
+- GOOGLECALENDAR_CREATE_EVENT: Create an event. Required: summary, start_datetime, end_datetime (ISO 8601 with timezone offset), timezone (always "${TIMEZONE}"). Optional: description, location, attendees.
+  CRITICAL DURATION RULE: Always calculate end_datetime from the requested duration. If the user says "3 hours" → end = start + 3h. Never default to 30 minutes. If no duration given, ask or default to 1 hour.
+- GOOGLECALENDAR_DELETE_EVENT: Delete an event (event_id required).
+- GOOGLECALENDAR_FIND_FREE_SLOTS: Find free slots (time_min, time_max, duration_minutes).
+
+RULES:
+- Reply in the user's language. Be concise and direct. No emoji unless requested.
+- CRITICAL TIMEZONE RULE: The user is in ${TIMEZONE}. Always use the correct UTC offset in ISO 8601 datetimes. Always send timezone: "${TIMEZONE}" with CREATE_EVENT. Never use UTC (+00:00) for times the user gives you.
+- For "today", "tomorrow", "this week", etc.: first call GET_CURRENT_DATE_TIME to determine the actual date.
+- Use 24-hour time (14:00, not 2 PM).
+- When creating an event, confirm with details (title, date, time, duration).`;
 
 async function executeCalendarTool(toolName, params) {
   const composio = new Composio({ apiKey: COMPOSIO_KEY });
@@ -3591,6 +4379,25 @@ function buildMarketeerSystem() {
     .join("\n");
 
   const brand = loadBrand();
+  if (!IS_NL) {
+    return `You are the Marketeer, the AI marketing strategist for ${brand.company_name}, built into the Command Center.
+
+You have access to 25 professional marketing skill libraries that you can load with the load_marketing_skill tool. ALWAYS load the relevant skill(s) before giving advice.
+
+AVAILABLE SKILLS:
+${skillList}
+
+TOOLS:
+- load_marketing_skill: Load a specific marketing skill for detailed frameworks and methodologies. Always load 1-3 relevant skills before advising. Use the skill slug as parameter.
+- create_marketing_task: Create a task for another agent to execute (designer, scriptwriter, researcher, content_creator).
+
+RULES:
+- Reply in the user's language. Be strategic but practical — give concrete action items, not vague advice.
+- Use frameworks from the loaded skills and reference them.
+- When building plans, give specific timelines and owners.
+- You can delegate tasks to other agents via create_marketing_task.
+- No emoji unless asked.`;
+  }
   return `Je bent de Marketeer, de AI marketing strategist van ${brand.company_name}, ingebouwd in het Command Center.
 
 Je hebt toegang tot 25 professionele marketing skill-bibliotheken die je kunt laden met de load_marketing_skill tool. Laad ALTIJD de relevante skill(s) voordat je advies geeft.
@@ -3725,7 +4532,7 @@ app.post("/marketeer/chat", async (req, res) => {
               : { description: tu.input.description };
             const taskRes = await fetch(`http://localhost:3004${apiPath}`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "x-internal": "telegram" },
+              headers: { "Content-Type": "application/json", "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET },
               body: JSON.stringify(taskBody),
             });
             const task = await taskRes.json();
@@ -3787,7 +4594,7 @@ async function canvaRegisterClient(callbackUrl) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_name: (loadBrand().company_name || "Trading") + " Command Center",
+      client_name: (loadBrand().company_name || "Customer") + " Command Center",
       redirect_uris: [callbackUrl],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
@@ -3807,7 +4614,7 @@ app.get("/canva/connect", async (req, res) => {
     // Canva MCP only allows localhost as redirect host
     // Use the real server origin for the exchange, but register localhost for Canva
     const serverOrigin = `${req.headers["x-forwarded-proto"] || req.protocol}://${req.headers["x-forwarded-host"] || req.headers.host}`;
-    const callbackUrl = "http://localhost:3003/canva/callback";
+    const callbackUrl = `http://localhost:${PORT}/canva/callback`;
 
     // Register client
     const client = await canvaRegisterClient(callbackUrl);
@@ -3997,14 +4804,14 @@ async function processAvatarTasks() {
           video_inputs: [{
             character: {
               type: "avatar",
-              avatar_id: task.avatar_id || "703a2be1c9ae459e81be99b04636c5dc",
+              avatar_id: task.avatar_id || defaultAvatarId(),
               avatar_style: "normal",
             },
             voice: {
               type: "text",
               input_text: task.script,
-              voice_id: task.voice_id || "cae5f9ad5dec463b83565e8a38b74a09",
-              voice_engine: task.voice_engine || "panda",
+              voice_id: task.voice_id || defaultVoiceId(),
+              voice_engine: task.voice_engine || defaultVoiceEngine(),
             },
           }],
           dimension: { width: 1080, height: 1920 },
@@ -4134,7 +4941,10 @@ async function processScriptwriterTasks() {
       task.updated_at = new Date().toISOString();
       writeTaskFile("scriptwriter-tasks.json", tasks);
 
-      const prompt = `Je bent een professionele scriptwriter voor een trading platform.
+      const _brand = loadBrand();
+      const _niche = process.env.DEFAULT_NICHE || "content platform";
+      const prompt = IS_NL
+        ? `Je bent een professionele scriptwriter voor ${_brand.company_name} — een ${_niche}.
 
 Schrijf een ${task.format || "short-form"} ${task.type || "video_script"} over: ${task.topic}
 
@@ -4145,7 +4955,19 @@ Stijl: Professioneel maar toegankelijk. Geen hype. Data-driven.
 
 ${task.type === "video_script" ? "Formaat het als een spreekscript met duidelijke pauzes en secties. Voeg [SCENE] markers toe voor visuele overgangen." : ""}
 ${task.format === "short-form" ? "Houd het kort: max 60 seconden spreektijd (~150 woorden)." : ""}
-${task.format === "hook" ? "Schrijf 5 verschillende hooks/openers die direct de aandacht pakken." : ""}`;
+${task.format === "hook" ? "Schrijf 5 verschillende hooks/openers die direct de aandacht pakken." : ""}`
+        : `You are a professional scriptwriter for ${_brand.company_name} — a ${_niche}.
+
+Write a ${task.format || "short-form"} ${task.type || "video_script"} about: ${task.topic}
+
+Additional context: ${task.description}
+
+Tone: ${task.tone || "educational"}
+Style: Professional but accessible. No hype. Data-driven.
+
+${task.type === "video_script" ? "Format as a spoken script with clear pauses and sections. Add [SCENE] markers for visual transitions." : ""}
+${task.format === "short-form" ? "Keep it short: max 60 seconds of spoken time (~150 words)." : ""}
+${task.format === "hook" ? "Write 5 different hooks/openers that grab attention immediately." : ""}`;
 
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -4188,15 +5010,16 @@ async function processResearchTasks() {
       const isNL = lang === "NL";
 
       const brand = loadBrand();
-      const prompt = `${isNL ? "Je bent een researcher en content strategist" : "You are a researcher and content strategist"} voor ${brand.company_name} — een trading platform.
+      const defaultNiche = process.env.DEFAULT_NICHE || "content platform";
+      const prompt = `${isNL ? "Je bent een researcher en content strategist" : "You are a researcher and content strategist"} voor ${brand.company_name} — een ${defaultNiche}.
 
-${isNL ? "BELANGRIJK: Schrijf het VOLLEDIGE rapport in het Nederlands. Alle secties, analyses, suggesties, captions, tweets en beschrijvingen moeten in het Nederlands zijn. Alleen merknamen, platformnamen en technische termen (Bitcoin, Ethereum, DeFi, etc.) mogen in het Engels blijven." : "IMPORTANT: Write the FULL report in English."}
+${isNL ? "BELANGRIJK: Schrijf het VOLLEDIGE rapport in het Nederlands. Alle secties, analyses, suggesties, captions, tweets en beschrijvingen moeten in het Nederlands zijn. Alleen merknamen, platformnamen en technische termen mogen in het Engels blijven." : "IMPORTANT: Write the FULL report in English."}
 
 ## ${isNL ? "Research opdracht" : "Research assignment"}
 ${isNL ? "Onderwerp" : "Topic"}: ${task.query}
 ${isNL ? "Type" : "Type"}: ${task.type || "trending"}
 ${isNL ? "Platformen" : "Platforms"}: ${(task.platforms || ["tiktok", "x", "reddit"]).join(", ")}
-Niche: ${task.niche || "crypto trading"}
+Niche: ${task.niche || defaultNiche}
 
 ## ${isNL ? "Instructies" : "Instructions"}
 ${isNL
@@ -4615,6 +5438,185 @@ Return the final design URL when done.`;
   }
 }
 
+// ── COMMUNITY MANAGER PUBLISHER ──
+function resolveMediaPath(mediaPath) {
+  if (!mediaPath) return null;
+  const name = mediaPath.startsWith("/media/") ? mediaPath.slice(7) : path.basename(mediaPath);
+  const full = path.join(MEDIA_DIR, name);
+  if (!fs.existsSync(full)) throw new Error(`Media not found: ${name}`);
+  return { full, name };
+}
+
+function mediaKindFor(name) {
+  const ext = name.toLowerCase().split(".").pop();
+  if (["jpg", "jpeg", "png", "webp"].includes(ext)) return { method: "sendPhoto", field: "photo", capLimit: 1024 };
+  if (ext === "gif") return { method: "sendAnimation", field: "animation", capLimit: 1024 };
+  if (["mp4", "mov", "m4v"].includes(ext)) return { method: "sendVideo", field: "video", capLimit: 1024 };
+  throw new Error(`Unsupported media type: .${ext}`);
+}
+
+async function publishToChannel(task, channel) {
+  if (!channel) throw new Error(`Channel "${task.channel_id}" not found`);
+  if (channel.enabled === false) throw new Error(`Channel "${channel.id}" is disabled`);
+  if (channel.platform === "telegram") return publishTelegramPost(task, channel);
+  if (channel.platform === "discord") throw new Error("Discord publishing is not yet implemented");
+  throw new Error(`Unknown platform: ${channel.platform}`);
+}
+
+async function publishTelegramPost(task, channel) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN missing");
+  const chatId = channel.chat_id;
+  if (!chatId) throw new Error(`Channel "${channel.id}" has no chat_id`);
+  const topicId = channel.topic_id || null;
+  const text = task.text || "";
+
+  const mediaPaths = Array.isArray(task.media_paths) && task.media_paths.length
+    ? task.media_paths.filter(Boolean)
+    : (task.media_path ? [task.media_path] : []);
+
+  if (!mediaPaths.length) {
+    const body = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true };
+    if (topicId) body.message_thread_id = Number(topicId);
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(`Telegram: ${data.description || "unknown error"}`);
+    return { message_id: data.result.message_id };
+  }
+
+  if (mediaPaths.length === 1) {
+    const { full, name } = resolveMediaPath(mediaPaths[0]);
+    const kind = mediaKindFor(name);
+    const captionFits = text.length <= kind.capLimit;
+
+    const buffer = fs.readFileSync(full);
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    if (topicId) form.append("message_thread_id", String(topicId));
+    if (captionFits && text) {
+      form.append("caption", text);
+      form.append("parse_mode", "Markdown");
+    }
+    form.append(kind.field, new Blob([buffer]), name);
+
+    const r = await fetch(`https://api.telegram.org/bot${token}/${kind.method}`, { method: "POST", body: form });
+    const data = await r.json();
+    if (!data.ok) throw new Error(`Telegram (${kind.method}): ${data.description || "unknown error"}`);
+    const primaryMsgId = data.result.message_id;
+
+    if (!captionFits && text) {
+      const body2 = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
+      if (topicId) body2.message_thread_id = Number(topicId);
+      const r2 = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body2),
+      });
+      const data2 = await r2.json();
+      if (!data2.ok) throw new Error(`Telegram (follow-up text): ${data2.description || "unknown error"}`);
+    }
+    return { message_id: primaryMsgId };
+  }
+
+  // Album: sendMediaGroup (2-10 items)
+  if (mediaPaths.length > 10) throw new Error("Telegram albums support max 10 items");
+  const items = mediaPaths.map(p => {
+    const { full, name } = resolveMediaPath(p);
+    const ext = name.toLowerCase().split(".").pop();
+    let type;
+    if (["jpg", "jpeg", "png", "webp"].includes(ext)) type = "photo";
+    else if (["mp4", "mov", "m4v"].includes(ext)) type = "video";
+    else throw new Error(`Unsupported media type in album: .${ext} (gif/animation cannot be grouped)`);
+    return { full, name, type };
+  });
+  const albumCapLimit = 1024;
+  const captionFits = text.length <= albumCapLimit;
+
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  if (topicId) form.append("message_thread_id", String(topicId));
+  const mediaJson = items.map((it, i) => {
+    const entry = { type: it.type, media: `attach://file${i}` };
+    if (i === 0 && captionFits && text) {
+      entry.caption = text;
+      entry.parse_mode = "Markdown";
+    }
+    return entry;
+  });
+  form.append("media", JSON.stringify(mediaJson));
+  items.forEach((it, i) => {
+    const buffer = fs.readFileSync(it.full);
+    form.append(`file${i}`, new Blob([buffer]), it.name);
+  });
+
+  const r = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, { method: "POST", body: form });
+  const data = await r.json();
+  if (!data.ok) throw new Error(`Telegram (sendMediaGroup): ${data.description || "unknown error"}`);
+  const primaryMsgId = data.result[0].message_id;
+
+  if (!captionFits && text) {
+    const body2 = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
+    if (topicId) body2.message_thread_id = Number(topicId);
+    const r2 = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body2),
+    });
+    const data2 = await r2.json();
+    if (!data2.ok) throw new Error(`Telegram (follow-up text): ${data2.description || "unknown error"}`);
+  }
+  return { message_id: primaryMsgId };
+}
+
+async function processCommunityTasks() {
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const channelMap = Object.fromEntries(readChannels().map(c => [c.id, c]));
+  const now = Date.now();
+  let changed = false;
+  for (const task of tasks) {
+    if (task.status !== "scheduled") continue;
+    if (processingTasks.has(task.id)) continue;
+    const when = Date.parse(task.scheduled_at || "");
+    if (!when || when > now) continue;
+    if ((task.attempts || 0) >= 5) {
+      task.status = "failed";
+      task.error = task.error || "Max attempts reached";
+      task.updated_at = new Date().toISOString();
+      changed = true;
+      continue;
+    }
+    const channel = channelMap[task.channel_id];
+    if (!channel) continue;
+    if (channel.enabled === false) continue;
+    processingTasks.add(task.id);
+    try {
+      console.log(`[WORKER] Publishing community post ${task.id} to ${channel.id} (${task.archetype || "?"})`);
+      const result = await publishToChannel(task, channel);
+      task.status = "published";
+      task.published_at = new Date().toISOString();
+      task.message_id = result.message_id;
+      task.attempts = (task.attempts || 0) + 1;
+      task.updated_at = task.published_at;
+      task.error = null;
+      changed = true;
+      console.log(`[WORKER] Community post ${task.id} published (msg ${result.message_id})`);
+    } catch (e) {
+      task.attempts = (task.attempts || 0) + 1;
+      task.error = e.message;
+      task.updated_at = new Date().toISOString();
+      changed = true;
+      console.error(`[WORKER] Community post ${task.id} failed (attempt ${task.attempts}): ${e.message}`);
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+  if (changed) writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+}
+
 // Run workers every 15 seconds
 setInterval(() => {
   processAvatarTasks().catch(e => console.error("[WORKER] Avatar error:", e.message));
@@ -4623,6 +5625,7 @@ setInterval(() => {
   processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
   processAnalystTasks().catch(e => console.error("[WORKER] Analyst error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
+  processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
 }, 15_000);
 
 // Poll video status every 30 seconds
@@ -4638,6 +5641,7 @@ setTimeout(() => {
   processResearchTasks().catch(() => {});
   processAnalystTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
+  processCommunityTasks().catch(() => {});
   pollVideoStatus().catch(() => {});
 }, 3000);
 
@@ -4757,7 +5761,7 @@ if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recur
 app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
 
 const STUDIO_PORT = 3150;
-const STUDIO_URL = process.env.STUDIO_URL || `http://localhost:${STUDIO_PORT + 1}`;
+const STUDIO_URL = "https://neuralabs.cloud:3151";
 let currentStudio = null; // { projectId, process, startedAt }
 
 function readProjectMeta(id) {
@@ -5218,26 +6222,145 @@ app.post("/system/restart", (_req, res) => {
   setTimeout(() => process.exit(0), 400);
 });
 
+// ── SYSTEM HEALTH: history buffer + sampler ─────────────
+const SYS_HISTORY_MAX = 60;
+const sysHistory = { cpu: [], mem: [], disk: [], net_rx: [], net_tx: [], ts: [] };
+let _lastCpu = null;
+let _lastNet = null;
+let _lastNetTs = 0;
+
+function readCpuTimes() {
+  try {
+    const line = fs.readFileSync("/proc/stat", "utf8").split("\n")[0];
+    const parts = line.trim().split(/\s+/).slice(1).map(Number);
+    const idle = parts[3] + (parts[4] || 0);
+    const total = parts.reduce((a, b) => a + b, 0);
+    return { idle, total };
+  } catch { return null; }
+}
+
+function readNetTotals() {
+  try {
+    const lines = fs.readFileSync("/proc/net/dev", "utf8").split("\n").slice(2);
+    let rx = 0, tx = 0;
+    for (const l of lines) {
+      const m = l.trim().match(/^(\S+):\s+(\d+)(?:\s+\d+){7}\s+(\d+)/);
+      if (!m) continue;
+      if (m[1] === "lo") continue;
+      rx += parseInt(m[2]); tx += parseInt(m[3]);
+    }
+    return { rx, tx };
+  } catch { return null; }
+}
+
+function sampleSystem() {
+  try {
+    const cpuNow = readCpuTimes();
+    let cpuPct = 0;
+    if (_lastCpu && cpuNow) {
+      const idleD = cpuNow.idle - _lastCpu.idle;
+      const totalD = cpuNow.total - _lastCpu.total;
+      cpuPct = totalD > 0 ? Math.max(0, Math.round((1 - idleD / totalD) * 100)) : 0;
+    }
+    _lastCpu = cpuNow;
+
+    const mem = fs.readFileSync("/proc/meminfo", "utf8");
+    const totalMem = parseInt(mem.match(/MemTotal:\s+(\d+)/)?.[1] || 0) / 1024;
+    const availMem = parseInt(mem.match(/MemAvailable:\s+(\d+)/)?.[1] || 0) / 1024;
+    const memPct = totalMem > 0 ? Math.round((totalMem - availMem) / totalMem * 100) : 0;
+
+    const diskRaw = execSync("df -BM / | tail -1", { encoding: "utf8", timeout: 3000 });
+    const dp = diskRaw.trim().split(/\s+/);
+    const diskPct = parseInt(dp[1]) > 0 ? Math.round(parseInt(dp[2]) / parseInt(dp[1]) * 100) : 0;
+
+    const netNow = readNetTotals();
+    let rxRate = 0, txRate = 0;
+    const now = Date.now();
+    if (_lastNet && netNow && _lastNetTs > 0) {
+      const dtSec = Math.max(1, (now - _lastNetTs) / 1000);
+      rxRate = Math.max(0, Math.round((netNow.rx - _lastNet.rx) / dtSec));
+      txRate = Math.max(0, Math.round((netNow.tx - _lastNet.tx) / dtSec));
+    }
+    _lastNet = netNow; _lastNetTs = now;
+
+    sysHistory.cpu.push(cpuPct);
+    sysHistory.mem.push(memPct);
+    sysHistory.disk.push(diskPct);
+    sysHistory.net_rx.push(rxRate);
+    sysHistory.net_tx.push(txRate);
+    sysHistory.ts.push(now);
+    for (const k of Object.keys(sysHistory)) {
+      if (sysHistory[k].length > SYS_HISTORY_MAX) sysHistory[k].splice(0, sysHistory[k].length - SYS_HISTORY_MAX);
+    }
+  } catch (e) { /* ignore sampler errors */ }
+}
+
+sampleSystem();
+setInterval(sampleSystem, 5000);
+
+function getTopProcesses() {
+  try {
+    const raw = execSync("ps -eo pid,comm,%cpu,%mem --sort=-%mem --no-headers 2>/dev/null | head -6", { encoding: "utf8", timeout: 3000 });
+    return raw.trim().split("\n").map(line => {
+      const parts = line.trim().split(/\s+/);
+      return { pid: parts[0], name: parts[1], cpu: parseFloat(parts[2]) || 0, mem: parseFloat(parts[3]) || 0 };
+    });
+  } catch { return []; }
+}
+
 app.get("/system/health", (_req, res) => {
-  const { execSync } = require("child_process");
   try {
     const uptime = parseFloat(fs.readFileSync("/proc/uptime", "utf8").split(" ")[0]);
     const mem = fs.readFileSync("/proc/meminfo", "utf8");
     const totalMem = parseInt(mem.match(/MemTotal:\s+(\d+)/)?.[1] || 0) / 1024;
     const availMem = parseInt(mem.match(/MemAvailable:\s+(\d+)/)?.[1] || 0) / 1024;
     const usedMem = totalMem - availMem;
+    const swapTotal = parseInt(mem.match(/SwapTotal:\s+(\d+)/)?.[1] || 0) / 1024;
+    const swapFree = parseInt(mem.match(/SwapFree:\s+(\d+)/)?.[1] || 0) / 1024;
+    const swapUsed = swapTotal - swapFree;
     const diskRaw = execSync("df -BM / | tail -1", { encoding: "utf8", timeout: 3000 });
     const diskParts = diskRaw.trim().split(/\s+/);
     const diskTotal = parseInt(diskParts[1]) || 0;
     const diskUsed = parseInt(diskParts[2]) || 0;
     const loadRaw = fs.readFileSync("/proc/loadavg", "utf8").split(" ");
+    const cpuCores = os.cpus().length;
+    const cpuModel = os.cpus()[0]?.model || "";
+    const hostname = os.hostname();
+    const osType = `${os.type()} ${os.release()}`;
+
+    let procCount = 0;
+    try { procCount = parseInt(execSync("ls -d /proc/[0-9]* 2>/dev/null | wc -l", { encoding: "utf8", timeout: 2000 }).trim()) || 0; } catch {}
+
     res.json({
+      hostname,
+      os: osType,
+      node_version: process.version,
       uptime_seconds: Math.floor(uptime),
       uptime_human: uptime > 86400 ? Math.floor(uptime/86400) + 'd ' + Math.floor((uptime%86400)/3600) + 'h' : Math.floor(uptime/3600) + 'h ' + Math.floor((uptime%3600)/60) + 'm',
-      memory: { total_mb: Math.round(totalMem), used_mb: Math.round(usedMem), pct: Math.round(usedMem/totalMem*100) },
+      cpu: {
+        cores: cpuCores,
+        model: cpuModel,
+        pct: sysHistory.cpu.length ? sysHistory.cpu[sysHistory.cpu.length - 1] : 0,
+        load1: parseFloat(loadRaw[0]) || 0,
+        load5: parseFloat(loadRaw[1]) || 0,
+        load15: parseFloat(loadRaw[2]) || 0,
+      },
+      memory: { total_mb: Math.round(totalMem), used_mb: Math.round(usedMem), pct: totalMem > 0 ? Math.round(usedMem/totalMem*100) : 0 },
+      swap: { total_mb: Math.round(swapTotal), used_mb: Math.round(swapUsed), pct: swapTotal > 0 ? Math.round(swapUsed/swapTotal*100) : 0 },
       disk: { total_mb: diskTotal, used_mb: diskUsed, pct: diskTotal > 0 ? Math.round(diskUsed/diskTotal*100) : 0 },
-      load: loadRaw[0],
-      node_version: process.version,
+      network: {
+        rx_per_sec: sysHistory.net_rx.length ? sysHistory.net_rx[sysHistory.net_rx.length - 1] : 0,
+        tx_per_sec: sysHistory.net_tx.length ? sysHistory.net_tx[sysHistory.net_tx.length - 1] : 0,
+      },
+      processes: procCount,
+      top_processes: getTopProcesses(),
+      history: {
+        cpu: sysHistory.cpu.slice(),
+        mem: sysHistory.mem.slice(),
+        disk: sysHistory.disk.slice(),
+        net_rx: sysHistory.net_rx.slice(),
+        net_tx: sysHistory.net_tx.slice(),
+      },
     });
   } catch (e) {
     res.json({ error: e.message });
@@ -5320,6 +6443,14 @@ app.delete("/scheduled-tasks/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/scheduled-tasks/:id/run", (req, res) => {
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const sched = schedules.find(s => s.id === req.params.id);
+  if (!sched) return res.status(404).json({ error: "Not found" });
+  executeSchedule(sched).catch(e => console.error(`[SCHEDULER] Manual run failed: ${e.message}`));
+  res.json({ ok: true, triggered: sched.name, agent: sched.agent });
+});
+
 // ── SCHEDULE EXECUTOR ──
 // Checks every minute if any schedule should fire
 const DAY_MAP = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
@@ -5344,6 +6475,8 @@ async function executeSchedule(schedule) {
       await executeAssistantSchedule(schedule, today);
     } else if (schedule.agent === "ads_optimizer") {
       await executeAdsOptimizerSchedule(schedule, today);
+    } else if (schedule.agent === "community_manager") {
+      await executeCommunityManagerSchedule(schedule, today);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -5531,7 +6664,7 @@ async function executeMarketeerSchedule(schedule, today) {
   try {
     const res = await fetch("http://localhost:3004/marketeer/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal": "telegram" },
+      headers: { "Content-Type": "application/json", "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET },
       body: JSON.stringify({ message: query, sessionId: "scheduler_marketeer" }),
     });
     const data = await res.json();
@@ -5562,7 +6695,7 @@ async function executeAssistantSchedule(schedule, today) {
   try {
     const res = await fetch("http://localhost:3004/calendar/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal": "telegram" },
+      headers: { "Content-Type": "application/json", "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET },
       body: JSON.stringify({ message: query, sessionId: "scheduler_assistant" }),
     });
     const data = await res.json();
@@ -5585,6 +6718,218 @@ async function executeAssistantSchedule(schedule, today) {
     schedules[idx].last_run = new Date().toISOString();
     writeTaskFile("scheduled-tasks.json", schedules);
   }
+}
+
+// ── COMMUNITY MANAGER (weekly draft batch generator) ──
+async function executeCommunityManagerSchedule(schedule, today) {
+  const p = schedule.payload || {};
+  const channelId = p.channel_id;
+  const rawCount = parseInt(p.post_count);
+  const autoCount = !Number.isFinite(rawCount) || rawCount <= 0;
+  const postCount = autoCount ? null : Math.min(rawCount, 40);
+  const language = (p.language || "NL").toUpperCase();
+
+  // Create task-run record for the feed
+  const runTaskId = genId();
+  const runTasks = readTaskFile("community-manager-tasks.json");
+  runTasks.unshift({
+    id: runTaskId,
+    status: "processing",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    schedule_id: schedule.id,
+    schedule_name: schedule.name,
+    channel_id: channelId || null,
+    channel_name: null,
+    archetype_set: null,
+    language,
+    post_count: autoCount ? "auto" : postCount,
+    drafts_added: 0,
+    description: `Weekly drafts for channel ${channelId || "?"} (${language})`,
+    error: null,
+  });
+  writeTaskFile("community-manager-tasks.json", runTasks);
+
+  const markRun = (patch) => {
+    const all = readTaskFile("community-manager-tasks.json");
+    const i = all.findIndex(t => t.id === runTaskId);
+    if (i >= 0) {
+      all[i] = { ...all[i], ...patch, updated_at: new Date().toISOString() };
+      writeTaskFile("community-manager-tasks.json", all);
+    }
+  };
+
+  const markScheduleRun = ({ last_task_id = runTaskId, last_error = null } = {}) => {
+    const schedules = readTaskFile("scheduled-tasks.json");
+    const idx = schedules.findIndex(s => s.id === schedule.id);
+    if (idx >= 0) {
+      schedules[idx].last_run = new Date().toISOString();
+      schedules[idx].last_task_id = last_task_id;
+      schedules[idx].last_error = last_error;
+      writeTaskFile("scheduled-tasks.json", schedules);
+    }
+  };
+
+  if (!channelId) {
+    console.error(`[SCHEDULER] Community Manager: no channel_id in payload for "${schedule.name}"`);
+    sendTelegram(`💬 ${schedule.name} — FOUT`, "No channel_id configured in payload.", "danger");
+    markRun({ status: "failed", error: "No channel_id in payload" });
+    markScheduleRun({ last_error: "No channel_id in payload" });
+    return;
+  }
+
+  const channel = getChannel(channelId);
+  if (!channel || !channel.enabled) {
+    console.error(`[SCHEDULER] Community Manager: channel "${channelId}" not found or disabled`);
+    sendTelegram(`💬 ${schedule.name} — FOUT`, `Channel ${channelId} not found or disabled.`, "danger");
+    markRun({ status: "failed", error: `Channel ${channelId} not found or disabled` });
+    markScheduleRun({ last_error: `Channel ${channelId} not found or disabled` });
+    return;
+  }
+
+  markRun({ channel_name: channel.name, archetype_set: channel.archetype_set || null, description: `Weekly drafts for ${channel.name} (${language})` });
+
+  if (!channel.archetype_set) {
+    console.error(`[SCHEDULER] Community Manager: channel "${channelId}" has no archetype_set`);
+    sendTelegram(`💬 ${schedule.name} — FOUT`, `Channel ${channel.name} has no archetype set assigned.`, "danger");
+    markRun({ status: "failed", error: "No archetype set assigned" });
+    markScheduleRun({ last_error: "No archetype set assigned" });
+    return;
+  }
+
+  let archetypeMd;
+  try {
+    archetypeMd = readArchetypeSet(channel.archetype_set);
+  } catch (e) {
+    console.error(`[SCHEDULER] Community Manager: archetype set "${channel.archetype_set}" unreadable: ${e.message}`);
+    sendTelegram(`💬 ${schedule.name} — FOUT`, `Archetype set ${channel.archetype_set} not found.`, "danger");
+    markRun({ status: "failed", error: `Archetype set unreadable: ${e.message}` });
+    markScheduleRun({ last_error: `Archetype set unreadable: ${e.message}` });
+    return;
+  }
+
+  // Research context (fail-soft)
+  let researchContext = "";
+  try {
+    const reports = readTaskFile("research-reports.json");
+    const report = reports.find(r => (r.language || "NL") === language);
+    if (report && Array.isArray(report.sections) && report.sections.length) {
+      researchContext = report.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n").substring(0, 6000);
+    }
+  } catch {}
+
+  // Build prompt
+  const tz = process.env.TIMEZONE || "Europe/Amsterdam";
+  const now = new Date();
+  const startIso = now.toISOString();
+  const endIso = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const aiPrompt = `You are a community content planner generating draft social posts for a Telegram channel.
+
+CHANNEL: ${channel.name} (platform: ${channel.platform})
+ARCHETYPE SET: ${channel.archetype_set}
+LANGUAGE: ${language}
+TIMEZONE FOR SCHEDULING: ${tz}
+WINDOW: ${startIso} to ${endIso} (next 7 days)
+POST COUNT: ${autoCount ? "AUTO (derive from the week schedule in the archetype doc)" : postCount}
+
+ARCHETYPES & WEEK SCHEDULE (source of truth):
+---
+${archetypeMd}
+---
+
+${researchContext ? `LATEST RESEARCH CONTEXT (for hooks and angles):\n---\n${researchContext}\n---\n\n` : ""}RULES:
+- ${autoCount
+    ? "Generate exactly as many drafts as the week schedule in the archetype doc prescribes. Count every non-manual slot in the schedule table; one post per slot. Do not skip, add, or duplicate slots."
+    : `Generate exactly ${postCount} draft posts, spread across the next 7 days using the week schedule in the archetype doc. If the schedule has more slots than ${postCount}, pick the highest-cadence archetypes first.`}
+- SKIP any archetype explicitly marked as manual-only (look for markers like "NOT via", "handmatig", "⚠", "manually by"). Those are NOT generated here and do NOT count toward the total.
+- Follow every STYLE RULE in the archetype doc (em-dash ban, no hollow superlatives, concrete numbers, short sentences, language setting)
+- Each post must follow its archetype's structure and length guidelines
+- scheduled_at: ISO 8601 with timezone offset matching ${tz}, aligned with the archetype's cadence slot (e.g. Monday 08:30 local for archetype A)
+- trigger_word: only if the archetype specifies one (DELTA, CASCADE, PREMIUM, etc.), otherwise null
+- text: full post body including footer links as shown in the examples
+
+OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
+{
+  "archetype": "A — Market Intelligence Drop",
+  "scheduled_at": "2026-04-21T08:30:00+02:00",
+  "trigger_word": null,
+  "text": "..."
+}`;
+
+  console.log(`[SCHEDULER] Community Manager: generating ${autoCount ? "auto-count" : postCount} drafts for channel "${channel.name}" (set: ${channel.archetype_set})`);
+
+  let drafts;
+  try {
+    const raw = await new Promise((resolve, reject) => {
+      const child = spawn("/root/.local/bin/claude", ["-p", aiPrompt, "--output-format", "json", "--max-turns", "1"], {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, HOME: "/root" },
+      });
+      let stdout = "", stderr = "";
+      const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Claude CLI timeout after 600s")); }, 600000);
+      child.stdout.on("data", d => { stdout += d.toString(); });
+      child.stderr.on("data", d => { stderr += d.toString(); });
+      child.on("error", err => { clearTimeout(timer); reject(err); });
+      child.on("close", code => {
+        clearTimeout(timer);
+        if (code !== 0) return reject(new Error(`Claude CLI exited ${code}: ${stderr.slice(0, 500)}`));
+        try {
+          const parsed = JSON.parse(stdout);
+          resolve(parsed.result || parsed.content || stdout);
+        } catch {
+          resolve(stdout);
+        }
+      });
+    });
+
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    const arrMatch = text.match(/\[[\s\S]*\]/);
+    if (!arrMatch) throw new Error("No JSON array in Claude output");
+    drafts = JSON.parse(arrMatch[0]);
+    if (!Array.isArray(drafts) || !drafts.length) throw new Error("Empty or invalid draft array");
+  } catch (e) {
+    console.error(`[SCHEDULER] Community Manager: generation failed: ${e.message}`);
+    sendTelegram(`💬 ${schedule.name} — FOUT`, `Generation failed: ${e.message.slice(0, 300)}`, "danger");
+    markRun({ status: "failed", error: e.message.slice(0, 500) });
+    markScheduleRun({ last_error: e.message.slice(0, 500) });
+    return;
+  }
+
+  // Persist drafts
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  let added = 0;
+  for (const d of drafts) {
+    if (!d || !d.text || !d.scheduled_at) continue;
+    tasks.push({
+      id: genId(),
+      channel_id: channel.id,
+      status: "draft",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      scheduled_at: d.scheduled_at,
+      scheduled_local: null,
+      archetype: d.archetype || null,
+      trigger_word: d.trigger_word || null,
+      media_path: null,
+      text: String(d.text),
+      published_at: null,
+      message_id: null,
+      attempts: 0,
+      error: null,
+      source: `scheduler:${schedule.id}`,
+    });
+    added++;
+  }
+  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  console.log(`[SCHEDULER] Community Manager: added ${added} drafts to community-tasks.json`);
+
+  if (p.notify !== "false" && p.notify !== false) {
+    sendTelegram(`💬 ${schedule.name}`, `${added} drafts klaar voor <b>${channel.name}</b> (set: ${channel.archetype_set}).\nReview ze op de Community Manager pagina.`, "info");
+  }
+
+  markRun({ status: "completed", drafts_added: added, result: `${added} drafts generated for ${channel.name}` });
+  markScheduleRun();
 }
 
 // ── ADS RULES ENGINE (checks every 5 minutes) ──
@@ -5900,7 +7245,6 @@ setInterval(() => {
   }
 }, 60_000);
 
-const PORT = 3004;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`CTRL API running on port ${PORT}`);
   console.log(`[WORKER] Task workers active — polling every 15s, status check every 30s`);

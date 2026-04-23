@@ -36,6 +36,10 @@ command-center/data/nb-*.json
 command-center/public/media/*
 !command-center/public/media/.gitkeep
 
+# Community manager runtime data (channels + archetype sets are customer-specific)
+command-center/data/community/
+command-center/data/social-media/
+
 # Brand asset uploads (customers upload their own)
 command-center/data/brand-assets/*/icon.png
 command-center/data/brand-assets/*/logo.png
