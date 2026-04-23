@@ -48,6 +48,24 @@ fi
 
 ok "Found installation at $INSTALL_DIR"
 
+# ── BACKUP CUSTOMER DATA (safety net) ───────────
+BACKUP_DIR="/var/backups/commandcenter"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/data-$(date +%Y%m%d-%H%M%S).tar.gz"
+info "Creating safety backup of customer data..."
+if [ -d "$INSTALL_DIR/command-center/data" ]; then
+  tar -czf "$BACKUP_FILE" \
+    -C "$INSTALL_DIR/command-center" data \
+    2>/dev/null || true
+fi
+if [ -f "$INSTALL_DIR/.env" ]; then
+  tar -rzf "$BACKUP_FILE" -C "$INSTALL_DIR" .env 2>/dev/null || \
+    cp "$INSTALL_DIR/.env" "$BACKUP_DIR/env-$(date +%Y%m%d-%H%M%S).bak"
+fi
+# Keep only last 5 backups
+ls -1t "$BACKUP_DIR"/data-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
+ok "Backup saved to $BACKUP_FILE"
+
 # ── PULL LATEST CODE ────────────────────────────
 info "Pulling latest code..."
 cd "$SCRIPT_DIR"
@@ -71,6 +89,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/brand.json' \
         --exclude='data/brand-configs.json' \
         --exclude='data/brand-assets/' \
+        --exclude='data/avatars.json' \
         --exclude='data/social-connections.json' \
         --exclude='data/notifications.json' \
         --exclude='data/*-tasks.json' \
@@ -79,8 +98,12 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/ads-rules.json' \
         --exclude='data/video-projects/' \
         --exclude='data/generated-images/' \
+        --exclude='data/ai-video-uploads/' \
+        --exclude='data/transcripts/' \
         --exclude='data/community/' \
         --exclude='data/social-media/' \
+        --exclude='data/nb-input-*.json' \
+        --exclude='data/*.log' \
         --exclude='public/media/' \
         --exclude='logs' \
         "$SCRIPT_DIR/$component/" "$INSTALL_DIR/$component/"
@@ -134,5 +157,6 @@ echo ""
 SERVER_IP=$(hostname -I | awk '{print $1}')
 echo -e "  ${GREEN}▸${NC} Open ${CYAN}http://${SERVER_IP}:3004${NC} in your browser"
 echo -e "  ${GREEN}▸${NC} Your .env and customer data have been preserved"
+echo -e "  ${GREEN}▸${NC} Safety backup saved to ${CYAN}${BACKUP_FILE}${NC}"
 echo ""
 echo -e "${GREEN}Done!${NC}"
