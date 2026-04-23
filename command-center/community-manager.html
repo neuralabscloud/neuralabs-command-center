@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Community Manager</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
 <style>
 :root {
   --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
@@ -120,6 +121,9 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 <script src="/auth-guard.js"></script>
 </head>
 <body>
+<div id="emoji-popover" style="display:none;position:fixed;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.6);border-radius:8px;overflow:hidden">
+  <emoji-picker class="dark" style="--background:hsl(0 0% 5%);--border-color:hsl(217 32% 20%);--input-border-color:hsl(217 32% 20%);--button-active-background:hsl(264 65% 49%);--indicator-color:hsl(264 65% 49%)"></emoji-picker>
+</div>
 <div class="layout">
   <div class="sidebar"></div>
   <div class="main">
@@ -176,7 +180,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
           <div class="full">
             <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
             <textarea class="edit-textarea" id="np-text" oninput="updateNewPostCharCount()" placeholder="Write your post here…"></textarea>
-            <div class="char-count" id="np-cc">0 chars</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+              <div class="char-count" id="np-cc">0 chars</div>
+              <button class="btn-sm" type="button" onclick="toggleEmojiPicker('np-text', this)" style="font-size:16px;line-height:1;padding:4px 10px">😀</button>
+            </div>
           </div>
           <div class="full">
             <label class="edit-label">Media (optional — images or mp4; pick multiple for an album, max 10)</label>
@@ -635,7 +642,10 @@ function renderEditForm(t) {
         <div class="full">
           <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
           <textarea class="edit-textarea" id="edit-text-${esc(t.id)}" oninput="updateCharCount('${esc(t.id)}')">${esc(t.text)}</textarea>
-          <div class="char-count${warn}" id="cc-${esc(t.id)}">${textLen} chars${t.media_path ? ` · media caption limit 1024` : ''}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+            <div class="char-count${warn}" id="cc-${esc(t.id)}">${textLen} chars${t.media_path ? ` · media caption limit 1024` : ''}</div>
+            <button class="btn-sm" type="button" onclick="toggleEmojiPicker('edit-text-${esc(t.id)}', this)" style="font-size:16px;line-height:1;padding:4px 10px">😀</button>
+          </div>
         </div>
       </div>
       <div class="post-actions">
@@ -903,8 +913,27 @@ async function saveArchetypeLinks(name) {
 async function createArchetypeSet() {
   const name = document.getElementById('new-set-name').value.trim();
   if (!name) { alert('Name required'); return; }
+  const template = `# ${name}
+
+Describe your archetypes here.
+
+---
+
+**Standard link-footer options** (pick 2-3 per post, separated by \` | \`):
+
+| Emoji | Name | URL |
+|---|---|---|
+| 🔗 | Link 1 | \`https://example.com\` |
+| 📊 | Link 2 | \`https://example.com\` |
+| 🏦 | Link 3 | \`https://example.com\` |
+
+**Format in post (markdown hyperlink syntax):**
+\`\`\`
+🔗 [Link 1](https://example.com) | 📊 [Link 2](https://example.com)
+\`\`\`
+`;
   try {
-    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: `# ${name}\n\nDescribe your archetypes here.\n` }) });
+    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: template }) });
     if (!r.ok) throw new Error('create failed');
     document.getElementById('new-set-name').value = '';
     await loadArchetypeSets();
@@ -993,6 +1022,53 @@ async function loadNewPostLinks() {
       ${esc(l.emoji)} ${esc(l.name)}
     </label>
   `).join('');
+}
+
+// ── EMOJI PICKER ──
+let _emojiTargetId = null;
+let _emojiWired = false;
+function toggleEmojiPicker(textareaId, anchorBtn) {
+  const pop = document.getElementById('emoji-popover');
+  const picker = pop.querySelector('emoji-picker');
+  if (!_emojiWired) {
+    picker.addEventListener('emoji-click', (ev) => {
+      if (!_emojiTargetId) return;
+      const ta = document.getElementById(_emojiTargetId);
+      if (!ta) return;
+      const emoji = ev.detail.unicode;
+      const pos = ta.selectionStart ?? ta.value.length;
+      const before = ta.value.slice(0, pos);
+      const after = ta.value.slice(pos);
+      ta.value = before + emoji + after;
+      const newPos = before.length + emoji.length;
+      ta.selectionStart = ta.selectionEnd = newPos;
+      ta.focus();
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.addEventListener('click', (e) => {
+      if (pop.style.display === 'none') return;
+      if (pop.contains(e.target)) return;
+      if (e.target.closest('[onclick^="toggleEmojiPicker"]')) return;
+      pop.style.display = 'none';
+      _emojiTargetId = null;
+    });
+    _emojiWired = true;
+  }
+  if (pop.style.display !== 'none' && _emojiTargetId === textareaId) {
+    pop.style.display = 'none';
+    _emojiTargetId = null;
+    return;
+  }
+  _emojiTargetId = textareaId;
+  const rect = anchorBtn.getBoundingClientRect();
+  pop.style.display = 'block';
+  const pw = 360, ph = 400;
+  let left = rect.right - pw;
+  let top = rect.bottom + 6;
+  if (left < 8) left = 8;
+  if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
+  pop.style.left = left + 'px';
+  pop.style.top = Math.max(8, top) + 'px';
 }
 
 function insertNewPostLinks() {
