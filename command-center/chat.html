@@ -47,14 +47,12 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 .header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
 .new-chat-btn {
-  display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px;
-  border: 1px solid var(--border); background: transparent; color: var(--text-dim);
-  font-family: var(--font-data); font-size: 12px; cursor: pointer; transition: all 0.2s;
-  white-space: nowrap; margin-top: 2px; flex-shrink: 0;
-  -webkit-text-fill-color: var(--text-dim); -webkit-background-clip: unset;
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
 }
-.new-chat-btn:hover { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.04); -webkit-text-fill-color: var(--primary); }
-.new-chat-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.new-chat-btn:hover { color: var(--primary); border-color: var(--primary); background: hsla(264 65% 49% / 0.04); }
+.new-chat-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .chat-messages {
   flex: 1; overflow-y: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 16px;
@@ -299,10 +297,6 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
         <div class="header-title" id="chat-assistant-title">ASSISTANT</div>
         <div class="header-sub">Zet taken uit bij je agents, stel vragen en wees up to date over je business!</div>
       </div>
-      <button class="new-chat-btn" onclick="clearChat()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        New chat
-      </button>
     </div>
 
     <div class="chat-messages" id="chat-messages">
@@ -334,7 +328,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
       </div>
       <div id="file-preview-area"></div>
       <div class="chat-input-row">
-        <input type="file" id="file-input" accept="audio/*,video/*,.mp3,.mp4,.wav,.ogg,.aac,.m4a,.webm,.mkv,.avi,.mov,.flac,.pdf,application/pdf" style="display:none" onchange="handleFileSelect(event)">
+        <input type="file" id="file-input" accept="audio/*,video/*,.mp3,.mp4,.wav,.ogg,.aac,.m4a,.webm,.mkv,.avi,.mov,.flac,.pdf,application/pdf,text/*,.txt,.md,.markdown,.srt,.vtt,.csv,.json,.log" style="display:none" onchange="handleFileSelect(event)">
+        <button class="new-chat-btn" onclick="clearChat()" title="New chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
         <button class="chat-skills-btn" id="skills-btn" onclick="toggleSkillsPanel()" title="Skills">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         </button>
@@ -615,6 +612,13 @@ document.addEventListener('click', (e) => {
 
 // ── File upload handling ──
 let pendingFile = null;
+const TEXT_EXTS = ['.txt','.md','.markdown','.srt','.vtt','.csv','.json','.log'];
+const TEXT_MAX_CHARS = 150000;
+
+function isTextFile(name) {
+  const n = name.toLowerCase();
+  return TEXT_EXTS.some(ext => n.endsWith(ext));
+}
 
 function handleFileSelect(e) {
   const file = e.target.files[0];
@@ -623,8 +627,10 @@ function handleFileSelect(e) {
   showFilePreview(file.name);
   inputEl.focus();
   if (!inputEl.value.trim()) {
-    const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    inputEl.value = isPdf ? 'Lees en vat dit PDF bestand samen' : 'Transcribeer dit bestand';
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith('.pdf')) inputEl.value = 'Lees en vat dit PDF bestand samen';
+    else if (isTextFile(file.name)) inputEl.value = 'Verwerk de inhoud van dit bestand';
+    else inputEl.value = 'Transcribeer dit bestand';
   }
 }
 
@@ -675,9 +681,18 @@ async function sendMessage() {
     uploadBtn.classList.add('uploading');
     showTyping();
     try {
-      const result = await uploadFile(pendingFile);
-      uploadedFileName = result.name;
-      messageText = text + `\n\n[Geüpload bestand: ${uploadedFileName}]`;
+      if (isTextFile(fileName)) {
+        // Read text content client-side and inline into the message
+        const content = await pendingFile.text();
+        const truncated = content.length > TEXT_MAX_CHARS
+          ? content.slice(0, TEXT_MAX_CHARS) + `\n\n[...afgekapt, totaal ${content.length} tekens]`
+          : content;
+        messageText = `${text}\n\n[Inhoud van ${fileName}]:\n\`\`\`\n${truncated}\n\`\`\``;
+      } else {
+        const result = await uploadFile(pendingFile);
+        uploadedFileName = result.name;
+        messageText = text + `\n\n[Geüpload bestand: ${uploadedFileName}]`;
+      }
     } catch (e) {
       removeTyping();
       appendMsg('assistant', 'Upload mislukt: ' + e.message);
@@ -706,8 +721,8 @@ async function sendMessage() {
     removeTyping();
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Request failed' }));
-      appendMsg('assistant', 'Fout: ' + (err.error || 'Onbekende fout'));
+      const err = await res.json().catch(() => ({ error: `Server error (${res.status})` }));
+      appendMsg('assistant', 'Fout: ' + (err.error || `Server error ${res.status}`));
     } else {
       const data = await res.json();
       appendMsg('assistant', data.reply);

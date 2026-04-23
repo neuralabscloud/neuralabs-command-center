@@ -254,17 +254,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><div class="integration-name">API Keys & Integrations</div><div class="integration-desc">Leave empty to keep current value</div></div>
           </div>
           <div style="display:flex;flex-direction:column;gap:10px">
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Anthropic API Key</label><input type="password" id="cfg-anthropic" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current key kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Telegram Bot Token</label><input type="text" id="cfg-tg-token" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Telegram Chat ID</label><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://jouwdomein.nl/social/meta/callback"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Anthropic API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers all AI features: your assistant, the agents (researcher, analyst, designer, scriptwriter, marketeer) and chat. Required. Get it at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--primary)">console.anthropic.com</a>.</div><input type="password" id="cfg-anthropic" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current key kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Bot Token</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Used by your AI assistant to reach you on Telegram (for DMs, reviews, alerts). Same bot is reused by Community Manager to publish to channels.</div><input type="text" id="cfg-tg-token" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Chat ID (your DM)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Your personal DM chat with the assistant. Review batches, alerts and /start go here. Not the same as community channel IDs — those are per-channel in Community Manager.</div><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">AI avatar + video generation in the Video Editor. Optional — only needed if you use the avatar/video features. Get it at <a href="https://app.heygen.com/settings" target="_blank" style="color:var(--primary)">app.heygen.com</a>.</div><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Shows revenue on the Overview page. Optional — only needed if you sell with Stripe. Use a restricted key with read-only access to charges. Starts with <code>sk_live_</code> or <code>sk_test_</code>. Get it at <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--primary)">dashboard.stripe.com/apikeys</a>.</div><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Image generation via Google Nano Banana 2. Used by the Designer agent for thumbnails, carousels and social visuals. Optional. Get it at <a href="https://inference.sh" target="_blank" style="color:var(--primary)">inference.sh</a>.</div><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Connects your assistant to external tools: Google Calendar, Gmail, Drive, Notion, Slack and 100+ more. Required for calendar/inbox queries. Get it at <a href="https://app.composio.dev/developers" target="_blank" style="color:var(--primary)">app.composio.dev</a>.</div><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Unlocks Instagram, Facebook and Meta Ads Manager (campaigns, insights, OAuth connect). Create a Business app in Meta for Developers, then copy the <code>App ID</code>. Get it at <a href="https://developers.facebook.com/apps" target="_blank" style="color:var(--primary)">developers.facebook.com/apps</a>.</div><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The <code>App Secret</code> paired with your Meta App ID. Signs the OAuth flow for Instagram/Facebook login. Found under Settings → Basic in your Meta app dashboard. Keep it private.</div><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Where Meta sends users back after they approve the connection. Must be the exact public URL of this Command Center plus <code>/social/meta/callback</code> and must also be listed under Valid OAuth Redirect URIs in your Meta app (Facebook Login for Business → Settings).</div><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/social/meta/callback"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Pulls YouTube channel stats (subscribers, views, engagement) on the Performance page. No OAuth required — just a public API key. Enable <em>YouTube Data API v3</em> in Google Cloud and create an API key. Get it at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--primary)">console.cloud.google.com</a>.</div><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
           </div>
         </div>
       </div>
@@ -279,6 +279,16 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="brand-font-add-btn" onclick="addBrand()" style="padding:8px 14px;font-size:10px">+ Add Brand</button>
       </div>
       <div class="brand-assets-grid" id="brand-assets-grid"></div>
+    </section>
+
+    <!-- COMMUNITY MANAGER -->
+    <section class="fade-up delay-3" id="community-manager-section">
+      <div class="section-header">Community Manager</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
+        Configure which Telegram chats/topics (and later Discord servers) your assistant can post to. Each channel has its own archetype set, review schedule, and enabled flag. Full configuration lives on the <a href="community-manager.html" style="color:var(--primary)">Community Manager page</a>.
+      </p>
+      <div id="cm-summary" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <a href="community-manager.html" style="display:inline-block;padding:8px 16px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-family:var(--font-body);font-size:11px;text-transform:uppercase;letter-spacing:0.06em">Open Community Manager →</a>
     </section>
 
     <!-- SOCIAL CONNECTIONS -->
@@ -1045,6 +1055,46 @@ loadLocalServices();
 renderSkills();
 loadBrandAssets();
 loadSocialConnections();
+loadCommunitySummary();
+
+async function loadCommunitySummary() {
+  const box = document.getElementById('cm-summary');
+  if (!box) return;
+  const fetchJson = async (url) => {
+    const r = await fetch(url, { credentials: 'include' });
+    if (r.status === 401) throw new Error('Not authenticated (try hard-refresh)');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) throw new Error('Unexpected response (try hard-refresh)');
+    return r.json();
+  };
+  try {
+    const [channels, sets] = await Promise.all([
+      fetchJson('/community/channels'),
+      fetchJson('/community/archetype-sets'),
+    ]);
+    if (!channels.length) {
+      box.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:10px 12px;border:1px dashed var(--border);border-radius:6px">No channels configured yet. Open the Community Manager to add one.</div>';
+      return;
+    }
+    const rows = channels.map(c => {
+      const dotColor = c.enabled === false ? 'var(--text-dim)' : (c.platform === 'discord' ? 'hsl(227 58% 65%)' : 'var(--success)');
+      const info = c.platform === 'telegram' ? `${c.chat_id || '—'}${c.topic_id ? ' · topic ' + c.topic_id : ''}` : (c.chat_id || c.guild_id || 'not configured');
+      const archInfo = c.archetype_set ? ` · set: ${c.archetype_set}` : '';
+      return `<div style="display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-dim);font-family:var(--font-body)">
+        <span style="width:8px;height:8px;border-radius:50%;background:${dotColor}"></span>
+        <span style="color:var(--text);font-weight:500">${escapeHtmlCm(c.name)}</span>
+        <span style="text-transform:uppercase;font-size:9px;letter-spacing:0.06em">${escapeHtmlCm(c.platform)}</span>
+        <span style="font-size:11px">${escapeHtmlCm(info)}${escapeHtmlCm(archInfo)}</span>
+      </div>`;
+    }).join('');
+    box.innerHTML = rows + `<div style="font-size:11px;color:var(--text-dim);margin-top:4px">${channels.length} channel${channels.length === 1 ? '' : 's'} · ${sets.length} archetype set${sets.length === 1 ? '' : 's'}</div>`;
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:12px;color:var(--danger)">Load error: ${escapeHtmlCm(e.message)}</div>`;
+  }
+}
+
+function escapeHtmlCm(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // ── SOCIAL CONNECTIONS ─────────────────────────
 async function loadSocialConnections() {
@@ -1068,6 +1118,7 @@ async function loadSocialConnections() {
 
   const igAccounts = connections.filter(c => c.platform === 'instagram');
   const adAccounts = connections.filter(c => c.platform === 'meta_ads');
+  const ytAccounts = connections.filter(c => c.platform === 'youtube');
 
   const platforms = [
     {
@@ -1086,9 +1137,9 @@ async function loadSocialConnections() {
       connectHint: adAccounts.length ? null : (igAccounts.length ? 'Je Meta-koppeling mist ads_read/ads_management. Disconnect Instagram hierboven en opnieuw verbinden — OAuth vraagt nu ook ad scopes aan.' : 'Verbind eerst je Meta account via Instagram / Facebook hierboven. Ad accounts worden automatisch meegenomen.'),
     },
     {
-      id: 'youtube', label: 'YouTube', icon: '▶', hue: '0 72% 51%',
+      id: 'youtube', label: 'YouTube', icon: '▶', hue: '0 72% 51%', isYt: true,
       desc: 'Channel stats, views, engagement — YouTube Data API (key gebaseerd, geen OAuth nodig)',
-      accounts: [], canConnect: false,
+      accounts: ytAccounts, canConnect: false,
       isConfigured: ytConfigured,
       configuredLabel: ytConfigured ? `API key: ${ytKeyMasked}` : null,
       connectHint: ytConfigured ? null : 'Zet YouTube Data API Key in Configuration hierboven. Kanalen worden per handle bevraagd op de Performance-pagina.',
@@ -1099,7 +1150,7 @@ async function loadSocialConnections() {
     const accountsHtml = p.accounts.length ? `
       <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
         ${p.accounts.map(a => {
-          const primary = p.isAds ? (a.name || 'Ad account') : ('@' + (a.username || ''));
+          const primary = p.isAds ? (a.name || 'Ad account') : (p.isYt ? (a.handle || '') : ('@' + (a.username || '')));
           const secondary = p.isAds ? `${a.account_id || ''}${a.currency ? ' · ' + a.currency : ''}${a.business_name ? ' · ' + a.business_name : ''}` : (a.name || '');
           return `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px">
@@ -1121,6 +1172,11 @@ async function loadSocialConnections() {
 
     const connectBtn = p.authUrl && p.canConnect
       ? `<button onclick="connectSocial('${p.authUrl}')" style="margin-top:12px;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-family:var(--font-body);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,hsl(${p.hue}),hsl(${p.hue.replace(/(\d+)%\)$/, m => (parseInt(m)+10)+'%)')}));color:#fff">+ Connect ${p.label}</button>`
+      : p.isYt && p.isConfigured ? `
+        <div style="margin-top:12px;display:flex;gap:6px">
+          <input id="yt-handle-input" type="text" placeholder="@YourChannelHandle" style="flex:1;padding:8px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font-body)"/>
+          <button onclick="addYtChannel()" style="padding:8px 14px;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,hsl(${p.hue}),hsl(0 72% 60%));color:#fff">+ Add</button>
+        </div>`
       : p.connectHint ? `<div style="margin-top:12px;font-size:11px;color:var(--warning);background:hsla(45 93% 55%/0.06);padding:8px 10px;border-radius:6px;border:1px solid hsla(45 93% 55%/0.15)">${p.connectHint}</div>` : '';
 
     return `<div class="integration-card">
@@ -1147,6 +1203,23 @@ async function disconnectSocial(id) {
   if (!confirm('Weet je zeker dat je deze connectie wilt verwijderen?')) return;
   await fetch('/social/connections/' + id, { method: 'DELETE', credentials: 'include' });
   loadSocialConnections();
+}
+
+async function addYtChannel() {
+  const input = document.getElementById('yt-handle-input');
+  const handle = input?.value?.trim();
+  if (!handle) return alert('Vul een handle in (bv. @YourChannel)');
+  try {
+    const r = await fetch('/social/yt/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ handle }),
+    });
+    const d = await r.json();
+    if (!r.ok) return alert(d.error || 'Kon kanaal niet toevoegen');
+    loadSocialConnections();
+  } catch (e) { alert('Fout: ' + e.message); }
 }
 </script>
 <script src="/auth-guard.js"></script>

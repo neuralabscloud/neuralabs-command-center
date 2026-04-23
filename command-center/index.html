@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Command Center</title>
+<title>Command Center — AI Operations Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/iso-office.css">
 <style>
@@ -1041,21 +1041,15 @@ body::after {
       <div class="social-grid" id="social-grid"></div>
     </section>
 
-    <!-- RECENT ACTIVITY + SYSTEM HEALTH side by side -->
-    <section class="fade-up delay-6" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-
-      <!-- RECENT ACTIVITY -->
+    <!-- SYSTEM HEALTH (full width) -->
+    <section class="fade-up delay-6">
       <div style="background:linear-gradient(180deg,hsl(0 0% 5%) 0%,hsl(0 0% 3%) 100%);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-family:var(--font-data);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim)">Recent Activity</div>
-        <div id="recent-activity" style="max-height:320px;overflow-y:auto;scrollbar-width:thin"></div>
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-family:var(--font-data);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim)">System Health</div>
+          <div id="sys-host-label" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)"></div>
+        </div>
+        <div id="system-health" style="padding:16px"></div>
       </div>
-
-      <!-- SYSTEM HEALTH -->
-      <div style="background:linear-gradient(180deg,hsl(0 0% 5%) 0%,hsl(0 0% 3%) 100%);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-family:var(--font-data);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-dim)">System Health</div>
-        <div id="system-health" style="padding:14px 16px"></div>
-      </div>
-
     </section>
 
   </main>
@@ -1092,44 +1086,43 @@ function fmtNum(n) {
   return String(n);
 }
 
-// ── CONFIG (loaded dynamically from server) ───
-let YT_KEY = '';
+// ── CONFIG ─────────────────────────────────────
+const YT_KEY = 'REDACTED_YOUTUBE_KEY';
+
+// ── BRANDS CONFIG (dynamic — built from /social/connections) ─────
 let BRANDS = [];
 const platformState = {};
 
-function buildBrandsFromConnections(connections) {
-  // Group connections by brand/name into the BRANDS format
-  const brandMap = {};
-  connections.forEach(c => {
-    const brandName = (c.name || c.username || 'My Brand').toUpperCase();
-    if (!brandMap[brandName]) brandMap[brandName] = { name: brandName, platforms: [] };
-    if (c.platform === 'instagram') {
-      brandMap[brandName].platforms.push({ type: 'ig', handle: c.username, label: 'Instagram' });
-    } else if (c.platform === 'youtube') {
-      brandMap[brandName].platforms.push({ type: 'yt', handle: c.username.startsWith('@') ? c.username : '@' + c.username, label: 'YouTube' });
+async function loadBrandsFromConnections() {
+  try {
+    const res = await fetch('/social/connections', { credentials: 'include' });
+    if (!res.ok) return;
+    const { connections = [] } = await res.json();
+    const brands = [];
+    for (const c of connections) {
+      if (c.platform === 'instagram' && c.username) {
+        brands.push({
+          name: (c.name || c.username).toUpperCase(),
+          platforms: [{ type: 'ig', handle: c.username, label: 'Instagram' }]
+        });
+      } else if (c.platform === 'youtube' && c.handle) {
+        brands.push({
+          name: (c.name || c.handle.replace(/^@/, '')).toUpperCase(),
+          platforms: [{ type: 'yt', handle: c.handle, label: 'YouTube' }]
+        });
+      }
     }
-  });
-  return Object.values(brandMap);
+    BRANDS = brands;
+    BRANDS.forEach(b => b.platforms.forEach(p => {
+      const key = p.type + '_' + p.handle;
+      platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
+    }));
+  } catch (e) { console.error('[NL] Failed to load brands:', e); }
 }
 
-function initPlatformState() {
-  Object.keys(platformState).forEach(k => delete platformState[k]);
-  BRANDS.forEach(b => b.platforms.forEach(p => {
-    const key = p.type + '_' + p.handle;
-    platformState[key] = { followers: '—', engagement: '—', change: '', up: true, loading: true, label: p.type === 'yt' ? 'Subscribers' : 'Followers' };
-  }));
-}
-
-const BRAND_ICONS = {};
 const PLATFORM_LABELS = { ig: 'Instagram', yt: 'YouTube' };
 
 function renderSocialCards() {
-  const socialSection = document.getElementById('social-grid')?.closest('section');
-  if (!BRANDS.length) {
-    if (socialSection) socialSection.style.display = 'none';
-    return;
-  }
-  if (socialSection) socialSection.style.display = '';
   document.getElementById('social-grid').innerHTML = BRANDS.map(brand => {
     const platformData = brand.platforms.map(p => ({ ...p, state: platformState[p.type + '_' + p.handle] }));
     const totalFollowers = platformData.reduce((sum, p) => {
@@ -1345,30 +1338,11 @@ async function refreshAllData(forceAll) {
   refreshing = false;
 }
 
-// ── INIT: load social connections from server, then from cache ──
+// ── INIT: load from cache, auto-fetch if stale ──
 (async function init() {
-  // Load YouTube API key and social connections from server
-  try {
-    const [settingsRes, connectionsRes] = await Promise.all([
-      fetch('/api/settings', { credentials: 'include' }),
-      fetch('/social/connections', { credentials: 'include' }),
-    ]);
-    const settings = await settingsRes.json();
-    const connData = await connectionsRes.json();
-    YT_KEY = settings.integrations?.youtube?.has_key ? '__FROM_SERVER__' : '';
-    BRANDS = buildBrandsFromConnections(connData.connections || []);
-    initPlatformState();
-  } catch (e) { console.error('[CC] Failed to load social config:', e); }
-
-  if (!BRANDS.length) { renderSocialCards(); return; }
-
-  // Try to load YouTube key from env for direct API calls
-  try {
-    const r = await fetch('/api/youtube-key', { credentials: 'include' });
-    if (r.ok) { const d = await r.json(); YT_KEY = d.key || ''; }
-  } catch {}
-
+  await loadBrandsFromConnections();
   let needsFetch = false;
+
   BRANDS.forEach(brand => brand.platforms.forEach(p => {
     const cacheKey = 'ctrl_' + p.type + '_' + p.handle;
     const entry = cacheGet(cacheKey);
@@ -1388,11 +1362,14 @@ async function refreshAllData(forceAll) {
   renderSocialCards();
   showRefreshTime();
 
-  if (needsFetch) {
-    console.log('[CC] Cache stale or missing — auto-fetching all platforms');
+  // Auto-fetch all stale data (runs once per day effectively)
+  if (needsFetch && BRANDS.length > 0) {
+    console.log('[NL] Cache stale or missing — auto-fetching all platforms');
     refreshAllData();
+  } else if (BRANDS.length === 0) {
+    console.log('[NL] No social connections — connect in Settings');
   } else {
-    console.log('[CC] All caches fresh (< 24h) — skipping fetch');
+    console.log('[NL] All caches fresh (< 24h) — skipping fetch');
   }
 })();
 
@@ -1456,138 +1433,155 @@ async function renderStripe() {
 renderStripe();
 setInterval(renderStripe, 5 * 60 * 1000); // refresh elke 5 min
 
-// ── RECENT ACTIVITY ──────────────────────────
-async function renderRecentActivity() {
-  const el = document.getElementById('recent-activity');
-  try {
-    const taskFiles = [
-      { api: '/designer/tasks', agent: 'Designer', color: 'var(--warning)' },
-      { api: '/research/tasks', agent: 'Researcher', color: 'var(--accent)' },
-      { api: '/analyst/tasks', agent: 'Analyst', color: 'var(--premium)' },
-      { api: '/scriptwriter/tasks', agent: 'Script Writer', color: 'hsl(30 90% 55%)' },
-      { api: '/video/tasks', agent: 'Video Editor', color: 'var(--danger)' },
-      { api: '/avatar/tasks', agent: 'Content Creator', color: 'hsl(180 70% 45%)' },
-    ];
-    let allTasks = [];
-    await Promise.all(taskFiles.map(async ({ api, agent, color }) => {
-      try {
-        const r = await fetch(api, { credentials: 'include' });
-        if (!r.ok) return;
-        const tasks = await r.json();
-        for (const t of tasks) {
-          allTasks.push({ ...t, _agent: agent, _color: color });
-        }
-      } catch {}
-    }));
-    // Sort by updated_at desc, take last 15
-    allTasks.sort((a, b) => (b.updated_at || b.created_at || '').localeCompare(a.updated_at || a.created_at || ''));
-    const recent = allTasks.slice(0, 15);
-    if (!recent.length) {
-      el.innerHTML = '<div style="padding:20px;color:var(--text-dim);font-size:12px;text-align:center">No recent activity</div>';
-      return;
-    }
-    el.innerHTML = recent.map(t => {
-      const time = t.updated_at || t.created_at || '';
-      const ago = time ? timeAgo(new Date(time)) : '';
-      const status = t.status || '?';
-      const statusColor = status === 'completed' ? 'var(--success)' : status === 'failed' ? 'var(--danger)' : status === 'processing' ? 'var(--warning)' : 'var(--text-dim)';
-      const desc = (t.description || t.type || t.design_type || '').slice(0, 50);
-      return `<div style="padding:8px 16px;border-bottom:1px solid hsla(217 32% 20% / 0.5);display:flex;align-items:center;gap:10px">
-        <span style="font-size:10px;font-weight:600;color:${t._color};min-width:70px">${t._agent}</span>
-        <span style="font-size:11px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${desc || 'Task'}</span>
-        <span style="font-size:9px;color:${statusColor};text-transform:uppercase;font-weight:600">${status}</span>
-        <span style="font-size:9px;color:var(--text-dim);min-width:50px;text-align:right">${ago}</span>
-      </div>`;
-    }).join('');
-  } catch (e) {
-    el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:11px">Could not load activity</div>';
-  }
-}
-
-function timeAgo(date) {
-  const s = Math.floor((Date.now() - date) / 1000);
-  if (s < 60) return s + 's ago';
-  if (s < 3600) return Math.floor(s / 60) + 'm ago';
-  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-  return Math.floor(s / 86400) + 'd ago';
-}
-
-renderRecentActivity();
-setInterval(renderRecentActivity, 30000);
-
 // ── SYSTEM HEALTH ────────────────────────────
+function sysLineChart(values, color, { height = 54, max = null, fill = true } = {}) {
+  const vals = (values && values.length) ? values : [0];
+  const w = 100, h = height;
+  const mx = max !== null ? max : Math.max(1, ...vals);
+  const pts = vals.map((v, i) => {
+    const x = vals.length > 1 ? (i / (vals.length - 1)) * w : w / 2;
+    const y = h - (v / mx) * (h - 4) - 2;
+    return x.toFixed(2) + ',' + y.toFixed(2);
+  }).join(' ');
+  const fillPts = vals.length > 1 ? `${0},${h} ${pts} ${w},${h}` : `${0},${h} ${pts} ${w},${h}`;
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:${h}px;display:block">
+    ${fill ? `<polygon points="${fillPts}" fill="${color}" opacity="0.12"/>` : ''}
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const u = ['B','KB','MB','GB'];
+  let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
+}
+
+function statTile({ label, value, sub, color = 'var(--text)', chart = '', accent = 'var(--primary)' }) {
+  return `<div style="background:hsl(0 0% 4%);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-height:110px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+      <div style="font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim)">${label}</div>
+      <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data)">${sub || ''}</div>
+    </div>
+    <div style="font-family:var(--font-data);font-size:22px;font-weight:600;color:${color};letter-spacing:-0.01em">${value}</div>
+    <div style="margin-top:auto">${chart}</div>
+  </div>`;
+}
+
+function pctColor(p) {
+  return p > 85 ? 'var(--danger)' : p > 70 ? 'var(--warning)' : 'var(--success)';
+}
+
 async function renderSystemHealth() {
   const el = document.getElementById('system-health');
+  const hostEl = document.getElementById('sys-host-label');
   try {
     const [services, health] = await Promise.all([
       fetch('/settings/services', { credentials: 'include' }).then(r => r.json()).catch(() => []),
       fetch('/system/health', { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
     ]);
+    if (health.error || !health.uptime_human) {
+      el.innerHTML = '<div style="color:var(--danger);font-size:11px">Could not load health data</div>';
+      return;
+    }
 
-    let html = '';
+    const hist = health.history || {};
+    const cpu = health.cpu || {};
+    const mem = health.memory || {};
+    const disk = health.disk || {};
+    const swap = health.swap || {};
+    const net = health.network || {};
 
-    // Services
-    for (const svc of services) {
+    if (hostEl) hostEl.textContent = `${health.hostname} · ${health.os} · Node ${health.node_version}`;
+
+    const tilesTop = [
+      statTile({
+        label: 'CPU Usage', value: cpu.pct + '%',
+        sub: cpu.cores + ' cores',
+        color: pctColor(cpu.pct || 0),
+        chart: sysLineChart(hist.cpu, 'hsl(264 65% 60%)', { max: 100 })
+      }),
+      statTile({
+        label: 'Memory', value: mem.pct + '%',
+        sub: `${(mem.used_mb/1024).toFixed(1)}/${(mem.total_mb/1024).toFixed(1)} GB`,
+        color: pctColor(mem.pct || 0),
+        chart: sysLineChart(hist.mem, 'hsl(142 70% 45%)', { max: 100 })
+      }),
+      statTile({
+        label: 'Disk', value: disk.pct + '%',
+        sub: `${Math.round((disk.used_mb||0)/1024)}/${Math.round((disk.total_mb||0)/1024)} GB`,
+        color: pctColor(disk.pct || 0),
+        chart: sysLineChart(hist.disk, 'hsl(45 93% 55%)', { max: 100 })
+      }),
+      statTile({
+        label: 'Network', value: fmtBytes(net.rx_per_sec) + '/s',
+        sub: '↑ ' + fmtBytes(net.tx_per_sec) + '/s',
+        color: 'hsl(210 90% 60%)',
+        chart: sysLineChart(hist.net_rx, 'hsl(210 90% 60%)', { fill: true })
+      }),
+    ];
+
+    const loadAvgColor = (cpu.load1 || 0) > cpu.cores ? 'var(--danger)' : (cpu.load1 || 0) > cpu.cores * 0.7 ? 'var(--warning)' : 'var(--success)';
+    const tilesBottom = [
+      statTile({ label: 'Uptime', value: health.uptime_human, sub: '', color: 'var(--text)', chart: '' }),
+      statTile({ label: 'Load Avg', value: (cpu.load1 || 0).toFixed(2), sub: `${(cpu.load5||0).toFixed(2)} / ${(cpu.load15||0).toFixed(2)}`, color: loadAvgColor, chart: '' }),
+      statTile({ label: 'Processes', value: health.processes || '—', sub: 'running', color: 'var(--text)', chart: '' }),
+      statTile({ label: 'Swap', value: (swap.total_mb||0) === 0 ? 'N/A' : (swap.pct + '%'), sub: (swap.total_mb||0) === 0 ? 'disabled' : `${Math.round(swap.used_mb)}/${Math.round(swap.total_mb)} MB`, color: (swap.total_mb||0) === 0 ? 'var(--text-dim)' : pctColor(swap.pct || 0), chart: '' }),
+    ];
+
+    // Services list (left column) + top processes (right column)
+    const servicesHtml = services.length ? services.map(svc => {
       const online = svc.status === 'online';
       const dot = online ? 'var(--success)' : 'var(--danger)';
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid hsla(217 32% 20% / 0.3)">
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid hsla(217 32% 20% / 0.25)">
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="width:7px;height:7px;border-radius:50%;background:${dot}"></span>
+          <span style="width:7px;height:7px;border-radius:50%;background:${dot};box-shadow:0 0 8px ${dot}"></span>
           <span style="font-size:11px;color:var(--text)">${svc.label}</span>
         </div>
-        <span style="font-size:9px;color:${dot};font-weight:600;text-transform:uppercase">${online ? 'Online' : 'Offline'}</span>
+        <span style="font-size:9px;color:${dot};font-weight:600;text-transform:uppercase;letter-spacing:0.06em">${online ? 'Online' : 'Offline'}</span>
       </div>`;
-    }
+    }).join('') : '<div style="padding:14px;color:var(--text-dim);font-size:11px">No services reported</div>';
 
-    // Server stats
-    if (health.uptime_human) {
-      const memPct = health.memory?.pct || 0;
-      const diskPct = health.disk?.pct || 0;
-      const memColor = memPct > 85 ? 'var(--danger)' : memPct > 70 ? 'var(--warning)' : 'var(--success)';
-      const diskColor = diskPct > 85 ? 'var(--danger)' : diskPct > 70 ? 'var(--warning)' : 'var(--success)';
+    const procsHtml = (health.top_processes || []).length ? health.top_processes.map(p => `
+      <div style="display:grid;grid-template-columns:1fr 60px 60px;gap:8px;padding:6px 10px;border-bottom:1px solid hsla(217 32% 20% / 0.25);font-family:var(--font-data);font-size:11px;align-items:center">
+        <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="PID ${p.pid}">${p.name}</span>
+        <span style="color:${p.cpu > 50 ? 'var(--danger)' : p.cpu > 20 ? 'var(--warning)' : 'var(--text-dim)'};text-align:right">${p.cpu.toFixed(1)}% cpu</span>
+        <span style="color:${p.mem > 10 ? 'var(--warning)' : 'var(--text-dim)'};text-align:right">${p.mem.toFixed(1)}% mem</span>
+      </div>`).join('') : '<div style="padding:14px;color:var(--text-dim);font-size:11px">No process data</div>';
 
-      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Uptime</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${health.uptime_human}</div>
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">${tilesTop.join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">${tilesBottom.join('')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin-top:12px">
+        <div style="background:hsl(0 0% 4%);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div style="padding:10px 12px;font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border)">Services</div>
+          ${servicesHtml}
         </div>
-        <div>
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Load</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${health.load || '—'}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Memory</div>
-          <div style="font-size:12px;font-weight:600;color:${memColor}">${memPct}%</div>
-          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="height:100%;width:${memPct}%;background:${memColor};border-radius:2px"></div></div>
-          <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${health.memory?.used_mb || 0}MB / ${health.memory?.total_mb || 0}MB</div>
-        </div>
-        <div>
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Disk</div>
-          <div style="font-size:12px;font-weight:600;color:${diskColor}">${diskPct}%</div>
-          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="height:100%;width:${diskPct}%;background:${diskColor};border-radius:2px"></div></div>
-          <div style="font-size:9px;color:var(--text-dim);margin-top:2px">${Math.round((health.disk?.used_mb||0)/1024)}GB / ${Math.round((health.disk?.total_mb||0)/1024)}GB</div>
+        <div style="background:hsl(0 0% 4%);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <div style="padding:10px 12px;font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr 60px 60px;gap:8px">
+            <span>Top Processes</span><span style="text-align:right">CPU</span><span style="text-align:right">MEM</span>
+          </div>
+          ${procsHtml}
         </div>
       </div>`;
-    }
-
-    el.innerHTML = html || '<div style="color:var(--text-dim);font-size:11px">No health data</div>';
   } catch (e) {
     el.innerHTML = '<div style="color:var(--danger);font-size:11px">Could not load health data</div>';
   }
 }
 
 renderSystemHealth();
-setInterval(renderSystemHealth, 60000);
+setInterval(renderSystemHealth, 10000);
 
 // ── AI TEAM ───────────────────────────────────
 const aiTeam = [
-  { name: 'TRADER', emoji: '🤖', role: '2 Live Bots on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
+  { name: 'TRADER', emoji: '🤖', role: 'Live Bot on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
   { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
   { name: 'ANALYST', emoji: '📊', role: 'Bot Reports & Diagnostics', status: 'idle', color: 'var(--premium)', hsl: '270 95% 65%', task: 'Awaiting assignment' },
   { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
   { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
   { name: 'SCRIPT WRITER', emoji: '✍️', role: 'Video & Content Scripts', status: 'idle', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', task: 'Awaiting assignment' },
+  { name: 'COMMUNITY MANAGER', emoji: '💬', role: 'Telegram / Discord Posts', status: 'idle', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', task: 'Awaiting assignment', isCommunity: true },
   { name: 'MARKETEER', emoji: '📣', role: 'Marketing Strategy & Content', status: 'idle', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', task: 'Awaiting assignment', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '📅', role: 'Google Calendar Assistant', status: 'idle', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', task: 'Awaiting assignment', isCalendar: true },
 ];
@@ -1602,15 +1596,12 @@ const TASK_APIS = {
 };
 
 async function renderAiTeam() {
-  // Fetch bot data for Trader card — if bots not installed, hide trader entirely
+  // Fetch bot data for Trader card; absence means trading dashboard isn't installed
   let botData = null;
-  let tradingInstalled = false;
   try {
-    const res = await fetch('/api/status');
-    if (res.ok) { botData = await res.json(); tradingInstalled = true; }
+    const r = await fetch('/api/status');
+    if (r.ok) botData = await r.json();
   } catch {}
-
-  const team = tradingInstalled ? aiTeam : aiTeam.filter(a => !a.isTrader);
 
   // Fetch task counts per agent
   const taskCounts = {};
@@ -1627,9 +1618,18 @@ async function renderAiTeam() {
     } catch { taskCounts[name] = { pending: 0, processing: 0, completed: 0 }; }
   }
 
-  document.getElementById('ai-team-grid').innerHTML = team.map(a => {
+  // Community Manager: distinct status model (draft / scheduled / published / failed)
+  let communityTasks = [], communityChannels = [];
+  try { communityTasks = await (await fetch('/community/tasks')).json(); } catch {}
+  try { communityChannels = await (await fetch('/community/channels')).json(); } catch {}
+  if (!Array.isArray(communityTasks)) communityTasks = [];
+  if (!Array.isArray(communityChannels)) communityChannels = [];
+
+  // Drop Trader card entirely when trading dashboard isn't installed
+  const renderedTeam = aiTeam.filter(a => !a.isTrader || !!botData);
+  document.getElementById('ai-team-grid').innerHTML = renderedTeam.map(a => {
     if (a.isTrader && botData) {
-      const TRADER_BOTS = ['funding','trend'];
+      const TRADER_BOTS = ['trend'];
       const totalBots = TRADER_BOTS.length;
       const onlineCount = TRADER_BOTS.filter(id => botData[id]?.online).length;
       const totalEquity = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.accountValue||0), 0);
@@ -1697,6 +1697,48 @@ async function renderAiTeam() {
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
           <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
+        </div>
+      </div>`;
+    }
+
+    if (a.isCommunity) {
+      const nowMs = Date.now();
+      const drafts = communityTasks.filter(t => t.status === 'draft').length;
+      const scheduled = communityTasks.filter(t => t.status === 'scheduled').length;
+      const published = communityTasks.filter(t => t.status === 'published').length;
+      const failed = communityTasks.filter(t => t.status === 'failed').length;
+      const firingSoon = communityTasks.some(t => {
+        if (t.status !== 'scheduled') return false;
+        const when = Date.parse(t.scheduled_at || '');
+        return isFinite(when) && when - nowMs <= 15*60*1000 && when - nowMs > -60*1000;
+      });
+      const nextPost = communityTasks
+        .filter(t => t.status === 'scheduled' && Date.parse(t.scheduled_at || '') > nowMs)
+        .sort((x, y) => Date.parse(x.scheduled_at) - Date.parse(y.scheduled_at))[0];
+      const status = firingSoon ? 'running' : (scheduled > 0 || drafts > 0) ? 'queued' : 'idle';
+      const statusText = firingSoon ? 'Publishing soon…'
+        : nextPost ? `Next: ${fmtTaskTime(nextPost.scheduled_at)}`
+        : scheduled > 0 ? `${scheduled} scheduled`
+        : drafts > 0 ? `${drafts} draft(s) awaiting review`
+        : 'No posts queued';
+      return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+          <span class="agent-status ${status}">${status}</span>
+        </div>
+        <div class="agent-card-body">
+          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
+            <span style="color:var(--text-dim)">${drafts} draft</span>
+            <span style="color:var(--warning)">${scheduled} scheduled</span>
+            <span style="color:var(--success)">${published} published</span>
+            ${failed ? '<span style="color:var(--danger)">'+failed+' failed</span>' : ''}
+          </div>
+          <div class="agent-task">${statusText}</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">channels <span>${communityChannels.length}</span></span>
+          <a href="community-manager.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
         </div>
       </div>`;
     }
@@ -1829,21 +1871,19 @@ function closeAllMobile() {
 window.addEventListener('resize', function() {
   if (window.innerWidth > 1024) closeAllMobile();
 });
+
+// Dynamic header title from brand config
+fetch('/brand', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(b => {
+  if (b && b.company_name) {
+    const el = document.getElementById('header-title');
+    if (el) el.textContent = String(b.company_name).toUpperCase() + ' COMMAND CENTER';
+  }
+}).catch(() => {});
 </script>
 
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
 <script src="/iso-office.js"></script>
-<script>
-// Dynamically set header title from customer's company_name
-fetch('/api/settings', { credentials: 'include' }).then(r => r.json()).then(s => {
-  const name = s && s.brand && s.brand.company_name;
-  if (name) {
-    const el = document.getElementById('header-title');
-    if (el) el.textContent = name.toUpperCase() + ' COMMAND CENTER';
-  }
-}).catch(() => {});
-</script>
 </body>
 </html>

@@ -332,6 +332,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
               <option value="ads_optimizer">Ads Optimizer</option>
+              <option value="community_manager">Community Manager</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -382,13 +383,14 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
 <script>
 const AI_TEAM = [
-  { name: 'TRADER', emoji: '\u{1F916}', role: '3 Live Bots on Hyperliquid', color: 'var(--success)', hsl: '142 76% 36%', isTrader: true },
+  { name: 'TRADER', emoji: '\u{1F916}', role: 'Live Bot on Hyperliquid', color: 'var(--success)', hsl: '142 76% 36%', isTrader: true },
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
   { name: 'ANALYST', emoji: '\u{1F4CA}', role: 'Bot Reports & Diagnostics', color: 'var(--premium)', hsl: '270 95% 65%', taskApi: '/analyst/tasks', type: 'ANALYST' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
   { name: 'SCRIPT WRITER', emoji: '\u270D\uFE0F', role: 'Video & Content Scripts', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', taskApi: '/scriptwriter/tasks', type: 'SCRIPT' },
+  { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
   { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
 ];
@@ -396,6 +398,7 @@ const AI_TEAM = [
 const AGENT_COLORS = {
   RESEARCH: 'var(--accent)', ANALYST: 'var(--premium)', DESIGN: 'var(--warning)',
   VIDEO: 'var(--danger)', CONTENT: 'hsl(180 70% 45%)', SCRIPT: 'hsl(30 90% 55%)',
+  COMMUNITY: 'hsl(200 90% 55%)',
 };
 
 let currentFilter = 'all';
@@ -421,27 +424,42 @@ function setFilter(f) {
 }
 
 // ── AI TEAM ──
+let _tradingDashboardOnline = null;
+async function isTradingDashboardOnline() {
+  if (_tradingDashboardOnline !== null) return _tradingDashboardOnline;
+  try {
+    const r = await fetch('/settings/services');
+    if (!r.ok) { _tradingDashboardOnline = false; return false; }
+    const services = await r.json();
+    const td = services.find(s => s.label === 'Trading Dashboard');
+    _tradingDashboardOnline = !!(td && td.status === 'online');
+  } catch { _tradingDashboardOnline = false; }
+  return _tradingDashboardOnline;
+}
 async function loadAiTeam() {
   const grid = document.getElementById('ai-team-grid');
   const cards = [];
+  const tradingOn = await isTradingDashboardOnline();
 
   for (const agent of AI_TEAM) {
     if (agent.isTrader) {
+      if (!tradingOn) continue;
       let botHtml = '';
       try {
         const data = await (await fetch('/api/status')).json();
-        const onlineCount = ['funding','liq','trend'].filter(id => data[id]?.online).length;
-        const totalEquity = ['funding','liq','trend'].reduce((s, id) => s + (data[id]?.accountValue||0), 0);
-        const totalUpnl = ['funding','liq','trend'].reduce((s, id) => s + ((data[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
-        const totalRealizedPnl = ['funding','liq','trend'].reduce((s, id) => s + (data[id]?.stats?.totalPnl||0), 0);
-        const totalTrades = ['funding','liq','trend'].reduce((s, id) => s + (data[id]?.stats?.totalTrades||0), 0);
-        const status = onlineCount === 3 ? 'running' : onlineCount > 0 ? 'queued' : 'idle';
+        const bots = ['trend'];
+        const onlineCount = bots.filter(id => data[id]?.online).length;
+        const totalEquity = bots.reduce((s, id) => s + (data[id]?.accountValue||0), 0);
+        const totalUpnl = bots.reduce((s, id) => s + ((data[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
+        const totalRealizedPnl = bots.reduce((s, id) => s + (data[id]?.stats?.totalPnl||0), 0);
+        const totalTrades = bots.reduce((s, id) => s + (data[id]?.stats?.totalTrades||0), 0);
+        const status = onlineCount === bots.length ? 'running' : 'idle';
 
         botHtml = `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
           <div class="agent-card-header">
             <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
             <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-            <span class="agent-status ${status}">${onlineCount}/3 online</span>
+            <span class="agent-status ${status}">${onlineCount === 1 ? 'online' : 'offline'}</span>
           </div>
           <div class="agent-card-body">
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
@@ -449,18 +467,17 @@ async function loadAiTeam() {
               <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalUpnl>=0?'var(--success)':'var(--danger)'}">$${totalUpnl>=0?'+':''}${totalUpnl.toFixed(2)}</div></div>
               <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalRealizedPnl>=0?'var(--success)':'var(--danger)'}">$${totalRealizedPnl>=0?'+':''}${totalRealizedPnl.toFixed(2)}</div></div>
             </div>
-            <div class="agent-task">${onlineCount === 3 ? 'All bots operational' : (3-onlineCount)+' bot(s) offline'}</div>
+            <div class="agent-task">${onlineCount === 1 ? 'Trend bot operational' : 'Trend bot offline'}</div>
             <div class="health-row">
-              ${['funding','liq','trend'].map(id => {
+              ${bots.map(id => {
                 const ok = data[id]?.online;
-                const label = id === 'funding' ? 'Fund' : id === 'liq' ? 'Liq' : 'Trend';
-                return '<span class="health-tag"><span class="dot '+(ok?'ok':'err')+'"></span>'+label+'</span>';
+                return '<span class="health-tag"><span class="dot '+(ok?'ok':'err')+'"></span>Trend</span>';
               }).join('')}
             </div>
           </div>
           <div class="agent-card-footer">
             <span class="agent-footer-label"><span>${totalTrades}</span> trades</span>
-            <span class="agent-footer-label"><span>${onlineCount}/3</span> active</span>
+            <span class="agent-footer-label"><span>${onlineCount}/1</span> active</span>
           </div>
         </div>`;
       } catch {
@@ -504,6 +521,51 @@ async function loadAiTeam() {
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
           <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
+        </div>
+      </div>`);
+      continue;
+    }
+
+    if (agent.isCommunity) {
+      let tasks = [];
+      let channels = [];
+      try { tasks = await (await fetch('/community/tasks')).json(); } catch {}
+      try { channels = await (await fetch('/community/channels')).json(); } catch {}
+      if (!Array.isArray(tasks)) tasks = [];
+      if (!Array.isArray(channels)) channels = [];
+      const nowMs = Date.now();
+      const scheduled = tasks.filter(t => t.status === 'scheduled').length;
+      const drafts = tasks.filter(t => t.status === 'draft').length;
+      const published = tasks.filter(t => t.status === 'published').length;
+      const failed = tasks.filter(t => t.status === 'failed').length;
+      const firingSoon = tasks.some(t => t.status === 'scheduled' && (Date.parse(t.scheduled_at || '') - nowMs) <= 15*60*1000 && (Date.parse(t.scheduled_at || '') - nowMs) > -60*1000);
+      const status = firingSoon ? 'running' : scheduled > 0 || drafts > 0 ? 'queued' : 'idle';
+      const nextPost = tasks
+        .filter(t => t.status === 'scheduled' && Date.parse(t.scheduled_at || '') > nowMs)
+        .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at))[0];
+      const statusText = firingSoon ? 'Publishing soon…'
+        : nextPost ? `Next: ${fmtTime(nextPost.scheduled_at)}`
+        : scheduled > 0 ? `${scheduled} scheduled`
+        : drafts > 0 ? `${drafts} draft(s) awaiting review`
+        : 'No posts queued';
+      cards.push(`<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
+          <span class="agent-status ${status}">${status}</span>
+        </div>
+        <div class="agent-card-body">
+          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
+            <span style="color:var(--text-dim)">${drafts} draft</span>
+            <span style="color:var(--warning)">${scheduled} scheduled</span>
+            <span style="color:var(--success)">${published} published</span>
+            ${failed ? '<span style="color:var(--danger)">'+failed+' failed</span>' : ''}
+          </div>
+          <div class="agent-task">${esc(statusText)}</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">channels <span>${channels.length}</span></span>
+          <a href="community-manager.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
         </div>
       </div>`);
       continue;
@@ -564,6 +626,7 @@ async function loadAllTasks() {
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/research/tasks', agent: 'RESEARCHER', type: 'RESEARCH' },
     { api: '/analyst/tasks', agent: 'ANALYST', type: 'ANALYST' },
+    { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
   ];
 
   allTasks = [];
@@ -694,7 +757,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', analyst: 'ANALYST', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER' };
+const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', analyst: 'ANALYST', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   researcher: 'color:hsl(264 65% 49%)',
@@ -703,6 +766,7 @@ const AGENT_STYLES = {
   marketeer: 'color:hsl(340 80% 55%)',
   assistant: 'color:hsl(210 90% 55%)',
   ads_optimizer: 'color:hsl(142 76% 36%)',
+  community_manager: 'color:hsl(200 90% 55%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -712,6 +776,7 @@ const AGENT_DESCRIPTIONS = {
   marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
+  community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
 };
 
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -742,6 +807,11 @@ function buildScheduleSummary(s) {
       return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Calendar overview';
     case 'ads_optimizer':
       return `Analyzes campaign performance (${p.period || 'last_7d'}), auto-pauses ROAS < 0.8, scales ROAS > 2.5, sends Telegram report`;
+    case 'community_manager': {
+      const n = parseInt(p.post_count);
+      const count = Number.isFinite(n) && n > 0 ? `${n}` : 'auto';
+      return `Generates ${count} ${p.language || 'NL'} drafts for channel ${escHtml(p.channel_id || '?')} · spread across next 7 days`;
+    }
     default:
       return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
   }
@@ -862,6 +932,29 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Notify via Telegram</label>
         <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
     </div>`,
+  community_manager: `
+    <div style="background:hsla(200 90% 55%/0.06);border:1px solid hsla(200 90% 55%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li>Loads the selected channel's archetype set</li>
+        <li>Pulls the latest research report as context</li>
+        <li>Asks Claude to generate <b>N</b> draft posts spread across the next 7 days, following the archetype schedule</li>
+        <li>Skips archetypes marked as manual-only</li>
+        <li>Drafts land as <b style="color:hsl(200 90% 55%)">status: draft</b> in the Community queue, ready for the Sunday review cron</li>
+      </ul>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Channel</label>
+        <select class="sched-select" id="sp-channel_id"><option value="">Loading channels…</option></select></div>
+      <div><label class="sched-label">Language</label>
+        <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Post count (leave empty = auto from archetype schedule)</label>
+        <input class="sched-input" id="sp-post_count" type="number" min="1" max="40" placeholder="auto"></div>
+      <div><label class="sched-label">Notify via Telegram</label>
+        <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
+    </div>`,
   ads_optimizer: `
     <div style="background:hsla(142 76% 36%/0.06);border:1px solid hsla(142 76% 36%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
       <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
@@ -891,24 +984,36 @@ function updatePayloadFields() {
   const agent = document.getElementById('sched-agent').value;
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
   document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
-  // Toggle desc visibility for designer + populate brand dropdown
+  // Toggle desc visibility for designer
   if (agent === 'designer') {
     const cb = document.getElementById('sp-auto_from_research');
     const descRow = document.getElementById('sp-desc-row');
     cb?.addEventListener('change', () => { descRow.style.display = cb.checked ? 'none' : 'block'; });
-    // Load brands dynamically
-    fetch('/brand-configs', { credentials: 'include' }).then(r => r.json()).then(brands => {
-      const sel = document.getElementById('sp-brand');
-      if (!sel) return;
-      const names = (Array.isArray(brands) ? brands : []).map(b => b.name || b.brand_name).filter(Boolean);
-      if (!names.length) {
-        fetch('/brand', { credentials: 'include' }).then(r => r.json()).then(b => {
-          sel.innerHTML = `<option value="${b.company_name || 'DEFAULT'}">${(b.company_name || 'DEFAULT').toUpperCase()}</option>`;
-        }).catch(() => { sel.innerHTML = '<option value="DEFAULT">DEFAULT</option>'; });
-      } else {
-        sel.innerHTML = names.map(n => `<option value="${n.toUpperCase()}">${n.toUpperCase()}</option>`).join('');
-      }
-    }).catch(() => {});
+  }
+  // Load channels for community_manager
+  if (agent === 'community_manager') {
+    populateCommunityChannelSelect();
+  }
+}
+
+async function populateCommunityChannelSelect(selectedId) {
+  const sel = document.getElementById('sp-channel_id');
+  if (!sel) return;
+  try {
+    const res = await fetch('/community/channels', { credentials: 'include' });
+    const channels = await res.json();
+    const enabled = (channels || []).filter(c => c.enabled !== false);
+    if (!enabled.length) {
+      sel.innerHTML = '<option value="">No enabled channels — add one in Community Manager</option>';
+      return;
+    }
+    sel.innerHTML = enabled.map(c => {
+      const label = `${c.name}${c.archetype_set ? ' · ' + c.archetype_set : ' · no archetype set'}`;
+      return `<option value="${escHtml(c.id)}">${escHtml(label)}</option>`;
+    }).join('');
+    if (selectedId) sel.value = selectedId;
+  } catch {
+    sel.innerHTML = '<option value="">Error loading channels</option>';
   }
 }
 
@@ -939,6 +1044,10 @@ function openScheduleModal(data) {
       const cb = document.getElementById('sp-auto_from_research');
       const descRow = document.getElementById('sp-desc-row');
       if (cb && descRow) descRow.style.display = cb.checked ? 'none' : 'block';
+      // Re-populate community channel select with the saved selection (it's async)
+      if (data?.agent === 'community_manager' && data?.payload?.channel_id) {
+        populateCommunityChannelSelect(data.payload.channel_id);
+      }
     }, 10);
   }
   document.getElementById('sched-modal-bg').classList.add('open');
@@ -995,8 +1104,21 @@ async function editSchedule(id) {
 async function loadAll() {
   await Promise.allSettled([loadAiTeam(), loadAllTasks()]);
 }
+async function loadBrandOptions() {
+  try {
+    const r = await fetch('/brand', { credentials: 'include' });
+    if (!r.ok) return;
+    const b = await r.json();
+    const sel = document.getElementById('sp-brand');
+    if (!sel) return;
+    const name = (b && b.company_name) ? String(b.company_name) : 'BRAND';
+    const val = name.toUpperCase();
+    sel.innerHTML = `<option value="${val.replace(/"/g, '&quot;')}">${val}</option>`;
+  } catch {}
+}
 loadAll();
 loadSchedules();
+loadBrandOptions();
 checkCanvaStatus();
 setInterval(loadAll, 8000);
 setInterval(checkCanvaStatus, 30000);

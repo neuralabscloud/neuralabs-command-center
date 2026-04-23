@@ -142,8 +142,8 @@ app.use(express.static(path.join(__dirname, "public")));
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
 // Resolve bot directories (configurable via env; defaults preserve legacy layout)
-const FUNDING_BOT_PATH = process.env.FUNDING_BOT_PATH || path.join(__dirname, "..", "neuralabs-bot");
-const TREND_BOT_PATH = process.env.TREND_BOT_PATH || path.join(__dirname, "..", "neuralabs-bot-5");
+const FUNDING_BOT_PATH = process.env.FUNDING_BOT_PATH || "";
+const TREND_BOT_PATH = process.env.TREND_BOT_PATH || "";
 
 // Avatar / voice config for HeyGen. Read from data/avatars.json so customers can
 // replace vendor defaults with their own avatar/voice IDs without editing code.
@@ -219,6 +219,12 @@ function writeEnvFile(updates) {
   fs.writeFileSync(ENV_PATH, content.trim() + "\n", { mode: 0o600 });
   for (const [key, val] of Object.entries(updates)) {
     process.env[key] = val;
+  }
+  // Refresh module-level cached env (Telegram tokens, etc.) so changes take
+  // effect without a service restart.
+  const touched = Object.keys(updates);
+  if (touched.some(k => k === "TELEGRAM_BOT_TOKEN" || k === "TELEGRAM_CHAT_ID")) {
+    try { refreshTelegramEnv(); } catch {}
   }
 }
 
@@ -2372,17 +2378,20 @@ app.delete("/ads/rules/:id", (req, res) => {
 
 app.get("/settings/services", async (_req, res) => {
   const services = [
-    { label: "Command Center API", url: "http://localhost:3004", desc: "Main API server — tasks, brands, chat" },
-    { label: "Trading Dashboard", url: process.env.DASHBOARD_URL || "http://localhost:3000", desc: "Live trading bot data & orderbook" },
+    { label: "Command Center API", url: "http://localhost:3004", desc: "Main API server — tasks, brands, chat", optional: false },
+    { label: "Trading Dashboard", url: process.env.DASHBOARD_URL || "http://localhost:3000", desc: "Live trading bot data & orderbook", optional: true },
   ];
   const results = [];
   for (const svc of services) {
+    let status = "offline";
     try {
-      const r = await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
-      results.push({ ...svc, status: "online" });
-    } catch {
-      results.push({ ...svc, status: "offline" });
-    }
+      await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
+      status = "online";
+    } catch {}
+    // Skip optional services that are offline (e.g. Trading Dashboard not installed)
+    if (svc.optional && status !== "online") continue;
+    const { optional, ...rest } = svc;
+    results.push({ ...rest, status });
   }
   res.json(results);
 });
@@ -2549,8 +2558,21 @@ app.delete("/media/:name", (req, res) => {
 });
 
 // ── TELEGRAM ──────────────────────────────────
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-const TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
+// Read via `let` so settings/test + writeEnvFile can refresh after wizard save
+// without requiring a service restart. refreshTelegramEnv() is called from
+// writeEnvFile whenever a TELEGRAM_* key is updated.
+let TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+let TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
+function refreshTelegramEnv() {
+  const newToken = process.env.TELEGRAM_BOT_TOKEN || "";
+  const tokenChanged = newToken !== TG_TOKEN;
+  TG_TOKEN = newToken;
+  TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
+  // If token changed and polling wasn't started yet, start it now
+  if (tokenChanged && TG_TOKEN && typeof tgPoll === "function" && !tgPollingActive) {
+    try { setTimeout(() => tgPoll(), 1000); } catch {}
+  }
+}
 
 const SEVERITY_EMOJI = { success: "\u2705", danger: "\u274c", warning: "\u26a0\ufe0f", info: "\u2139\ufe0f" };
 
@@ -2566,7 +2588,7 @@ function sendTelegram(title, message, severity) {
 }
 
 // ── TELEGRAM BOT (two-way: AI chat via Telegram) ─────────
-const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+function tgApi() { return `https://api.telegram.org/bot${TG_TOKEN}`; }
 let tgPollingActive = false;
 let tgOffset = 0;
 
@@ -2579,7 +2601,7 @@ function tgSend(chatId, text) {
     remaining = remaining.slice(4000);
   }
   for (const chunk of chunks) {
-    fetch(`${TG_API}/sendMessage`, {
+    fetch(`${tgApi()}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2590,7 +2612,7 @@ function tgSend(chatId, text) {
       }),
     }).catch(err => {
       // Fallback without Markdown if it fails
-      fetch(`${TG_API}/sendMessage`, {
+      fetch(`${tgApi()}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, text: chunk, disable_web_page_preview: true }),
@@ -2791,7 +2813,7 @@ const DAY_NUM = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, f
 const DAY_SHORT_TO_NUM = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 function tgApiCall(method, body) {
-  return fetch(`${TG_API}/${method}`, {
+  return fetch(`${tgApi()}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2812,7 +2834,7 @@ async function sendCommunityReviewCard(chatId, task, channel) {
       form.append("chat_id", String(chatId));
       form.append("caption", `📎 Media voor review — ${task.archetype || task.id}`);
       form.append(kind.field, new Blob([buffer]), name);
-      await fetch(`${TG_API}/${kind.method}`, { method: "POST", body: form });
+      await fetch(`${tgApi()}/${kind.method}`, { method: "POST", body: form });
     } catch (e) {
       console.error(`[COMMUNITY-REVIEW] Media preview failed for ${task.id}: ${e.message}`);
     }
@@ -3031,7 +3053,7 @@ async function tgPoll() {
 
   while (tgPollingActive) {
     try {
-      const r = await fetch(`${TG_API}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message","callback_query"]`, {
+      const r = await fetch(`${tgApi()}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message","callback_query"]`, {
         signal: AbortSignal.timeout(35000),
       });
       const data = await r.json();
@@ -3219,8 +3241,24 @@ setInterval(async () => {
 }, 30_000);
 
 // ── AI CHAT ───────────────────────────────────
+// Lazy Anthropic client: constructor reads ANTHROPIC_API_KEY once, so a
+// module-level `new Anthropic()` captures empty-string on fresh installs
+// (before the wizard saves the key). This proxy re-creates the client
+// whenever the env var changes, so callers can keep using `anthropic.x.y`.
 const Anthropic = require("@anthropic-ai/sdk");
-const anthropic = new Anthropic();
+let _anthropicClient = null;
+let _anthropicClientKey = null;
+function getAnthropic() {
+  const key = process.env.ANTHROPIC_API_KEY || "";
+  if (!_anthropicClient || _anthropicClientKey !== key) {
+    _anthropicClient = new Anthropic();
+    _anthropicClientKey = key;
+  }
+  return _anthropicClient;
+}
+const anthropic = new Proxy({}, {
+  get(_t, prop) { return getAnthropic()[prop]; },
+});
 
 // Chat history per session (in-memory, resets on server restart)
 const chatSessions = {};
@@ -5761,7 +5799,7 @@ if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recur
 app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
 
 const STUDIO_PORT = 3150;
-const STUDIO_URL = "https://neuralabs.cloud:3151";
+const STUDIO_URL = process.env.STUDIO_URL || "";
 let currentStudio = null; // { projectId, process, startedAt }
 
 function readProjectMeta(id) {

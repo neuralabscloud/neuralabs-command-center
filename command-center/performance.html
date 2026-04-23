@@ -203,41 +203,32 @@ function fmtNum(n) {
 const loadingRow = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:var(--text-dim);font-family:var(--font-data);font-size:11px"><span style="animation:pulse-glow 1.5s infinite">◌ ${msg}</span></td></tr>`;
 function decodeHtml(s) { return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"'); }
 
-// ── CONFIG (loaded dynamically from server) ───
-let YT_KEY = '';
+// ── CONFIG ─────────────────────────────────────
+const YT_KEY = 'REDACTED_YOUTUBE_KEY';
+
 let BRANDS = [];
 
-const PLATFORM_COLORS = { ig: 'hsl(330 70% 55%)', yt: 'hsl(0 72% 51%)' };
-
-async function loadBrandsConfig() {
+async function loadBrandsFromConnections() {
   try {
-    const [settingsRes, connectionsRes] = await Promise.all([
-      fetch('/api/settings', { credentials: 'include' }),
-      fetch('/social/connections', { credentials: 'include' }),
-    ]);
-    const settings = await settingsRes.json();
-    const connData = await connectionsRes.json();
-    const connections = connData.connections || [];
-
-    // Build BRANDS from social connections
-    const brandMap = {};
-    connections.forEach(c => {
-      const brandName = (c.name || c.username || 'My Brand').toUpperCase();
-      if (!brandMap[brandName]) brandMap[brandName] = { name: brandName, profiles: [] };
-      if (c.platform === 'instagram') {
-        brandMap[brandName].profiles.push({ type: 'ig', handle: c.username, color: PLATFORM_COLORS.ig });
-      } else if (c.platform === 'youtube') {
-        brandMap[brandName].profiles.push({ type: 'yt', handle: c.username.startsWith('@') ? c.username : '@' + c.username, color: PLATFORM_COLORS.yt });
+    const res = await fetch('/social/connections', { credentials: 'include' });
+    if (!res.ok) return;
+    const { connections = [] } = await res.json();
+    const brands = [];
+    for (const c of connections) {
+      if (c.platform === 'instagram' && c.username) {
+        brands.push({
+          name: (c.name || c.username).toUpperCase(),
+          profiles: [{ type: 'ig', handle: c.username, color: 'hsl(330 70% 55%)' }]
+        });
+      } else if (c.platform === 'youtube' && c.handle) {
+        brands.push({
+          name: (c.name || c.handle.replace(/^@/, '')).toUpperCase(),
+          profiles: [{ type: 'yt', handle: c.handle, color: 'hsl(0 72% 51%)' }]
+        });
       }
-    });
-    BRANDS = Object.values(brandMap);
-
-    // Load YouTube API key
-    try {
-      const r = await fetch('/api/youtube-key', { credentials: 'include' });
-      if (r.ok) { const d = await r.json(); YT_KEY = d.key || ''; }
-    } catch {}
-  } catch (e) { console.error('[CC] Failed to load brands config:', e); }
+    }
+    BRANDS = brands;
+  } catch (e) { console.error('[Performance] Failed to load brands:', e); }
 }
 
 const TYPE_LABELS = { ig: 'INSTAGRAM', yt: 'YOUTUBE' };
@@ -296,12 +287,15 @@ async function fetchProfile(profile, tableId) {
   const tbody = document.getElementById(tableId);
   if (!tbody) return {};
 
-  // Try cache first
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
     try {
-      const data = JSON.parse(cached);
-      const parsed = parseInstagramData(data.data);
+      const { data } = JSON.parse(cached);
+      if (profile.type === 'yt' && data?.rows) {
+        renderTable(tableId, data.rows, profile.color);
+        return data.stats || {};
+      }
+      const parsed = parseInstagramData(data);
       renderTable(tableId, parsed.rows, profile.color);
       return parsed.stats;
     } catch {}
@@ -373,7 +367,9 @@ async function fetchYouTubeProfile(handle, tableId) {
       };
     });
     renderTable(tableId, rows, 'hsl(0 72% 51%)');
-    return { subs, recentViews: allViews.reduce((a,b)=>a+b,0) };
+    const stats = { subs, recentViews: allViews.reduce((a,b)=>a+b,0) };
+    localStorage.setItem('ctrl_perf_yt_' + handle, JSON.stringify({ ts: Date.now(), data: { rows, stats } }));
+    return stats;
   } catch(e) {
     tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger);text-align:center;padding:20px">${e.message}</td></tr>`;
     return {};
@@ -458,7 +454,18 @@ function updateSummary() {
         totalFollowers += data?.followersCount || 0;
         totalPosts += posts.length;
       } else if (p.type === 'yt') {
-        // YT data is stored differently via fetchYouTubeProfile — skip for now, added via live fetch
+        const rows = data?.rows || [];
+        totalViews += rows.reduce((s, r) => {
+          const v = typeof r.col1 === 'string' ? parseFloat(r.col1.replace(/[KMB]/g, m => ({K:'e3',M:'e6',B:'e9'}[m]))) : r.col1;
+          return s + (isNaN(v) ? 0 : v);
+        }, 0);
+        totalEng += rows.reduce((s, r) => {
+          const l = typeof r.col2 === 'string' ? parseFloat(r.col2.replace(/[KMB]/g, m => ({K:'e3',M:'e6',B:'e9'}[m]))) : r.col2;
+          const c = typeof r.col3 === 'string' ? parseFloat(r.col3.replace(/[KMB]/g, m => ({K:'e3',M:'e6',B:'e9'}[m]))) : r.col3;
+          return s + (isNaN(l) ? 0 : l) + (isNaN(c) ? 0 : c);
+        }, 0);
+        totalFollowers += data?.stats?.subs || 0;
+        totalPosts += rows.length;
       }
     } catch {}
   }));
@@ -468,20 +475,25 @@ function updateSummary() {
   const cached = BRANDS.flatMap(b => b.profiles.map(p => localStorage.getItem('ctrl_perf_' + p.type + '_' + p.handle))).filter(Boolean).length;
 
   renderSummary([
-    { label: 'Combined Views', value: totalViews > 0 ? fmtNum(totalViews) : '—', sub: 'All platforms recent posts', color: 'var(--primary)' },
-    { label: 'Combined Followers', value: totalFollowers > 0 ? fmtNum(totalFollowers) : '—', sub: 'Instagram combined', color: 'var(--accent)' },
+    { label: 'Combined Views', value: totalViews > 0 ? fmtNum(totalViews) : '—', sub: 'Recent posts & videos', color: 'var(--primary)' },
+    { label: 'Combined Followers', value: totalFollowers > 0 ? fmtNum(totalFollowers) : '—', sub: 'IG followers + YT subs', color: 'var(--accent)' },
     { label: 'Avg Engagement', value: avgEng, sub: totalPosts + ' posts analyzed', color: 'var(--success)' },
-    { label: 'Total Interactions', value: totalEng > 0 ? fmtNum(totalEng) : '—', sub: 'Likes + comments + shares', color: 'var(--warning)' },
+    { label: 'Total Interactions', value: totalEng > 0 ? fmtNum(totalEng) : '—', sub: 'Likes + comments', color: 'var(--warning)' },
     { label: 'Profiles Synced', value: cached + '/' + totalProfiles, sub: cached === totalProfiles ? 'All up to date' : 'Click Refresh', color: cached === totalProfiles ? 'var(--success)' : 'var(--text-dim)' },
   ]);
 }
 
 // ── INIT ──────────────────────────────────────
 (async function init() {
-  await loadBrandsConfig();
+  await loadBrandsFromConnections();
 
-  if (!BRANDS.length) {
-    document.getElementById('platform-sections').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">No social accounts connected yet. Connect accounts in Settings → Social Connections.</div>';
+  if (BRANDS.length === 0) {
+    document.getElementById('platform-sections').innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--text-dim);border:1px dashed var(--border);border-radius:var(--radius)">
+        <div style="font-family:var(--font-display);font-size:14px;margin-bottom:8px">No connected social profiles</div>
+        <div style="font-size:12px">Connect Instagram/Facebook or add YouTube channels in <a href="/settings.html" style="color:var(--primary)">Settings → Social Connections</a></div>
+      </div>`;
+    renderSummary([{ label: 'Profiles', value: '0', sub: 'Connect in Settings', color: 'var(--text-dim)' }]);
     return;
   }
 

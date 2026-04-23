@@ -179,12 +179,13 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
             <div class="char-count" id="np-cc">0 chars</div>
           </div>
           <div class="full">
-            <label class="edit-label">Media (optional — image or mp4)</label>
+            <label class="edit-label">Media (optional — images or mp4; pick multiple for an album, max 10)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input type="file" id="np-file" accept="image/*,video/mp4" style="display:none" onchange="attachNewPostMedia(this.files[0])">
-              <button class="btn-sm" type="button" onclick="document.getElementById('np-file').click()">Choose file…</button>
-              <span id="np-media-info" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No file selected</span>
+              <input type="file" id="np-file" accept="image/*,video/mp4" multiple style="display:none" onchange="attachNewPostMedia(this.files)">
+              <button class="btn-sm" type="button" onclick="document.getElementById('np-file').click()">Choose files…</button>
+              <span id="np-media-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No files selected</span>
             </div>
+            <div id="np-media-list" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"></div>
           </div>
           <div class="full">
             <label class="edit-label">Schedule for (local) — leave empty to publish now</label>
@@ -530,26 +531,48 @@ function renderPost(t) {
   const canPublish = !isManual && t.status !== 'published' && t.status !== 'cancelled';
   const canEdit = t.status !== 'published';
   const textLen = (t.text || '').length;
-  const lenWarn = t.media_path && textLen > 1024 ? ` <span style="color:var(--warning)">(text ${textLen}/1024 — sent as follow-up msg)</span>` : '';
+  const mediaPaths = Array.isArray(t.media_paths) && t.media_paths.length
+    ? t.media_paths
+    : (t.media_path ? [t.media_path] : []);
+  const hasMedia = mediaPaths.length > 0;
+  const lenWarn = hasMedia && textLen > 1024 ? ` <span style="color:var(--warning)">(tekst ${textLen}/1024 — wordt follow-up msg)</span>` : '';
   let mediaBlock = '';
-  if (t.media_path) {
-    const isVideo = /\.(mp4|mov|m4v)$/i.test(t.media_path);
-    const preview = isVideo
-      ? `<video src="${esc(t.media_path)}" muted></video>`
-      : `<img src="${esc(t.media_path)}" alt="media">`;
-    mediaBlock = `
-      <div class="post-media">
-        ${preview}
-        <div class="post-media-info">
-          <div class="fn">${esc(t.media_path.split('/').pop())}</div>
-          <div>${isVideo ? 'video' : 'image'}${lenWarn}</div>
-        </div>
-        <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove</button>
-      </div>`;
+  if (hasMedia) {
+    if (mediaPaths.length === 1) {
+      const mp = mediaPaths[0];
+      const isVideo = /\.(mp4|mov|m4v)$/i.test(mp);
+      const preview = isVideo
+        ? `<video src="${esc(mp)}" muted></video>`
+        : `<img src="${esc(mp)}" alt="media">`;
+      mediaBlock = `
+        <div class="post-media">
+          ${preview}
+          <div class="post-media-info">
+            <div class="fn">${esc(mp.split('/').pop())}</div>
+            <div>${isVideo ? 'video' : 'image'}${lenWarn}</div>
+          </div>
+          <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove</button>
+        </div>`;
+    } else {
+      const thumbs = mediaPaths.map(mp => {
+        const isVideo = /\.(mp4|mov|m4v)$/i.test(mp);
+        return isVideo
+          ? `<video src="${esc(mp)}" muted style="width:80px;height:80px;object-fit:cover;border-radius:4px;border:1px solid var(--border)"></video>`
+          : `<img src="${esc(mp)}" style="width:80px;height:80px;object-fit:cover;border-radius:4px;border:1px solid var(--border)" alt="media">`;
+      }).join('');
+      mediaBlock = `
+        <div class="post-media" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${thumbs}</div>
+          <div class="post-media-info" style="display:flex;justify-content:space-between;align-items:center">
+            <div>album · ${mediaPaths.length} items${lenWarn}</div>
+            <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove all</button>
+          </div>
+        </div>`;
+    }
   }
   const uploadBtn = canPublish ? `
-    <input type="file" id="file-${esc(t.id)}" accept="image/*,video/mp4" style="display:none" onchange="uploadMedia('${esc(t.id)}', this.files[0])">
-    <button class="btn-sm" onclick="document.getElementById('file-${esc(t.id)}').click()">${t.media_path ? 'Replace' : 'Add'} Media</button>
+    <input type="file" id="file-${esc(t.id)}" accept="image/*,video/mp4" multiple style="display:none" onchange="uploadMedia('${esc(t.id)}', this.files)">
+    <button class="btn-sm" onclick="document.getElementById('file-${esc(t.id)}').click()">${hasMedia ? 'Replace' : 'Add'} Media</button>
   ` : '';
   const copyBtn = isManual ? `<button class="btn-sm primary" id="copy-${esc(t.id)}" onclick="copyText('${esc(t.id)}')">Copy text</button>` : '';
   const approveBtn = t.status === 'draft'
@@ -668,14 +691,21 @@ async function saveEdit(id) {
   loadTasks();
 }
 
-async function uploadMedia(taskId, file) {
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('file', file);
+async function uploadMedia(taskId, files) {
+  if (!files || !files.length) return;
+  const list = Array.from(files).slice(0, 10);
+  if (list.length < files.length) alert(`Only first ${list.length} files taken — max 10 per post.`);
   try {
-    const upD = await fetchJson('/media/upload', { method: 'POST', body: fd });
-    if (!upD.path) throw new Error(upD.error || 'upload failed');
-    const r = await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_path: upD.path }) });
+    const paths = [];
+    for (const file of list) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const upD = await fetchJson('/media/upload', { method: 'POST', body: fd });
+      if (!upD.path) throw new Error(upD.error || 'upload failed');
+      paths.push(upD.path);
+    }
+    const payload = { media_path: paths[0], media_paths: paths };
+    const r = await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!r.ok) throw new Error('PATCH failed');
   } catch (e) { alert('Upload error: ' + e.message); }
   loadTasks();
@@ -683,7 +713,7 @@ async function uploadMedia(taskId, file) {
 
 async function removeMedia(taskId) {
   if (!confirm('Remove media from this post?')) return;
-  try { await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_path: null }) }); }
+  try { await fetch(`/community/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_path: null, media_paths: [] }) }); }
   catch (e) { alert('Error: ' + e.message); }
   loadTasks();
 }
@@ -888,7 +918,7 @@ async function deleteArchetypeSet(name) {
 }
 
 // ── NEW POST FORM ──
-const newPostState = { mediaPath: null, linksByChannel: new Map() };
+const newPostState = { mediaPaths: [], linksByChannel: new Map() };
 
 function toggleNewPostForm() {
   const form = document.getElementById('new-post-form');
@@ -986,33 +1016,72 @@ function updateNewPostCharCount() {
   const ta = document.getElementById('np-text');
   const cc = document.getElementById('np-cc');
   const n = ta.value.length;
-  const hasMedia = !!newPostState.mediaPath;
+  const hasMedia = newPostState.mediaPaths.length > 0;
   cc.textContent = `${n} chars${hasMedia ? ' · media caption limit 1024' : ''}`;
   cc.classList.toggle('warn', hasMedia && n > 1024);
 }
 
-async function attachNewPostMedia(file) {
-  if (!file) return;
-  const info = document.getElementById('np-media-info');
-  info.textContent = `Uploading ${file.name}…`;
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const d = await fetchJson('/media/upload', { method: 'POST', body: fd });
-    if (!d.path) throw new Error(d.error || 'upload failed');
-    newPostState.mediaPath = d.path;
-    info.innerHTML = `<span style="color:var(--text)">✓ ${esc(file.name)}</span> <button class="btn-sm" type="button" onclick="clearNewPostMedia()" style="padding:2px 6px;font-size:9px">Remove</button>`;
-    updateNewPostCharCount();
-  } catch (e) {
-    info.textContent = `Upload failed: ${e.message}`;
-    newPostState.mediaPath = null;
+function renderNewPostMediaList() {
+  const list = document.getElementById('np-media-list');
+  const status = document.getElementById('np-media-status');
+  const paths = newPostState.mediaPaths;
+  if (!paths.length) {
+    list.innerHTML = '';
+    status.textContent = 'No files selected';
+    return;
   }
+  status.textContent = `${paths.length} file${paths.length === 1 ? '' : 's'} attached${paths.length > 1 ? ' · will send as album' : ''}`;
+  list.innerHTML = paths.map((p, i) => {
+    const isVideo = /\.(mp4|mov|m4v)$/i.test(p);
+    const preview = isVideo
+      ? `<video src="${esc(p)}" muted style="width:80px;height:80px;object-fit:cover;border-radius:4px;border:1px solid var(--border)"></video>`
+      : `<img src="${esc(p)}" style="width:80px;height:80px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">`;
+    return `<div style="position:relative;display:inline-block">
+      ${preview}
+      <button type="button" onclick="removeNewPostMediaAt(${i})" title="Remove" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1">×</button>
+    </div>`;
+  }).join('');
+}
+
+async function attachNewPostMedia(files) {
+  if (!files || !files.length) return;
+  const status = document.getElementById('np-media-status');
+  const existing = newPostState.mediaPaths.length;
+  const slotsLeft = Math.max(0, 10 - existing);
+  const toUpload = Array.from(files).slice(0, slotsLeft);
+  if (!toUpload.length) { alert('Max 10 files per post.'); return; }
+  if (toUpload.length < files.length) alert(`Only first ${toUpload.length} file(s) taken — max 10 per post.`);
+
+  for (let i = 0; i < toUpload.length; i++) {
+    const file = toUpload[i];
+    status.textContent = `Uploading ${i + 1}/${toUpload.length}: ${file.name}…`;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const d = await fetchJson('/media/upload', { method: 'POST', body: fd });
+      if (!d.path) throw new Error(d.error || 'upload failed');
+      newPostState.mediaPaths.push(d.path);
+      renderNewPostMediaList();
+    } catch (e) {
+      status.textContent = `Upload failed: ${e.message}`;
+      break;
+    }
+  }
+  document.getElementById('np-file').value = '';
+  renderNewPostMediaList();
+  updateNewPostCharCount();
+}
+
+function removeNewPostMediaAt(i) {
+  newPostState.mediaPaths.splice(i, 1);
+  renderNewPostMediaList();
+  updateNewPostCharCount();
 }
 
 function clearNewPostMedia() {
-  newPostState.mediaPath = null;
+  newPostState.mediaPaths = [];
   document.getElementById('np-file').value = '';
-  document.getElementById('np-media-info').textContent = 'No file selected';
+  renderNewPostMediaList();
   updateNewPostCharCount();
 }
 
@@ -1064,7 +1133,8 @@ async function submitNewPost(mode) {
       archetype,
       trigger_word,
       text,
-      media_path: newPostState.mediaPath,
+      media_path: newPostState.mediaPaths[0] || null,
+      media_paths: newPostState.mediaPaths.slice(),
     };
     const r = await fetch('/community/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }

@@ -1,5 +1,5 @@
-// Command Center — Isometric Office widget
-// Renders an isometric 4x3 office with AI agent stations, connections and live status.
+// Isometric Office widget (shared)
+// Renders an isometric 3x3 office with 9 AI agent stations, connections and live status.
 // Usage: add a container with `data-iso-office` attribute, then load this script.
 (function () {
   const OFFICE = [
@@ -33,18 +33,15 @@
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
 
-  // Chief AI Officer / orchestrator (lives above the floor)
-  // Name is loaded dynamically from brand settings in init()
+  // Chief AI Officer / orchestrator (lives above the floor — name loaded from brand)
   const CHIEF = {
     key: "chief",
-    name: "AI",
+    name: "ASSISTANT",
     title: "CHIEF AI OFFICER",
     href: "chat.html",
     cx: 600,
     cy: 70,
   };
-
-  let _brandCompany = 'HQ';
 
   function agentByKey(k) { return OFFICE.find(a => a.key === k); }
   function isoGridPos(gx, gy) {
@@ -124,29 +121,19 @@
     `;
   }
 
-  function gridBounds() {
-    const maxGx = OFFICE.length ? Math.max(...OFFICE.map(a => a.pos[0])) : 2;
-    const maxGy = OFFICE.length ? Math.max(...OFFICE.map(a => a.pos[1])) : 2;
-    return { maxGx, maxGy };
-  }
-
   function renderFloor() {
     const halfW = ISO_TW / 2, halfH = ISO_TH / 2;
-    const { maxGx, maxGy } = gridBounds();
     let tiles = '';
-    const c00 = isoGridPos(0, 0);
-    const cR0 = isoGridPos(maxGx, 0);
-    const c0B = isoGridPos(0, maxGy);
-    const cRB = isoGridPos(maxGx, maxGy);
+    const c00 = isoGridPos(0, 0), c30 = isoGridPos(3, 0), c02 = isoGridPos(0, 2), c32 = isoGridPos(3, 2);
     const outer = [
       { x: c00.x, y: c00.y - halfH },
-      { x: cR0.x + halfW, y: cR0.y },
-      { x: cRB.x, y: cRB.y + halfH },
-      { x: c0B.x - halfW, y: c0B.y },
+      { x: c30.x + halfW, y: c30.y },
+      { x: c32.x, y: c32.y + halfH },
+      { x: c02.x - halfW, y: c02.y },
     ];
     tiles += `<polygon class="floor-accent" points="${outer.map(p=>p.x+','+p.y).join(' ')}"/>`;
-    for (let gy = 0; gy <= maxGy; gy++) {
-      for (let gx = 0; gx <= maxGx; gx++) {
+    for (let gy = 0; gy <= 2; gy++) {
+      for (let gx = 0; gx <= 3; gx++) {
         const p = isoGridPos(gx, gy);
         const cls = (gx === 1 && gy === 1) ? 'floor-tile hero' : 'floor-tile';
         tiles += `<polygon class="${cls}" points="${p.x-halfW},${p.y} ${p.x},${p.y-halfH} ${p.x+halfW},${p.y} ${p.x},${p.y+halfH}"/>`;
@@ -266,7 +253,7 @@
       if (agent.isTrader) {
         try {
           const data = await (await fetch('/api/status')).json();
-          const bots = ['funding','trend'].filter(id => data[id] !== undefined);
+          const bots = ['trend'].filter(id => data[id] !== undefined);
           const online = bots.filter(id => data[id]?.online).length;
           state = (online === bots.length && bots.length > 0) ? 'online' : online > 0 ? 'queued' : 'idle';
         } catch {}
@@ -321,15 +308,13 @@
   }
 
   function initContainer(container) {
-    const { maxGx } = gridBounds();
-    const vbW = maxGx >= 3 ? 1115 : 965;
     container.innerHTML = `
       <div class="iso-wrap">
         <div class="iso-topbar">
-          <div class="iso-topbar-left">${_brandCompany} HQ · <b>Floor 01</b> · Live</div>
+          <div class="iso-topbar-left" data-iso-hq>HQ · <b>Floor 01</b> · Live</div>
           <div class="iso-topbar-right"><span class="live-dot"></span><span class="iso-clock">--:--</span></div>
         </div>
-        <svg class="iso-scene" viewBox="115 10 ${vbW} 720" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg class="iso-scene" viewBox="115 10 1115 720" preserveAspectRatio="xMidYMid meet"></svg>
       </div>
     `;
     const svg = container.querySelector('svg.iso-scene');
@@ -341,43 +326,35 @@
     setInterval(() => tickClock(clock), 30000);
   }
 
-  function removeAgent(key) {
-    const idx = OFFICE.findIndex(a => a.key === key);
-    if (idx !== -1) OFFICE.splice(idx, 1);
-  }
-
+  let BRAND_HQ_LABEL = 'HQ';
   async function init() {
-    // Load brand config before rendering
+    // Load branding (assistant name + company name) before rendering
     try {
       const res = await fetch('/brand');
       if (res.ok) {
         const b = await res.json();
         if (b && b.assistant_name) CHIEF.name = String(b.assistant_name).toUpperCase();
-        if (b && b.company_name) _brandCompany = b.company_name;
+        if (b && b.company_name) BRAND_HQ_LABEL = String(b.company_name) + ' HQ';
       }
     } catch {}
-
-    // Hide agents that aren't configured (ANTHROPIC/HEYGEN/Meta/Canva/Telegram+channel)
+    // Detect trading dashboard — hide trader card if not reachable
     try {
-      const r = await fetch('/office/agents');
-      if (r.ok) {
-        const cfg = await r.json();
-        for (const key of Object.keys(cfg)) {
-          if (cfg[key] === false) removeAgent(key);
+      const svcRes = await fetch('/settings/services');
+      if (svcRes.ok) {
+        const services = await svcRes.json();
+        const trading = services.find(s => s.label === 'Trading Dashboard');
+        if (!trading || trading.status !== 'online') {
+          const idx = OFFICE.findIndex(a => a.key === 'trader');
+          if (idx >= 0) OFFICE.splice(idx, 1);
         }
       }
     } catch {}
-
-    // Hide trader station if trading bots addon isn't reachable
-    try {
-      const r = await fetch('/api/status');
-      if (!r.ok) removeAgent('trader');
-    } catch {
-      removeAgent('trader');
-    }
-
     const containers = document.querySelectorAll('[data-iso-office]');
-    containers.forEach(initContainer);
+    containers.forEach(c => {
+      initContainer(c);
+      const hq = c.querySelector('[data-iso-hq]');
+      if (hq) hq.innerHTML = BRAND_HQ_LABEL + ' · <b>Floor 01</b> · Live';
+    });
   }
 
   if (document.readyState === 'loading') {

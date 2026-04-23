@@ -79,8 +79,8 @@ body::after {
 </head>
 <body>
 <div class="login-box">
-  <div class="login-logo" id="login-logo">COMMAND CENTER</div>
-  <div class="login-sub">Command Center</div>
+  <div class="login-logo" id="login-logo">COMMAND</div>
+  <div class="login-sub" id="login-sub">Command Center</div>
   <label class="login-label">Password</label>
   <input class="login-input" id="pw" type="password" placeholder="Enter password..." autofocus
     onkeydown="if(event.key==='Enter')doLogin()">
@@ -113,6 +113,13 @@ async function doLogin() {
   }
   btn.disabled = false;
 }
+// Dynamic logo from brand config
+fetch('/brand').then(r => r.ok ? r.json() : null).then(b => {
+  if (b && b.company_name) {
+    const logo = document.getElementById('login-logo');
+    if (logo) logo.textContent = String(b.company_name).toUpperCase();
+  }
+}).catch(() => {});
 </script>
 </body>
 </html>
