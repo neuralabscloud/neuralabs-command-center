@@ -494,7 +494,13 @@ async function loadTasks() {
     const url = '/community/tasks' + (channelId ? `?channel_id=${encodeURIComponent(channelId)}` : '');
     const tasks = await fetchJson(url);
     if (!tasks.length) { queue.innerHTML = '<div class="empty">No posts in queue.</div>'; return; }
-    tasks.sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+    tasks.sort((a, b) => {
+      const aDraft = a.status === 'draft' ? 0 : 1;
+      const bDraft = b.status === 'draft' ? 0 : 1;
+      if (aDraft !== bDraft) return aDraft - bDraft;
+      if (aDraft === 0) return (b.created_at || '').localeCompare(a.created_at || '');
+      return (a.scheduled_at || '').localeCompare(b.scheduled_at || '');
+    });
     const autoPosts = tasks.filter(t => t.status !== 'manual');
     const manualPosts = tasks.filter(t => t.status === 'manual');
     const draftCount = autoPosts.filter(t => t.status === 'draft').length;
