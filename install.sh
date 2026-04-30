@@ -174,15 +174,21 @@ else
   warn "Inference.sh SDK install timed out or failed — install later with: npm install -g @inferencesh/sdk"
 fi
 
-info "Installing Python dependencies for research-agent.py..."
-# Ubuntu 24.04+ enforces PEP 668 (externally-managed-environment) — use --break-system-packages
-# on a dedicated CC VPS this is safe; we don't share the system Python with other apps.
-if pip3 install -q --break-system-packages python-dotenv anthropic requests 2>/dev/null; then
-  ok "Python deps installed"
-elif pip3 install -q python-dotenv anthropic requests 2>/dev/null; then
-  ok "Python deps installed"
+info "Setting up Python virtualenv for research-agent.py..."
+# Use a venv at $INSTALL_DIR/venv so we sidestep PEP 668 (externally-managed-environment)
+# on Ubuntu 24.04+ and avoid touching system Python packages.
+mkdir -p "$INSTALL_DIR"
+if python3 -m venv "$INSTALL_DIR/venv"; then
+  "$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip || true
+  if "$INSTALL_DIR/venv/bin/pip" install -q python-dotenv anthropic requests; then
+    ok "Python deps installed in $INSTALL_DIR/venv"
+  else
+    warn "Failed to install Python deps — research-agent.py will not work until you run:"
+    warn "  $INSTALL_DIR/venv/bin/pip install python-dotenv anthropic requests"
+  fi
 else
-  warn "pip3 install failed — research-agent.py will not work until you run: pip3 install --break-system-packages python-dotenv anthropic requests"
+  warn "Failed to create venv at $INSTALL_DIR/venv — research-agent.py will not work."
+  warn "Make sure python3-venv is installed: apt-get install -y python3-venv"
 fi
 
 # ── COPY FILES ────────────────────────────────────────────

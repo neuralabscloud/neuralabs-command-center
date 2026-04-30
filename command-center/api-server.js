@@ -6758,6 +6758,30 @@ async function executeAssistantSchedule(schedule, today) {
   }
 }
 
+// Extract the first balanced top-level JSON array from a text blob.
+// Robust against trailing prose, multiple arrays, or fenced code blocks.
+function extractFirstJsonArray(text) {
+  const start = text.indexOf("[");
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (esc) { esc = false; continue; }
+    if (inStr) {
+      if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "[") depth++;
+    else if (c === "]") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 // ── COMMUNITY MANAGER (weekly draft batch generator) ──
 async function executeCommunityManagerSchedule(schedule, today) {
   const p = schedule.payload || {};
@@ -6900,7 +6924,7 @@ OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
   let drafts;
   try {
     const raw = await new Promise((resolve, reject) => {
-      const child = spawn("/root/.local/bin/claude", ["-p", aiPrompt, "--output-format", "json", "--max-turns", "1"], {
+      const child = spawn("/root/.local/bin/claude", ["-p", aiPrompt, "--output-format", "json", "--max-turns", "5", "--disallowed-tools", "Bash Read Edit Write Grep Glob WebSearch WebFetch Task NotebookEdit"], {
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, HOME: "/root" },
       });
@@ -6911,7 +6935,7 @@ OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
       child.on("error", err => { clearTimeout(timer); reject(err); });
       child.on("close", code => {
         clearTimeout(timer);
-        if (code !== 0) return reject(new Error(`Claude CLI exited ${code}: ${stderr.slice(0, 500)}`));
+        if (code !== 0) return reject(new Error(`Claude CLI exited ${code} | stderr: ${stderr.slice(0, 400) || "(empty)"} | stdout: ${stdout.slice(0, 400) || "(empty)"}`));
         try {
           const parsed = JSON.parse(stdout);
           resolve(parsed.result || parsed.content || stdout);
@@ -6922,9 +6946,9 @@ OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
     });
 
     const text = typeof raw === "string" ? raw : JSON.stringify(raw);
-    const arrMatch = text.match(/\[[\s\S]*\]/);
-    if (!arrMatch) throw new Error("No JSON array in Claude output");
-    drafts = JSON.parse(arrMatch[0]);
+    const arrStr = extractFirstJsonArray(text);
+    if (!arrStr) throw new Error("No JSON array in Claude output");
+    drafts = JSON.parse(arrStr);
     if (!Array.isArray(drafts) || !drafts.length) throw new Error("Empty or invalid draft array");
   } catch (e) {
     console.error(`[SCHEDULER] Community Manager: generation failed: ${e.message}`);
