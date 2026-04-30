@@ -6,8 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Source the .env
+# `set +u` around the source: .env values may contain `$` (e.g. random passwords
+# like `Rxe$9foo`) which bash would otherwise try to expand as positional args
+# and trip nounset. install.sh now single-quotes values, but legacy .env files
+# from older installs may not — keep this guard.
 set -a
+set +u
 source "$ROOT_DIR/.env"
+set -u
 set +a
 
 echo "[CONFIG] Generating configs from .env..."
