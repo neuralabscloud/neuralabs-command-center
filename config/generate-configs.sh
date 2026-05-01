@@ -5,15 +5,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Source the .env
-# `set +u` around the source: .env values may contain `$` (e.g. random passwords
-# like `Rxe$9foo`) which bash would otherwise try to expand as positional args
-# and trip nounset. install.sh now single-quotes values, but legacy .env files
-# from older installs may not — keep this guard.
+# Safely parse .env line-by-line.
+# We do NOT `source` it: legacy / hand-edited .env files often have unquoted
+# values containing spaces (e.g. `COMPANY_NAME=Acme Corp`) which bash would
+# parse as `Corp: command not found`. This loader tolerates unquoted multi-word
+# values, surrounding single/double quotes, and `$` characters in values
+# (random passwords) without expanding them.
 set -a
-set +u
-source "$ROOT_DIR/.env"
-set -u
+while IFS='=' read -r key value || [ -n "$key" ]; do
+  [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+  [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && continue
+  if [[ "$value" =~ ^\".*\"$ ]]; then
+    value="${value#\"}"; value="${value%\"}"
+  elif [[ "$value" =~ ^\'.*\'$ ]]; then
+    value="${value#\'}"; value="${value%\'}"
+  fi
+  printf -v "$key" '%s' "$value"
+done < "$ROOT_DIR/.env"
 set +a
 
 echo "[CONFIG] Generating configs from .env..."
