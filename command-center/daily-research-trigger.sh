@@ -1,5 +1,5 @@
 #!/bin/bash
-# Triggered daily by cron — creates research + analyst tasks
+# Triggered daily by cron — creates research tasks
 
 # Load env vars if available
 DOTENV="${INSTALL_DIR:-/opt/commandcenter}/.env"
@@ -28,22 +28,3 @@ curl -s -X POST "http://localhost:${PORT}/research/tasks" \
     \"language\": \"${LANG_CODE^^}\"
   }"
 echo " — Research task created at $(date)"
-
-# Analyst tasks (diagnose + performance report)
-curl -s -X POST "http://localhost:${PORT}/analyst/tasks" \
-  -H "Content-Type: application/json" \
-  "${AUTH[@]}" \
-  -d '{
-    "type": "daily_diagnose",
-    "description": "Daily bot diagnostics: process check, log health, error scan"
-  }'
-echo " — Analyst diagnose task created at $(date)"
-
-curl -s -X POST "http://localhost:${PORT}/analyst/tasks" \
-  -H "Content-Type: application/json" \
-  "${AUTH[@]}" \
-  -d '{
-    "type": "daily_report",
-    "description": "Daily performance analysis: PnL, win rate, trade breakdown per bot"
-  }'
-echo " — Analyst report task created at $(date)"

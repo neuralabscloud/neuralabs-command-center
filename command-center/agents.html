@@ -327,7 +327,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="sched-select" id="sched-agent" onchange="updatePayloadFields()">
               <option value="designer">Designer</option>
               <option value="researcher">Researcher</option>
-              <option value="analyst">Analyst</option>
               <option value="scriptwriter">Script Writer</option>
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
@@ -383,9 +382,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
 <script>
 const AI_TEAM = [
-  { name: 'TRADER', emoji: '\u{1F916}', role: 'Live Bot on Hyperliquid', color: 'var(--success)', hsl: '142 76% 36%', isTrader: true },
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
-  { name: 'ANALYST', emoji: '\u{1F4CA}', role: 'Bot Reports & Diagnostics', color: 'var(--premium)', hsl: '270 95% 65%', taskApi: '/analyst/tasks', type: 'ANALYST' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
@@ -396,7 +393,7 @@ const AI_TEAM = [
 ];
 
 const AGENT_COLORS = {
-  RESEARCH: 'var(--accent)', ANALYST: 'var(--premium)', DESIGN: 'var(--warning)',
+  RESEARCH: 'var(--accent)', DESIGN: 'var(--warning)',
   VIDEO: 'var(--danger)', CONTENT: 'hsl(180 70% 45%)', SCRIPT: 'hsl(30 90% 55%)',
   COMMUNITY: 'hsl(200 90% 55%)',
 };
@@ -424,72 +421,11 @@ function setFilter(f) {
 }
 
 // ── AI TEAM ──
-let _tradingDashboardOnline = null;
-async function isTradingDashboardOnline() {
-  if (_tradingDashboardOnline !== null) return _tradingDashboardOnline;
-  try {
-    const r = await fetch('/settings/services');
-    if (!r.ok) { _tradingDashboardOnline = false; return false; }
-    const services = await r.json();
-    const td = services.find(s => s.label === 'Trading Dashboard');
-    _tradingDashboardOnline = !!(td && td.status === 'online');
-  } catch { _tradingDashboardOnline = false; }
-  return _tradingDashboardOnline;
-}
 async function loadAiTeam() {
   const grid = document.getElementById('ai-team-grid');
   const cards = [];
-  const tradingOn = await isTradingDashboardOnline();
 
   for (const agent of AI_TEAM) {
-    if (agent.isTrader) {
-      if (!tradingOn) continue;
-      let botHtml = '';
-      try {
-        const data = await (await fetch('/api/status')).json();
-        const bots = ['trend'];
-        const onlineCount = bots.filter(id => data[id]?.online).length;
-        const totalEquity = bots.reduce((s, id) => s + (data[id]?.accountValue||0), 0);
-        const totalUpnl = bots.reduce((s, id) => s + ((data[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
-        const totalRealizedPnl = bots.reduce((s, id) => s + (data[id]?.stats?.totalPnl||0), 0);
-        const totalTrades = bots.reduce((s, id) => s + (data[id]?.stats?.totalTrades||0), 0);
-        const status = onlineCount === bots.length ? 'running' : 'idle';
-
-        botHtml = `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-          <div class="agent-card-header">
-            <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-            <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-            <span class="agent-status ${status}">${onlineCount === 1 ? 'online' : 'offline'}</span>
-          </div>
-          <div class="agent-card-body">
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-              <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Equity</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700">$${totalEquity.toFixed(0)}</div></div>
-              <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalUpnl>=0?'var(--success)':'var(--danger)'}">$${totalUpnl>=0?'+':''}${totalUpnl.toFixed(2)}</div></div>
-              <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalRealizedPnl>=0?'var(--success)':'var(--danger)'}">$${totalRealizedPnl>=0?'+':''}${totalRealizedPnl.toFixed(2)}</div></div>
-            </div>
-            <div class="agent-task">${onlineCount === 1 ? 'Trend bot operational' : 'Trend bot offline'}</div>
-            <div class="health-row">
-              ${bots.map(id => {
-                const ok = data[id]?.online;
-                return '<span class="health-tag"><span class="dot '+(ok?'ok':'err')+'"></span>Trend</span>';
-              }).join('')}
-            </div>
-          </div>
-          <div class="agent-card-footer">
-            <span class="agent-footer-label"><span>${totalTrades}</span> trades</span>
-            <span class="agent-footer-label"><span>${onlineCount}/1</span> active</span>
-          </div>
-        </div>`;
-      } catch {
-        botHtml = `<div class="agent-card" style="--agent-glow: hsla(${agent.hsl} / 0.4)">
-          <div class="agent-card-header"><div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div><div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div><span class="agent-status idle">offline</span></div>
-          <div class="agent-card-body"><div class="agent-task">Cannot connect to dashboard</div></div>
-        </div>`;
-      }
-      cards.push(botHtml);
-      continue;
-    }
-
     if (agent.isMarketeer) {
       cards.push(`<div class="agent-card is-running" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
         <div class="agent-card-header">
@@ -625,7 +561,6 @@ async function loadAllTasks() {
     { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/research/tasks', agent: 'RESEARCHER', type: 'RESEARCH' },
-    { api: '/analyst/tasks', agent: 'ANALYST', type: 'ANALYST' },
     { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
   ];
 
@@ -757,11 +692,10 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', analyst: 'ANALYST', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER' };
+const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   researcher: 'color:hsl(264 65% 49%)',
-  analyst: 'color:hsl(270 95% 65%)',
   scriptwriter: 'color:hsl(30 90% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
   assistant: 'color:hsl(210 90% 55%)',
@@ -771,7 +705,6 @@ const AGENT_STYLES = {
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
   researcher: 'Scans social platforms (X, Reddit, TikTok) for trending topics, competitor activity, and content ideas in your niche.',
-  analyst: 'Runs diagnostics on trading bots — process health, log errors, performance metrics — and generates reports.',
   scriptwriter: 'Writes video scripts, social posts, or thread copy based on a topic and tone you specify.',
   marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
@@ -797,8 +730,6 @@ function buildScheduleSummary(s) {
       const platforms = Array.isArray(p.platforms) ? p.platforms.join(', ') : (p.platforms || 'x, reddit, tiktok');
       return `${lang} ${(p.type || 'daily_full').replace(/_/g, ' ')} scan · niche: ${p.niche || 'crypto'} · platforms: ${platforms}`;
     }
-    case 'analyst':
-      return `${(p.type || 'daily_diagnose').replace(/_/g, ' ')} — ${p.description || 'automated analysis'}`;
     case 'scriptwriter':
       return `${p.language || 'NL'} · type: ${p.type || 'script'}${p.prompt ? ' · "' + p.prompt.substring(0, 50) + '"' : ''}`;
     case 'marketeer':
@@ -900,13 +831,6 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Platforms</label>
         <input class="sched-input" id="sp-platforms" value="x, reddit, tiktok, youtube, instagram"></div>
     </div>`,
-  analyst: `
-    <div class="sched-form-row">
-      <div><label class="sched-label">Type</label>
-        <select class="sched-select" id="sp-type"><option value="daily_diagnose">Bot Diagnose</option><option value="daily_report">Performance Report</option></select></div>
-    </div>
-    <div><label class="sched-label">Description</label>
-      <input class="sched-input" id="sp-description" value="Dagelijkse bot diagnose: process check, log health, error scan"></div>`,
   scriptwriter: `
     <div class="sched-form-row">
       <div><label class="sched-label">Language</label>

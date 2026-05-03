@@ -141,10 +141,6 @@ app.use(express.static(path.join(__dirname, "public")));
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
-// Resolve bot directories (configurable via env; defaults preserve legacy layout)
-const FUNDING_BOT_PATH = process.env.FUNDING_BOT_PATH || "";
-const TREND_BOT_PATH = process.env.TREND_BOT_PATH || "";
-
 // Avatar / voice config for HeyGen. Read from data/avatars.json so customers can
 // replace vendor defaults with their own avatar/voice IDs without editing code.
 function getAvatarsConfig() {
@@ -155,24 +151,6 @@ function getAvatarsConfig() {
 function defaultAvatarId() { return getAvatarsConfig().default_avatar_id || ""; }
 function defaultVoiceId() { return getAvatarsConfig().default_voice_id || ""; }
 function defaultVoiceEngine() { return getAvatarsConfig().default_voice_engine || "panda"; }
-
-// Populate process.env with values from bot config.py files (for Telegram etc.)
-(function populateEnvFromBotConfigs() {
-  const botConfigs = [
-    path.join(FUNDING_BOT_PATH, "config.py"),
-    path.join(TREND_BOT_PATH, "config.py"),
-  ];
-  for (const f of botConfigs) {
-    try {
-      if (!fs.existsSync(f)) continue;
-      const content = fs.readFileSync(f, "utf8");
-      const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
-      const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
-      if (tokenMatch && tokenMatch[1] && !process.env.TELEGRAM_BOT_TOKEN) process.env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
-      if (chatMatch && chatMatch[1] && !process.env.TELEGRAM_CHAT_ID) process.env.TELEGRAM_CHAT_ID = chatMatch[1];
-    } catch {}
-  }
-})();
 
 function readEnvFile() {
   const env = {};
@@ -187,23 +165,6 @@ function readEnvFile() {
   const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
-  }
-  // Check bot config.py files for Telegram if not in .env
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    const botConfigs = [
-      path.join(FUNDING_BOT_PATH, "config.py"),
-      path.join(TREND_BOT_PATH, "config.py"),
-    ];
-    for (const f of botConfigs) {
-      try {
-        if (!fs.existsSync(f)) continue;
-        const content = fs.readFileSync(f, "utf8");
-        const tokenMatch = content.match(/TELEGRAM_BOT_TOKEN\s*=\s*["']([^"']+)["']/);
-        const chatMatch = content.match(/TELEGRAM_CHAT_ID\s*=\s*["']([^"']+)["']/);
-        if (tokenMatch && tokenMatch[1] && !env.TELEGRAM_BOT_TOKEN) env.TELEGRAM_BOT_TOKEN = tokenMatch[1];
-        if (chatMatch && chatMatch[1] && !env.TELEGRAM_CHAT_ID) env.TELEGRAM_CHAT_ID = chatMatch[1];
-      } catch {}
-    }
   }
   return env;
 }
@@ -1359,40 +1320,6 @@ app.get("/heygen/avatars", async (req, res) => {
   }
 });
 
-// ── ANALYST TASKS ─────────────────────────────
-app.get("/analyst/tasks", (_req, res) => res.json(readTaskFile("analyst-tasks.json")));
-
-app.post("/analyst/tasks", (req, res) => {
-  const tasks = readTaskFile("analyst-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: req.body.type || "daily_report",
-    description: req.body.description || "",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("analyst-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/analyst/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("analyst-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("analyst-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/analyst/tasks/:id", (req, res) => {
-  writeTaskFile("analyst-tasks.json", readTaskFile("analyst-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
 // ── SCRIPTWRITER TASKS ────────────────────────
 app.get("/scriptwriter/tasks", (_req, res) => res.json(readTaskFile("scriptwriter-tasks.json")));
 
@@ -1643,61 +1570,6 @@ app.post("/community/send-review", async (req, res) => {
   }
 });
 
-// ── BOT TRADE HISTORY (reads from bot data files) ──
-const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
-const TRADE_FILES = {
-  funding: [
-    path.join(FUNDING_BOT_PATH, "data", "trade_history.json"),
-    path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
-  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "funding-bot", "data", "trade_history.json"),
-  trend: [
-    path.join(TREND_BOT_PATH, "data", "trade_history.json"),
-    path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
-  ].find(f => fs.existsSync(f)) || path.join(INSTALL_DIR, "trend-bot", "data", "trade_history.json"),
-};
-
-app.get("/analyst/trades/:botId", (req, res) => {
-  const file = TRADE_FILES[req.params.botId];
-  if (!file) return res.status(404).json({ error: "Unknown bot" });
-  try {
-    const trades = JSON.parse(fs.readFileSync(file, "utf8"));
-    res.json(trades);
-  } catch { res.json([]); }
-});
-
-app.get("/analyst/trades", (_req, res) => {
-  const all = {};
-  for (const [id, file] of Object.entries(TRADE_FILES)) {
-    try { all[id] = JSON.parse(fs.readFileSync(file, "utf8")); }
-    catch { all[id] = []; }
-  }
-  res.json(all);
-});
-
-// ── DAILY REPORTS (reads log files) ───────────
-app.get("/analyst/daily-report", (_req, res) => {
-  try {
-    const log = fs.readFileSync("/root/daily_analysis.log", "utf8");
-    const diag = fs.readFileSync("/root/diagnose_bots.log", "utf8");
-    // Get last report from each
-    const analysisBlocks = log.split("[ANALYSE] Start...");
-    const diagBlocks = diag.split("[DIAGNOSE] Start...");
-    const lastAnalysis = analysisBlocks[analysisBlocks.length - 1] || "";
-    const lastDiag = diagBlocks[diagBlocks.length - 1] || "";
-    const clean = s => s.replace(/<\/?[^>]+(>|$)/g, "")
-      .replace(/&#x27;/g, "'").replace(/&#x2F;/g, "/")
-      .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
-      .trim();
-    res.json({
-      analysis: clean(lastAnalysis),
-      diagnosis: clean(lastDiag),
-      analysis_raw: lastAnalysis.trim(),
-      diagnosis_raw: lastDiag.trim(),
-    });
-  } catch { res.json({ analysis: "", diagnosis: "" }); }
-});
-
 // ── RESEARCH TASKS ────────────────────────────
 app.get("/research/tasks", (_req, res) => res.json(readTaskFile("research-tasks.json")));
 
@@ -1821,7 +1693,7 @@ app.get("/settings/integrations", (_req, res) => {
     details: [
       { label: "API Key", value: anthropicKey, secret: true },
       { label: "Model", value: "claude-sonnet-4-20250514" },
-      { label: "Used by", value: "AI Chat, Research, Analyst, Designer (Claude engine)" },
+      { label: "Used by", value: "AI Chat, Research, Designer (Claude engine)" },
     ],
   });
 
@@ -2378,8 +2250,7 @@ app.delete("/ads/rules/:id", (req, res) => {
 
 app.get("/settings/services", async (_req, res) => {
   const services = [
-    { label: "Command Center API", url: "http://localhost:3004", desc: "Main API server — tasks, brands, chat", optional: false },
-    { label: "Trading Dashboard", url: process.env.DASHBOARD_URL || "http://localhost:3000", desc: "Live trading bot data & orderbook", optional: true },
+    { label: "Command Center API", url: "http://localhost:3004", desc: "Main API server — tasks, brands, chat" },
   ];
   const results = [];
   for (const svc of services) {
@@ -2388,10 +2259,7 @@ app.get("/settings/services", async (_req, res) => {
       await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
       status = "online";
     } catch {}
-    // Skip optional services that are offline (e.g. Trading Dashboard not installed)
-    if (svc.optional && status !== "online") continue;
-    const { optional, ...rest } = svc;
-    results.push({ ...rest, status });
+    results.push({ ...svc, status });
   }
   res.json(results);
 });
@@ -2659,7 +2527,7 @@ async function handleTgMessage(msg) {
   // Handle /start command
   if (text === "/start") {
     const brand = loadBrand();
-    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- Bot performance & live status\n- 9 agents aansturen (designer, video, researcher, analyst, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/status — Bot status check\n/ads — Meta Ads overview & beheer\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`);
+    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- 8 agents aansturen (designer, video, researcher, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/ads — Meta Ads overview & beheer\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`);
     return;
   }
 
@@ -2677,29 +2545,6 @@ async function handleTgMessage(msg) {
       if (sent === 0) tgSend(chatId, "Geen drafts voor komende week.");
     } catch (e) {
       tgSend(chatId, "Review error: " + e.message);
-    }
-    return;
-  }
-
-  // Handle /status command
-  if (text === "/status") {
-    try {
-      const botData = await fetch("http://localhost:3000/api/status").then(r => r.json()).catch(() => null);
-      if (botData) {
-        const lines = ["*Bot Status:*"];
-        for (const [id, label] of [["funding", "Funding"], ["trend", "Trend"]]) {
-          const b = botData[id];
-          if (!b) { lines.push(`${label}: offline`); continue; }
-          const emoji = b.online ? "🟢" : "🔴";
-          const upnl = (b.positions || []).reduce((s, p) => s + (p.unrealizedPnl || 0), 0);
-          lines.push(`${emoji} *${label}* — $${(b.accountValue || 0).toFixed(0)} equity, uPnL: $${upnl >= 0 ? "+" : ""}${upnl.toFixed(2)}`);
-        }
-        tgSend(chatId, lines.join("\n"));
-      } else {
-        tgSend(chatId, "Kan geen verbinding maken met trading dashboard.");
-      }
-    } catch (e) {
-      tgSend(chatId, "Error: " + e.message);
     }
     return;
   }
@@ -3138,7 +2983,6 @@ const WATCHED_TASKS = {
   "Video Editor": "video-tasks.json",
   "Content Creator": "avatar-tasks.json",
   "Video Agent": "video-agent-tasks.json",
-  Analyst: "analyst-tasks.json",
   Researcher: "research-tasks.json",
   "Script Writer": "scriptwriter-tasks.json",
 };
@@ -3203,42 +3047,6 @@ setInterval(() => {
   }
   prevSnapshot = current;
 }, 15_000);
-
-// ── BOT STATUS WATCHER ───────────────────────
-let prevBotOnline = {};
-
-setInterval(async () => {
-  try {
-    const res = await fetch("http://localhost:3000/api/status");
-    const data = await res.json();
-    const botNames = { funding: "Funding Bot", trend: "Trend Bot" };
-    const notifs = readTaskFile("notifications.json");
-    let changed = false;
-
-    for (const [id, name] of Object.entries(botNames)) {
-      const online = data[id]?.online ?? false;
-      const prev = prevBotOnline[id];
-      if (prev !== undefined && prev !== online) {
-        const title = `${name} ${online ? "online" : "offline"}`;
-        const message = online ? "Bot is weer actief" : "Bot is gestopt of log is staal";
-        const severity = online ? "success" : "danger";
-        notifs.unshift({
-          id: genId(), type: "bot_status", agent: id,
-          title, message, severity, read: false,
-          created_at: new Date().toISOString(),
-        });
-        sendTelegram(title, message, severity);
-        changed = true;
-      }
-      prevBotOnline[id] = online;
-    }
-
-    if (changed) {
-      if (notifs.length > 100) notifs.length = 100;
-      writeTaskFile("notifications.json", notifs);
-    }
-  } catch {}
-}, 30_000);
 
 // ── AI CHAT ───────────────────────────────────
 // Lazy Anthropic client: constructor reads ANTHROPIC_API_KEY once, so a
@@ -3318,7 +3126,6 @@ COMMAND CENTER AGENTS:
 - Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — video editing via Remotion
 - Content Creator — HeyGen avatar videos + AI Video Agent
-- Analyst — performance analyses, risk reports, daily reports
 - Researcher — trending content, competitor analysis, market research, keyword research
 - Script Writer — video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
@@ -3338,7 +3145,6 @@ You can:
    - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
    - create_video_edit: edit a video via Remotion (Video Editor)
    - create_research: run research (Researcher)
-   - create_analysis: run analysis (Analyst)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing strategy, content planning, copywriting, SEO, ads — ask the Marketeer agent
 
@@ -3356,15 +3162,10 @@ Reply in the user's language. Be concise and direct. Do not use emoji unless ask
 Je helpt de gebruiker met het aansturen van agents, het monitoren van bots, en het beantwoorden van vragen over het systeem.
 Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE agents en ALLE skills.
 
-TRADING BOTS (Hyperliquid Perps):
-- Funding Bot — Funding rate arbitrage
-- Trend Bot — BB+RSI mean-reversion strategie
-
 COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — Video editing via Remotion (React-based video)
 - Content Creator — HeyGen avatar video's + AI Video Agent
-- Analyst — Performance analyses, risk reports, dagrapportages
 - Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
 - Script Writer — Video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
@@ -3447,7 +3248,6 @@ Je kunt:
    - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
    - create_research: Onderzoek laten doen (Researcher)
-   - create_analysis: Analyse laten maken (Analyst)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing strategie, content planning, copywriting, SEO, ads — vraag de Marketeer agent
 8. SKILLS KENNIS — als de gebruiker vraagt over een skill, leg uit wat het doet en hoe het aan te roepen. Skills worden aangeroepen als /skill-name in Claude Code.
@@ -3509,20 +3309,7 @@ app.post("/ctrl/chat", async (req, res) => {
   }
 
   try {
-    // Fetch live bot data
-    let botContext = "";
-    try {
-      const botRes = await fetch("http://localhost:3000/api/status");
-      const botData = await botRes.json();
-      const botLines = [];
-      for (const [id, b] of Object.entries(botData)) {
-        if (!b.name) continue;
-        botLines.push(`${b.name}: ${b.online ? "ONLINE" : "OFFLINE"} | Equity: $${(b.accountValue||0).toFixed(2)} | Day PnL: $${(b.stats?.dailyPnl||0).toFixed(2)} | Total PnL: $${(b.stats?.totalPnl||0).toFixed(2)} | Trades: ${b.stats?.totalTrades||0} | WR: ${b.stats?.winRate||0}% | Positions: ${b.positions?.length||0}`);
-      }
-      botContext = "\n\nLIVE BOT STATUS:\n" + botLines.join("\n");
-    } catch {}
-
-    const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext() + botContext;
+    const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext();
 
     const _av = getAvatarsConfig();
     const _avatarDesc = _av.default_avatar_id
@@ -3633,19 +3420,6 @@ app.post("/ctrl/chat", async (req, res) => {
             niche: { type: "string", description: "Niche/markt. Standaard: crypto trading" },
           },
           required: ["query"],
-        },
-      },
-      {
-        type: "custom",
-        name: "create_analysis",
-        description: "Maak een analyse task aan bij de Analyst agent.",
-        input_schema: {
-          type: "object",
-          properties: {
-            description: { type: "string", description: "Beschrijving van de gewenste analyse" },
-            type: { type: "string", enum: ["daily_report", "performance", "risk", "strategy"], description: "Type analyse. Standaard: daily_report" },
-          },
-          required: ["description"],
         },
       },
       {
@@ -3818,13 +3592,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           type: input.type || "trending",
           platforms: input.platforms || ["tiktok", "x", "reddit"],
           niche: input.niche || "crypto trading",
-        },
-      }),
-      create_analysis: (input) => ({
-        url: "http://localhost:3004/analyst/tasks",
-        body: {
-          description: input.description,
-          type: input.type || "daily_report",
         },
       }),
       calendar_query: (input) => ({
@@ -5241,86 +5008,6 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
   }
 }
 
-// ── ANALYST WORKER (Claude + Bot Data) ──
-async function processAnalystTasks() {
-  const tasks = readTaskFile("analyst-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing analyst task ${task.id}`);
-
-    try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("analyst-tasks.json", tasks);
-
-      // Gather bot data
-      let botData = {};
-      try {
-        const botRes = await fetch("http://localhost:3000/api/status");
-        botData = await botRes.json();
-      } catch {}
-
-      let tradeData = {};
-      for (const [id, file] of Object.entries(TRADE_FILES)) {
-        try { tradeData[id] = JSON.parse(fs.readFileSync(file, "utf8")); }
-        catch { tradeData[id] = []; }
-      }
-
-      const botContext = Object.entries(botData).filter(([,b]) => b.name).map(([id, b]) =>
-        `${b.name}: ${b.online ? "ONLINE" : "OFFLINE"} | Equity: $${(b.accountValue||0).toFixed(2)} | Day PnL: $${(b.stats?.dailyPnl||0).toFixed(2)} | Total PnL: $${(b.stats?.totalPnl||0).toFixed(2)} | Trades: ${b.stats?.totalTrades||0} | WR: ${b.stats?.winRate||0}% | Positions: ${b.positions?.length||0}`
-      ).join("\n");
-
-      const tradeContext = Object.entries(tradeData).map(([id, trades]) => {
-        const recent = trades.slice(0, 10);
-        return `${id} (laatste ${recent.length} trades):\n${recent.map(t => `  ${t.symbol || "?"} ${t.side || "?"} | PnL: $${(t.pnl||0).toFixed(2)} | ${t.timestamp || ""}`).join("\n")}`;
-      }).join("\n\n");
-
-      const prompt = `Je bent een trading analyst. Analyseer de volgende data en geef een rapport.
-
-Opdracht: ${task.description}
-Type: ${task.type || "daily_report"}
-
-LIVE BOT STATUS:
-${botContext || "Geen bot data beschikbaar"}
-
-RECENTE TRADES:
-${tradeContext || "Geen trade data beschikbaar"}
-
-Geef een gestructureerd rapport met:
-${task.type === "daily_report" ? "1. Dagelijkse samenvatting\n2. Bot performance per bot\n3. Opvallende trades\n4. Risico-indicatoren\n5. Aanbevelingen" : ""}
-${task.type === "performance" ? "1. Performance metrics per bot\n2. Win rate analyse\n3. PnL breakdown\n4. Vergelijking tussen bots\n5. Verbeterpunten" : ""}
-${task.type === "risk" ? "1. Huidige risico-exposure\n2. Drawdown analyse\n3. Positie-concentratie\n4. Volatiliteitsrisico\n5. Aanbevelingen voor risicovermindering" : ""}
-${task.type === "strategy" ? "1. Strategie-evaluatie per bot\n2. Marktcondities analyse\n3. Parameter optimalisatie suggesties\n4. Nieuwe kansen\n5. Strategische aanbevelingen" : ""}
-
-Schrijf in het Nederlands. Wees data-driven en direct.`;
-
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const result = response.content[0]?.text || "";
-
-      // Store result in task
-      task.status = "completed";
-      task.result = result;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("analyst-tasks.json", tasks);
-      processingTasks.delete(task.id);
-      console.log(`[WORKER] Analyst task ${task.id} completed`);
-    } catch (e) {
-      console.error(`[WORKER] Analyst task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("analyst-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
-  }
-}
-
 // ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
 async function processDesignerTasks() {
   const canvaToken = await getCanvaAccessToken();
@@ -5661,7 +5348,6 @@ setInterval(() => {
   processVideoAgentTasks().catch(e => console.error("[WORKER] Video agent error:", e.message));
   processScriptwriterTasks().catch(e => console.error("[WORKER] Scriptwriter error:", e.message));
   processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
-  processAnalystTasks().catch(e => console.error("[WORKER] Analyst error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
 }, 15_000);
@@ -5677,7 +5363,6 @@ setTimeout(() => {
   processVideoAgentTasks().catch(() => {});
   processScriptwriterTasks().catch(() => {});
   processResearchTasks().catch(() => {});
-  processAnalystTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
   pollVideoStatus().catch(() => {});
@@ -6453,7 +6138,7 @@ app.post("/scheduled-tasks", (req, res) => {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     name: req.body.name || "Unnamed schedule",
-    agent: req.body.agent || "designer",       // designer, researcher, analyst, scriptwriter
+    agent: req.body.agent || "designer",       // designer, researcher, scriptwriter
     hour: parseInt(req.body.hour) || 9,         // UTC hour
     minute: parseInt(req.body.minute) || 0,     // UTC minute
     days: req.body.days || ["mon","tue","wed","thu","fri","sat","sun"], // which days
@@ -6503,8 +6188,6 @@ async function executeSchedule(schedule) {
       await executeDesignerSchedule(schedule, today);
     } else if (schedule.agent === "researcher") {
       await executeResearcherSchedule(schedule, today);
-    } else if (schedule.agent === "analyst") {
-      await executeAnalystSchedule(schedule, today);
     } else if (schedule.agent === "scriptwriter") {
       await executeScriptwriterSchedule(schedule, today);
     } else if (schedule.agent === "marketeer") {
@@ -6645,29 +6328,6 @@ async function executeResearcherSchedule(schedule, today) {
     writeTaskFile("scheduled-tasks.json", schedules);
   }
   console.log(`[SCHEDULER] Research task created: ${taskId} (${lang})`);
-}
-
-async function executeAnalystSchedule(schedule, today) {
-  const p = schedule.payload;
-  const tasks = readTaskFile("analyst-tasks.json");
-  const taskId = genId();
-  tasks.unshift({
-    id: taskId, status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: p.type || "daily_diagnose",
-    description: p.description || "Dagelijkse bot diagnose en performance analyse",
-    error: null,
-  });
-  writeTaskFile("analyst-tasks.json", tasks);
-
-  const schedules = readTaskFile("scheduled-tasks.json");
-  const idx = schedules.findIndex(s => s.id === schedule.id);
-  if (idx >= 0) {
-    schedules[idx].last_run = new Date().toISOString();
-    schedules[idx].last_task_id = taskId;
-    writeTaskFile("scheduled-tasks.json", schedules);
-  }
-  console.log(`[SCHEDULER] Analyst task created: ${taskId}`);
 }
 
 async function executeScriptwriterSchedule(schedule, today) {

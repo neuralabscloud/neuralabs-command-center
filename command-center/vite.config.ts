@@ -6,11 +6,11 @@ function authMiddleware(): Connect.NextHandleFunction {
   return async (req, res, next) => {
     // Allow static assets, vite internals, login page, and API proxy routes
     const url = req.url || "";
-    const apiPrefixes = ["/auth/", "/api/", "/designer/", "/video/", "/avatar/", "/analyst/",
+    const apiPrefixes = ["/auth/", "/api/", "/designer/", "/video/", "/avatar/",
       "/research/", "/media/", "/scriptwriter/", "/notifications", "/ctrl/", "/video-agent/",
       "/heygen/", "/stripe/", "/system/", "/canva/", "/settings/", "/brands", "/brand-assets",
       "/generated-images", "/video-projects", "/video-projects-static",
-      "/social/", "/ads/"];
+      "/social/", "/ads/", "/community/"];
     if (
       url.startsWith("/@") ||
       url.startsWith("/node_modules") ||
@@ -54,16 +54,11 @@ export default defineConfig({
   server: {
     allowedHosts: true,
     proxy: {
-      "/api/settings": "http://localhost:3004",
-      "/api/setup-status": "http://localhost:3004",
-      "/api": "http://localhost:3000",
+      "/api": "http://localhost:3004",
       "/auth": "http://localhost:3004",
       "/designer/tasks": "http://localhost:3004",
       "/video/tasks": "http://localhost:3004",
       "/avatar/tasks": "http://localhost:3004",
-      "/analyst/tasks": "http://localhost:3004",
-      "/analyst/trades": "http://localhost:3004",
-      "/analyst/daily-report": "http://localhost:3004",
       "/research/tasks": "http://localhost:3004",
       "/research/reports": "http://localhost:3004",
       "/research/daily": "http://localhost:3004",
@@ -89,6 +84,7 @@ export default defineConfig({
       "/scheduled-tasks": "http://localhost:3004",
       "/social": "http://localhost:3004",
       "/ads/": "http://localhost:3004",
+      "/community": "http://localhost:3004",
     },
   },
   plugins: [
@@ -115,9 +111,9 @@ export default defineConfig({
         agents: path.resolve(__dirname, "agents.html"),
         editor: path.resolve(__dirname, "editor.html"),
         designer: path.resolve(__dirname, "designer.html"),
-        analyst: path.resolve(__dirname, "analyst.html"),
         contentcreator: path.resolve(__dirname, "content-creator.html"),
         scriptwriter: path.resolve(__dirname, "scriptwriter.html"),
+        communitymanager: path.resolve(__dirname, "community-manager.html"),
         chat: path.resolve(__dirname, "chat.html"),
         settings: path.resolve(__dirname, "settings.html"),
       },

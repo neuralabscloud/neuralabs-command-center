@@ -1574,9 +1574,7 @@ setInterval(renderSystemHealth, 10000);
 
 // ── AI TEAM ───────────────────────────────────
 const aiTeam = [
-  { name: 'TRADER', emoji: '🤖', role: 'Live Bot on Hyperliquid', status: 'idle', color: 'var(--success)', hsl: '142 76% 36%', task: 'Loading...', isTrader: true },
   { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
-  { name: 'ANALYST', emoji: '📊', role: 'Bot Reports & Diagnostics', status: 'idle', color: 'var(--premium)', hsl: '270 95% 65%', task: 'Awaiting assignment' },
   { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
   { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
@@ -1588,7 +1586,6 @@ const aiTeam = [
 
 const TASK_APIS = {
   RESEARCHER: '/research/tasks',
-  ANALYST: '/analyst/tasks',
   DESIGNER: '/designer/tasks',
   'VIDEO EDITOR': ['/video/tasks', '/video/ai-generate'],
   'CONTENT CREATOR': '/avatar/tasks',
@@ -1596,13 +1593,6 @@ const TASK_APIS = {
 };
 
 async function renderAiTeam() {
-  // Fetch bot data for Trader card; absence means trading dashboard isn't installed
-  let botData = null;
-  try {
-    const r = await fetch('/api/status');
-    if (r.ok) botData = await r.json();
-  } catch {}
-
   // Fetch task counts per agent
   const taskCounts = {};
   for (const [name, api] of Object.entries(TASK_APIS)) {
@@ -1625,48 +1615,7 @@ async function renderAiTeam() {
   if (!Array.isArray(communityTasks)) communityTasks = [];
   if (!Array.isArray(communityChannels)) communityChannels = [];
 
-  // Drop Trader card entirely when trading dashboard isn't installed
-  const renderedTeam = aiTeam.filter(a => !a.isTrader || !!botData);
-  document.getElementById('ai-team-grid').innerHTML = renderedTeam.map(a => {
-    if (a.isTrader && botData) {
-      const TRADER_BOTS = ['trend'];
-      const totalBots = TRADER_BOTS.length;
-      const onlineCount = TRADER_BOTS.filter(id => botData[id]?.online).length;
-      const totalEquity = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.accountValue||0), 0);
-      const totalUpnl = TRADER_BOTS.reduce((s, id) => s + ((botData[id]?.positions||[]).reduce((ps, p) => ps + (p.unrealizedPnl||0), 0)), 0);
-      const totalRealizedPnl = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.stats?.totalPnl||0), 0);
-      const totalTrades = TRADER_BOTS.reduce((s, id) => s + (botData[id]?.stats?.totalTrades||0), 0);
-      const status = onlineCount === totalBots ? 'running' : onlineCount > 0 ? 'queued' : 'idle';
-
-      return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-          <span class="agent-status ${status}">${onlineCount}/${totalBots} online</span>
-        </div>
-        <div class="agent-card-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
-            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Equity</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:var(--text)">$${totalEquity.toFixed(0)}</div></div>
-            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Unrealized</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalUpnl>=0?'var(--success)':'var(--danger)'}">$${totalUpnl>=0?'+':''}${totalUpnl.toFixed(2)}</div></div>
-            <div><div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data)">Total PnL</div><div style="font-family:var(--font-data);font-size:15px;font-weight:700;color:${totalRealizedPnl>=0?'var(--success)':'var(--danger)'}">$${totalRealizedPnl>=0?'+':''}${totalRealizedPnl.toFixed(2)}</div></div>
-          </div>
-          <div class="agent-task">${onlineCount === totalBots ? 'All bots operational' : (totalBots-onlineCount)+' bot(s) offline'}</div>
-          <div class="health-row">
-            ${TRADER_BOTS.map(id => {
-              const b = botData[id] || {};
-              const label = id === 'funding' ? 'Fund' : 'Trend';
-              const ok = b.online;
-              return '<span class="health-tag"><span class="dot ' + (ok ? 'ok' : 'err') + '"></span>' + label + '</span>';
-            }).join('')}
-          </div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label"><span>${totalTrades}</span> trades</span>
-          <span class="agent-footer-label"><span>${onlineCount}/${totalBots}</span> active</span>
-        </div>
-      </div>`;
-    }
-
+  document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
     if (a.isMarketeer) {
       return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
         <div class="agent-card-header">
@@ -1780,7 +1729,6 @@ const TASK_FEED_SOURCES = [
   { api: '/video/tasks',        agent: 'VIDEO',    subtype: 'REMOTION',   color: 'var(--danger)' },
   { api: '/video/ai-generate',  agent: 'VIDEO',    subtype: 'AI GEN',     color: 'var(--danger)' },
   { api: '/research/tasks',     agent: 'RESEARCH', subtype: 'RESEARCH',   color: 'var(--accent)' },
-  { api: '/analyst/tasks',      agent: 'ANALYST',  subtype: 'ANALYST',    color: 'var(--premium)' },
 ];
 
 function fmtTaskTime(iso) {

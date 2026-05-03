@@ -4,28 +4,23 @@
 (function () {
   const OFFICE = [
     { key:'researcher',   name:'RESEARCHER', role:'TREND RESEARCH',    emoji:'\u{1F50D}', hsl:'264 65% 49%', pos:[0,0], href:'research.html',        taskApi:'/research/tasks' },
-    { key:'analyst',      name:'ANALYST',    role:'BOT REPORTS',       emoji:'\u{1F4CA}', hsl:'270 95% 65%', pos:[1,0], href:'analyst.html',         taskApi:'/analyst/tasks' },
-    { key:'content',      name:'CONTENT',    role:'HEYGEN AVATARS',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[2,0], href:'content-creator.html', taskApis:['/avatar/tasks','/video-agent/tasks'] },
+    { key:'content',      name:'CONTENT',    role:'HEYGEN AVATARS',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[1,0], href:'content-creator.html', taskApis:['/avatar/tasks','/video-agent/tasks'] },
+    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[2,0], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
     { key:'scriptwriter', name:'WRITER',     role:'VIDEO SCRIPTS',     emoji:'\u270D\uFE0F', hsl:'30 90% 55%',  pos:[0,1], href:'scriptwriter.html',    taskApi:'/scriptwriter/tasks' },
-    { key:'trader',       name:'TRADER',     role:'LIVE BOTS',         emoji:'\u{1F916}', hsl:'142 76% 36%', pos:[1,1], href:'performance.html',     isTrader:true, hero:true },
-    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[2,1], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
-    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[0,2], href:'ads.html' },
-    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[1,2], href:'designer.html',        taskApi:'/designer/tasks' },
-    { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[2,2], href:'chat.html' },
-    { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[3,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
+    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[1,1], href:'designer.html',        taskApi:'/designer/tasks', hero:true },
+    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[2,1], href:'ads.html' },
+    { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,2], href:'chat.html' },
+    { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[1,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
   ];
 
   const CONNECTIONS = [
-    ['researcher', 'analyst',     3.5],
     ['researcher', 'scriptwriter',4.2],
-    ['analyst',    'trader',      3.0],
     ['scriptwriter','content',    3.8],
     ['scriptwriter','video',      4.6],
     ['content',    'video',       3.2],
     ['video',      'designer',    3.6],
     ['designer',   'marketeer',   3.4],
     ['marketeer',  'assistant',   3.0],
-    ['trader',     'assistant',   4.0],
     ['scriptwriter','community',  4.4],
     ['designer',   'community',   3.8],
     ['assistant',  'community',   3.2],
@@ -250,14 +245,7 @@
       const dot = svg.querySelector(`.status-${agent.key}`);
       if (!dot) continue;
       let state = 'idle';
-      if (agent.isTrader) {
-        try {
-          const data = await (await fetch('/api/status')).json();
-          const bots = ['trend'].filter(id => data[id] !== undefined);
-          const online = bots.filter(id => data[id]?.online).length;
-          state = (online === bots.length && bots.length > 0) ? 'online' : online > 0 ? 'queued' : 'idle';
-        } catch {}
-      } else if (agent.alwaysOn) {
+      if (agent.alwaysOn) {
         state = 'online';
       } else if (agent.isCommunity) {
         try {
@@ -335,18 +323,6 @@
         const b = await res.json();
         if (b && b.assistant_name) CHIEF.name = String(b.assistant_name).toUpperCase();
         if (b && b.company_name) BRAND_HQ_LABEL = String(b.company_name) + ' HQ';
-      }
-    } catch {}
-    // Detect trading dashboard — hide trader card if not reachable
-    try {
-      const svcRes = await fetch('/settings/services');
-      if (svcRes.ok) {
-        const services = await svcRes.json();
-        const trading = services.find(s => s.label === 'Trading Dashboard');
-        if (!trading || trading.status !== 'online') {
-          const idx = OFFICE.findIndex(a => a.key === 'trader');
-          if (idx >= 0) OFFICE.splice(idx, 1);
-        }
       }
     } catch {}
     const containers = document.querySelectorAll('[data-iso-office]');
