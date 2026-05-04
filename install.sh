@@ -145,8 +145,8 @@ ok "Python $(python3 --version)"
 if ! command -v redis-server &>/dev/null; then
   info "Installing Redis..."
   apt-get install -y -q redis-server || { error "Failed to install Redis"; exit 1; }
-  systemctl enable redis-server
-  systemctl start redis-server
+  systemctl enable redis-server 2>/dev/null || true
+  systemctl start redis-server 2>/dev/null || true
 fi
 ok "Redis installed"
 
@@ -300,9 +300,9 @@ for tpl in "$INSTALL_DIR/config/systemd/"*.tpl; do
   ok "  ${svc_name}.service installed"
 done
 
-systemctl daemon-reload
+systemctl daemon-reload 2>/dev/null || true
 
-systemctl enable command-center --quiet 2>/dev/null
+systemctl enable command-center --quiet 2>/dev/null || true
 systemctl start command-center 2>/dev/null || warn "Failed to start command-center — check: journalctl -u command-center"
 ok "Command Center service started"
 
