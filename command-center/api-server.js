@@ -1860,21 +1860,30 @@ app.get("/settings/integrations", (_req, res) => {
     { label: "OAuth", value: canvaClientId && canvaClientSecret ? "Awaiting authorization" : "Not configured" },
     { label: "Used by", value: "Designer (brand templates lookup)" },
   ];
+  let canvaActions = [];
   if (canvaClientId && canvaClientSecret) {
+    let hasToken = false, expired = false, expiresAt = null;
     try {
       const canvaTokens = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "canva-oauth.json"), "utf8"));
-      const expired = canvaTokens.expires_at && canvaTokens.expires_at < Date.now();
-      canvaStatus = canvaTokens.access_token && !expired ? "connected" : "not-configured";
-      canvaDetails = [
-        { label: "Client ID", value: canvaClientId, secret: true },
-        { label: "Client Secret", value: "•••" },
-        { label: "OAuth", value: canvaTokens.access_token ? (expired ? "Expired — re-authorize" : "Authorized") : "Not authorized" },
-        { label: "Expires", value: canvaTokens.expires_at ? new Date(canvaTokens.expires_at).toLocaleString() : "—" },
-        { label: "Used by", value: "Designer (brand templates lookup)" },
-      ];
+      hasToken = !!canvaTokens.access_token;
+      expired = !!(canvaTokens.expires_at && canvaTokens.expires_at < Date.now());
+      expiresAt = canvaTokens.expires_at || null;
     } catch {}
+    canvaStatus = hasToken && !expired ? "connected" : "not-configured";
+    canvaDetails = [
+      { label: "Client ID", value: canvaClientId, secret: true },
+      { label: "Client Secret", value: "•••" },
+      { label: "OAuth", value: hasToken ? (expired ? "Expired — re-authorize" : "Authorized") : "Not authorized" },
+      { label: "Expires", value: expiresAt ? new Date(expiresAt).toLocaleString() : "—" },
+      { label: "Used by", value: "Designer (brand templates lookup)" },
+    ];
+    canvaActions.push({
+      type: "oauth-popup",
+      url: "/canva/connect",
+      label: hasToken && !expired ? "Reconnect Canva" : "Connect Canva",
+    });
   }
-  integrations.push({ id: "canva", status: canvaStatus, details: canvaDetails });
+  integrations.push({ id: "canva", status: canvaStatus, details: canvaDetails, actions: canvaActions });
 
   // 5. Telegram
   integrations.push({

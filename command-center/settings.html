@@ -422,32 +422,38 @@ function renderIntegrations(integrations) {
           </div>
         `).join('')}
       </div>
-      ${int.id === 'canva' ? `
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-test" onclick="connectCanva()" style="background:hsla(142 70% 40% / 0.15);border-color:hsla(142 70% 40% / 0.4);color:hsl(142 70% 50%)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-            ${int.status === 'connected' ? 'Reconnect Canva' : 'Connect Canva'}
-          </button>
-          <button class="btn-test" onclick="testIntegration('${int.id}', this)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            Test Connection
-          </button>
-        </div>
-      ` : `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${(int.actions || []).map(a => `
+          <button class="btn-test" onclick="runIntegrationAction('${int.id}', '${a.type}', '${a.url}', this)" style="background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;border:none">
+            ${a.label}
+          </button>`).join('')}
         <button class="btn-test" onclick="testIntegration('${int.id}', this)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Test Connection
         </button>
-      `}
+      </div>
       <div class="test-result" id="test-${int.id}"></div>
     </div>`;
   }).join('');
 }
 
-function connectCanva() {
-  // Canva MCP requires the redirect to go to localhost, so we launch the flow
-  // in a new tab/window and let the callback hand off back to this page.
-  window.location.href = '/canva/connect';
+function runIntegrationAction(id, type, url, btn) {
+  if (type === 'oauth-popup') {
+    const w = window.open(url, '_blank', 'width=820,height=720');
+    if (!w) { alert('Popup was blocked. Allow popups for this page and try again.'); return; }
+    const start = Date.now();
+    const iv = setInterval(async () => {
+      if (Date.now() - start > 5 * 60 * 1000) { clearInterval(iv); loadIntegrations(); return; }
+      if (w.closed) { clearInterval(iv); loadIntegrations(); return; }
+      try {
+        const r = await (await fetch('/settings/integrations')).json();
+        const it = (r.integrations || []).find(x => x.id === id);
+        if (it && it.status === 'connected') { clearInterval(iv); try { w.close(); } catch {} loadIntegrations(); }
+      } catch {}
+    }, 2000);
+  } else {
+    window.open(url, '_blank');
+  }
 }
 
 function toggleKey(btn) {
