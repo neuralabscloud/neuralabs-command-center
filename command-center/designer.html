@@ -210,7 +210,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div class="form-field">
             <label class="form-label">Layout Template</label>
             <select class="form-select" id="design-template">
-              <option value="default">Standaard</option>
+              <option value="default">Default</option>
               <option value="bold-impact">Bold Impact</option>
               <option value="clean-minimal">Clean Minimal</option>
               <option value="data-dense">Data Dense</option>
@@ -219,12 +219,22 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div class="form-field">
             <label class="form-label">Logo Position</label>
             <select class="form-select" id="design-logo-position">
-              <option value="SouthEast">Rechtsonder</option>
-              <option value="SouthWest">Linksonder</option>
-              <option value="NorthEast">Rechtsboven</option>
-              <option value="NorthWest">Linksboven</option>
-              <option value="Center">Midden</option>
-              <option value="none">Geen logo</option>
+              <option value="SouthEast">Bottom Right</option>
+              <option value="South">Bottom Center</option>
+              <option value="SouthWest">Bottom Left</option>
+              <option value="NorthEast">Top Right</option>
+              <option value="North">Top Center</option>
+              <option value="NorthWest">Top Left</option>
+              <option value="Center">Center</option>
+              <option value="none">No logo</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Logo Size</label>
+            <select class="form-select" id="design-logo-size">
+              <option value="small">Small</option>
+              <option value="medium" selected>Medium</option>
+              <option value="large">Large</option>
             </select>
           </div>
           <div class="form-field" id="slide-count-field" style="display:none">
@@ -354,6 +364,7 @@ async function submitTask() {
       fd.append('engine', document.getElementById('design-engine').value);
       fd.append('template', document.getElementById('design-template').value);
       fd.append('logo_position', document.getElementById('design-logo-position').value);
+      fd.append('logo_size', document.getElementById('design-logo-size').value);
       if (slideCount) fd.append('slide_count', slideCount);
       fd.append('description', desc);
       fd.append('ref_image', refImageInput.files[0]);
@@ -369,6 +380,7 @@ async function submitTask() {
           engine: document.getElementById('design-engine').value,
           template: document.getElementById('design-template').value,
           logo_position: document.getElementById('design-logo-position').value,
+          logo_size: document.getElementById('design-logo-size').value,
           slide_count: slideCount,
           description: desc,
         }),

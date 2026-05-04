@@ -549,6 +549,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
   const brandKitId = req.body.brand_kit_id || null;
   const engine = req.body.engine || "playwright"; // "playwright", "canva", or "claude"
   const logoPosition = req.body.logo_position || "SouthEast"; // ImageMagick gravity
+  const logoSize = ["small", "medium", "large"].includes(req.body.logo_size) ? req.body.logo_size : "medium";
   const templateName = req.body.template || "default"; // slide layout template
   const requestedSlideCount = req.body.slide_count || null;
 
@@ -705,6 +706,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, brand_kit_id: brandKitId, engine: "nanobanana",
         logo_position: logoPosition,
+        logo_size: logoSize,
         carousel_parent: carouselParentId,
         carousel_slide: numImages > 1 ? i + 1 : null,
         carousel_total: numImages > 1 ? numImages : null,
@@ -860,6 +862,8 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
             // Find the brand logo to overlay
             const logoFile = logoFiles.find(f => f.includes("logo"));
             const taskLogoPos = task.logo_position || "SouthEast";
+            const SIZE_MAP = { small: "8%", medium: "12%", large: "18%" };
+            const logoResize = SIZE_MAP[task.logo_size] || SIZE_MAP.medium;
             if (logoFile && taskLogoPos !== "none") {
               // Download generated image, composite logo
               execFile("curl", ["-s", "-o", outFile, imgUrl], { timeout: 30000 }, (dlErr) => {
@@ -872,10 +876,10 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
                   writeTaskFile("designer-tasks.json", allTasks);
                   resolveBatch(); return;
                 }
-                // Composite logo at chosen position (12% of image width, with padding)
+                // Composite logo at chosen position with size-mapped resize and 40px padding
                 execFile("convert", [
                   outFile,
-                  "(", logoFile, "-resize", "12%", ")",
+                  "(", logoFile, "-resize", logoResize, ")",
                   "-gravity", taskLogoPos, "-geometry", "+40+40",
                   "-composite", outFile
                 ], { timeout: 15000 }, (compErr) => {
@@ -3484,7 +3488,8 @@ app.post("/ctrl/chat", async (req, res) => {
             brand: { type: "string", description: "Brand naam. Wordt geladen uit brand configuratie." },
             engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
-            logo_position: { type: "string", enum: ["SouthEast", "SouthWest", "NorthEast", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
+            logo_position: { type: "string", enum: ["SouthEast", "South", "SouthWest", "NorthEast", "North", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
+            logo_size: { type: "string", enum: ["small", "medium", "large"], description: "Logo grootte. Standaard: medium" },
             template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Standaard: default" },
           },
           required: ["description"],
@@ -3671,6 +3676,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           engine: input.engine || "nanobanana",
           slide_count: input.slide_count || null,
           logo_position: input.logo_position || "SouthEast",
+          logo_size: input.logo_size || "medium",
           template: input.template || "default",
         },
       }),
