@@ -211,13 +211,39 @@ function maskKey(val) {
   return val.slice(0, 6) + "..." + val.slice(-4);
 }
 
-app.get("/api/settings", (_req, res) => {
+// Detect the public origin the Command Center is currently being reached on,
+// so OAuth integrations (Meta Ads, Canva) can show the customer the exact
+// callback URI to paste into the third-party developer dashboard.
+function detectPublicOrigin(req) {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "";
+  return { proto, host, origin: host ? `${proto}://${host}` : "" };
+}
+function looksPublicHost(host) {
+  if (!host) return false;
+  const h = String(host).split(":")[0].toLowerCase();
+  if (h === "localhost" || h === "0.0.0.0") return false;
+  // Numeric IPv4 or bare IPv6 address — not a domain name.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
+  if (h.includes(":") && !/[a-z]/.test(h)) return false;
+  return h.includes(".");
+}
+
+app.get("/api/settings", (req, res) => {
   const env = readEnvFile();
   // Read brand.json, fall back to loadBrand() defaults
   let brand = {};
   try { brand = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "brand.json"), "utf8")); } catch {}
   if (!brand.company_name && typeof loadBrand === "function") { try { brand = loadBrand(); } catch {} }
+  const pub = detectPublicOrigin(req);
   res.json({
+    server: {
+      origin: pub.origin,
+      host: pub.host,
+      looks_public: looksPublicHost(pub.host),
+      meta_callback: env.META_REDIRECT_URI || (pub.origin ? `${pub.origin}/social/meta/callback` : ""),
+      canva_callback: env.CANVA_REDIRECT_URI || (pub.origin ? `${pub.origin}/canva/callback` : ""),
+    },
     branding: {
       company_name: brand.company_name || env.COMPANY_NAME || "",
       assistant_name: brand.assistant_name || env.ASSISTANT_NAME || "",

@@ -233,6 +233,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
     <section class="fade-up delay-3" style="margin-bottom: 20px">
       <div class="section-header">Configuration</div>
       <div id="config-saved" style="display:none;padding:8px 14px;background:hsla(142 76% 36%/0.1);border:1px solid hsla(142 76% 36%/0.2);border-radius:8px;color:var(--success);font-size:12px;margin-bottom:14px;text-align:center">Settings saved successfully</div>
+      <div id="domain-notice" style="display:none;padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.5;margin-bottom:14px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="config-grid">
         <!-- Branding -->
         <div class="integration-card">
@@ -263,7 +264,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Connects your assistant to external tools: Google Calendar, Gmail, Drive, Notion, Slack and 100+ more. Required for calendar/inbox queries. Get it at <a href="https://app.composio.dev/developers" target="_blank" style="color:var(--primary)">app.composio.dev</a>.</div><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Unlocks Instagram, Facebook and Meta Ads Manager (campaigns, insights, OAuth connect). Create a Business app in Meta for Developers, then copy the <code>App ID</code>. Get it at <a href="https://developers.facebook.com/apps" target="_blank" style="color:var(--primary)">developers.facebook.com/apps</a>.</div><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The <code>App Secret</code> paired with your Meta App ID. Signs the OAuth flow for Instagram/Facebook login. Found under Settings → Basic in your Meta app dashboard. Keep it private.</div><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Where Meta sends users back after they approve the connection. Must be the exact public URL of this Command Center plus <code>/social/meta/callback</code> and must also be listed under Valid OAuth Redirect URIs in your Meta app (Facebook Login for Business → Settings).</div><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/social/meta/callback"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Where Meta sends users back after they approve the connection. Paste this URI under <em>Valid OAuth Redirect URIs</em> in your Meta app (Facebook Login for Business → Settings). Leave the input empty to auto-derive from your public domain. <span id="cfg-meta-callback-hint" style="display:block;margin-top:4px;font-family:var(--font-data);color:var(--primary)">—</span></div><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/social/meta/callback"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Client ID</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers Designer brand templates. Create an Integration in <a href="https://www.canva.com/developers" target="_blank" style="color:var(--primary)">canva.com/developers</a>, then copy the <code>Client ID</code>. Requires a public domain — see callback URI below.</div><input type="text" id="cfg-canva-client-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Client Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The Secret paired with your Canva Client ID. Generate it under <em>Authentication → Generate secret</em> in your Canva integration. Keep it private.</div><input type="password" id="cfg-canva-client-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Paste this URI into your Canva integration under <em>Authentication → Authentication URLs</em>. Leave the input empty to auto-derive from your public domain. <span id="cfg-canva-callback-hint" style="display:block;margin-top:4px;font-family:var(--font-data);color:var(--primary)">—</span></div><input type="text" id="cfg-canva-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/canva/callback"></div>
@@ -524,6 +525,34 @@ async function loadConfig() {
     const r = await fetch('/api/settings', { credentials: 'include' });
     if (!r.ok) return;
     const d = await r.json();
+    if (d.server) {
+      const s = d.server;
+      const notice = document.getElementById('domain-notice');
+      const metaHint = document.getElementById('cfg-meta-callback-hint');
+      const canvaHint = document.getElementById('cfg-canva-callback-hint');
+      if (metaHint && s.meta_callback) metaHint.textContent = 'Callback URI: ' + s.meta_callback;
+      if (canvaHint && s.canva_callback) canvaHint.textContent = 'Callback URI: ' + s.canva_callback;
+      if (notice) {
+        if (s.looks_public) {
+          notice.style.display = 'block';
+          notice.style.background = 'hsla(142 76% 36%/0.08)';
+          notice.style.border = '1px solid hsla(142 76% 36%/0.25)';
+          notice.style.color = 'var(--text)';
+          notice.innerHTML = '<strong style="color:var(--success)">Public domain detected</strong> — '
+            + 'reachable on <code style="color:var(--primary)">' + s.origin + '</code>. '
+            + 'Use this for Meta Ads + Canva OAuth callbacks.';
+        } else {
+          notice.style.display = 'block';
+          notice.style.background = 'hsla(45 93% 55%/0.08)';
+          notice.style.border = '1px solid hsla(45 93% 55%/0.3)';
+          notice.style.color = 'var(--text)';
+          notice.innerHTML = '<strong style="color:var(--warning,#facc15)">No public domain detected</strong> — '
+            + 'currently reached on <code style="color:var(--text-dim)">' + (s.origin || '—') + '</code>. '
+            + 'Meta Ads and Canva require a public domain (with HTTPS) bound to this Command Center before you can connect them. '
+            + 'Point an A-record at this server, set up a reverse proxy (Nginx/Caddy) with TLS, then reload this page — the callback URIs below will update automatically.';
+        }
+      }
+    }
     if (d.branding) {
       document.getElementById('cfg-company').value = d.branding.company_name || '';
       document.getElementById('cfg-assistant').value = d.branding.assistant_name || '';
@@ -587,13 +616,6 @@ async function loadConfig() {
         cRedirect.value = c.redirect_uri || '';
         if (!c.redirect_uri) cRedirect.placeholder = 'https://yourdomain.com/canva/callback';
       }
-      // Show the live callback URI Canva will send users back to, so the
-      // customer can paste it into their Canva integration's Authentication tab.
-      try {
-        const cs = await (await fetch('/canva/status')).json();
-        const hint = document.getElementById('cfg-canva-callback-hint');
-        if (hint && cs && cs.callback_uri) hint.textContent = 'Callback URI: ' + cs.callback_uri;
-      } catch {}
       if (d.integrations.telegram) {
         const tgToken = document.getElementById('cfg-tg-token');
         const tgChat = document.getElementById('cfg-tg-chatid');
