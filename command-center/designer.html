@@ -691,7 +691,8 @@ async function loadBrandOptions() {
 }
 loadBrandOptions();
 
-// Populate brand kit dropdown from connected Canva (empty if not connected)
+// Populate brand kit dropdown from connected Canva (empty if not connected).
+// Names are suffixed with "(canva)" so users know the data origin.
 async function loadBrandKitOptions() {
   try {
     const res = await fetch('/canva/brand-kits');
@@ -700,7 +701,8 @@ async function loadBrandKitOptions() {
     const kits = Array.isArray(data.kits) ? data.kits : [];
     const sel = document.getElementById('design-brandkit');
     const current = sel.value;
-    sel.innerHTML = '<option value="">None</option>' + kits.map(k => `<option value="${k.id}">${k.name || k.id}</option>`).join('');
+    sel.innerHTML = '<option value="">None</option>' +
+      kits.map(k => `<option value="${k.id}">${(k.name || k.id)} (canva)</option>`).join('');
     if (current && kits.some(k => k.id === current)) sel.value = current;
   } catch {}
 }

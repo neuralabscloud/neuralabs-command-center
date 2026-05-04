@@ -646,57 +646,37 @@ async function cancelTask(api, taskId, btn) {
 }
 
 // ── CANVA OAUTH POPUP ──
-function canvaOAuthPopup() {
-  window.open('/canva/connect', '_blank');
-  const overlay = document.createElement('div');
-  overlay.id = 'canva-oauth-overlay';
-  overlay.innerHTML = `
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">
-      <div style="background:hsl(0 0% 5%);border:1px solid hsl(264 65% 49%/0.3);border-radius:12px;padding:32px;max-width:560px;width:100%">
-        <h3 style="color:hsl(264 65% 49%);margin-bottom:16px;font-size:16px">Connect Canva</h3>
-        <p style="color:hsl(210 40% 98%);font-size:13px;line-height:1.7;margin-bottom:16px">
-          1. Authorize the Command Center in the Canva tab that just opened.<br>
-          2. After approval you will land on a "site can't be reached" page — that is expected.<br>
-          3. Copy the <strong>full URL</strong> from the browser address bar of that broken page.<br>
-          4. Paste it below and press <strong>Connect</strong>.
-        </p>
-        <textarea id="canva-callback-url" placeholder="http://localhost:3004/canva/callback?code=...&state=..." style="width:100%;min-height:80px;padding:10px;background:hsl(217 32% 15%);color:#fff;border:1px solid hsl(217 32% 25%);border-radius:6px;font-family:var(--font-data);font-size:11px;margin-bottom:8px;box-sizing:border-box"></textarea>
-        <div id="canva-callback-error" style="color:var(--danger);font-size:11px;margin-bottom:8px;min-height:14px"></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button onclick="document.getElementById('canva-oauth-overlay').remove()" style="padding:8px 16px;background:transparent;color:var(--muted-foreground);border:1px solid hsl(217 32% 20%);border-radius:6px;cursor:pointer;font-size:12px">Cancel</button>
-          <button id="canva-callback-submit" onclick="submitCanvaCallback()" style="padding:8px 20px;background:hsl(264 65% 49%);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Connect</button>
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-}
-
-async function submitCanvaCallback() {
-  const url = document.getElementById('canva-callback-url').value.trim();
-  const err = document.getElementById('canva-callback-error');
-  const btn = document.getElementById('canva-callback-submit');
-  err.textContent = '';
-  if (!url) { err.textContent = 'Paste the URL from your browser address bar.'; return; }
-  let parsed;
-  try { parsed = new URL(url); } catch { err.textContent = 'That does not look like a valid URL.'; return; }
-  const code = parsed.searchParams.get('code');
-  const state = parsed.searchParams.get('state');
-  if (!code || !state) { err.textContent = 'URL is missing the code or state parameter.'; return; }
-  btn.disabled = true; btn.textContent = 'Connecting...';
+async function canvaOAuthPopup() {
+  // Confirm the customer has configured Client ID + Secret before opening
+  // the popup, otherwise Canva responds with a confusing error page.
   try {
-    const res = await fetch('/canva/callback?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
-    if (!res.ok) {
-      const text = await res.text();
-      err.textContent = 'Connection failed: ' + text.replace(/<[^>]+>/g, '').trim().substring(0, 200);
-      btn.disabled = false; btn.textContent = 'Connect';
+    const s = await (await fetch('/canva/status')).json();
+    if (!s.configured) {
+      alert('Add Canva Client ID + Secret in Settings first.\n\nThe callback URI to enter in your Canva integration is shown there.');
       return;
     }
-    document.getElementById('canva-oauth-overlay').remove();
-    checkCanvaStatus();
-  } catch (e) {
-    err.textContent = 'Request failed: ' + e.message;
-    btn.disabled = false; btn.textContent = 'Connect';
+  } catch {}
+  const w = window.open('/canva/connect', '_blank', 'width=820,height=720');
+  if (!w) {
+    alert('Popup was blocked. Allow popups for this page and try again.');
+    return;
   }
+  // Poll status until the callback page closes the popup or the user gives up.
+  const start = Date.now();
+  const iv = setInterval(async () => {
+    if (Date.now() - start > 5 * 60 * 1000) { clearInterval(iv); checkCanvaStatus(); return; }
+    try {
+      const r = await (await fetch('/canva/status')).json();
+      if (r.connected) {
+        clearInterval(iv);
+        try { w.close(); } catch {}
+        checkCanvaStatus();
+      } else if (w.closed) {
+        clearInterval(iv);
+        checkCanvaStatus();
+      }
+    } catch {}
+  }, 2000);
 }
 
 // ── CANVA DISCONNECT ──

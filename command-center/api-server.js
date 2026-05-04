@@ -162,7 +162,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -234,6 +234,7 @@ app.get("/api/settings", (_req, res) => {
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
+      canva: { has_client_id: !!env.CANVA_CLIENT_ID, client_id_masked: maskKey(env.CANVA_CLIENT_ID), has_secret: !!env.CANVA_CLIENT_SECRET, redirect_uri: env.CANVA_REDIRECT_URI || "" },
       youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
     }
   });
@@ -264,6 +265,9 @@ app.post("/api/settings", (req, res) => {
       meta_app_id: "META_APP_ID",
       meta_app_secret: "META_APP_SECRET",
       meta_redirect_uri: "META_REDIRECT_URI",
+      canva_client_id: "CANVA_CLIENT_ID",
+      canva_client_secret: "CANVA_CLIENT_SECRET",
+      canva_redirect_uri: "CANVA_REDIRECT_URI",
       youtube_api_key: "YOUTUBE_API_KEY",
     };
     for (const [field, envKey] of Object.entries(keyMap)) {
@@ -1820,20 +1824,30 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
-  // 4. Canva
+  // 4. Canva (Connect API via customer's Canva Developer App)
+  const canvaClientId = process.env.CANVA_CLIENT_ID || "";
+  const canvaClientSecret = process.env.CANVA_CLIENT_SECRET || "";
   let canvaStatus = "not-configured";
-  let canvaDetails = [{ label: "OAuth", value: "Not configured" }];
-  try {
-    const canvaTokens = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "canva-oauth.json"), "utf8"));
-    const expired = canvaTokens.expires_at && canvaTokens.expires_at < Date.now();
-    canvaStatus = canvaTokens.access_token ? (expired ? "not-configured" : "connected") : "not-configured";
-    canvaDetails = [
-      { label: "Client ID", value: canvaTokens.client_id || "—" },
-      { label: "Access Token", value: canvaTokens.access_token || "—", secret: true },
-      { label: "Expires", value: canvaTokens.expires_at ? new Date(canvaTokens.expires_at).toLocaleString("nl-NL") : "—" },
-      { label: "Used by", value: "Designer (Claude + Canva MCP engine)" },
-    ];
-  } catch {}
+  let canvaDetails = [
+    { label: "Client ID", value: canvaClientId || "—", secret: !!canvaClientId },
+    { label: "Client Secret", value: canvaClientSecret ? "•••" : "—" },
+    { label: "OAuth", value: canvaClientId && canvaClientSecret ? "Awaiting authorization" : "Not configured" },
+    { label: "Used by", value: "Designer (brand templates lookup)" },
+  ];
+  if (canvaClientId && canvaClientSecret) {
+    try {
+      const canvaTokens = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "canva-oauth.json"), "utf8"));
+      const expired = canvaTokens.expires_at && canvaTokens.expires_at < Date.now();
+      canvaStatus = canvaTokens.access_token && !expired ? "connected" : "not-configured";
+      canvaDetails = [
+        { label: "Client ID", value: canvaClientId, secret: true },
+        { label: "Client Secret", value: "•••" },
+        { label: "OAuth", value: canvaTokens.access_token ? (expired ? "Expired — re-authorize" : "Authorized") : "Not authorized" },
+        { label: "Expires", value: canvaTokens.expires_at ? new Date(canvaTokens.expires_at).toLocaleString() : "—" },
+        { label: "Used by", value: "Designer (brand templates lookup)" },
+      ];
+    } catch {}
+  }
   integrations.push({ id: "canva", status: canvaStatus, details: canvaDetails });
 
   // 5. Telegram
@@ -1892,9 +1906,15 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       const amount = (bal.available?.[0]?.amount || 0) / 100;
       res.json({ ok: true, message: `Balance: €${amount.toFixed(2)}` });
     } else if (id === "canva") {
-      const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "canva-oauth.json"), "utf8"));
-      const expired = tokens.expires_at && tokens.expires_at < Date.now();
-      res.json({ ok: !expired && !!tokens.access_token, message: expired ? "Token expired — re-authorize" : "OAuth token valid" });
+      if (!process.env.CANVA_CLIENT_ID || !process.env.CANVA_CLIENT_SECRET) {
+        return res.json({ ok: false, message: "Client ID/Secret not configured" });
+      }
+      const token = await getCanvaAccessToken();
+      if (!token) return res.json({ ok: false, message: "Not authorized — click Connect Canva" });
+      const r = await fetch("https://api.canva.com/rest/v1/users/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return res.json({ ok: false, message: `API call failed (${r.status})` });
+      const d = await r.json();
+      res.json({ ok: true, message: d?.team_user?.user_id ? `Authorized as ${d.team_user.user_id}` : "Authorized" });
     } else if (id === "telegram") {
       if (!TG_TOKEN) return res.json({ ok: false, message: "TELEGRAM_BOT_TOKEN not set in .env" });
       const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getMe`);
@@ -4477,9 +4497,24 @@ app.post("/marketeer/chat", async (req, res) => {
   }
 });
 
-// ── CANVA OAUTH (Dynamic Client Registration + PKCE) ─────────
+// ── CANVA OAUTH (Connect API via customer's own Canva Developer App) ──
+// Customer registers an Integration in https://www.canva.com/developers,
+// puts Client ID + Secret in Settings, and the displayed callback URI in
+// the Canva integration's Authentication tab. The callback URI uses the
+// Command Center's public host (x-forwarded headers) — Canva no longer
+// accepts only localhost like the old MCP DCR flow did.
 const CANVA_TOKENS_FILE = path.join(__dirname, "data", "canva-oauth.json");
-const CANVA_MCP_BASE = "https://mcp.canva.com";
+const CANVA_AUTH_URL = "https://www.canva.com/api/oauth/authorize";
+const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
+const CANVA_API_BASE = "https://api.canva.com/rest/v1";
+const CANVA_SCOPES = [
+  "profile:read",
+  "design:meta:read",
+  "design:content:read",
+  "brandtemplate:meta:read",
+  "brandtemplate:content:read",
+  "asset:read",
+].join(" ");
 
 function readCanvaTokens() {
   try { return JSON.parse(fs.readFileSync(CANVA_TOKENS_FILE, "utf8")); }
@@ -4496,55 +4531,40 @@ function generatePKCE() {
   return { verifier, challenge };
 }
 
-// Step 1: Register as OAuth client (Dynamic Client Registration)
-async function canvaRegisterClient(callbackUrl) {
-  const res = await fetch(`${CANVA_MCP_BASE}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_name: (loadBrand().company_name || "Customer") + " Command Center",
-      redirect_uris: [callbackUrl],
-      grant_types: ["authorization_code", "refresh_token"],
-      response_types: ["code"],
-      token_endpoint_auth_method: "client_secret_post",
-    }),
-  });
-  if (!res.ok) throw new Error(`Registration failed: ${await res.text()}`);
-  return res.json();
+function canvaCallbackUri(req) {
+  if (process.env.CANVA_REDIRECT_URI) return process.env.CANVA_REDIRECT_URI;
+  const proto = req.headers["x-forwarded-proto"] || req.protocol;
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return `${proto}://${host}/canva/callback`;
 }
 
 // In-memory OAuth state for pending flows
 let canvaOAuthState = null;
+let canvaBrandKitsCache = null; // { at, kits }
 
 // Start OAuth flow
 app.get("/canva/connect", async (req, res) => {
   try {
-    // Canva MCP Dynamic Client Registration only accepts localhost as redirect host.
-    // For remote installs the user must replace localhost:<port> with their own host
-    // in the browser address bar after Canva redirects (the Command Center UI shows
-    // step-by-step instructions before opening the Canva tab).
-    const proto = req.headers["x-forwarded-proto"] || req.protocol;
-    const host = req.headers["x-forwarded-host"] || req.headers.host;
-    const serverOrigin = `${proto}://${host}`;
-    const callbackUrl = `http://localhost:${PORT}/canva/callback`;
-
-    // Register client
-    const client = await canvaRegisterClient(callbackUrl);
+    const clientId = process.env.CANVA_CLIENT_ID;
+    if (!clientId) {
+      return res.status(400).send('<html><body style="background:#000;color:#ef4444;font-family:Inter,sans-serif;padding:40px"><h1>Canva not configured</h1><p>Add Canva Client ID + Secret in Settings first.</p></body></html>');
+    }
+    const callbackUri = canvaCallbackUri(req);
     const pkce = generatePKCE();
     const state = crypto.randomBytes(16).toString("hex");
+    canvaOAuthState = { verifier: pkce.verifier, state, callbackUri };
 
-    canvaOAuthState = { client_id: client.client_id, client_secret: client.client_secret, verifier: pkce.verifier, state, callbackUrl, serverOrigin };
-
-    const authUrl = `${CANVA_MCP_BASE}/authorize?` + new URLSearchParams({
+    const authUrl = `${CANVA_AUTH_URL}?` + new URLSearchParams({
       response_type: "code",
-      client_id: client.client_id,
-      redirect_uri: callbackUrl,
+      client_id: clientId,
+      redirect_uri: callbackUri,
+      scope: CANVA_SCOPES,
       state,
       code_challenge: pkce.challenge,
       code_challenge_method: "S256",
     });
 
-    console.log("[CANVA] authUrl:", authUrl);
+    console.log("[CANVA] redirecting to authorize, callback:", callbackUri);
     res.redirect(authUrl);
   } catch (e) {
     console.error("[CANVA] OAuth start failed:", e.message);
@@ -4555,19 +4575,24 @@ app.get("/canva/connect", async (req, res) => {
 // OAuth callback — Canva redirects here after authorization
 app.get("/canva/callback", async (req, res) => {
   try {
+    const clientId = process.env.CANVA_CLIENT_ID;
+    const clientSecret = process.env.CANVA_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw new Error("Canva not configured");
     if (!canvaOAuthState) throw new Error("No pending OAuth flow");
     if (req.query.state !== canvaOAuthState.state) throw new Error("State mismatch");
     if (req.query.error) throw new Error(req.query.error_description || req.query.error);
 
-    const tokenRes = await fetch(`${CANVA_MCP_BASE}/token`, {
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const tokenRes = await fetch(CANVA_TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Authorization": `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code: req.query.code,
-        redirect_uri: canvaOAuthState.callbackUrl,
-        client_id: canvaOAuthState.client_id,
-        client_secret: canvaOAuthState.client_secret,
+        redirect_uri: canvaOAuthState.callbackUri,
         code_verifier: canvaOAuthState.verifier,
       }),
     });
@@ -4578,12 +4603,11 @@ app.get("/canva/callback", async (req, res) => {
     writeCanvaTokens({
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
-      client_id: canvaOAuthState.client_id,
-      client_secret: canvaOAuthState.client_secret,
       expires_at: Date.now() + (tokens.expires_in || 14400) * 1000,
     });
 
     canvaOAuthState = null;
+    canvaBrandKitsCache = null;
     console.log("[CANVA] OAuth connected successfully");
     res.send('<html><body style="background:#000;color:#fff;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h1 style="color:#7C3AED">Canva Connected</h1><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script></div></body></html>');
   } catch (e) {
@@ -4605,15 +4629,20 @@ async function getCanvaAccessToken() {
 
   // Refresh
   if (!data.refresh_token) return null;
+  const clientId = process.env.CANVA_CLIENT_ID;
+  const clientSecret = process.env.CANVA_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
   try {
-    const res = await fetch(`${CANVA_MCP_BASE}/token`, {
+    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const res = await fetch(CANVA_TOKEN_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Authorization": `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
       body: new URLSearchParams({
         grant_type: "refresh_token",
         refresh_token: data.refresh_token,
-        client_id: data.client_id,
-        client_secret: data.client_secret,
       }),
     });
     if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
@@ -4630,10 +4659,16 @@ async function getCanvaAccessToken() {
   }
 }
 
-// Status endpoint
-app.get("/canva/status", async (_req, res) => {
-  const token = await getCanvaAccessToken();
-  res.json({ connected: !!token });
+// Status endpoint — returns config + connection state + the callback URI
+// the customer needs to paste in their Canva developer dashboard.
+app.get("/canva/status", async (req, res) => {
+  const configured = !!(process.env.CANVA_CLIENT_ID && process.env.CANVA_CLIENT_SECRET);
+  const token = configured ? await getCanvaAccessToken() : null;
+  res.json({
+    configured,
+    connected: !!token,
+    callback_uri: canvaCallbackUri(req),
+  });
 });
 
 app.post("/canva/disconnect", async (_req, res) => {
@@ -4647,9 +4682,9 @@ app.post("/canva/disconnect", async (_req, res) => {
   }
 });
 
-// List brand kits available on the connected Canva account.
-// Returns { kits: [{id, name}] }, or { kits: [] } when not connected / on error.
-let canvaBrandKitsCache = null; // { at, kits }
+// List brand templates from the connected Canva account.
+// Surfaced as "brand kits" in the UI. Returns { kits: [{id, name}] },
+// or { kits: [] } when not connected / on error.
 app.get("/canva/brand-kits", async (_req, res) => {
   const token = await getCanvaAccessToken();
   if (!token) return res.json({ kits: [] });
@@ -4657,49 +4692,20 @@ app.get("/canva/brand-kits", async (_req, res) => {
     return res.json({ kits: canvaBrandKitsCache.kits });
   }
   try {
-    const r = await fetch(`${CANVA_MCP_BASE}/mcp`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: "list-brand-kits", arguments: {} },
-      }),
+    const r = await fetch(`${CANVA_API_BASE}/brand-templates`, {
+      headers: { "Authorization": `Bearer ${token}` },
     });
-    if (!r.ok) throw new Error(`MCP ${r.status}`);
-    const text = await r.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch {
-      const m = text.match(/^data:\s*(.+)$/m);
-      if (!m) throw new Error("Unparseable MCP response");
-      data = JSON.parse(m[1]);
-    }
-    const content = data?.result?.content || [];
-    const kits = [];
-    for (const block of content) {
-      if (block.type !== "text" || !block.text) continue;
-      try {
-        const parsed = JSON.parse(block.text);
-        const arr = Array.isArray(parsed) ? parsed
-          : Array.isArray(parsed.brand_kits) ? parsed.brand_kits
-          : Array.isArray(parsed.items) ? parsed.items
-          : Array.isArray(parsed.results) ? parsed.results
-          : [];
-        for (const k of arr) {
-          if (k && k.id) kits.push({ id: k.id, name: k.name || k.title || k.id });
-        }
-      } catch {}
-    }
+    if (!r.ok) throw new Error(`brand-templates ${r.status}`);
+    const data = await r.json();
+    const items = data?.items || data?.brand_templates || [];
+    const kits = items.map(t => ({
+      id: t.id,
+      name: t.title || t.name || t.id,
+    }));
     canvaBrandKitsCache = { at: Date.now(), kits };
     res.json({ kits });
   } catch (e) {
-    console.error("[CANVA] list-brand-kits failed:", e.message);
+    console.error("[CANVA] brand-templates failed:", e.message);
     res.json({ kits: [] });
   }
 });
