@@ -466,80 +466,199 @@ document.getElementById('design-desc').addEventListener('input', syncStyleTags);
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escapeAttr(s) { return escapeHtml(s); }
 
-// ── STYLE TAG EDITOR MODAL ──
+// ── STYLE TAG EDITOR MODAL (structured per-category editor) ──
+let editorState = null;
+let editorModal = null;
+
 function openStyleTagEditor() {
-  const cats = styleTagsCache.categories || [];
-  const text = cats.map(cat => {
-    const lines = cat.tags.map(t => t.name === t.kw ? t.name : `${t.name} | ${t.kw}`);
-    return `# ${cat.label}\n${lines.join('\n')}`;
-  }).join('\n\n');
-  const modal = document.createElement('div');
-  modal.id = 'style-tag-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = `
-    <div style="background:var(--bg-panel,#0a0a0a);border:1px solid var(--border,#222);border-radius:12px;padding:24px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;gap:14px;font-family:var(--font-body,Inter)">
-      <div style="font-family:var(--font-display,Inter);font-size:16px;font-weight:600;color:var(--text,#fff)">Edit Style Tags</div>
-      <div style="font-size:12px;color:var(--text-dim,#888);line-height:1.5">
-        One tag per line. Use <code>#</code> to start a new category.<br>
-        Optional: write <code>display name | keyword</code> to use a different keyword in the prompt.
+  // Deep-clone the current cache so cancel doesn't affect anything
+  editorState = {
+    categories: (styleTagsCache.categories || []).map(c => ({
+      label: c.label,
+      tags: (c.tags || []).map(t => ({ name: t.name, kw: t.kw })),
+    })),
+  };
+  if (editorModal) editorModal.remove();
+  editorModal = document.createElement('div');
+  editorModal.id = 'style-tag-modal';
+  editorModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  editorModal.innerHTML = `
+    <div style="background:hsl(0,0%,5%);border:1px solid hsl(217,32%,20%);border-radius:12px;padding:24px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;gap:14px;font-family:Inter,sans-serif;color:hsl(210,40%,98%)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="font-size:16px;font-weight:600">Manage Style Tags</div>
+        <button type="button" id="style-tag-close" style="background:transparent;border:none;color:hsl(215,20%,65%);font-size:20px;cursor:pointer;line-height:1;padding:0 4px" aria-label="Close">×</button>
       </div>
-      <textarea id="style-tag-textarea" style="flex:1;min-height:280px;background:var(--bg-input,#0a0a0a);border:1px solid var(--border,#222);border-radius:8px;padding:12px;color:var(--text,#fff);font-family:var(--font-data,monospace);font-size:12px;resize:vertical;line-height:1.6">${escapeHtml(text)}</textarea>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button type="button" id="style-tag-cancel" style="background:transparent;border:1px solid var(--border,#222);color:var(--text-dim,#888);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Cancel</button>
-        <button type="button" id="style-tag-reset" style="background:transparent;border:1px solid var(--border,#222);color:var(--text-dim,#888);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Reset to defaults</button>
-        <button type="button" id="style-tag-save" style="background:hsl(264,65%,49%);border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500">Save</button>
+      <div style="font-size:12px;color:hsl(215,20%,65%);line-height:1.5">
+        Click a tag's name to rename it. The keyword is what gets injected into the prompt (defaults to the name when empty).
+      </div>
+      <div id="style-tag-editor-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid hsl(217,32%,20%)">
+        <button type="button" id="style-tag-add-cat" style="background:transparent;border:1px dashed hsl(217,32%,30%);color:hsl(210,40%,90%);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px">+ Add category</button>
+        <div style="display:flex;gap:8px">
+          <button type="button" id="style-tag-reset" style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Reset to defaults</button>
+          <button type="button" id="style-tag-cancel" style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Cancel</button>
+          <button type="button" id="style-tag-save" style="background:hsl(264,65%,49%);border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500">Save</button>
+        </div>
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
-  modal.querySelector('#style-tag-cancel').onclick = () => modal.remove();
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-  modal.querySelector('#style-tag-reset').onclick = async () => {
+  document.body.appendChild(editorModal);
+
+  editorModal.querySelector('#style-tag-close').onclick = closeEditor;
+  editorModal.querySelector('#style-tag-cancel').onclick = closeEditor;
+  editorModal.onclick = (e) => { if (e.target === editorModal) closeEditor(); };
+  editorModal.querySelector('#style-tag-add-cat').onclick = () => {
+    editorState.categories.push({ label: 'New Category', tags: [] });
+    renderEditor();
+    // Focus the new category label input
+    setTimeout(() => {
+      const inputs = editorModal.querySelectorAll('input.cat-label');
+      const last = inputs[inputs.length - 1];
+      if (last) { last.focus(); last.select(); }
+    }, 10);
+  };
+  editorModal.querySelector('#style-tag-reset').onclick = async () => {
     if (!confirm('Reset all tags to the default set? Your custom tags will be lost.')) return;
-    await fetch('/style-tags', {
+    const res = await fetch('/style-tags', {
       method: 'PUT', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ categories: [] }),
     });
-    modal.remove();
+    if (!res.ok) { alert('Reset failed'); return; }
+    closeEditor();
     await loadStyleTags();
   };
-  modal.querySelector('#style-tag-save').onclick = async () => {
-    const raw = modal.querySelector('#style-tag-textarea').value;
-    const parsed = parseStyleTagsText(raw);
+  editorModal.querySelector('#style-tag-save').onclick = async () => {
+    const cleaned = {
+      categories: editorState.categories
+        .map(c => ({
+          label: (c.label || '').trim() || 'Tags',
+          tags: c.tags
+            .map(t => ({ name: (t.name || '').trim(), kw: (t.kw || '').trim() || (t.name || '').trim() }))
+            .filter(t => t.name),
+        }))
+        .filter(c => c.tags.length > 0),
+    };
     const res = await fetch('/style-tags', {
       method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(parsed),
+      body: JSON.stringify(cleaned),
     });
     if (!res.ok) { alert('Save failed'); return; }
-    modal.remove();
+    closeEditor();
     await loadStyleTags();
   };
+
+  renderEditor();
 }
 
-function parseStyleTagsText(text) {
-  const cats = [];
-  let current = null;
-  text.split('\n').forEach(line => {
-    const t = line.trim();
-    if (!t) return;
-    if (t.startsWith('#')) {
-      const label = t.replace(/^#+\s*/, '').trim();
-      if (label) {
-        current = { label, tags: [] };
-        cats.push(current);
-      }
-      return;
-    }
-    if (!current) {
-      current = { label: 'Tags', tags: [] };
-      cats.push(current);
-    }
-    const parts = t.split('|').map(s => s.trim());
-    const name = parts[0];
-    const kw = parts[1] || parts[0];
-    if (name) current.tags.push({ name, kw });
+function closeEditor() {
+  if (editorModal) { editorModal.remove(); editorModal = null; }
+  editorState = null;
+}
+
+function renderEditor() {
+  const body = editorModal.querySelector('#style-tag-editor-body');
+  if (!editorState.categories.length) {
+    body.innerHTML = '<div style="color:hsl(215,20%,65%);font-size:13px;text-align:center;padding:20px">No categories yet. Click "+ Add category" to start.</div>';
+    return;
+  }
+  body.innerHTML = editorState.categories.map((cat, ci) => `
+    <div style="border:1px solid hsl(217,32%,20%);border-radius:10px;padding:14px;background:hsl(0,0%,3%)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <input type="text" class="cat-label" data-ci="${ci}" value="${escapeAttr(cat.label)}" placeholder="Category name"
+          style="flex:1;background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:7px 10px;color:hsl(210,40%,98%);font-size:13px;font-weight:500;font-family:Inter,sans-serif">
+        <button type="button" class="cat-up" data-ci="${ci}" ${ci === 0 ? 'disabled' : ''}
+          style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:5px 9px;border-radius:6px;cursor:${ci === 0 ? 'not-allowed' : 'pointer'};font-size:11px;opacity:${ci === 0 ? '0.4' : '1'}">↑</button>
+        <button type="button" class="cat-down" data-ci="${ci}" ${ci === editorState.categories.length - 1 ? 'disabled' : ''}
+          style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:5px 9px;border-radius:6px;cursor:${ci === editorState.categories.length - 1 ? 'not-allowed' : 'pointer'};font-size:11px;opacity:${ci === editorState.categories.length - 1 ? '0.4' : '1'}">↓</button>
+        <button type="button" class="cat-del" data-ci="${ci}"
+          style="background:transparent;border:1px solid hsl(0,72%,30%);color:hsl(0,72%,65%);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px">Delete</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;font-size:10px;color:hsl(215,20%,55%);letter-spacing:0.05em;padding:0 2px;text-transform:uppercase">
+          <div>Name</div><div>Keyword (sent to AI)</div><div></div>
+        </div>
+        ${cat.tags.map((tag, ti) => `
+          <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center">
+            <input type="text" class="tag-name" data-ci="${ci}" data-ti="${ti}" value="${escapeAttr(tag.name)}" placeholder="display name"
+              style="background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:6px 9px;color:hsl(210,40%,98%);font-size:12px;font-family:Inter,sans-serif">
+            <input type="text" class="tag-kw" data-ci="${ci}" data-ti="${ti}" value="${escapeAttr(tag.kw)}" placeholder="(same as name)"
+              style="background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:6px 9px;color:hsl(210,40%,98%);font-size:12px;font-family:Inter,sans-serif">
+            <button type="button" class="tag-del" data-ci="${ci}" data-ti="${ti}"
+              style="background:transparent;border:1px solid hsl(0,72%,30%);color:hsl(0,72%,65%);padding:5px 0;border-radius:6px;cursor:pointer;font-size:14px;line-height:1" title="Delete tag">×</button>
+          </div>
+        `).join('')}
+        <button type="button" class="tag-add" data-ci="${ci}"
+          style="margin-top:4px;align-self:flex-start;background:transparent;border:1px dashed hsl(217,32%,25%);color:hsl(210,40%,90%);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px">+ Add tag</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Attach handlers
+  body.querySelectorAll('input.cat-label').forEach(el => {
+    el.addEventListener('input', e => {
+      editorState.categories[+e.target.dataset.ci].label = e.target.value;
+    });
   });
-  return { categories: cats };
+  body.querySelectorAll('input.tag-name').forEach(el => {
+    el.addEventListener('input', e => {
+      editorState.categories[+e.target.dataset.ci].tags[+e.target.dataset.ti].name = e.target.value;
+    });
+  });
+  body.querySelectorAll('input.tag-kw').forEach(el => {
+    el.addEventListener('input', e => {
+      editorState.categories[+e.target.dataset.ci].tags[+e.target.dataset.ti].kw = e.target.value;
+    });
+  });
+  body.querySelectorAll('.cat-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.ci;
+      const cat = editorState.categories[ci];
+      if (cat.tags.length && !confirm(`Delete category "${cat.label}" and its ${cat.tags.length} tag(s)?`)) return;
+      editorState.categories.splice(ci, 1);
+      renderEditor();
+    });
+  });
+  body.querySelectorAll('.cat-up').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.ci;
+      if (ci > 0) {
+        const cats = editorState.categories;
+        [cats[ci - 1], cats[ci]] = [cats[ci], cats[ci - 1]];
+        renderEditor();
+      }
+    });
+  });
+  body.querySelectorAll('.cat-down').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.ci;
+      const cats = editorState.categories;
+      if (ci < cats.length - 1) {
+        [cats[ci + 1], cats[ci]] = [cats[ci], cats[ci + 1]];
+        renderEditor();
+      }
+    });
+  });
+  body.querySelectorAll('.tag-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.ci;
+      const ti = +btn.dataset.ti;
+      editorState.categories[ci].tags.splice(ti, 1);
+      renderEditor();
+    });
+  });
+  body.querySelectorAll('.tag-add').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ci = +btn.dataset.ci;
+      editorState.categories[ci].tags.push({ name: '', kw: '' });
+      renderEditor();
+      // Focus the newly added tag's name input
+      setTimeout(() => {
+        const inputs = body.querySelectorAll(`input.tag-name[data-ci="${ci}"]`);
+        const last = inputs[inputs.length - 1];
+        if (last) last.focus();
+      }, 10);
+    });
+  });
 }
 
 document.getElementById('edit-style-tags-btn').addEventListener('click', openStyleTagEditor);
