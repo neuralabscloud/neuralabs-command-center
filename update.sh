@@ -130,6 +130,28 @@ if ! command -v infsh &>/dev/null; then
   fi
 fi
 
+# ── IMAGEMAGICK (backfill for older installs) ──
+if ! command -v convert &>/dev/null; then
+  info "Installing ImageMagick (needed for Designer logo overlay)..."
+  apt-get install -y -q imagemagick 2>&1 || warn "Failed to install ImageMagick — Designer logo overlay will be skipped until installed."
+fi
+
+# ── PRUNE OBSOLETE CRON ENTRIES (older installs) ──
+# Earlier versions installed a daily-research-trigger.sh cron and a research-agent.py cron.
+# Both are now redundant: schedules are managed in-app via Agents to Schedules.
+if command -v crontab &>/dev/null; then
+  CURRENT_CRON=$(crontab -l 2>/dev/null || true)
+  if echo "$CURRENT_CRON" | grep -qE 'daily-research-trigger\.sh|research-agent\.py'; then
+    info "Removing obsolete cron entries (daily-research-trigger / research-agent)..."
+    echo "$CURRENT_CRON" \
+      | grep -vE 'daily-research-trigger\.sh|research-agent\.py' \
+      | grep -vE '^# (Daily task trigger|Research agent)' \
+      | crontab -
+    rm -f "$INSTALL_DIR/command-center/daily-research-trigger.sh"
+    ok "Obsolete cron entries removed"
+  fi
+fi
+
 # ── REGENERATE CONFIGS ──────────────────────────
 if [ -x "$INSTALL_DIR/config/generate-configs.sh" ]; then
   info "Regenerating configs..."

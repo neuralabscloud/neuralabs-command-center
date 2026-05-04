@@ -1,8 +1,8 @@
-# Command Center — Daily automation tasks
+# Command Center — Cron jobs
 # Installed by install.sh — edit with: crontab -e
-
-# Daily task trigger — 07:00 UTC
-0 7 * * * {{INSTALL_DIR}}/command-center/daily-research-trigger.sh >> {{INSTALL_DIR}}/command-center/data/cron.log 2>&1
-
-# Research agent — 07:05 UTC (processes research tasks via Claude API)
-5 7 * * * {{INSTALL_DIR}}/venv/bin/python {{INSTALL_DIR}}/command-center/research-agent.py >> {{INSTALL_DIR}}/command-center/data/research-agent.log 2>&1
+#
+# By default no cron entries are needed: schedules are managed in-app via
+# Agents to Schedules in the UI (data/scheduled-tasks.json), processed by
+# the built-in scheduler in api-server.js (60s tick).
+#
+# Add custom cron entries below if needed.

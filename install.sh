@@ -166,6 +166,13 @@ if ! command -v rsync &>/dev/null; then
 fi
 ok "rsync installed"
 
+# ImageMagick (used by Designer agent to composite the brand logo onto generated images)
+if ! command -v convert &>/dev/null; then
+  info "Installing ImageMagick..."
+  apt-get install -y -q imagemagick || warn "Failed to install ImageMagick — Designer logo overlay will be skipped until installed."
+fi
+ok "ImageMagick installed"
+
 # Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
 if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1; then
@@ -300,12 +307,15 @@ systemctl start command-center 2>/dev/null || warn "Failed to start command-cent
 ok "Command Center service started"
 
 # ── INSTALL CRON JOBS ───────────────────────────────────
+# Default: no cron entries (schedules are managed in-app via Agents to Schedules).
+# Only install crontab if the template has non-comment, non-blank lines.
 if [ -f "$INSTALL_DIR/config/cron/crontab.tpl" ]; then
-  info "Installing cron jobs..."
-  chmod +x "$INSTALL_DIR/command-center/daily-research-trigger.sh" 2>/dev/null || true
   CRON_CONTENT=$(sed "s|{{INSTALL_DIR}}|${INSTALL_DIR}|g" "$INSTALL_DIR/config/cron/crontab.tpl")
-  (crontab -l 2>/dev/null || true; echo "$CRON_CONTENT") | crontab -
-  ok "Cron jobs installed"
+  if echo "$CRON_CONTENT" | grep -qE '^[^#[:space:]]'; then
+    info "Installing cron jobs..."
+    (crontab -l 2>/dev/null || true; echo "$CRON_CONTENT") | crontab -
+    ok "Cron jobs installed"
+  fi
 fi
 
 # ── OPEN FIREWALL ────────────────────────────────────────

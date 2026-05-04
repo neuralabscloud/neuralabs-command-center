@@ -426,6 +426,87 @@ function migrateSocialToCommunity() {
 }
 migrateSocialToCommunity();
 
+// ── DESIGNER STYLE TAGS (customer-editable) ──
+const STYLE_TAGS_FILE = path.join(__dirname, "data", "style-tags.json");
+const DEFAULT_STYLE_TAGS = {
+  categories: [
+    {
+      label: "Style",
+      tags: [
+        { name: "photorealistic", kw: "photorealistic" },
+        { name: "cinematic", kw: "cinematic" },
+        { name: "3D render", kw: "3D render" },
+        { name: "digital art", kw: "digital art" },
+        { name: "illustration", kw: "illustration" },
+      ],
+    },
+    {
+      label: "Mood",
+      tags: [
+        { name: "vibrant", kw: "vibrant" },
+        { name: "dark moody", kw: "dark moody" },
+        { name: "futuristic", kw: "futuristic" },
+        { name: "minimal clean", kw: "minimal clean" },
+        { name: "retro", kw: "retro vintage" },
+      ],
+    },
+    {
+      label: "Theme",
+      tags: [
+        { name: "abstract", kw: "abstract geometric" },
+        { name: "nature", kw: "nature organic" },
+        { name: "urban", kw: "urban city" },
+        { name: "technology", kw: "technology tech" },
+        { name: "lifestyle", kw: "lifestyle people" },
+      ],
+    },
+    {
+      label: "Lighting",
+      tags: [
+        { name: "dramatic", kw: "dramatic lighting" },
+        { name: "golden hour", kw: "golden hour" },
+        { name: "studio", kw: "studio lighting" },
+        { name: "natural", kw: "natural light" },
+        { name: "neon", kw: "neon glow" },
+      ],
+    },
+  ],
+};
+
+function readStyleTags() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(STYLE_TAGS_FILE, "utf8"));
+    if (raw && Array.isArray(raw.categories)) return raw;
+  } catch {}
+  return DEFAULT_STYLE_TAGS;
+}
+
+function writeStyleTags(data) {
+  fs.writeFileSync(STYLE_TAGS_FILE, JSON.stringify(data, null, 2));
+}
+
+app.get("/style-tags", (_req, res) => res.json(readStyleTags()));
+
+app.put("/style-tags", (req, res) => {
+  const body = req.body || {};
+  if (!Array.isArray(body.categories)) {
+    return res.status(400).json({ error: "Body must contain a 'categories' array" });
+  }
+  const cleaned = {
+    categories: body.categories.map(cat => ({
+      label: String(cat.label || "").trim().slice(0, 40) || "Tags",
+      tags: Array.isArray(cat.tags)
+        ? cat.tags.map(t => ({
+            name: String(t.name || "").trim().slice(0, 40),
+            kw: String(t.kw || t.name || "").trim().slice(0, 80),
+          })).filter(t => t.name && t.kw)
+        : [],
+    })).filter(c => c.tags.length > 0),
+  };
+  writeStyleTags(cleaned);
+  res.json(cleaned);
+});
+
 // ── DESIGNER TASKS ────────────────────────────
 app.get("/designer/tasks", (_req, res) => res.json(readTaskFile("designer-tasks.json")));
 

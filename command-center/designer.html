@@ -239,32 +239,11 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <label class="form-label">Reference Image <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana as style/content reference)</span></label>
             <input type="file" id="design-ref-image" accept="image/*" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
           </div>
-          <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px" id="style-hints">
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center">STIJL</span>
-            <span class="style-tag" data-kw="photorealistic">photorealistic</span>
-            <span class="style-tag" data-kw="cinematic">cinematic</span>
-            <span class="style-tag" data-kw="3D render">3D render</span>
-            <span class="style-tag" data-kw="digital art">digital art</span>
-            <span class="style-tag" data-kw="illustration">illustration</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);margin:0 2px;align-self:center">|</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center">SFEER</span>
-            <span class="style-tag" data-kw="cyberpunk">cyberpunk</span>
-            <span class="style-tag" data-kw="dark moody">dark moody</span>
-            <span class="style-tag" data-kw="neon glow">neon glow</span>
-            <span class="style-tag" data-kw="futuristic">futuristic</span>
-            <span class="style-tag" data-kw="minimal clean">minimal clean</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);margin:0 2px;align-self:center">|</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center">THEMA</span>
-            <span class="style-tag" data-kw="blockchain crypto">blockchain</span>
-            <span class="style-tag" data-kw="trading finance">finance</span>
-            <span class="style-tag" data-kw="data dashboard">dashboard</span>
-            <span class="style-tag" data-kw="abstract geometric">abstract</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);margin:0 2px;align-self:center">|</span>
-            <span style="font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center">LICHT</span>
-            <span class="style-tag" data-kw="dramatic lighting">dramatic</span>
-            <span class="style-tag" data-kw="golden hour">golden hour</span>
-            <span class="style-tag" data-kw="studio lighting">studio</span>
-            <span class="style-tag" data-kw="volumetric light">volumetric</span>
+          <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; align-items: center" id="style-hints">
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">Loading tags...</span>
+          </div>
+          <div style="grid-column: 1 / -1; margin-top: -6px; text-align: right">
+            <button type="button" id="edit-style-tags-btn" style="background:transparent;border:none;color:var(--text-dim);font-family:var(--font-data);font-size:10px;letter-spacing:0.05em;cursor:pointer;text-decoration:underline">Edit tags</button>
           </div>
         </div>
         <div class="form-actions">
@@ -413,46 +392,158 @@ async function deleteTask(id) {
   loadTasks();
 }
 
-// ── STYLE TAG CLICKS ──
-document.querySelectorAll('.style-tag').forEach(tag => {
-  tag.addEventListener('click', () => {
-    const kw = tag.dataset.kw;
-    const ta = document.getElementById('design-desc');
-    const styleRe = /^stijl\s*:\s*([^\n]*)/i;
-    const match = ta.value.match(styleRe);
+// ── STYLE TAGS (loaded from /style-tags, customer-editable) ──
+const STYLE_PREFIX_RE = /^style\s*:\s*([^\n]*)/i;
+let styleTagsCache = { categories: [] };
 
-    if (match) {
-      const keywords = match[1].trim().split(/\s+/);
-      const idx = keywords.indexOf(kw);
-      if (idx >= 0) {
-        keywords.splice(idx, 1);
-        tag.classList.remove('active');
-      } else {
-        keywords.push(kw);
-        tag.classList.add('active');
-      }
-      if (keywords.length === 0) {
-        ta.value = ta.value.replace(styleRe, '').replace(/^\n+/, '');
-      } else {
-        ta.value = ta.value.replace(styleRe, 'stijl: ' + keywords.join(' '));
-      }
-    } else {
-      ta.value = 'stijl: ' + kw + '\n' + ta.value;
-      tag.classList.add('active');
-    }
-    syncStyleTags();
+async function loadStyleTags() {
+  const container = document.getElementById('style-hints');
+  try {
+    const res = await fetch('/style-tags');
+    if (!res.ok) throw new Error(res.status);
+    styleTagsCache = await res.json();
+  } catch {
+    styleTagsCache = { categories: [] };
+  }
+  renderStyleTags();
+}
+
+function renderStyleTags() {
+  const container = document.getElementById('style-hints');
+  const cats = (styleTagsCache.categories || []).filter(c => c.tags && c.tags.length);
+  if (!cats.length) {
+    container.innerHTML = '<span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">No style tags yet. Click "Edit tags" to add some.</span>';
+    return;
+  }
+  const labelStyle = 'font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center';
+  const sepStyle = 'font-family:var(--font-data);font-size:9px;color:var(--text-dim);margin:0 2px;align-self:center';
+  const parts = [];
+  cats.forEach((cat, i) => {
+    if (i > 0) parts.push(`<span style="${sepStyle}">|</span>`);
+    parts.push(`<span style="${labelStyle}">${escapeHtml(cat.label.toUpperCase())}</span>`);
+    cat.tags.forEach(tag => {
+      parts.push(`<span class="style-tag" data-kw="${escapeAttr(tag.kw)}">${escapeHtml(tag.name)}</span>`);
+    });
   });
-});
+  container.innerHTML = parts.join('');
+  attachStyleTagHandlers();
+  syncStyleTags();
+}
+
+function attachStyleTagHandlers() {
+  document.querySelectorAll('#style-hints .style-tag').forEach(tag => {
+    tag.addEventListener('click', () => {
+      const kw = tag.dataset.kw;
+      const ta = document.getElementById('design-desc');
+      const match = ta.value.match(STYLE_PREFIX_RE);
+      if (match) {
+        const keywords = match[1].trim().split(/\s+/).filter(Boolean);
+        const idx = keywords.indexOf(kw);
+        if (idx >= 0) keywords.splice(idx, 1); else keywords.push(kw);
+        if (keywords.length === 0) {
+          ta.value = ta.value.replace(STYLE_PREFIX_RE, '').replace(/^\n+/, '');
+        } else {
+          ta.value = ta.value.replace(STYLE_PREFIX_RE, 'style: ' + keywords.join(' '));
+        }
+      } else {
+        ta.value = 'style: ' + kw + (ta.value ? '\n' + ta.value : '');
+      }
+      syncStyleTags();
+    });
+  });
+}
 
 function syncStyleTags() {
   const ta = document.getElementById('design-desc');
-  const match = ta.value.match(/^stijl\s*:\s*([^\n]*)/i);
-  const active = match ? match[1].trim().split(/\s+/) : [];
-  document.querySelectorAll('.style-tag').forEach(t => {
+  const match = ta.value.match(STYLE_PREFIX_RE);
+  const active = match ? match[1].trim().split(/\s+/).filter(Boolean) : [];
+  document.querySelectorAll('#style-hints .style-tag').forEach(t => {
     t.classList.toggle('active', active.includes(t.dataset.kw));
   });
 }
 document.getElementById('design-desc').addEventListener('input', syncStyleTags);
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+// ── STYLE TAG EDITOR MODAL ──
+function openStyleTagEditor() {
+  const cats = styleTagsCache.categories || [];
+  const text = cats.map(cat => {
+    const lines = cat.tags.map(t => t.name === t.kw ? t.name : `${t.name} | ${t.kw}`);
+    return `# ${cat.label}\n${lines.join('\n')}`;
+  }).join('\n\n');
+  const modal = document.createElement('div');
+  modal.id = 'style-tag-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--bg-panel,#0a0a0a);border:1px solid var(--border,#222);border-radius:12px;padding:24px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;gap:14px;font-family:var(--font-body,Inter)">
+      <div style="font-family:var(--font-display,Inter);font-size:16px;font-weight:600;color:var(--text,#fff)">Edit Style Tags</div>
+      <div style="font-size:12px;color:var(--text-dim,#888);line-height:1.5">
+        One tag per line. Use <code>#</code> to start a new category.<br>
+        Optional: write <code>display name | keyword</code> to use a different keyword in the prompt.
+      </div>
+      <textarea id="style-tag-textarea" style="flex:1;min-height:280px;background:var(--bg-input,#0a0a0a);border:1px solid var(--border,#222);border-radius:8px;padding:12px;color:var(--text,#fff);font-family:var(--font-data,monospace);font-size:12px;resize:vertical;line-height:1.6">${escapeHtml(text)}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" id="style-tag-cancel" style="background:transparent;border:1px solid var(--border,#222);color:var(--text-dim,#888);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Cancel</button>
+        <button type="button" id="style-tag-reset" style="background:transparent;border:1px solid var(--border,#222);color:var(--text-dim,#888);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Reset to defaults</button>
+        <button type="button" id="style-tag-save" style="background:hsl(264,65%,49%);border:none;color:#fff;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#style-tag-cancel').onclick = () => modal.remove();
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.querySelector('#style-tag-reset').onclick = async () => {
+    if (!confirm('Reset all tags to the default set? Your custom tags will be lost.')) return;
+    await fetch('/style-tags', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ categories: [] }),
+    });
+    modal.remove();
+    await loadStyleTags();
+  };
+  modal.querySelector('#style-tag-save').onclick = async () => {
+    const raw = modal.querySelector('#style-tag-textarea').value;
+    const parsed = parseStyleTagsText(raw);
+    const res = await fetch('/style-tags', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(parsed),
+    });
+    if (!res.ok) { alert('Save failed'); return; }
+    modal.remove();
+    await loadStyleTags();
+  };
+}
+
+function parseStyleTagsText(text) {
+  const cats = [];
+  let current = null;
+  text.split('\n').forEach(line => {
+    const t = line.trim();
+    if (!t) return;
+    if (t.startsWith('#')) {
+      const label = t.replace(/^#+\s*/, '').trim();
+      if (label) {
+        current = { label, tags: [] };
+        cats.push(current);
+      }
+      return;
+    }
+    if (!current) {
+      current = { label: 'Tags', tags: [] };
+      cats.push(current);
+    }
+    const parts = t.split('|').map(s => s.trim());
+    const name = parts[0];
+    const kw = parts[1] || parts[0];
+    if (name) current.tags.push({ name, kw });
+  });
+  return { categories: cats };
+}
+
+document.getElementById('edit-style-tags-btn').addEventListener('click', openStyleTagEditor);
+loadStyleTags();
 
 // Populate brand dropdown from /brands
 async function loadBrandOptions() {
