@@ -197,8 +197,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <label class="form-label">Brand Kit</label>
             <select class="form-select" id="design-brandkit">
               <option value="">None</option>
-              <option value="kAGQjjhCoiw">Monflo Old Brand</option>
-              <option value="kAG6g8zoTWs">Monflo New Branding</option>
             </select>
           </div>
           <div class="form-field">
@@ -470,6 +468,21 @@ async function loadBrandOptions() {
   } catch {}
 }
 loadBrandOptions();
+
+// Populate brand kit dropdown from connected Canva (empty if not connected)
+async function loadBrandKitOptions() {
+  try {
+    const res = await fetch('/canva/brand-kits');
+    if (!res.ok) return;
+    const data = await res.json();
+    const kits = Array.isArray(data.kits) ? data.kits : [];
+    const sel = document.getElementById('design-brandkit');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">None</option>' + kits.map(k => `<option value="${k.id}">${k.name || k.id}</option>`).join('');
+    if (current && kits.some(k => k.id === current)) sel.value = current;
+  } catch {}
+}
+loadBrandKitOptions();
 
 // Load tasks and poll every 10 seconds
 loadTasks();
