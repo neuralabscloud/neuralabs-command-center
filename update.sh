@@ -120,6 +120,16 @@ cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit 
 npm audit fix --no-fund 2>&1 || true
 ok "Dependencies updated"
 
+# ── INFERENCE.SH CLI (backfill for older installs) ──
+if ! command -v infsh &>/dev/null; then
+  info "Installing Inference.sh CLI..."
+  if timeout 90 sh -c "curl -fsSL https://cli.inference.sh | sh" 2>&1; then
+    ok "Inference.sh CLI installed"
+  else
+    warn "Inference.sh CLI install failed — Designer (Nano Banana) will not work until installed: curl -fsSL https://cli.inference.sh | sh"
+  fi
+fi
+
 # ── REGENERATE CONFIGS ──────────────────────────
 if [ -x "$INSTALL_DIR/config/generate-configs.sh" ]; then
   info "Regenerating configs..."

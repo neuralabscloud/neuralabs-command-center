@@ -174,12 +174,18 @@ else
   warn "Claude Code install timed out or failed — install later with: npm install -g @anthropic-ai/claude-code"
 fi
 
-# Inference.sh SDK (optional — timeout after 60s)
-info "Installing Inference.sh SDK..."
-if timeout 60 npm install -g --engine-strict=false @inferencesh/sdk 2>&1; then
-  ok "Inference.sh SDK installed"
+# Inference.sh CLI — required by Designer (Nano Banana) and AI Video agents.
+# The official one-liner downloads a static binary to /usr/local/bin/inferencesh
+# (with `infsh` and `belt` symlinks). Non-fatal: customers can install later.
+info "Installing Inference.sh CLI..."
+if ! command -v infsh &>/dev/null; then
+  if timeout 90 sh -c "curl -fsSL https://cli.inference.sh | sh" 2>&1; then
+    ok "Inference.sh CLI installed ($(infsh 2>&1 | head -1 | tr -d '\033' | sed 's/\[[0-9;]*m//g' || echo 'installed'))"
+  else
+    warn "Inference.sh CLI install failed — install later with: curl -fsSL https://cli.inference.sh | sh"
+  fi
 else
-  warn "Inference.sh SDK install timed out or failed — install later with: npm install -g @inferencesh/sdk"
+  ok "Inference.sh CLI already installed"
 fi
 
 info "Setting up Python virtualenv for research-agent.py..."

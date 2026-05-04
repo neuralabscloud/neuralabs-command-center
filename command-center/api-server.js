@@ -187,6 +187,22 @@ function writeEnvFile(updates) {
   if (touched.some(k => k === "TELEGRAM_BOT_TOKEN" || k === "TELEGRAM_CHAT_ID")) {
     try { refreshTelegramEnv(); } catch {}
   }
+  // Mirror the Inference.sh API key into the infsh CLI config so the binary
+  // can authenticate without an interactive `infsh login`. The CLI reads
+  // ~/.inferencesh/config.json and the format is just { "api_key": "..." }.
+  if (updates.INFERENCE_API_KEY) {
+    try {
+      const dir = path.join(process.env.HOME || "/root", ".inferencesh");
+      fs.mkdirSync(dir, { recursive: true });
+      const cfgPath = path.join(dir, "config.json");
+      let existing = {};
+      try { existing = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch {}
+      existing.api_key = updates.INFERENCE_API_KEY;
+      fs.writeFileSync(cfgPath, JSON.stringify(existing, null, 2), { mode: 0o600 });
+    } catch (e) {
+      console.warn("[INFSH] Failed to write CLI config:", e.message);
+    }
+  }
 }
 
 function maskKey(val) {
