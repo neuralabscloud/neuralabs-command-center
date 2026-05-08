@@ -1012,7 +1012,7 @@ body::after {
     </div>
 
     <!-- STRIPE / REVENUE -->
-    <section class="fade-up delay-2">
+    <section class="fade-up delay-2" id="stripe-section" style="display:none;">
       <div class="section-header">Business Revenue <button id="blur-toggle" onclick="toggleBlur()" style="font-family:var(--font-data);font-size:10px;background:none;border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:6px;cursor:pointer;margin-left:8px;transition:all 0.2s;">Hide</button></div>
       <div id="stripe-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;transition:filter 0.3s;"></div>
     </section>
@@ -1405,7 +1405,21 @@ function renderStripeCard(label, value, sub, color) {
   </div>`;
 }
 async function renderStripe() {
+  const section = document.getElementById('stripe-section');
   const grid = document.getElementById('stripe-grid');
+  try {
+    const brandRes = await fetch('/brand', { credentials: 'include' });
+    if (!brandRes.ok) throw new Error('brand fetch failed');
+    const brand = await brandRes.json();
+    if (!brand.features || !brand.features.stripe) {
+      if (section) section.style.display = 'none';
+      return;
+    }
+    if (section) section.style.display = '';
+  } catch (e) {
+    if (section) section.style.display = 'none';
+    return;
+  }
   grid.innerHTML = renderStripeCard('MRR', '—', 'Loading...', 'var(--text-dim)')
     + renderStripeCard('Revenue (MTD)', '—', 'Loading...', 'var(--text-dim)')
     + renderStripeCard('Active Subs', '—', 'Loading...', 'var(--text-dim)')
