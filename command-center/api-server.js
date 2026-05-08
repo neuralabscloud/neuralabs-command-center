@@ -3267,8 +3267,13 @@ app.get("/brand", (_req, res) => {
     heygen: !!process.env.HEYGEN_API_KEY,
     stripe: !!process.env.STRIPE_SECRET_KEY,
     composio: !!process.env.COMPOSIO_API_KEY,
+    youtube: !!process.env.YOUTUBE_API_KEY,
   };
   res.json(brand);
+});
+
+app.get("/youtube-key", (_req, res) => {
+  res.json({ key: process.env.YOUTUBE_API_KEY || null });
 });
 
 function buildSystemPrompt() {

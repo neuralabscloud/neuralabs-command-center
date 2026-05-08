@@ -204,7 +204,15 @@ const loadingRow = (cols, msg) => `<tr><td colspan="${cols}" style="text-align:c
 function decodeHtml(s) { return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"'); }
 
 // ── CONFIG ─────────────────────────────────────
-const YT_KEY = 'REDACTED_YOUTUBE_KEY';
+let YT_KEY = null;
+async function loadYouTubeKey() {
+  try {
+    const res = await fetch('/youtube-key', { credentials: 'include' });
+    if (!res.ok) return;
+    const j = await res.json();
+    YT_KEY = j.key || null;
+  } catch {}
+}
 
 let BRANDS = [];
 
@@ -338,6 +346,10 @@ async function fetchProfileLive(profile, tableId) {
 
 async function fetchYouTubeProfile(handle, tableId) {
   const tbody = document.getElementById(tableId);
+  if (!YT_KEY) {
+    tbody.innerHTML = loadingRow(7, 'YouTube API key not configured');
+    return {};
+  }
   try {
     const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&forHandle=${handle}&key=${YT_KEY}`);
     if (!chRes.ok) throw new Error(chRes.status === 403 ? 'API quota exceeded' : 'API error');
@@ -485,6 +497,7 @@ function updateSummary() {
 
 // ── INIT ──────────────────────────────────────
 (async function init() {
+  await loadYouTubeKey();
   await loadBrandsFromConnections();
 
   if (BRANDS.length === 0) {

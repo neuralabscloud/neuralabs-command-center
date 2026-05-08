@@ -1087,7 +1087,15 @@ function fmtNum(n) {
 }
 
 // ── CONFIG ─────────────────────────────────────
-const YT_KEY = 'REDACTED_YOUTUBE_KEY';
+let YT_KEY = null;
+async function loadYouTubeKey() {
+  try {
+    const res = await fetch('/youtube-key', { credentials: 'include' });
+    if (!res.ok) return;
+    const j = await res.json();
+    YT_KEY = j.key || null;
+  } catch {}
+}
 
 // ── BRANDS CONFIG (dynamic — built from /social/connections) ─────
 let BRANDS = [];
@@ -1266,6 +1274,10 @@ async function fetchYouTubeProfile(handle) {
     updatePlatform('yt', handle, { followers: fmtNum(yt.subs), engagement: yt.eng, change: fmtNum(yt.totalViews)+' views', up: true, label: 'Subscribers' });
     return;
   }
+  if (!YT_KEY) {
+    updatePlatform('yt', handle, { followers: '—', engagement: '—', change: 'YouTube API key not configured', up: false, label: 'Subscribers' });
+    return;
+  }
   try {
     const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&forHandle=${handle}&key=${YT_KEY}`);
     if (!chRes.ok) throw new Error(chRes.status === 403 ? 'API quota exceeded' : 'API error ' + chRes.status);
@@ -1340,6 +1352,7 @@ async function refreshAllData(forceAll) {
 
 // ── INIT: load from cache, auto-fetch if stale ──
 (async function init() {
+  await loadYouTubeKey();
   await loadBrandsFromConnections();
   let needsFetch = false;
 
