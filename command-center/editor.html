@@ -553,12 +553,19 @@ body::after {
           const proj = projects.find(p => p.id === studio.projectId);
           document.getElementById('vp-studio-subtitle').textContent = (proj ? proj.name : studio.projectId) + ' — ' + studio.url;
           const iframe = document.getElementById('vp-studio-iframe');
-          if (iframe.src === 'about:blank' || !iframe.src.startsWith(studio.url)) {
-            iframe.src = studio.url + '?project=' + studio.projectId;
+          // Track loaded project via dataset so we don't reload the iframe on every poll
+          // (string-comparing iframe.src against a possibly-relative studio.url is unreliable
+          // because the browser absolutizes the value after assignment).
+          if (iframe.dataset.projectId !== studio.projectId) {
+            iframe.dataset.projectId = studio.projectId;
+            const sep = studio.url.includes('?') ? '&' : '?';
+            iframe.src = studio.url + sep + 'project=' + studio.projectId;
           }
         } else {
           studioSection.style.display = 'none';
-          document.getElementById('vp-studio-iframe').src = 'about:blank';
+          const iframe = document.getElementById('vp-studio-iframe');
+          iframe.src = 'about:blank';
+          delete iframe.dataset.projectId;
         }
 
         if (!projects.length) {

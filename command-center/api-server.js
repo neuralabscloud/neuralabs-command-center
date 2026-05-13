@@ -15,6 +15,7 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const { renderSlide, renderCarousel } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
 const { execFile, spawn } = require("child_process");
+const { createProxyMiddleware } = require("http-proxy-middleware");
 const {
   BROWSER_TOOLS,
   BROWSE_PAGE_TOOL,
@@ -132,6 +133,26 @@ app.use((req, res, next) => {
   if (isValidSession(req.cookies?.cc_session)) return next();
   if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
+});
+
+// ── Remotion Studio reverse proxy ────────────────────────────────────────
+// Studio runs as a child process bound to 127.0.0.1:3150. We proxy it through
+// /remotion-studio/* so customers don't need an extra reverse proxy / port.
+// Also catches absolute asset paths (e.g. "/static/x.js") by inspecting the
+// Referer header, since Studio's HTML emits root-relative URLs.
+const REMOTION_STUDIO_PORT = 3150;
+const remotionStudioProxy = createProxyMiddleware({
+  target: `http://127.0.0.1:${REMOTION_STUDIO_PORT}`,
+  changeOrigin: true,
+  ws: true,
+  logLevel: "warn",
+  pathRewrite: (p) => p.replace(/^\/remotion-studio\/?/, "/"),
+});
+app.use((req, res, next) => {
+  if (req.path.startsWith("/remotion-studio")) return remotionStudioProxy(req, res, next);
+  const ref = req.headers.referer || "";
+  if (ref.includes("/remotion-studio")) return remotionStudioProxy(req, res, next);
+  next();
 });
 
 // Serve all static files (HTML, JS, CSS) — protected by auth middleware above
@@ -5652,8 +5673,10 @@ const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
 if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recursive: true });
 app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
 
-const STUDIO_PORT = 3150;
-const STUDIO_URL = process.env.STUDIO_URL || "";
+const STUDIO_PORT = REMOTION_STUDIO_PORT;
+// Same-origin path proxied to the Studio subprocess. Customers can override
+// with STUDIO_URL=https://… if they prefer their own reverse proxy / domain.
+const STUDIO_URL = process.env.STUDIO_URL || "/remotion-studio/";
 let currentStudio = null; // { projectId, process, startedAt }
 
 function readProjectMeta(id) {
@@ -7136,10 +7159,27 @@ setInterval(() => {
   }
 }, 60_000);
 
-app.listen(PORT, "0.0.0.0", () => {
+const httpServer = app.listen(PORT, "0.0.0.0", () => {
   console.log(`CTRL API running on port ${PORT}`);
   console.log(`[WORKER] Task workers active — polling every 15s, status check every 30s`);
   const schedules = readTaskFile("scheduled-tasks.json");
   const active = schedules.filter(s => s.enabled).length;
   console.log(`[SCHEDULER] ${active} active scheduled task(s) loaded`);
+});
+
+// Forward WebSocket upgrade requests for the Remotion Studio iframe (hot reload).
+// Requires a valid cc_session cookie — Studio is bound to localhost so only
+// proxied traffic can reach it.
+httpServer.on("upgrade", (req, socket, head) => {
+  const url = req.url || "";
+  const ref = req.headers.referer || "";
+  const isStudio = url.startsWith("/remotion-studio") || ref.includes("/remotion-studio");
+  if (!isStudio) return;
+  const cookieHeader = req.headers.cookie || "";
+  const m = cookieHeader.match(/(?:^|;\s*)cc_session=([^;]+)/);
+  if (!m || !isValidSession(decodeURIComponent(m[1]))) {
+    socket.destroy();
+    return;
+  }
+  remotionStudioProxy.upgrade(req, socket, head);
 });
