@@ -148,6 +148,33 @@ const remotionStudioProxy = createProxyMiddleware({
   logLevel: "warn",
   pathRewrite: (p) => p.replace(/^\/remotion-studio\/?/, "/"),
 });
+
+// Asset interceptor: Studio's Assets panel + composition preview request media
+// files at raw paths (e.g. "/logo.png") because it expects fingerprinted paths
+// like "/static-<hash>/logo.png". Vite then returns the Studio SPA HTML as
+// fallback instead of the actual file. We catch these and serve the asset
+// directly from the active project's public/ directory.
+const STUDIO_MEDIA_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|ico|bmp|mp4|webm|mov|m4v|mp3|wav|ogg|flac|m4a|woff2?|ttf|otf|eot|json|lottie)$/i;
+app.use((req, res, next) => {
+  const ref = req.headers.referer || "";
+  if (!ref.includes("/remotion-studio")) return next();
+  if (req.path.startsWith("/remotion-studio")) return next();
+  if (!STUDIO_MEDIA_EXT_RE.test(req.path)) return next();
+  if (!currentStudio) return next();
+  try {
+    const meta = readProjectMeta(currentStudio.projectId);
+    if (!meta || !meta.entry) return next();
+    const projectDir = path.join(VIDEO_PROJECTS_DIR, currentStudio.projectId);
+    const { root: remotionRoot } = resolveRemotionRoot(projectDir, meta.entry);
+    const publicDir = path.join(remotionRoot, "public");
+    const safeRel = decodeURIComponent(req.path).replace(/^\/+/, "").replace(/\.\./g, "");
+    const filePath = path.resolve(publicDir, safeRel);
+    if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) return next();
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return next();
+    return res.sendFile(filePath);
+  } catch { return next(); }
+});
+
 app.use((req, res, next) => {
   if (req.path.startsWith("/remotion-studio")) return remotionStudioProxy(req, res, next);
   const ref = req.headers.referer || "";
