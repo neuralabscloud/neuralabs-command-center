@@ -1287,7 +1287,9 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   const tasks = readTaskFile("ai-video-tasks.json");
   const model = req.body.model || "google/veo-3";
   const prompt = req.body.prompt || "";
-  const aspectRatio = req.body.aspect_ratio || "16:9";
+  // aspect_ratio is optional — some providers (e.g. Seedance) don't accept it.
+  // Front-end omits the field when the model has no supported ratios.
+  const aspectRatio = (req.body.aspect_ratio || "").trim() || null;
   const duration = parseInt(req.body.duration) || 8;
   const refImagePath = req.file ? req.file.path : null;
   const brandContext = loadBrandContext(req.body.brand);
@@ -1309,7 +1311,8 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   // Seedance, Veo, Wan, etc.) expect a local file path or public URL — the CLI
   // uploads the file itself. Passing a base64 data URL is rejected with
   // "[1201] File is not in a valid base64 format".
-  const inputObj = { prompt, aspect_ratio: aspectRatio };
+  const inputObj = { prompt };
+  if (aspectRatio) inputObj.aspect_ratio = aspectRatio;
   if (duration) inputObj.duration = duration;
   let resizedPath = null;
   if (refImagePath && fs.existsSync(refImagePath)) {
