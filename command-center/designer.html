@@ -183,6 +183,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="youtube_banner">YouTube Banner</option>
               <option value="twitter_post">X / Twitter Post</option>
               <option value="facebook_post">Facebook Post</option>
+              <option value="ad_creative">Ad Creative</option>
               <option value="infographic">Infographic</option>
               <option value="poster">Poster</option>
               <option value="presentation">Presentation</option>
@@ -241,13 +242,23 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <label class="form-label">Slides</label>
             <input type="number" class="form-input" id="design-slides" min="2" max="10" value="3" />
           </div>
+          <div class="form-field" id="aspect-ratio-field" style="display:none">
+            <label class="form-label">Aspect Ratio</label>
+            <select class="form-select" id="design-aspect-ratio">
+              <option value="1:1">1:1 — Square (Feed)</option>
+              <option value="4:5">4:5 — Portrait (Feed)</option>
+              <option value="9:16">9:16 — Story / Reels</option>
+              <option value="16:9">16:9 — Landscape</option>
+              <option value="1.91:1">1.91:1 — Link / Wide Feed</option>
+            </select>
+          </div>
           <div class="form-field" style="grid-column: 1 / -1">
             <label class="form-label">Description</label>
             <textarea class="form-textarea" id="design-desc" placeholder=""></textarea>
           </div>
           <div class="form-field" style="grid-column: 1 / -1">
-            <label class="form-label">Reference Image <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana as style/content reference)</span></label>
-            <input type="file" id="design-ref-image" accept="image/*" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
+            <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — select one or more, used by Nano Banana as style/content reference)</span></label>
+            <input type="file" id="design-ref-image" accept="image/*" multiple style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
           </div>
           <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; align-items: center" id="style-hints">
             <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">Loading tags...</span>
@@ -295,7 +306,7 @@ function renderTasks(tasks) {
 
   const typeLabels = {
     instagram_post: 'Instagram Post', instagram_carousel: 'IG Carousel', your_story: 'Story', youtube_thumbnail: 'YT Thumbnail',
-    youtube_banner: 'YT Banner', twitter_post: 'X Post', facebook_post: 'FB Post',
+    youtube_banner: 'YT Banner', twitter_post: 'X Post', facebook_post: 'FB Post', ad_creative: 'Ad Creative',
     infographic: 'Infographic', poster: 'Poster', presentation: 'Presentation', logo: 'Logo'
   };
 
@@ -334,9 +345,10 @@ function renderTasks(tasks) {
   }).join('');
 }
 
-// Show/hide slide count field based on design type
+// Show/hide slide count and aspect ratio fields based on design type
 document.getElementById('design-type').addEventListener('change', function() {
   document.getElementById('slide-count-field').style.display = this.value === 'instagram_carousel' ? '' : 'none';
+  document.getElementById('aspect-ratio-field').style.display = this.value === 'ad_creative' ? '' : 'none';
 });
 
 async function submitTask() {
@@ -350,6 +362,7 @@ async function submitTask() {
 
   const designType = document.getElementById('design-type').value;
   const slideCount = designType === 'instagram_carousel' ? parseInt(document.getElementById('design-slides').value) || 3 : null;
+  const aspectRatio = designType === 'ad_creative' ? document.getElementById('design-aspect-ratio').value : null;
 
   try {
     const refImageInput = document.getElementById('design-ref-image');
@@ -366,8 +379,11 @@ async function submitTask() {
       fd.append('logo_position', document.getElementById('design-logo-position').value);
       fd.append('logo_size', document.getElementById('design-logo-size').value);
       if (slideCount) fd.append('slide_count', slideCount);
+      if (aspectRatio) fd.append('aspect_ratio', aspectRatio);
       fd.append('description', desc);
-      fd.append('ref_image', refImageInput.files[0]);
+      for (const file of refImageInput.files) {
+        fd.append('ref_image', file);
+      }
       res = await fetch(API, { method: 'POST', body: fd });
     } else {
       res = await fetch(API, {
@@ -382,6 +398,7 @@ async function submitTask() {
           logo_position: document.getElementById('design-logo-position').value,
           logo_size: document.getElementById('design-logo-size').value,
           slide_count: slideCount,
+          aspect_ratio: aspectRatio,
           description: desc,
         }),
       });

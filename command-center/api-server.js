@@ -618,10 +618,11 @@ function loadBrandContext(brandName) {
   };
 }
 
-app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res) => {
+app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, res) => {
   const tasks = readTaskFile("designer-tasks.json");
   const desc = req.body.description || "";
-  const refImagePath = req.file ? req.file.path : null;
+  const refImagePaths = Array.isArray(req.files) ? req.files.map(f => f.path) : [];
+  const refImagePath = refImagePaths[0] || null; // backwards-compat for engines that only use one
   const designType = req.body.design_type || "instagram_post";
   const brand = req.body.brand || (loadBrand().company_name || "DEFAULT").toUpperCase();
   const brandKitId = req.body.brand_kit_id || null;
@@ -630,6 +631,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
   const logoSize = ["small", "medium", "large"].includes(req.body.logo_size) ? req.body.logo_size : "medium";
   const templateName = req.body.template || "default"; // slide layout template
   const requestedSlideCount = req.body.slide_count || null;
+  const customAspectRatio = req.body.aspect_ratio || null;
 
   const brandContext = loadBrandContext(brand);
 
@@ -769,10 +771,10 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
     const aspectMap = {
       instagram_post: "4:5", instagram_carousel: "4:5", your_story: "9:16",
       youtube_thumbnail: "16:9", youtube_banner: "16:9", twitter_post: "16:9",
-      facebook_post: "1:1", infographic: "9:16", poster: "3:4",
+      facebook_post: "1:1", ad_creative: "1:1", infographic: "9:16", poster: "3:4",
       presentation: "16:9", logo: "1:1",
     };
-    const aspect = aspectMap[designType] || "1:1";
+    const aspect = customAspectRatio || aspectMap[designType] || "1:1";
     const numImages = slides.length > 1 ? slides.length
       : (designType === "instagram_carousel" && requestedSlideCount) ? requestedSlideCount : 1;
 
@@ -856,7 +858,8 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
         .map(l => path.join(BRAND_ASSETS_DIR, brand.toUpperCase(), l.name))
         .filter(f => fs.existsSync(f));
       const inputObj = { prompt, aspect_ratio: aspect, resolution: "2K", num_images: 1 };
-      if (refImagePath && fs.existsSync(refImagePath)) inputObj.images = [refImagePath];
+      const validRefPaths = refImagePaths.filter(p => p && fs.existsSync(p));
+      if (validRefPaths.length > 0) inputObj.images = validRefPaths;
       const input = JSON.stringify(inputObj);
 
       // Write input to temp file to avoid shell escaping issues
@@ -908,7 +911,7 @@ app.post("/designer/tasks", designerUpload.single("ref_image"), async (req, res)
           }
 
           try { fs.unlinkSync(tmpInput); } catch {}
-          if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
+          for (const p of refImagePaths) { try { fs.unlinkSync(p); } catch {} }
           const allTasks = readTaskFile("designer-tasks.json");
           const idx = allTasks.findIndex(t => t.id === task.id);
           if (idx === -1) { resolveBatch(); return; }
@@ -3592,10 +3595,11 @@ app.post("/ctrl/chat", async (req, res) => {
           type: "object",
           properties: {
             description: { type: "string", description: "Beschrijving van het gewenste design" },
-            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "infographic", "poster", "presentation", "logo"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides." },
+            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "ad_creative", "infographic", "poster", "presentation", "logo"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides. Gebruik ad_creative voor advertentie creatives (combineer met aspect_ratio)." },
             brand: { type: "string", description: "Brand naam. Wordt geladen uit brand configuratie." },
             engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
+            aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override. Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven)." },
             logo_position: { type: "string", enum: ["SouthEast", "South", "SouthWest", "NorthEast", "North", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
             logo_size: { type: "string", enum: ["small", "medium", "large"], description: "Logo grootte. Standaard: medium" },
             template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Standaard: default" },
@@ -3783,6 +3787,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           brand: input.brand || (loadBrand().company_name || "DEFAULT").toUpperCase(),
           engine: input.engine || "nanobanana",
           slide_count: input.slide_count || null,
+          aspect_ratio: input.aspect_ratio || null,
           logo_position: input.logo_position || "SouthEast",
           logo_size: input.logo_size || "medium",
           template: input.template || "default",
