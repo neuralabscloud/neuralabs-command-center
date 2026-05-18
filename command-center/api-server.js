@@ -631,7 +631,12 @@ app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, r
   const logoSize = ["small", "medium", "large"].includes(req.body.logo_size) ? req.body.logo_size : "medium";
   const templateName = req.body.template || "default"; // slide layout template
   const requestedSlideCount = req.body.slide_count || null;
-  const customAspectRatio = req.body.aspect_ratio || null;
+  // Accept aspect_ratios as array, single string, or comma-separated. Fall back to legacy aspect_ratio.
+  const rawAspects = req.body.aspect_ratios ?? req.body.aspect_ratio ?? null;
+  const customAspectRatios = (Array.isArray(rawAspects) ? rawAspects
+    : (typeof rawAspects === "string" && rawAspects ? rawAspects.split(",") : []))
+    .map(s => String(s).trim()).filter(Boolean);
+  const customAspectRatio = customAspectRatios[0] || null;
 
   const brandContext = loadBrandContext(brand);
 
@@ -774,23 +779,36 @@ app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, r
       facebook_post: "1:1", ad_creative: "1:1", infographic: "9:16", poster: "3:4",
       presentation: "16:9", logo: "1:1",
     };
-    const aspect = customAspectRatio || aspectMap[designType] || "1:1";
-    const numImages = slides.length > 1 ? slides.length
+    const defaultAspect = aspectMap[designType] || "1:1";
+    // For ad_creative + multiple aspect ratios: one task per ratio.
+    // For other types: keep slide/carousel semantics and use a single aspect (custom or mapped).
+    const isAdVariantMode = designType === "ad_creative" && customAspectRatios.length > 1;
+    const taskAspects = isAdVariantMode ? customAspectRatios : null;
+    const aspect = customAspectRatio || defaultAspect; // used when not in variant mode
+    const numImages = isAdVariantMode ? taskAspects.length
+      : slides.length > 1 ? slides.length
       : (designType === "instagram_carousel" && requestedSlideCount) ? requestedSlideCount : 1;
 
     const createdTasks = [];
-    const carouselParentId = numImages > 1 ? genId() : null;
+    const carouselParentId = !isAdVariantMode && numImages > 1 ? genId() : null;
+    const variantParentId = isAdVariantMode ? genId() : null;
     for (let i = 0; i < numImages; i++) {
+      const thisAspect = isAdVariantMode ? taskAspects[i] : aspect;
       createdTasks.push({
         id: genId(), status: "processing",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, brand_kit_id: brandKitId, engine: "nanobanana",
+        aspect_ratio: thisAspect,
         logo_position: logoPosition,
         logo_size: logoSize,
         carousel_parent: carouselParentId,
-        carousel_slide: numImages > 1 ? i + 1 : null,
-        carousel_total: numImages > 1 ? numImages : null,
-        description: numImages > 1 && slides[i] ? `Slide ${i+1}/${numImages}: ${slides[i].title}` : desc,
+        carousel_slide: !isAdVariantMode && numImages > 1 ? i + 1 : null,
+        carousel_total: !isAdVariantMode && numImages > 1 ? numImages : null,
+        variant_parent: variantParentId,
+        variant_index: isAdVariantMode ? i + 1 : null,
+        variant_total: isAdVariantMode ? numImages : null,
+        description: isAdVariantMode ? `${desc} (${thisAspect})`
+          : (numImages > 1 && slides[i] ? `Slide ${i+1}/${numImages}: ${slides[i].title}` : desc),
         result_url: null, result_thumbnail: null, result_design_id: null, error: null,
       });
     }
@@ -857,7 +875,7 @@ app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, r
         .filter(l => l.name.startsWith("logo") || l.name.startsWith("icon"))
         .map(l => path.join(BRAND_ASSETS_DIR, brand.toUpperCase(), l.name))
         .filter(f => fs.existsSync(f));
-      const inputObj = { prompt, aspect_ratio: aspect, resolution: "2K", num_images: 1 };
+      const inputObj = { prompt, aspect_ratio: task.aspect_ratio || aspect, resolution: "2K", num_images: 1 };
       const validRefPaths = refImagePaths.filter(p => p && fs.existsSync(p));
       if (validRefPaths.length > 0) inputObj.images = validRefPaths;
       const input = JSON.stringify(inputObj);
@@ -911,7 +929,6 @@ app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, r
           }
 
           try { fs.unlinkSync(tmpInput); } catch {}
-          for (const p of refImagePaths) { try { fs.unlinkSync(p); } catch {} }
           const allTasks = readTaskFile("designer-tasks.json");
           const idx = allTasks.findIndex(t => t.id === task.id);
           if (idx === -1) { resolveBatch(); return; }
@@ -995,6 +1012,8 @@ app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, r
       runInfsh(1);
         })));
       }
+      // After all batches finish, clean up uploaded reference images
+      for (const p of refImagePaths) { try { fs.unlinkSync(p); } catch {} }
     };
     runSlideQueue();
     return;
@@ -3599,7 +3618,8 @@ app.post("/ctrl/chat", async (req, res) => {
             brand: { type: "string", description: "Brand naam. Wordt geladen uit brand configuratie." },
             engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
-            aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override. Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven)." },
+            aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override (single). Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven). Gebruik aspect_ratios voor meerdere varianten." },
+            aspect_ratios: { type: "array", items: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"] }, description: "Meerdere aspect ratios voor ad_creative — er wordt 1 creative per ratio gegenereerd." },
             logo_position: { type: "string", enum: ["SouthEast", "South", "SouthWest", "NorthEast", "North", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
             logo_size: { type: "string", enum: ["small", "medium", "large"], description: "Logo grootte. Standaard: medium" },
             template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Standaard: default" },
@@ -3788,6 +3808,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           engine: input.engine || "nanobanana",
           slide_count: input.slide_count || null,
           aspect_ratio: input.aspect_ratio || null,
+          aspect_ratios: Array.isArray(input.aspect_ratios) ? input.aspect_ratios : null,
           logo_position: input.logo_position || "SouthEast",
           logo_size: input.logo_size || "medium",
           template: input.template || "default",

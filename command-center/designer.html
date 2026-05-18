@@ -242,15 +242,15 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <label class="form-label">Slides</label>
             <input type="number" class="form-input" id="design-slides" min="2" max="10" value="3" />
           </div>
-          <div class="form-field" id="aspect-ratio-field" style="display:none">
-            <label class="form-label">Aspect Ratio</label>
-            <select class="form-select" id="design-aspect-ratio">
-              <option value="1:1">1:1 — Square (Feed)</option>
-              <option value="4:5">4:5 — Portrait (Feed)</option>
-              <option value="9:16">9:16 — Story / Reels</option>
-              <option value="16:9">16:9 — Landscape</option>
-              <option value="1.91:1">1.91:1 — Link / Wide Feed</option>
-            </select>
+          <div class="form-field" id="aspect-ratio-field" style="grid-column: 1 / -1; display:none">
+            <label class="form-label">Aspect Ratios <span style="font-weight:400;color:var(--text-dim)">(click to toggle — one creative will be generated per selected ratio)</span></label>
+            <div id="aspect-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              <span class="style-tag active" data-aspect="1:1">1:1 Square</span>
+              <span class="style-tag" data-aspect="4:5">4:5 Portrait</span>
+              <span class="style-tag" data-aspect="9:16">9:16 Story / Reels</span>
+              <span class="style-tag" data-aspect="16:9">16:9 Landscape</span>
+              <span class="style-tag" data-aspect="1.91:1">1.91:1 Wide / Link</span>
+            </div>
           </div>
           <div class="form-field" style="grid-column: 1 / -1">
             <label class="form-label">Description</label>
@@ -331,7 +331,7 @@ function renderTasks(tasks) {
         }
       </div>
       <div class="task-body">
-        <div class="task-type">${typeLabels[t.design_type] || t.design_type} &middot; ${t.brand}</div>
+        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : ''} &middot; ${t.brand}</div>
         <div class="task-desc">${t.description}</div>
         <div class="task-footer">
           <span class="task-status-badge ${t.status}">${t.status}</span>
@@ -351,6 +351,15 @@ document.getElementById('design-type').addEventListener('change', function() {
   document.getElementById('aspect-ratio-field').style.display = this.value === 'ad_creative' ? '' : 'none';
 });
 
+// Aspect-ratio chip toggles (multi-select, always keep at least one active)
+document.querySelectorAll('#aspect-chips .style-tag').forEach(el => {
+  el.addEventListener('click', () => {
+    el.classList.toggle('active');
+    const active = document.querySelectorAll('#aspect-chips .style-tag.active');
+    if (active.length === 0) el.classList.add('active');
+  });
+});
+
 async function submitTask() {
   const btn = document.getElementById('submit-btn');
   const status = document.getElementById('form-status');
@@ -362,7 +371,9 @@ async function submitTask() {
 
   const designType = document.getElementById('design-type').value;
   const slideCount = designType === 'instagram_carousel' ? parseInt(document.getElementById('design-slides').value) || 3 : null;
-  const aspectRatio = designType === 'ad_creative' ? document.getElementById('design-aspect-ratio').value : null;
+  const aspectRatios = designType === 'ad_creative'
+    ? [...document.querySelectorAll('#aspect-chips .style-tag.active')].map(el => el.dataset.aspect)
+    : null;
 
   try {
     const refImageInput = document.getElementById('design-ref-image');
@@ -379,7 +390,9 @@ async function submitTask() {
       fd.append('logo_position', document.getElementById('design-logo-position').value);
       fd.append('logo_size', document.getElementById('design-logo-size').value);
       if (slideCount) fd.append('slide_count', slideCount);
-      if (aspectRatio) fd.append('aspect_ratio', aspectRatio);
+      if (aspectRatios && aspectRatios.length) {
+        for (const ar of aspectRatios) fd.append('aspect_ratios', ar);
+      }
       fd.append('description', desc);
       for (const file of refImageInput.files) {
         fd.append('ref_image', file);
@@ -398,7 +411,7 @@ async function submitTask() {
           logo_position: document.getElementById('design-logo-position').value,
           logo_size: document.getElementById('design-logo-size').value,
           slide_count: slideCount,
-          aspect_ratio: aspectRatio,
+          aspect_ratios: aspectRatios,
           description: desc,
         }),
       });
