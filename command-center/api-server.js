@@ -1305,26 +1305,27 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   writeTaskFile("ai-video-tasks.json", tasks);
   res.status(201).json(task);
 
-  // Build infsh input
+  // Build infsh input. Inference.sh apps with `format: "file"` fields (Kling,
+  // Seedance, Veo, Wan, etc.) expect a local file path or public URL — the CLI
+  // uploads the file itself. Passing a base64 data URL is rejected with
+  // "[1201] File is not in a valid base64 format".
   const inputObj = { prompt, aspect_ratio: aspectRatio };
   if (duration) inputObj.duration = duration;
+  let resizedPath = null;
   if (refImagePath && fs.existsSync(refImagePath)) {
-    // Resize to max 1024px and convert to JPEG to keep base64 payload small
-    const resizedPath = refImagePath.replace(/\.\w+$/, "-resized.jpg");
+    // Resize / re-encode to JPEG max 1024px to satisfy provider size limits
+    // (Kling caps at 10MB). Falls back to the original file on failure.
+    resizedPath = refImagePath.replace(/\.\w+$/, "-resized.jpg");
     try {
       require("child_process").execSync(
         `convert "${refImagePath}" -resize "1024x1024>" -quality 85 "${resizedPath}"`,
         { timeout: 15000 }
       );
-      const b64 = fs.readFileSync(resizedPath).toString("base64");
-      inputObj.image = `data:image/jpeg;base64,${b64}`;
-      try { fs.unlinkSync(resizedPath); } catch {}
+      inputObj.image = resizedPath;
     } catch (resizeErr) {
       console.error("[AI-VIDEO] Image resize failed, using original:", resizeErr.message);
-      const ext = path.extname(refImagePath).toLowerCase();
-      const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-      const b64 = fs.readFileSync(refImagePath).toString("base64");
-      inputObj.image = `data:${mime};base64,${b64}`;
+      resizedPath = null;
+      inputObj.image = refImagePath;
     }
   }
 
@@ -1338,6 +1339,7 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   }, (err, stdout, stderr) => {
     try { fs.unlinkSync(tmpInput); } catch {}
     if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
+    if (resizedPath) try { fs.unlinkSync(resizedPath); } catch {}
 
     const allTasks = readTaskFile("ai-video-tasks.json");
     const idx = allTasks.findIndex(t => t.id === task.id);
