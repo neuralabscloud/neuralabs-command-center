@@ -285,3 +285,26 @@ html[data-theme="light"] .notif-empty {
 html[data-theme="light"] .notif-mark-read {
   border-color: var(--border);
 }
+
+/* ─── Isometric office particles & data-flow lines (light theme) ───
+   Default styling assumes a dark backdrop: particle cores are white,
+   conn-glow is 0.08 opacity. Both vanish on white. Override so the
+   data packets and lines stay readable. */
+html[data-theme="light"] .iso-scene .particle-core {
+  fill: currentColor;         /* inherits the agent/connection color */
+  opacity: 1;
+}
+html[data-theme="light"] .iso-scene .particle-halo {
+  opacity: 0.5;
+}
+html[data-theme="light"] .iso-scene .conn-line {
+  opacity: 0.6;
+  stroke-width: 1.2;
+}
+html[data-theme="light"] .iso-scene .conn-glow {
+  opacity: 0.22;
+  stroke-width: 4;
+}
+html[data-theme="light"] .iso-scene .screen-flash {
+  mix-blend-mode: multiply;   /* "screen" blends to white on light bg */
+}
