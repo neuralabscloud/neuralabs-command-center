@@ -122,6 +122,7 @@ app.get("/api/setup-status", (_req, res) => {
 // Allow login page and static assets without auth
 app.use("/login.html", express.static(path.join(__dirname, "login.html")));
 app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
+app.use("/theme.css", express.static(path.join(__dirname, "public", "theme.css")));
 
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {

@@ -1,0 +1,128 @@
+/* ─────────────────────────────────────────────────────────────
+   Light theme overrides.
+   Activated by setting `data-theme="light"` on <html>.
+   Dark mode is the default — no overrides needed.
+   ───────────────────────────────────────────────────────────── */
+
+html[data-theme="light"] {
+  /* Surfaces */
+  --bg-deep: hsl(0 0% 98%);
+  --bg-base: hsl(0 0% 96%);
+  --bg-surface: hsl(0 0% 100%);
+  --bg-card: hsl(0 0% 100%);
+  --bg-card-hover: hsl(0 0% 96%);
+  --bg-sidebar: hsl(0 0% 97%);
+
+  /* Borders */
+  --border: hsl(217 15% 86%);
+  --border-glow: hsla(264 65% 49% / 0.25);
+
+  /* Text */
+  --text: hsl(217 32% 12%);
+  --text-dim: hsl(215 15% 40%);
+  --text-muted: hsl(217 15% 78%);
+
+  /* Brand purple — keep, but the lighter glow alpha works better on white */
+  --primary-glow: hsla(264 65% 55% / 0.35);
+
+  color-scheme: light;
+}
+
+/* ─── Body backdrop ──────────────────────────────────────── */
+html[data-theme="light"] body {
+  background: var(--bg-deep);
+}
+
+html[data-theme="light"] body::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.05) 0%, transparent 60%);
+}
+
+/* Grid pattern: keep visible by drawing dark lines instead of using --text-muted */
+html[data-theme="light"] body::after {
+  background-image:
+    linear-gradient(hsl(217 20% 30%) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(217 20% 30%) 1px, transparent 1px);
+  opacity: 0.05;
+}
+
+/* ─── Card gradients (hardcoded dark hsla → light equivalents) ─── */
+html[data-theme="light"] .integration-card,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .brand-card,
+html[data-theme="light"] .agent-card,
+html[data-theme="light"] .sched-card,
+html[data-theme="light"] .task-form,
+html[data-theme="light"] .task-card,
+html[data-theme="light"] .vt-card,
+html[data-theme="light"] .report-card {
+  background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
+}
+
+/* Login card uses similar gradient inline */
+html[data-theme="light"] .login-card,
+html[data-theme="light"] [class*="login"] form {
+  background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
+}
+
+/* Chat input bar */
+html[data-theme="light"] .chat-input-wrap,
+html[data-theme="light"] .composer {
+  background: linear-gradient(180deg, hsla(0 0% 97% / 0.95), hsl(0 0% 100%));
+}
+
+/* ─── Form inputs ────────────────────────────────────────── */
+html[data-theme="light"] input[type="text"],
+html[data-theme="light"] input[type="password"],
+html[data-theme="light"] input[type="email"],
+html[data-theme="light"] input[type="number"],
+html[data-theme="light"] input[type="search"],
+html[data-theme="light"] input[type="url"],
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  background: var(--bg-surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* Code-ish elements */
+html[data-theme="light"] code {
+  background: hsl(217 30% 94%);
+  color: hsl(217 32% 20%);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Sidebar active/hover states use very low alpha purple — bump for readability */
+html[data-theme="light"] .nav-item:hover {
+  background: hsla(264 65% 49% / 0.08);
+}
+html[data-theme="light"] .nav-item.active {
+  background: hsla(264 65% 49% / 0.12);
+  box-shadow: 0 0 16px hsla(264 65% 49% / 0.15);
+}
+
+/* Section header gradient divider needs darker fade */
+html[data-theme="light"] .section-header::after {
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* Gradient text on headings — purple gradient stays readable on white */
+
+/* Buttons with raw dark hover styles */
+html[data-theme="light"] button[style*="background:var(--bg-deep)"],
+html[data-theme="light"] button[style*="background: var(--bg-deep)"] {
+  background: var(--bg-surface) !important;
+}
+
+/* Scrollbar */
+html[data-theme="light"] ::-webkit-scrollbar-track { background: hsl(0 0% 94%); }
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: hsl(217 15% 78%); border-radius: 6px; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: hsl(217 15% 65%); }

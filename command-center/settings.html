@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<link rel="stylesheet" href="/theme.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Command Center — Settings</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -229,6 +231,21 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
+    <!-- APPEARANCE -->
+    <section class="fade-up delay-2" style="margin-bottom: 20px">
+      <div class="section-header">Appearance</div>
+      <div class="integration-card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div class="integration-name">Theme</div>
+          <div class="integration-desc">Switch between dark (default) and light interface.</div>
+        </div>
+        <div id="theme-toggle" role="tablist" aria-label="Theme" style="display:inline-flex;background:var(--bg-deep);border:1px solid var(--border);border-radius:10px;padding:4px;gap:4px">
+          <button type="button" role="tab" data-theme-value="dark" id="theme-btn-dark" style="padding:8px 16px;border:none;background:transparent;color:var(--text-dim);font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;border-radius:7px;cursor:pointer;transition:all 0.2s">Dark</button>
+          <button type="button" role="tab" data-theme-value="light" id="theme-btn-light" style="padding:8px 16px;border:none;background:transparent;color:var(--text-dim);font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;border-radius:7px;cursor:pointer;transition:all 0.2s">Light</button>
+        </div>
+      </div>
+    </section>
+
     <!-- CONFIGURATION -->
     <section class="fade-up delay-3" style="margin-bottom: 20px">
       <div class="section-header">Configuration</div>
@@ -347,6 +364,32 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 </div>
 
 <script>
+// ── Theme toggle ─────────────────────────────────────
+(function initThemeToggle(){
+  const btnDark = document.getElementById('theme-btn-dark');
+  const btnLight = document.getElementById('theme-btn-light');
+  if (!btnDark || !btnLight) return;
+  const stored = (() => { try { return localStorage.getItem('cc_theme') || 'dark'; } catch { return 'dark'; } })();
+  function paint(theme){
+    for (const [btn, val] of [[btnDark, 'dark'], [btnLight, 'light']]) {
+      const isActive = val === theme;
+      btn.style.background = isActive ? 'var(--primary)' : 'transparent';
+      btn.style.color = isActive ? '#fff' : 'var(--text-dim)';
+      btn.style.boxShadow = isActive ? '0 0 12px hsla(264 65% 49% / 0.3)' : 'none';
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    }
+  }
+  function apply(theme){
+    if (theme === 'light') document.documentElement.setAttribute('data-theme','light');
+    else document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('cc_theme', theme); } catch {}
+    paint(theme);
+  }
+  btnDark.addEventListener('click', () => apply('dark'));
+  btnLight.addEventListener('click', () => apply('light'));
+  paint(stored);
+})();
+
 const INTEGRATIONS_API = '/settings/integrations';
 
 function maskKey(key) {
