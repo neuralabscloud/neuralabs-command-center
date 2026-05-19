@@ -53,11 +53,71 @@ html[data-theme="light"] .stat-card,
 html[data-theme="light"] .brand-card,
 html[data-theme="light"] .agent-card,
 html[data-theme="light"] .sched-card,
+html[data-theme="light"] .sched-modal,
 html[data-theme="light"] .task-form,
 html[data-theme="light"] .task-card,
 html[data-theme="light"] .vt-card,
-html[data-theme="light"] .report-card {
+html[data-theme="light"] .report-card,
+html[data-theme="light"] .briefing {
   background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
+}
+
+/* Form inputs styled with hardcoded dark gradients */
+html[data-theme="light"] .login-input,
+html[data-theme="light"] .form-input,
+html[data-theme="light"] .form-select,
+html[data-theme="light"] .form-textarea {
+  background: hsl(0 0% 100%) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Mobile sidebar overlay backdrop */
+html[data-theme="light"] .sidebar-overlay {
+  background: hsla(0 0% 0% / 0.25) !important;
+}
+
+/* ─── Inline-styled hardcoded dark surfaces ─────────
+   Many pages render cards/tiles with inline `style="background:hsl(0 0% 4%)"`
+   or dark gradients. Attribute substring selectors + !important rewrite them
+   for light mode without touching the markup. */
+html[data-theme="light"] [style*="hsl(0 0% 0%)"],
+html[data-theme="light"] [style*="hsl(0 0% 2%)"],
+html[data-theme="light"] [style*="hsl(0 0% 3%)"],
+html[data-theme="light"] [style*="hsl(0 0% 4%)"],
+html[data-theme="light"] [style*="hsl(0 0% 5%)"],
+html[data-theme="light"] [style*="hsl(0 0% 6%)"],
+html[data-theme="light"] [style*="hsl(0 0% 7%)"],
+html[data-theme="light"] [style*="hsl(0 0% 8%)"],
+html[data-theme="light"] [style*="hsla(0 0% 0%"],
+html[data-theme="light"] [style*="hsla(0 0% 2%"],
+html[data-theme="light"] [style*="hsla(0 0% 3%"],
+html[data-theme="light"] [style*="hsla(0 0% 4%"],
+html[data-theme="light"] [style*="hsla(0 0% 5%"],
+html[data-theme="light"] [style*="hsla(0 0% 6%"],
+html[data-theme="light"] [style*="hsla(0 0% 7%"],
+html[data-theme="light"] [style*="hsla(0 0% 8%"] {
+  background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%) !important;
+}
+
+/* ─── Isometric Office widget ─────────────────────── */
+html[data-theme="light"] .iso-wrap {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, hsla(264 65% 49% / 0.08) 0%, transparent 65%),
+    linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 96%) 100%) !important;
+}
+html[data-theme="light"] .iso-wrap::before {
+  background-image:
+    linear-gradient(hsla(264 65% 49% / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, hsla(264 65% 49% / 0.12) 1px, transparent 1px) !important;
+}
+html[data-theme="light"] .iso-scene .floor-tile {
+  fill: hsla(217 15% 92% / 0.7);
+  stroke: hsla(264 65% 49% / 0.22);
+}
+html[data-theme="light"] .iso-scene .floor-tile.hero {
+  fill: hsla(142 76% 36% / 0.08);
+  stroke: hsla(142 76% 36% / 0.4);
 }
 
 /* Login card uses similar gradient inline */
