@@ -286,6 +286,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Client Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The Secret paired with your Canva Client ID. Generate it under <em>Authentication → Generate secret</em> in your Canva integration. Keep it private.</div><input type="password" id="cfg-canva-client-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Paste this URI into your Canva integration under <em>Authentication → Authentication URLs</em>. Leave the input empty to auto-derive from your public domain. <span id="cfg-canva-callback-hint" style="display:block;margin-top:4px;font-family:var(--font-data);color:var(--primary)">—</span></div><input type="text" id="cfg-canva-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/canva/callback"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Pulls YouTube channel stats (subscribers, views, engagement) on the Performance page. No OAuth required — just a public API key. Enable <em>YouTube Data API v3</em> in Google Cloud and create an API key. Get it at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--primary)">console.cloud.google.com</a>.</div><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">OpusClip API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Turns long-form videos (YouTube/Vimeo/direct URL) into viral short-form clips. Used by the Content Creator → Clipper tab. Requires an OpusClip Pro plan. Get it at <a href="https://www.opus.pro/api" target="_blank" style="color:var(--primary)">opus.pro/api</a>.</div><input type="password" id="cfg-opusclip" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
           </div>
         </div>
       </div>
@@ -410,6 +411,7 @@ const SERVICE_META = {
   telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
   inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
   composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
+  opusclip: { icon: '✂️', color: '0 72% 51%', label: 'OpusClip', desc: 'Long-form videos → viral short-form clips' },
 };
 
 // Local services are checked server-side
@@ -705,6 +707,7 @@ async function saveConfig() {
     meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect',
     canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
+    opusclip_key: 'cfg-opusclip',
   };
   for (const [key, id] of Object.entries(fields)) {
     const val = document.getElementById(id)?.value?.trim();

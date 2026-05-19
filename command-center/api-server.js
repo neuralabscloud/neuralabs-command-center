@@ -211,7 +211,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -305,6 +305,7 @@ app.get("/api/settings", (req, res) => {
       meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
       canva: { has_client_id: !!env.CANVA_CLIENT_ID, client_id_masked: maskKey(env.CANVA_CLIENT_ID), has_secret: !!env.CANVA_CLIENT_SECRET, redirect_uri: env.CANVA_REDIRECT_URI || "" },
       youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
+      opusclip: { has_key: !!env.OPUSCLIP_API_KEY, masked: maskKey(env.OPUSCLIP_API_KEY) },
     }
   });
 });
@@ -338,6 +339,7 @@ app.post("/api/settings", (req, res) => {
       canva_client_secret: "CANVA_CLIENT_SECRET",
       canva_redirect_uri: "CANVA_REDIRECT_URI",
       youtube_api_key: "YOUTUBE_API_KEY",
+      opusclip_key: "OPUSCLIP_API_KEY",
     };
     for (const [field, envKey] of Object.entries(keyMap)) {
       if (integrations[field] !== undefined && integrations[field] !== "") {
@@ -1906,6 +1908,50 @@ app.delete("/seo/reports/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── OPUSCLIP TASKS ────────────────────────────
+app.get("/opusclip/tasks", (_req, res) => res.json(readTaskFile("opusclip-tasks.json")));
+
+app.post("/opusclip/tasks", (req, res) => {
+  const rawUrl = (req.body.video_url || req.body.url || "").trim();
+  if (!rawUrl) return res.status(400).json({ error: "video_url is required" });
+  let normalised;
+  try {
+    normalised = new URL(rawUrl.match(/^https?:\/\//i) ? rawUrl : `https://${rawUrl}`).toString();
+  } catch { return res.status(400).json({ error: "Invalid URL" }); }
+  if (!process.env.OPUSCLIP_API_KEY) {
+    return res.status(400).json({ error: "OpusClip API key not configured. Add it in Settings." });
+  }
+
+  const tasks = readTaskFile("opusclip-tasks.json");
+  const minD = parseInt(req.body.min_duration, 10);
+  const maxD = parseInt(req.body.max_duration, 10);
+  const task = {
+    id: genId(),
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    video_url: normalised,
+    min_duration: Number.isFinite(minD) && minD > 0 ? minD : 30,
+    max_duration: Number.isFinite(maxD) && maxD > 0 ? maxD : 90,
+    source_lang: req.body.source_lang || "auto",
+    topic_keywords: Array.isArray(req.body.topic_keywords) ? req.body.topic_keywords : [],
+    description: (req.body.description || "").toString().slice(0, 200),
+    project_id: null,
+    stage: null,
+    clips: [],
+    error: null,
+  };
+  tasks.unshift(task);
+  if (tasks.length > 50) tasks.length = 50;
+  writeTaskFile("opusclip-tasks.json", tasks);
+  res.status(201).json(task);
+});
+
+app.delete("/opusclip/tasks/:id", (req, res) => {
+  writeTaskFile("opusclip-tasks.json", readTaskFile("opusclip-tasks.json").filter(t => t.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ── MEDIA LIBRARY ─────────────────────────────
 const MEDIA_DIR = path.join(__dirname, "public", "media");
 
@@ -2037,6 +2083,17 @@ app.get("/settings/integrations", (_req, res) => {
       { label: "API Key", value: composioKey, secret: true },
       { label: "Endpoint", value: "https://backend.composio.dev/api/v2" },
       { label: "Used by", value: "Tool integrations — GitHub, Slack, Gmail, Calendar & more" },
+    ],
+  });
+
+  // 8. OpusClip
+  const opusclipKey = process.env.OPUSCLIP_API_KEY || "";
+  integrations.push({
+    id: "opusclip", status: opusclipKey ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: opusclipKey, secret: true },
+      { label: "Endpoint", value: "https://api.opus.pro" },
+      { label: "Used by", value: "Content Creator — Clipper tab (long-form → short-form clips)" },
     ],
   });
 
@@ -5339,6 +5396,87 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
 
 // ── SEO WORKER ──
 const { runSeoAnalysis } = require("./seo-agent");
+const opusclip = require("./opusclip-agent");
+
+async function processOpusclipTasks() {
+  const tasks = readTaskFile("opusclip-tasks.json");
+  let changed = false;
+
+  // 1) Submit pending tasks → OpusClip API, transition to "processing"
+  for (const task of tasks) {
+    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
+    if (!process.env.OPUSCLIP_API_KEY) continue;
+    processingTasks.add(task.id);
+    try {
+      console.log(`[WORKER] OpusClip submitting ${task.video_url}`);
+      const proj = await opusclip.createProject({
+        videoUrl: task.video_url,
+        minDuration: task.min_duration,
+        maxDuration: task.max_duration,
+        sourceLang: task.source_lang,
+        topicKeywords: task.topic_keywords,
+      });
+      task.project_id = proj.projectId || proj.id;
+      task.stage = proj.stage || "QUEUED";
+      task.status = "processing";
+      task.updated_at = new Date().toISOString();
+      changed = true;
+    } catch (e) {
+      console.error(`[WORKER] OpusClip submit failed for ${task.id}:`, e.message);
+      task.status = "failed";
+      task.error = e.message;
+      task.updated_at = new Date().toISOString();
+      changed = true;
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+
+  // 2) Poll processing tasks → update stage, fetch clips on COMPLETE
+  for (const task of tasks) {
+    if (task.status !== "processing" || !task.project_id) continue;
+    if (processingTasks.has(task.id)) continue;
+    processingTasks.add(task.id);
+    try {
+      const proj = await opusclip.getProject(task.project_id);
+      const stage = String(proj.stage || "").toUpperCase();
+      if (stage && stage !== task.stage) {
+        task.stage = stage;
+        task.updated_at = new Date().toISOString();
+        changed = true;
+      }
+      if (opusclip.isTerminal(stage)) {
+        if (stage === "COMPLETE") {
+          const clips = await opusclip.listClips(task.project_id);
+          task.clips = (clips || []).map(c => ({
+            id: c.id,
+            title: c.title || "",
+            description: c.description || "",
+            duration_ms: c.durationMs || 0,
+            download_url: c.uriForExport || "",
+            preview_url: c.uriForPreview || "",
+            keywords: c.keywords || [],
+            hashtags: c.hashtags || "",
+          }));
+          task.status = "completed";
+        } else {
+          task.status = "failed";
+          task.error = `OpusClip ended in stage ${stage}`;
+        }
+        task.updated_at = new Date().toISOString();
+        changed = true;
+        console.log(`[WORKER] OpusClip task ${task.id} ${task.status} (${task.clips?.length || 0} clips)`);
+      }
+    } catch (e) {
+      console.error(`[WORKER] OpusClip poll failed for ${task.id}:`, e.message);
+      // Transient errors: don't fail the task, just leave it for next cycle
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+
+  if (changed) writeTaskFile("opusclip-tasks.json", tasks);
+}
 
 async function processSeoTasks() {
   const tasks = readTaskFile("seo-tasks.json");
@@ -5721,6 +5859,7 @@ setInterval(() => {
   processScriptwriterTasks().catch(e => console.error("[WORKER] Scriptwriter error:", e.message));
   processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
   processSeoTasks().catch(e => console.error("[WORKER] SEO error:", e.message));
+  processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
 }, 15_000);
@@ -5737,6 +5876,7 @@ setTimeout(() => {
   processScriptwriterTasks().catch(() => {});
   processResearchTasks().catch(() => {});
   processSeoTasks().catch(() => {});
+  processOpusclipTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
   pollVideoStatus().catch(() => {});

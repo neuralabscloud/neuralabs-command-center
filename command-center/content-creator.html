@@ -72,11 +72,22 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .mode-tab:hover { color: var(--text); background: hsla(0 0% 100% / 0.03); }
 .mode-tab.active[data-mode="avatar"] { color: var(--teal); background: hsla(180 70% 45% / 0.08); border-color: hsla(180 70% 45% / 0.25); }
 .mode-tab.active[data-mode="agent"] { color: var(--primary); background: hsla(264 65% 49% / 0.08); border-color: hsla(264 65% 49% / 0.25); }
+.mode-tab.active[data-mode="clipper"] { color: var(--danger); background: hsla(0 72% 51% / 0.08); border-color: hsla(0 72% 51% / 0.25); }
 .task-badge.agent { color: var(--primary); background: hsla(264 65% 49% / 0.08); }
 .task-badge.agent::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 .task-type-tag { font-family: var(--font-data); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
 .task-type-tag.avatar { color: var(--teal); background: hsla(180 70% 45% / 0.08); }
 .task-type-tag.agent { color: var(--primary); background: hsla(264 65% 49% / 0.08); }
+.task-type-tag.clipper { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
+.clips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.clip-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.clip-card video, .clip-card img { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 6px; background: var(--bg-deep); }
+.clip-title { font-size: 11px; color: var(--text); font-weight: 500; line-height: 1.3; }
+.clip-meta { font-size: 10px; color: var(--text-dim); font-family: var(--font-data); display: flex; gap: 8px; }
+.clip-actions { display: flex; gap: 6px; }
+.clip-actions a { flex: 1; text-align: center; font-size: 10px; padding: 5px 8px; border-radius: 5px; background: hsla(0 72% 51% / 0.08); color: var(--danger); text-decoration: none; font-family: var(--font-data); border: 1px solid hsla(0 72% 51% / 0.2); }
+.clip-actions a:hover { background: hsla(0 72% 51% / 0.15); }
+.stage-pill { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); background: hsla(0 0% 100% / 0.04); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
 .avatar-picker { position: relative; }
 .avatar-picker-input { width: 100%; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 13px; font-family: var(--font-body); outline: none; transition: border-color 0.2s; }
 .avatar-picker-input:focus { border-color: var(--teal); }
@@ -166,6 +177,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="mode-tab" data-mode="agent" onclick="switchMode('agent')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-3.5-6.5L16 7m-8 10l-1.5 1.5M20.5 17.5L19 16M5 7L3.5 5.5"/><circle cx="12" cy="12" r="3"/></svg>
           Video Agent
+        </button>
+        <button class="mode-tab" data-mode="clipper" onclick="switchMode('clipper')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          Clipper
         </button>
       </div>
     </section>
@@ -280,6 +295,60 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
+    <!-- CLIPPER FORM (OpusClip) -->
+    <section class="fade-up delay-2" id="form-clipper" style="display:none;">
+      <div class="section-header">New Clipper Job</div>
+      <div class="task-form">
+        <div style="margin-bottom:16px;padding:12px 16px;background:hsla(0 72% 51% / 0.06);border:1px solid hsla(0 72% 51% / 0.15);border-radius:8px;">
+          <div style="font-size:11px;color:var(--danger);font-family:var(--font-data);font-weight:600;margin-bottom:4px;">OPUSCLIP PRO</div>
+          <div style="font-size:12px;color:var(--text-dim);">Paste a long-form video URL (YouTube, Vimeo, direct link). The AI clips the best moments into short-form videos with captions and viral scores.</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="form-label">Video URL</div>
+          <input class="form-input" id="cl-url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" />
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+          <div>
+            <div class="form-label">Min duration (s)</div>
+            <input class="form-input" id="cl-min" type="number" min="5" max="180" value="30" />
+          </div>
+          <div>
+            <div class="form-label">Max duration (s)</div>
+            <input class="form-input" id="cl-max" type="number" min="10" max="240" value="90" />
+          </div>
+          <div>
+            <div class="form-label">Source language</div>
+            <select class="form-select" id="cl-lang">
+              <option value="auto" selected>Auto-detect</option>
+              <option value="en">English</option>
+              <option value="nl">Dutch</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label">Brand</div>
+            <select class="form-select cc-brand-select"></select>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <div class="form-label">Topic keywords (optional, comma-separated)</div>
+          <input class="form-input" id="cl-keywords" placeholder="e.g. tutorial, hook, key takeaway" />
+        </div>
+        <div style="margin-top:16px;">
+          <div class="form-label">Description (optional)</div>
+          <input class="form-input" id="cl-desc" placeholder="e.g. Podcast highlights for TikTok" />
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
+          <button class="btn-submit" id="cl-submit" onclick="submitClipperTask()" style="background:linear-gradient(135deg, var(--danger), hsl(15 80% 50%));">Submit Clipper Job</button>
+          <span id="cl-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+        </div>
+      </div>
+    </section>
+
     <!-- TASK QUEUE -->
     <section class="fade-up delay-3">
       <div class="section-header">Video Queue</div>
@@ -291,6 +360,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 <script>
 const API_AVATAR = '/avatar/tasks';
 const API_AGENT = '/video-agent/tasks';
+const API_CLIPPER = '/opusclip/tasks';
 
 let currentMode = 'avatar';
 
@@ -299,17 +369,45 @@ function switchMode(mode) {
   document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   document.getElementById('form-avatar').style.display = mode === 'avatar' ? '' : 'none';
   document.getElementById('form-agent').style.display = mode === 'agent' ? '' : 'none';
+  document.getElementById('form-clipper').style.display = mode === 'clipper' ? '' : 'none';
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function renderClipperCard(t) {
+  const clips = Array.isArray(t.clips) ? t.clips : [];
+  const stage = t.stage ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
+  const clipsHtml = clips.length ? `<div class="clips-grid">` + clips.map(c => {
+    const title = c.title || c.name || c.clipTitle || 'Clip';
+    const dur = c.duration ? Math.round(c.duration) + 's' : (c.endTime != null && c.startTime != null ? Math.round(c.endTime - c.startTime) + 's' : '');
+    const score = c.viralityScore != null ? 'Score ' + Math.round(c.viralityScore) : '';
+    const preview = c.previewUrl || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
+    const download = c.exportUrl || c.downloadUrl || c.videoUrl || c.url || '';
+    const opusUrl = c.shareUrl || c.editorUrl || '';
+    return `<div class="clip-card">
+      ${preview ? `<img src="${esc(preview)}" loading="lazy" />` : '<div style="aspect-ratio:9/16;background:var(--bg-deep);border-radius:6px;"></div>'}
+      <div class="clip-title">${esc(title)}</div>
+      <div class="clip-meta">${dur ? '<span>' + dur + '</span>' : ''}${score ? '<span>' + score + '</span>' : ''}</div>
+      <div class="clip-actions">
+        ${download ? `<a href="${esc(download)}" target="_blank" rel="noopener">Download</a>` : ''}
+        ${opusUrl ? `<a href="${esc(opusUrl)}" target="_blank" rel="noopener">Edit</a>` : ''}
+      </div>
+    </div>`;
+  }).join('') + `</div>` : '';
+  return clipsHtml;
 }
 
 async function loadTasks() {
   try {
-    const [avatarTasks, agentTasks] = await Promise.all([
+    const [avatarTasks, agentTasks, clipperTasks] = await Promise.all([
       fetch(API_AVATAR).then(r => r.json()).catch(() => []),
       fetch(API_AGENT).then(r => r.json()).catch(() => []),
+      fetch(API_CLIPPER).then(r => r.json()).catch(() => []),
     ]);
     const all = [
       ...avatarTasks.map(t => ({ ...t, _type: 'avatar' })),
       ...agentTasks.map(t => ({ ...t, _type: 'agent' })),
+      ...clipperTasks.map(t => ({ ...t, _type: 'clipper' })),
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const el = document.getElementById('tasks-list');
@@ -317,27 +415,45 @@ async function loadTasks() {
     el.innerHTML = all.map(t => {
       const time = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       const isAgent = t._type === 'agent';
-      const preview = isAgent
-        ? (t.prompt || '').substring(0, 80) + ((t.prompt || '').length > 80 ? '...' : '')
-        : (t.script || '').substring(0, 80) + ((t.script || '').length > 80 ? '...' : '');
-      const typeTag = `<span class="task-type-tag ${t._type}">${isAgent ? 'Agent' : 'Avatar'}</span>`;
-      const apiBase = isAgent ? API_AGENT : API_AVATAR;
-      return `<div class="task-card">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            ${typeTag}
-            <span style="font-size:13px;font-weight:500;color:var(--text);">${t.description || (isAgent ? 'Video Agent' : 'Avatar video')}</span>
+      const isClipper = t._type === 'clipper';
+      let preview;
+      let label;
+      if (isClipper) {
+        preview = (t.video_url || '').substring(0, 80) + ((t.video_url || '').length > 80 ? '...' : '');
+        label = t.description || 'Clipper job';
+      } else if (isAgent) {
+        preview = (t.prompt || '').substring(0, 80) + ((t.prompt || '').length > 80 ? '...' : '');
+        label = t.description || 'Video Agent';
+      } else {
+        preview = (t.script || '').substring(0, 80) + ((t.script || '').length > 80 ? '...' : '');
+        label = t.description || 'Avatar video';
+      }
+      const typeLabel = isClipper ? 'Clipper' : (isAgent ? 'Agent' : 'Avatar');
+      const typeTag = `<span class="task-type-tag ${t._type}">${typeLabel}</span>`;
+      const apiBase = isClipper ? API_CLIPPER : (isAgent ? API_AGENT : API_AVATAR);
+      const stagePill = isClipper && t.stage && t.status === 'processing' ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
+      const clipsBlock = isClipper ? renderClipperCard(t) : '';
+      const extraMeta = isAgent && t.duration_sec ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + t.duration_sec + 's / ' + (t.orientation || 'portrait') + '</span>' : '';
+      return `<div class="task-card" style="${isClipper ? 'align-items:stretch;flex-direction:column;' : ''}">
+        <div style="display:flex;gap:16px;align-items:flex-start;width:100%;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+              ${typeTag}
+              <span style="font-size:13px;font-weight:500;color:var(--text);">${esc(label)}</span>
+              ${stagePill}
+            </div>
+            <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;word-break:break-all;">${esc(preview)}</div>
+            ${extraMeta}
+            ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
+            ${t.result_url ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:var(--teal);font-family:var(--font-data);text-decoration:none;">Download video</a>' : ''}
           </div>
-          <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;">"${preview}"</div>
-          ${isAgent && t.duration_sec ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + t.duration_sec + 's / ' + (t.orientation || 'portrait') + '</span>' : ''}
-          ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + t.error + '</div>' : ''}
-          ${t.result_url ? '<a href="' + t.result_url + '" target="_blank" style="font-size:11px;color:var(--teal);font-family:var(--font-data);text-decoration:none;">Download video</a>' : ''}
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+            <span class="task-badge ${t.status}">${t.status}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
+          </div>
+          <button onclick="deleteTask('${apiBase}','${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-          <span class="task-badge ${t.status}">${t.status}</span>
-          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
-        </div>
-        <button onclick="deleteTask('${apiBase}','${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
+        ${clipsBlock}
       </div>`;
     }).join('');
   } catch { document.getElementById('tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'; }
@@ -394,6 +510,41 @@ async function submitAgentTask() {
     loadTasks();
     setTimeout(() => { document.getElementById('va-status').textContent = ''; }, 3000);
   } catch(e) { document.getElementById('va-status').textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; }
+}
+
+async function submitClipperTask() {
+  const url = document.getElementById('cl-url').value.trim();
+  if (!url) { document.getElementById('cl-status').textContent = 'Paste a video URL first'; return; }
+  const btn = document.getElementById('cl-submit');
+  btn.disabled = true;
+  document.getElementById('cl-status').textContent = 'Submitting...';
+  try {
+    const keywords = document.getElementById('cl-keywords').value
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const res = await fetch(API_CLIPPER, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_url: url,
+        min_duration: parseInt(document.getElementById('cl-min').value, 10) || 30,
+        max_duration: parseInt(document.getElementById('cl-max').value, 10) || 90,
+        source_lang: document.getElementById('cl-lang').value,
+        topic_keywords: keywords,
+        description: document.getElementById('cl-desc').value.trim(),
+        brand: getSelectedBrand(),
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || ('HTTP ' + res.status));
+    }
+    document.getElementById('cl-url').value = '';
+    document.getElementById('cl-keywords').value = '';
+    document.getElementById('cl-desc').value = '';
+    document.getElementById('cl-status').textContent = 'Task submitted!';
+    loadTasks();
+    setTimeout(() => { document.getElementById('cl-status').textContent = ''; }, 3000);
+  } catch(e) { document.getElementById('cl-status').textContent = 'Error: ' + e.message; }
   finally { btn.disabled = false; }
 }
 
