@@ -3844,6 +3844,34 @@ app.post("/ctrl/chat", async (req, res) => {
       },
       {
         type: "custom",
+        name: "opusclip_create",
+        description: "Submit een long-form video (YouTube/Vimeo/directe URL) naar OpusClip om er korte virale clips van te maken. Geeft een task_id terug. Verwerking duurt enkele minuten — gebruik opusclip_status om voortgang en clips op te halen.",
+        input_schema: {
+          type: "object",
+          properties: {
+            video_url: { type: "string", description: "Volledige URL van de bronvideo, bijv. https://www.youtube.com/watch?v=..." },
+            min_duration: { type: "integer", description: "Minimale cliplengte in seconden. Default 30." },
+            max_duration: { type: "integer", description: "Maximale cliplengte in seconden. Default 90." },
+            source_lang: { type: "string", description: "Bron-taalcode (bijv. 'en', 'nl', 'es') of 'auto'. Default: 'auto'." },
+            topic_keywords: { type: "array", items: { type: "string" }, description: "Optionele onderwerpen om op te focussen, bijv. ['hook', 'key takeaway']." },
+            description: { type: "string", description: "Korte interne omschrijving (max 200 tekens)." },
+          },
+          required: ["video_url"],
+        },
+      },
+      {
+        type: "custom",
+        name: "opusclip_status",
+        description: "Haal OpusClip taken op. Zonder task_id: laatste 20 taken (status, stage, aantal clips). Met task_id: volledig detail incl. clips array met preview/download URLs en virality scores.",
+        input_schema: {
+          type: "object",
+          properties: {
+            task_id: { type: "string", description: "Optioneel: ID van een specifieke taak. Zonder ID krijg je de lijst." },
+          },
+        },
+      },
+      {
+        type: "custom",
         name: "run_skill",
         description: `Voer een Claude Code skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, A/B test opzet, content strategie, schema markup, brainstorming, etc.
 
@@ -3997,6 +4025,23 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         }
         return { url: "http://localhost:3004/seo/reports", method: "GET", isSeo: true };
       },
+      opusclip_create: (input) => ({
+        url: "http://localhost:3004/opusclip/tasks",
+        body: {
+          video_url: input.video_url,
+          min_duration: input.min_duration,
+          max_duration: input.max_duration,
+          source_lang: input.source_lang,
+          topic_keywords: Array.isArray(input.topic_keywords) ? input.topic_keywords : [],
+          description: input.description || "",
+        },
+      }),
+      opusclip_status: (input) => ({
+        url: "http://localhost:3004/opusclip/tasks",
+        method: "GET",
+        isOpusclip: true,
+        opusclipTaskId: input.task_id || null,
+      }),
     };
 
     const apiParams = {
@@ -4235,6 +4280,35 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
                   psi: task.psi ? { mobile: task.psi.mobile?.scores, desktop: task.psi.desktop?.scores } : null,
                   strategic: task.strategic,
                 };
+              }
+              resultContent = JSON.stringify({ success: true, data: payload });
+            } else if (action.isOpusclip) {
+              let payload;
+              if (action.opusclipTaskId) {
+                const found = Array.isArray(task) ? task.find(t => t.id === action.opusclipTaskId) : null;
+                if (!found) {
+                  payload = { error: `Geen taak gevonden met id ${action.opusclipTaskId}` };
+                } else {
+                  const clips = Array.isArray(found.clips) ? found.clips.slice(0, 30).map(c => ({
+                    title: c.title || c.name || c.clipTitle || null,
+                    duration: c.duration || (c.endTime != null && c.startTime != null ? Math.round(c.endTime - c.startTime) : null),
+                    virality_score: c.viralityScore ?? null,
+                    preview_url: c.previewUrl || c.thumbnailUrl || c.thumbnail || null,
+                    download_url: c.exportUrl || c.downloadUrl || c.videoUrl || c.url || null,
+                  })) : [];
+                  payload = {
+                    id: found.id, status: found.status, stage: found.stage,
+                    video_url: found.video_url, description: found.description,
+                    project_id: found.project_id, created_at: found.created_at,
+                    error: found.error, clip_count: clips.length, clips,
+                  };
+                }
+              } else {
+                payload = (Array.isArray(task) ? task : []).slice(0, 20).map(t => ({
+                  id: t.id, status: t.status, stage: t.stage,
+                  video_url: t.video_url, description: t.description,
+                  created_at: t.created_at, clip_count: Array.isArray(t.clips) ? t.clips.length : 0,
+                }));
               }
               resultContent = JSON.stringify({ success: true, data: payload });
             } else {
@@ -6716,6 +6790,8 @@ async function executeSchedule(schedule) {
       await executeCommunityManagerSchedule(schedule, today);
     } else if (schedule.agent === "seo") {
       await executeSeoSchedule(schedule, today);
+    } else if (schedule.agent === "opusclip") {
+      await executeOpusclipSchedule(schedule, today);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -6847,6 +6923,106 @@ async function executeSeoSchedule(schedule, today) {
     writeTaskFile("scheduled-tasks.json", schedules);
   }
   console.log(`[SCHEDULER] SEO task created: ${taskId} (${p.url})`);
+}
+
+// ── OpusClip: watch a YouTube channel, clip the newest unprocessed video ──
+async function fetchLatestYoutubeUploads(channelId, max = 5) {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) throw new Error("YOUTUBE_API_KEY not configured");
+  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${encodeURIComponent(channelId)}&key=${apiKey}`);
+  const chData = await chRes.json();
+  if (!chRes.ok) throw new Error(`YouTube channel lookup failed: ${chData?.error?.message || chRes.status}`);
+  const uploadsId = chData?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsId) throw new Error(`No uploads playlist for channel ${channelId}`);
+  const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${max}&key=${apiKey}`);
+  const plData = await plRes.json();
+  if (!plRes.ok) throw new Error(`YouTube uploads list failed: ${plData?.error?.message || plRes.status}`);
+  return (plData.items || []).map(it => ({
+    video_id: it.snippet?.resourceId?.videoId,
+    title: it.snippet?.title,
+    published_at: it.snippet?.publishedAt,
+  })).filter(v => v.video_id);
+}
+
+async function executeOpusclipSchedule(schedule, today) {
+  const p = schedule.payload || {};
+  const channelId = (p.channel_id || "").trim();
+  if (!channelId) {
+    console.log(`[SCHEDULER] OpusClip skipped: no channel_id configured`);
+    return;
+  }
+  if (!process.env.OPUSCLIP_API_KEY) {
+    console.log(`[SCHEDULER] OpusClip skipped: OPUSCLIP_API_KEY not configured`);
+    return;
+  }
+  if (!process.env.YOUTUBE_API_KEY) {
+    console.log(`[SCHEDULER] OpusClip skipped: YOUTUBE_API_KEY not configured`);
+    return;
+  }
+
+  let uploads;
+  try {
+    uploads = await fetchLatestYoutubeUploads(channelId, 5);
+  } catch (e) {
+    console.error(`[SCHEDULER] OpusClip YouTube fetch failed: ${e.message}`);
+    return;
+  }
+  if (!uploads.length) {
+    console.log(`[SCHEDULER] OpusClip: channel ${channelId} has no recent uploads`);
+    return;
+  }
+
+  const tasks = readTaskFile("opusclip-tasks.json");
+  const processedIds = new Set(tasks
+    .map(t => {
+      const m = String(t.video_url || "").match(/(?:v=|youtu\.be\/|\/shorts\/)([\w-]{11})/);
+      return m ? m[1] : null;
+    })
+    .filter(Boolean));
+
+  const next = uploads.find(u => !processedIds.has(u.video_id));
+  if (!next) {
+    console.log(`[SCHEDULER] OpusClip: no new videos on channel ${channelId} (last ${uploads.length} all clipped)`);
+    const schedules = readTaskFile("scheduled-tasks.json");
+    const idx = schedules.findIndex(s => s.id === schedule.id);
+    if (idx >= 0) {
+      schedules[idx].last_run = new Date().toISOString();
+      schedules[idx].last_skip_reason = "no new uploads";
+      writeTaskFile("scheduled-tasks.json", schedules);
+    }
+    return;
+  }
+
+  const minD = parseInt(p.min_duration, 10);
+  const maxD = parseInt(p.max_duration, 10);
+  const task = {
+    id: genId(),
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    video_url: `https://www.youtube.com/watch?v=${next.video_id}`,
+    min_duration: Number.isFinite(minD) && minD > 0 ? minD : 30,
+    max_duration: Number.isFinite(maxD) && maxD > 0 ? maxD : 90,
+    source_lang: p.source_lang || "auto",
+    topic_keywords: Array.isArray(p.topic_keywords) ? p.topic_keywords : [],
+    description: (next.title || "").slice(0, 200),
+    source: { type: "youtube_channel", channel_id: channelId, video_id: next.video_id, schedule_id: schedule.id },
+    project_id: null, stage: null, clips: [], error: null,
+  };
+  tasks.unshift(task);
+  if (tasks.length > 50) tasks.length = 50;
+  writeTaskFile("opusclip-tasks.json", tasks);
+
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    schedules[idx].last_task_id = task.id;
+    schedules[idx].last_video_id = next.video_id;
+    delete schedules[idx].last_skip_reason;
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+  console.log(`[SCHEDULER] OpusClip task created: ${task.id} (channel ${channelId} → ${next.video_id})`);
 }
 
 async function executeResearcherSchedule(schedule, today) {

@@ -335,6 +335,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="ads_optimizer">Ads Optimizer</option>
               <option value="community_manager">Community Manager</option>
               <option value="seo">SEO Audit</option>
+              <option value="opusclip">OpusClip Clipper</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -388,7 +389,7 @@ const AI_TEAM = [
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
-  { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
+  { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen Avatar, Video Agent & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks', '/opusclip/tasks'], type: 'CONTENT' },
   { name: 'SCRIPT WRITER', emoji: '\u270D\uFE0F', role: 'Video & Content Scripts', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', taskApi: '/scriptwriter/tasks', type: 'SCRIPT' },
   { name: 'SEO', emoji: '\u{1F50E}', role: 'Site Audit & Optimization', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', taskApi: '/seo/tasks', type: 'SEO' },
   { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
@@ -566,6 +567,7 @@ async function loadAllTasks() {
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/research/tasks', agent: 'RESEARCHER', type: 'RESEARCH' },
     { api: '/seo/tasks', agent: 'SEO', type: 'SEO' },
+    { api: '/opusclip/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Clipper' },
     { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
   ];
 
@@ -705,7 +707,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', seo: 'SEO' };
+const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', seo: 'SEO', opusclip: 'OPUSCLIP' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   researcher: 'color:hsl(264 65% 49%)',
@@ -715,6 +717,7 @@ const AGENT_STYLES = {
   ads_optimizer: 'color:hsl(142 76% 36%)',
   community_manager: 'color:hsl(200 90% 55%)',
   seo: 'color:hsl(160 70% 45%)',
+  opusclip: 'color:hsl(0 72% 51%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -725,6 +728,7 @@ const AGENT_DESCRIPTIONS = {
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
   seo: 'Crawls your website (up to 100 pages), runs technical + on-page + content SEO checks, fetches Google PageSpeed Insights, and produces a prioritised improvement report.',
+  opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
 };
 
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -761,6 +765,11 @@ function buildScheduleSummary(s) {
     case 'seo': {
       const maxPages = parseInt(p.max_pages) || 25;
       return `${escHtml(p.url || '?')} · up to ${maxPages} pages · ${p.language || 'EN'}`;
+    }
+    case 'opusclip': {
+      const minD = parseInt(p.min_duration) || 30;
+      const maxD = parseInt(p.max_duration) || 90;
+      return `YouTube channel ${escHtml(p.channel_id || '?')} · clips ${minD}-${maxD}s · ${p.source_lang || 'auto'}`;
     }
     default:
       return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
@@ -932,6 +941,42 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Language</label>
         <select class="sched-select" id="sp-language"><option value="EN">EN</option><option value="NL">NL</option></select></div>
     </div>`,
+  opusclip: `
+    <div style="background:hsla(0 72% 51%/0.06);border:1px solid hsla(0 72% 51%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li>Checks the configured YouTube channel for the latest uploads</li>
+        <li>Picks the newest video that has not been clipped before (deduped against the OpusClip queue)</li>
+        <li>Submits it to OpusClip with your duration + language preferences</li>
+        <li>The worker polls progress and stores the resulting clips on the Content Creator page</li>
+        <li>Requires <b>YOUTUBE_API_KEY</b> + <b>OPUSCLIP_API_KEY</b> in Settings</li>
+      </ul>
+    </div>
+    <div class="sched-form-row">
+      <div style="grid-column:1/-1"><label class="sched-label">YouTube Channel ID</label>
+        <input class="sched-input" id="sp-channel_id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" style="width:100%"></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Min clip duration (s)</label>
+        <input class="sched-input" id="sp-min_duration" type="number" min="5" max="180" value="30"></div>
+      <div><label class="sched-label">Max clip duration (s)</label>
+        <input class="sched-input" id="sp-max_duration" type="number" min="10" max="240" value="90"></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Source language</label>
+        <select class="sched-select" id="sp-source_lang">
+          <option value="auto">Auto-detect</option>
+          <option value="en">English</option>
+          <option value="nl">Dutch</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="it">Italian</option>
+          <option value="pt">Portuguese</option>
+        </select></div>
+      <div><label class="sched-label">Topic keywords (comma-separated, optional)</label>
+        <input class="sched-input" id="sp-topic_keywords" placeholder="hook, key takeaway"></div>
+    </div>`,
 };
 
 function updatePayloadFields() {
@@ -1042,7 +1087,7 @@ function collectPayload() {
   fields.forEach(el => {
     const key = el.id.replace('sp-', '');
     if (el.type === 'checkbox') payload[key] = el.checked;
-    else if (key === 'platforms') payload[key] = el.value.split(',').map(s => s.trim()).filter(Boolean);
+    else if (key === 'platforms' || key === 'topic_keywords') payload[key] = el.value.split(',').map(s => s.trim()).filter(Boolean);
     else payload[key] = el.value;
   });
   return payload;
