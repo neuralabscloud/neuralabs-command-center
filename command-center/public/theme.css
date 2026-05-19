@@ -67,7 +67,9 @@ html[data-theme="light"] .briefing {
 html[data-theme="light"] .login-input,
 html[data-theme="light"] .form-input,
 html[data-theme="light"] .form-select,
-html[data-theme="light"] .form-textarea {
+html[data-theme="light"] .form-textarea,
+html[data-theme="light"] .sched-input,
+html[data-theme="light"] .sched-select {
   background: hsl(0 0% 100%) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
