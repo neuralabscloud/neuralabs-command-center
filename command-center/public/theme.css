@@ -261,3 +261,27 @@ html[data-theme="light"] .pages-table td {
   border-bottom-color: hsla(217 15% 80% / 0.6);
 }
 html[data-theme="light"] .pages-table td.url { color: var(--text); }
+
+/* ─── Notification panel (dark by default — override for light theme) ─── */
+html[data-theme="light"] .notif-panel {
+  background: var(--bg-sidebar);
+  border-right-color: var(--border);
+  box-shadow: 8px 0 32px hsla(0 0% 0% / 0.08);
+}
+html[data-theme="light"] .notif-panel-header,
+html[data-theme="light"] .notif-panel-header * {
+  border-color: var(--border);
+}
+html[data-theme="light"] .notif-panel-title,
+html[data-theme="light"] .notif-title {
+  color: var(--text);
+}
+html[data-theme="light"] .notif-msg,
+html[data-theme="light"] .notif-mark-read,
+html[data-theme="light"] .notif-time,
+html[data-theme="light"] .notif-empty {
+  color: var(--text-dim);
+}
+html[data-theme="light"] .notif-mark-read {
+  border-color: var(--border);
+}
