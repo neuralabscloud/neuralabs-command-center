@@ -142,8 +142,8 @@ Doe een uitgebreide dagelijkse scan:
    Zoek actuele hot topics, nieuws en debatten. Geef bij elk item een hook-angle in het Nederlands.
    Beoordeel potentieel 0-100 op basis van viraliteitspotentieel.
 
-2. COMPETITORS (3-5 items): Analyseer top content creators in {niche}.
-   Focus op de belangrijkste creators en influencers in jouw markt.
+2. COMPETITORS (3-5 items): Analyseer top crypto/trading content creators.
+   Focus op: metavers3nl, crypto influencers in de Nederlandse/Europese markt.
    Vermeld volgersaantallen, gemiddelde views, groeitrend.
 
 3. HOOKS (6-8 items): Genereer virale hook-formules specifiek voor {niche}, in het Nederlands.
@@ -160,8 +160,8 @@ Do a comprehensive daily scan:
    Find current hot topics, news, debates. For each, suggest a hook angle.
    Rate potential 0-100 based on virality potential.
 
-2. COMPETITORS (3-5 items): Analyze top content creators in {niche}.
-   Focus on the leading creators and influencers in your market.
+2. COMPETITORS (3-5 items): Analyze top crypto/trading content creators.
+   Focus on: metavers3nl, crypto influencers in the Dutch/European market.
    Include follower counts, average views, growth trend.
 
 3. HOOKS (6-8 items): Generate viral hook formulas specific to {niche}.

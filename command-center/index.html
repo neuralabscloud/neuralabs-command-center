@@ -5,7 +5,7 @@
 <script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <link rel="stylesheet" href="/theme.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Command Center — AI Operations Dashboard</title>
+<title>AI Operations Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/iso-office.css">
 <style>
@@ -1075,6 +1075,16 @@ function updateTime() {
 updateTime();
 setInterval(updateTime, 1000);
 
+// ── BRAND TITLE ────────────────────────────────
+fetch('/brand', { credentials: 'include' })
+  .then(r => r.ok ? r.json() : null)
+  .then(b => {
+    if (!b || !b.company_name) return;
+    const el = document.getElementById('header-title');
+    if (el) el.textContent = String(b.company_name).toUpperCase() + ' COMMAND CENTER';
+  })
+  .catch(() => {});
+
 // ── HELPERS ────────────────────────────────────
 function sparkline(data, color) {
   const max = Math.max(...data);
@@ -1848,14 +1858,6 @@ function closeAllMobile() {
 window.addEventListener('resize', function() {
   if (window.innerWidth > 1024) closeAllMobile();
 });
-
-// Dynamic header title from brand config
-fetch('/brand', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(b => {
-  if (b && b.company_name) {
-    const el = document.getElementById('header-title');
-    if (el) el.textContent = String(b.company_name).toUpperCase() + ' COMMAND CENTER';
-  }
-}).catch(() => {});
 </script>
 
 <script src="/auth-guard.js"></script>

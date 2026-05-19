@@ -2,14 +2,15 @@
   const NAV_ITEMS = [
     { href: 'index.html', label: 'Overview', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
     { href: 'research.html', label: 'Research', icon: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>' },
+    { href: 'seo.html', label: 'SEO Audit', icon: '<path d="M4 7h16M4 12h10M4 17h7"/><circle cx="17" cy="16" r="3"/><path d="M19.5 18.5L22 21"/>' },
     { href: 'performance.html', label: 'Performance', icon: '<path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-8"/>' },
     { href: 'ads.html', label: 'Ads Manager', icon: '<path d="M3 11l18-5v12L3 13v-2z"/><circle cx="7" cy="12" r="2"/>' },
     { href: 'agents.html', label: 'Agents', icon: '<circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/>' },
     { href: 'editor.html', label: 'Video Editor', icon: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>' },
     { href: 'designer.html', label: 'Designer', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },
     { href: 'content-creator.html', label: 'Content Creator', icon: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>' },
-    { href: 'community-manager.html', label: 'Community Manager', icon: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>' },
     { href: 'scriptwriter.html', label: 'Script Writer', icon: '<path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' },
+    { href: 'community-manager.html', label: 'Community Manager', icon: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>' },
   ];
 
   const BELL_ICON = '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>';
@@ -25,7 +26,7 @@
   if (!sidebar) return;
 
   sidebar.innerHTML = `
-    <div class="sidebar-logo" id="sidebar-logo">CC</div>
+    <div class="sidebar-logo">NL</div>
     <nav class="sidebar-nav">
       ${NAV_ITEMS.map(item => {
         const active = item.href === currentPage ? ' active' : '';
@@ -48,15 +49,11 @@
     </a>
   `;
 
-  // Dynamically load branding from config
+  // Dynamically load assistant name from brand config
   fetch('/brand').then(r => r.json()).then(b => {
-    if (b && b.assistant_name) {
-      const el = document.getElementById('sidebar-assistant-tooltip');
-      if (el) el.textContent = b.assistant_name;
-    }
-    if (b && b.company_name) {
-      const logo = document.getElementById('sidebar-logo');
-      if (logo) logo.textContent = b.company_name.substring(0, 2).toUpperCase();
-    }
+    const name = b && b.assistant_name;
+    if (!name) return;
+    const el = document.getElementById('sidebar-assistant-tooltip');
+    if (el) el.textContent = name;
   }).catch(() => {});
 })();

@@ -5,7 +5,7 @@
 <script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <link rel="stylesheet" href="/theme.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Command Center — Login</title>
+<title>Login</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -82,7 +82,7 @@ body::after {
 <body>
 <div class="login-box">
   <div class="login-logo" id="login-logo">COMMAND</div>
-  <div class="login-sub" id="login-sub">Command Center</div>
+  <div class="login-sub">Command Center</div>
   <label class="login-label">Password</label>
   <input class="login-input" id="pw" type="password" placeholder="Enter password..." autofocus
     onkeydown="if(event.key==='Enter')doLogin()">
@@ -115,13 +115,17 @@ async function doLogin() {
   }
   btn.disabled = false;
 }
-// Dynamic logo from brand config
-fetch('/brand').then(r => r.ok ? r.json() : null).then(b => {
-  if (b && b.company_name) {
-    const logo = document.getElementById('login-logo');
-    if (logo) logo.textContent = String(b.company_name).toUpperCase();
-  }
-}).catch(() => {});
+
+// Brand logo from setup-status (unauthenticated endpoint)
+fetch('/api/setup-status')
+  .then(r => r.ok ? r.json() : null)
+  .then(s => {
+    if (!s || !s.company_name) return;
+    const el = document.getElementById('login-logo');
+    if (el) el.textContent = String(s.company_name).toUpperCase();
+    document.title = s.company_name + ' — Login';
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>

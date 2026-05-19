@@ -163,7 +163,7 @@
   filter: blur(0.5px);
 }
 
-/* ── CHIEF (AI Officer, orchestrator) ── */
+/* ── CHIEF (Chief AI Officer / orchestrator) ── */
 .chief { cursor: pointer; transition: transform 0.35s cubic-bezier(.2,.7,.3,1); }
 .chief:hover { transform: translateY(-4px); }
 .chief .chief-base {

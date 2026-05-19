@@ -230,12 +230,6 @@ function writeEnvFile(updates) {
   for (const [key, val] of Object.entries(updates)) {
     process.env[key] = val;
   }
-  // Refresh module-level cached env (Telegram tokens, etc.) so changes take
-  // effect without a service restart.
-  const touched = Object.keys(updates);
-  if (touched.some(k => k === "TELEGRAM_BOT_TOKEN" || k === "TELEGRAM_CHAT_ID")) {
-    try { refreshTelegramEnv(); } catch {}
-  }
   // Mirror the Inference.sh API key into the infsh CLI config so the binary
   // can authenticate without an interactive `infsh login`. The CLI reads
   // ~/.inferencesh/config.json and the format is just { "api_key": "..." }.
@@ -1777,6 +1771,8 @@ app.post("/community/send-review", async (req, res) => {
   }
 });
 
+const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
+
 // ── RESEARCH TASKS ────────────────────────────
 app.get("/research/tasks", (_req, res) => res.json(readTaskFile("research-tasks.json")));
 
@@ -1863,6 +1859,53 @@ app.delete("/research/reports/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── SEO AUDIT ─────────────────────────────────
+app.get("/seo/tasks", (_req, res) => res.json(readTaskFile("seo-tasks.json")));
+
+app.post("/seo/tasks", (req, res) => {
+  const rawUrl = (req.body.url || "").trim();
+  if (!rawUrl) return res.status(400).json({ error: "url is required" });
+  let normalised;
+  try {
+    normalised = new URL(rawUrl.match(/^https?:\/\//i) ? rawUrl : `https://${rawUrl}`).toString();
+  } catch { return res.status(400).json({ error: "Invalid URL" }); }
+
+  const tasks = readTaskFile("seo-tasks.json");
+  const task = {
+    id: genId(),
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    url: normalised,
+    max_pages: Math.min(Math.max(parseInt(req.body.max_pages, 10) || 25, 1), 100),
+    language: req.body.language || process.env.LANGUAGE || "EN",
+    error: null,
+  };
+  tasks.unshift(task);
+  if (tasks.length > 50) tasks.length = 50;
+  writeTaskFile("seo-tasks.json", tasks);
+  res.status(201).json(task);
+});
+
+app.delete("/seo/tasks/:id", (req, res) => {
+  writeTaskFile("seo-tasks.json", readTaskFile("seo-tasks.json").filter((t) => t.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+app.get("/seo/reports", (_req, res) => res.json(readTaskFile("seo-reports.json")));
+
+app.get("/seo/reports/:id", (req, res) => {
+  const reports = readTaskFile("seo-reports.json");
+  const report = reports.find((r) => r.id === req.params.id);
+  if (!report) return res.status(404).json({ error: "Not found" });
+  res.json(report);
+});
+
+app.delete("/seo/reports/:id", (req, res) => {
+  writeTaskFile("seo-reports.json", readTaskFile("seo-reports.json").filter((r) => r.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ── MEDIA LIBRARY ─────────────────────────────
 const MEDIA_DIR = path.join(__dirname, "public", "media");
 
@@ -1900,7 +1943,7 @@ app.get("/settings/integrations", (_req, res) => {
     details: [
       { label: "API Key", value: anthropicKey, secret: true },
       { label: "Model", value: "claude-sonnet-4-20250514" },
-      { label: "Used by", value: "AI Chat, Research, Designer (Claude engine)" },
+      { label: "Used by", value: "AI Chat, Research, Analyst, Designer (Claude engine)" },
     ],
   });
 
@@ -2486,12 +2529,12 @@ app.get("/settings/services", async (_req, res) => {
   ];
   const results = [];
   for (const svc of services) {
-    let status = "offline";
     try {
-      await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
-      status = "online";
-    } catch {}
-    results.push({ ...svc, status });
+      const r = await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
+      results.push({ ...svc, status: "online" });
+    } catch {
+      results.push({ ...svc, status: "offline" });
+    }
   }
   res.json(results);
 });
@@ -2658,21 +2701,8 @@ app.delete("/media/:name", (req, res) => {
 });
 
 // ── TELEGRAM ──────────────────────────────────
-// Read via `let` so settings/test + writeEnvFile can refresh after wizard save
-// without requiring a service restart. refreshTelegramEnv() is called from
-// writeEnvFile whenever a TELEGRAM_* key is updated.
-let TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
-let TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
-function refreshTelegramEnv() {
-  const newToken = process.env.TELEGRAM_BOT_TOKEN || "";
-  const tokenChanged = newToken !== TG_TOKEN;
-  TG_TOKEN = newToken;
-  TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
-  // If token changed and polling wasn't started yet, start it now
-  if (tokenChanged && TG_TOKEN && typeof tgPoll === "function" && !tgPollingActive) {
-    try { setTimeout(() => tgPoll(), 1000); } catch {}
-  }
-}
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const TG_CHAT  = process.env.TELEGRAM_CHAT_ID || "";
 
 const SEVERITY_EMOJI = { success: "\u2705", danger: "\u274c", warning: "\u26a0\ufe0f", info: "\u2139\ufe0f" };
 
@@ -2688,7 +2718,7 @@ function sendTelegram(title, message, severity) {
 }
 
 // ── TELEGRAM BOT (two-way: AI chat via Telegram) ─────────
-function tgApi() { return `https://api.telegram.org/bot${TG_TOKEN}`; }
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 let tgPollingActive = false;
 let tgOffset = 0;
 
@@ -2701,7 +2731,7 @@ function tgSend(chatId, text) {
     remaining = remaining.slice(4000);
   }
   for (const chunk of chunks) {
-    fetch(`${tgApi()}/sendMessage`, {
+    fetch(`${TG_API}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2712,7 +2742,7 @@ function tgSend(chatId, text) {
       }),
     }).catch(err => {
       // Fallback without Markdown if it fails
-      fetch(`${tgApi()}/sendMessage`, {
+      fetch(`${TG_API}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, text: chunk, disable_web_page_preview: true }),
@@ -2890,7 +2920,7 @@ const DAY_NUM = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, f
 const DAY_SHORT_TO_NUM = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 function tgApiCall(method, body) {
-  return fetch(`${tgApi()}/${method}`, {
+  return fetch(`${TG_API}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2911,7 +2941,7 @@ async function sendCommunityReviewCard(chatId, task, channel) {
       form.append("chat_id", String(chatId));
       form.append("caption", `📎 Media voor review — ${task.archetype || task.id}`);
       form.append(kind.field, new Blob([buffer]), name);
-      await fetch(`${tgApi()}/${kind.method}`, { method: "POST", body: form });
+      await fetch(`${TG_API}/${kind.method}`, { method: "POST", body: form });
     } catch (e) {
       console.error(`[COMMUNITY-REVIEW] Media preview failed for ${task.id}: ${e.message}`);
     }
@@ -3130,7 +3160,7 @@ async function tgPoll() {
 
   while (tgPollingActive) {
     try {
-      const r = await fetch(`${tgApi()}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message","callback_query"]`, {
+      const r = await fetch(`${TG_API}/getUpdates?offset=${tgOffset}&timeout=30&allowed_updates=["message","callback_query"]`, {
         signal: AbortSignal.timeout(35000),
       });
       const data = await r.json();
@@ -3281,24 +3311,8 @@ setInterval(() => {
 }, 15_000);
 
 // ── AI CHAT ───────────────────────────────────
-// Lazy Anthropic client: constructor reads ANTHROPIC_API_KEY once, so a
-// module-level `new Anthropic()` captures empty-string on fresh installs
-// (before the wizard saves the key). This proxy re-creates the client
-// whenever the env var changes, so callers can keep using `anthropic.x.y`.
 const Anthropic = require("@anthropic-ai/sdk");
-let _anthropicClient = null;
-let _anthropicClientKey = null;
-function getAnthropic() {
-  const key = process.env.ANTHROPIC_API_KEY || "";
-  if (!_anthropicClient || _anthropicClientKey !== key) {
-    _anthropicClient = new Anthropic();
-    _anthropicClientKey = key;
-  }
-  return _anthropicClient;
-}
-const anthropic = new Proxy({}, {
-  get(_t, prop) { return getAnthropic()[prop]; },
-});
+const anthropic = new Anthropic();
 
 // Chat history per session (in-memory, resets on server restart)
 const chatSessions = {};
@@ -3363,6 +3377,7 @@ COMMAND CENTER AGENTS:
 - Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — video editing via Remotion
 - Content Creator — HeyGen avatar videos + AI Video Agent
+- Analyst — performance analyses, risk reports, daily reports
 - Researcher — trending content, competitor analysis, market research, keyword research
 - Script Writer — video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
@@ -3747,6 +3762,31 @@ app.post("/ctrl/chat", async (req, res) => {
       },
       {
         type: "custom",
+        name: "seo_analyze",
+        description: "Start een SEO-analyse voor een website. Crawlt tot ~25 pagina's, checkt on-page/technical SEO, en (indien PSI_API_KEY ingesteld) Core Web Vitals. Levert een task_id op; gebruik daarna seo_query om het rapport op te halen zodra status='completed'. Duurt ~1-3 minuten.",
+        input_schema: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Volledige URL van de site die geanalyseerd moet worden, bijv. https://example.com" },
+            max_pages: { type: "integer", description: "Max aantal te crawlen pagina's (1-100). Default 25." },
+          },
+          required: ["url"],
+        },
+      },
+      {
+        type: "custom",
+        name: "seo_query",
+        description: "Haal SEO-rapporten op. Zonder report_id: lijst van alle rapporten. Met report_id: het volledige rapport (findings per categorie, score, PSI scores, strategische review).",
+        input_schema: {
+          type: "object",
+          properties: {
+            report_id: { type: "string", description: "Optioneel: ID van een specifiek rapport. Zonder ID krijg je de lijst." },
+            category: { type: "string", enum: ["technical", "onPage", "content", "structuredData", "mobile", "links", "international"], description: "Optioneel: filter een rapport op één categorie." },
+          },
+        },
+      },
+      {
+        type: "custom",
         name: "run_skill",
         description: `Voer een Claude Code skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, A/B test opzet, content strategie, schema markup, brainstorming, etc.
 
@@ -3886,6 +3926,19 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           url: `http://localhost:3004/ads/${seg}/${input.object_id}/status`,
           body: { status: input.action === "pause" ? "PAUSED" : "ACTIVE", account_id: input.account_id },
         };
+      },
+      seo_analyze: (input) => ({
+        url: "http://localhost:3004/seo/tasks",
+        body: {
+          url: input.url,
+          max_pages: input.max_pages || 25,
+        },
+      }),
+      seo_query: (input) => {
+        if (input.report_id) {
+          return { url: `http://localhost:3004/seo/reports/${input.report_id}`, method: "GET", isSeo: true, seoCategory: input.category || null };
+        }
+        return { url: "http://localhost:3004/seo/reports", method: "GET", isSeo: true };
       },
     };
 
@@ -4098,11 +4151,38 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               body: JSON.stringify(action.body),
             });
             const task = await taskRes.json();
-            const resultContent = action.isAds
-              ? JSON.stringify({ success: true, data: task })
-              : action.isCalendar
-              ? JSON.stringify({ success: true, calendar_response: task.reply || task.error || "Geen antwoord" })
-              : JSON.stringify({ success: true, task_id: task.id, status: task.status, message: `Task aangemaakt: ${task.id}` });
+            let resultContent;
+            if (action.isAds) {
+              resultContent = JSON.stringify({ success: true, data: task });
+            } else if (action.isCalendar) {
+              resultContent = JSON.stringify({ success: true, calendar_response: task.reply || task.error || "Geen antwoord" });
+            } else if (action.isSeo) {
+              // List view: trim heavy fields. Single-report view: optionally filter to one category.
+              let payload = task;
+              if (Array.isArray(task)) {
+                payload = task.slice(0, 20).map(r => ({
+                  id: r.id, created_at: r.created_at, url: r.url, score: r.score,
+                  pagesCrawled: r.pagesCrawled, counts: r.counts,
+                }));
+              } else if (action.seoCategory && task?.findings) {
+                payload = {
+                  id: task.id, url: task.url, score: task.score,
+                  category: action.seoCategory,
+                  findings: task.findings[action.seoCategory] || [],
+                  strategic: task.strategic,
+                };
+              } else if (task?.findings) {
+                payload = {
+                  id: task.id, url: task.url, score: task.score, counts: task.counts,
+                  pagesCrawled: task.pagesCrawled, findings: task.findings,
+                  psi: task.psi ? { mobile: task.psi.mobile?.scores, desktop: task.psi.desktop?.scores } : null,
+                  strategic: task.strategic,
+                };
+              }
+              resultContent = JSON.stringify({ success: true, data: payload });
+            } else {
+              resultContent = JSON.stringify({ success: true, task_id: task.id, status: task.status, message: `Task aangemaakt: ${task.id}` });
+            }
             toolResults.push({
               type: "tool_result",
               tool_use_id: block.id,
@@ -5257,6 +5337,49 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
   }
 }
 
+// ── SEO WORKER ──
+const { runSeoAnalysis } = require("./seo-agent");
+
+async function processSeoTasks() {
+  const tasks = readTaskFile("seo-tasks.json");
+  for (const task of tasks) {
+    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
+    processingTasks.add(task.id);
+    console.log(`[WORKER] SEO analysing ${task.url}`);
+    try {
+      task.status = "processing";
+      task.updated_at = new Date().toISOString();
+      writeTaskFile("seo-tasks.json", tasks);
+
+      const result = await runSeoAnalysis(task, { anthropic, loadBrand });
+
+      const reports = readTaskFile("seo-reports.json");
+      reports.unshift({
+        id: genId(),
+        task_id: task.id,
+        created_at: new Date().toISOString(),
+        language: task.language,
+        ...result,
+      });
+      if (reports.length > 30) reports.length = 30;
+      writeTaskFile("seo-reports.json", reports);
+
+      task.status = "completed";
+      task.updated_at = new Date().toISOString();
+      writeTaskFile("seo-tasks.json", tasks);
+      console.log(`[WORKER] SEO task ${task.id} completed (${result.pagesCrawled} pages, score ${result.score})`);
+    } catch (e) {
+      console.error(`[WORKER] SEO task ${task.id} failed:`, e.message);
+      task.status = "failed";
+      task.error = e.message;
+      task.updated_at = new Date().toISOString();
+      writeTaskFile("seo-tasks.json", tasks);
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+}
+
 // ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
 async function processDesignerTasks() {
   const canvaToken = await getCanvaAccessToken();
@@ -5597,6 +5720,7 @@ setInterval(() => {
   processVideoAgentTasks().catch(e => console.error("[WORKER] Video agent error:", e.message));
   processScriptwriterTasks().catch(e => console.error("[WORKER] Scriptwriter error:", e.message));
   processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
+  processSeoTasks().catch(e => console.error("[WORKER] SEO error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
 }, 15_000);
@@ -5612,6 +5736,7 @@ setTimeout(() => {
   processVideoAgentTasks().catch(() => {});
   processScriptwriterTasks().catch(() => {});
   processResearchTasks().catch(() => {});
+  processSeoTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
   pollVideoStatus().catch(() => {});
@@ -6857,8 +6982,9 @@ OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
     });
 
     const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    try { fs.writeFileSync(path.join(__dirname, "data", "community-last-raw.txt"), text); } catch {}
     const arrStr = extractFirstJsonArray(text);
-    if (!arrStr) throw new Error("No JSON array in Claude output");
+    if (!arrStr) throw new Error(`No JSON array in Claude output. Text head: ${text.slice(0, 300)}`);
     drafts = JSON.parse(arrStr);
     if (!Array.isArray(drafts) || !drafts.length) throw new Error("Empty or invalid draft array");
   } catch (e) {

@@ -22,6 +22,7 @@
     "@remotion/transitions": "^4.0.448",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "cheerio": "^1.2.0",
     "composio-core": "^0.5.39",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",

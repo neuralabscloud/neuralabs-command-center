@@ -5,7 +5,7 @@
 <script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <link rel="stylesheet" href="/theme.css">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Command Center — Agents</title>
+<title>Agents</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -923,10 +923,30 @@ function updatePayloadFields() {
     const cb = document.getElementById('sp-auto_from_research');
     const descRow = document.getElementById('sp-desc-row');
     cb?.addEventListener('change', () => { descRow.style.display = cb.checked ? 'none' : 'block'; });
+    populateBrandSelect();
   }
   // Load channels for community_manager
   if (agent === 'community_manager') {
     populateCommunityChannelSelect();
+  }
+}
+
+async function populateBrandSelect() {
+  const sel = document.getElementById('sp-brand');
+  if (!sel) return;
+  try {
+    const [brandsRes, currentRes] = await Promise.all([
+      fetch('/brands', { credentials: 'include' }),
+      fetch('/brand', { credentials: 'include' }),
+    ]);
+    const brands = brandsRes.ok ? await brandsRes.json() : {};
+    const current = currentRes.ok ? await currentRes.json() : {};
+    const keys = Object.keys(brands);
+    const fallback = current && current.company_name ? String(current.company_name).toUpperCase() : '';
+    const opts = (keys.length ? keys : (fallback ? [fallback] : []));
+    sel.innerHTML = opts.map(k => `<option value="${k}">${k}</option>`).join('');
+  } catch (e) {
+    sel.innerHTML = '';
   }
 }
 
@@ -1038,21 +1058,8 @@ async function editSchedule(id) {
 async function loadAll() {
   await Promise.allSettled([loadAiTeam(), loadAllTasks()]);
 }
-async function loadBrandOptions() {
-  try {
-    const r = await fetch('/brand', { credentials: 'include' });
-    if (!r.ok) return;
-    const b = await r.json();
-    const sel = document.getElementById('sp-brand');
-    if (!sel) return;
-    const name = (b && b.company_name) ? String(b.company_name) : 'BRAND';
-    const val = name.toUpperCase();
-    sel.innerHTML = `<option value="${val.replace(/"/g, '&quot;')}">${val}</option>`;
-  } catch {}
-}
 loadAll();
 loadSchedules();
-loadBrandOptions();
 checkCanvaStatus();
 setInterval(loadAll, 8000);
 setInterval(checkCanvaStatus, 30000);

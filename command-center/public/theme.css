@@ -58,6 +58,7 @@ html[data-theme="light"] .task-form,
 html[data-theme="light"] .task-card,
 html[data-theme="light"] .vt-card,
 html[data-theme="light"] .report-card,
+html[data-theme="light"] .seo-card,
 html[data-theme="light"] .briefing {
   background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
 }
@@ -119,6 +120,43 @@ html[data-theme="light"] .iso-scene .floor-tile.hero {
   fill: hsla(142 76% 36% / 0.08);
   stroke: hsla(142 76% 36% / 0.4);
 }
+
+/* Desks / monitors / chairs — iso-office.css hardcodes near-black hex fills.
+   Override to light-grey surfaces so stations are visible on white. */
+html[data-theme="light"] .station .desk-top    { fill: hsl(217 15% 88%); stroke: hsl(217 15% 70%); }
+html[data-theme="light"] .station .desk-front  { fill: hsl(217 15% 78%); stroke: hsl(217 15% 65%); }
+html[data-theme="light"] .station .desk-side   { fill: hsl(217 15% 82%); stroke: hsl(217 15% 68%); }
+html[data-theme="light"] .station .monitor-back { fill: hsl(217 20% 22%); }
+html[data-theme="light"] .station .monitor-side { fill: hsl(217 20% 30%); }
+html[data-theme="light"] .station .monitor-top  { fill: hsl(217 20% 26%); stroke: hsl(217 20% 18%); }
+html[data-theme="light"] .station .chair       { fill: hsl(217 15% 70%); stroke: hsl(217 15% 55%); }
+
+/* Nameplate background — hardcoded rgba(0,0,0,0.82) is unreadable on white */
+html[data-theme="light"] .nameplate .np-bg {
+  fill: hsla(0 0% 100% / 0.95);
+  stroke: var(--border);
+}
+html[data-theme="light"] .nameplate:hover .np-bg {
+  fill: hsl(0 0% 100%);
+  stroke: var(--np-color, var(--primary));
+}
+html[data-theme="light"] .nameplate .np-name { fill: var(--text); }
+html[data-theme="light"] .nameplate .np-role { fill: var(--text-dim); }
+
+/* Idle status dot uses a dark grey that disappears on white */
+html[data-theme="light"] .nameplate .status-dot.idle {
+  fill: hsl(215 15% 70%);
+  stroke: hsl(215 15% 55%);
+}
+
+/* Topbar label colors */
+html[data-theme="light"] .iso-topbar-left { color: var(--text-dim); }
+
+/* Chief (orchestrator) base — translucent purple stays fine, but the orb core
+   is near-white which vanishes; bump to brand purple for contrast. */
+html[data-theme="light"] .chief .chief-orb-core { fill: hsl(264 65% 55%); }
+html[data-theme="light"] .chief .chief-name { fill: hsl(264 65% 35%); }
+html[data-theme="light"] .chief .chief-title { fill: hsl(264 30% 40%); }
 
 /* Login card uses similar gradient inline */
 html[data-theme="light"] .login-card,
@@ -186,3 +224,38 @@ html[data-theme="light"] button[style*="background: var(--bg-deep)"] {
 html[data-theme="light"] ::-webkit-scrollbar-track { background: hsl(0 0% 94%); }
 html[data-theme="light"] ::-webkit-scrollbar-thumb { background: hsl(217 15% 78%); border-radius: 6px; }
 html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: hsl(217 15% 65%); }
+
+/* ─── SEO page sub-elements ─────────────────────────────
+   seo.html uses hardcoded hsl(0 0% N%) inside its <style> block so the
+   generic [style*="hsl(0 0% N%)"] attribute overrides don't reach them. */
+html[data-theme="light"] .input-panel {
+  background: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%) !important;
+}
+html[data-theme="light"] .input-panel input,
+html[data-theme="light"] .input-panel select,
+html[data-theme="light"] .history-row select {
+  background: hsl(0 0% 100%) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+html[data-theme="light"] .psi-block {
+  background: hsl(0 0% 98%);
+  border-color: var(--border);
+}
+html[data-theme="light"] .finding .faffected,
+html[data-theme="light"] .strategic-body code {
+  background: hsl(217 30% 96%);
+  color: var(--text-dim);
+}
+html[data-theme="light"] .score-circle .track {
+  stroke: hsl(217 15% 90%);
+}
+html[data-theme="light"] .pages-table th {
+  color: var(--text-dim);
+  border-bottom-color: var(--border);
+}
+html[data-theme="light"] .pages-table td {
+  color: var(--text-dim);
+  border-bottom-color: hsla(217 15% 80% / 0.6);
+}
+html[data-theme="light"] .pages-table td.url { color: var(--text); }

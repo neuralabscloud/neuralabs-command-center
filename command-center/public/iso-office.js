@@ -1,16 +1,18 @@
 // Isometric Office widget (shared)
-// Renders an isometric 3x3 office with 9 AI agent stations, connections and live status.
+// Renders an isometric office with AI agent stations, connections and live status.
 // Usage: add a container with `data-iso-office` attribute, then load this script.
 (function () {
+  let BRAND_NAME = "HQ";
   const OFFICE = [
     { key:'researcher',   name:'RESEARCHER', role:'TREND RESEARCH',    emoji:'\u{1F50D}', hsl:'264 65% 49%', pos:[0,0], href:'research.html',        taskApi:'/research/tasks' },
     { key:'content',      name:'CONTENT',    role:'HEYGEN AVATARS',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[1,0], href:'content-creator.html', taskApis:['/avatar/tasks','/video-agent/tasks'] },
-    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[2,0], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
-    { key:'scriptwriter', name:'WRITER',     role:'VIDEO SCRIPTS',     emoji:'\u270D\uFE0F', hsl:'30 90% 55%',  pos:[0,1], href:'scriptwriter.html',    taskApi:'/scriptwriter/tasks' },
-    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[1,1], href:'designer.html',        taskApi:'/designer/tasks', hero:true },
-    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[2,1], href:'ads.html' },
+    { key:'scriptwriter', name:'WRITER',     role:'VIDEO SCRIPTS',     emoji:'\u270D\uFE0F', hsl:'30 90% 55%',  pos:[2,0], href:'scriptwriter.html',    taskApi:'/scriptwriter/tasks' },
+    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[0,1], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
+    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[1,1], href:'ads.html' },
+    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[2,1], href:'designer.html',        taskApi:'/designer/tasks' },
     { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,2], href:'chat.html' },
     { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[1,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
+    { key:'seo',          name:'SEO',        role:'SITE AUDIT',         emoji:'\u{1F50E}', hsl:'160 70% 45%', pos:[2,2], href:'seo.html',             taskApi:'/seo/tasks' },
   ];
 
   const CONNECTIONS = [
@@ -24,11 +26,14 @@
     ['scriptwriter','community',  4.4],
     ['designer',   'community',   3.8],
     ['assistant',  'community',   3.2],
+    ['researcher', 'seo',         4.0],
+    ['seo',        'marketeer',   3.6],
   ];
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
 
-  // Chief AI Officer / orchestrator (lives above the floor — name loaded from brand)
+  // Chief AI Officer / orchestrator (lives above the floor). Name & title are
+  // overridden from /brand at runtime — these are neutral fallbacks only.
   const CHIEF = {
     key: "chief",
     name: "ASSISTANT",
@@ -299,7 +304,7 @@
     container.innerHTML = `
       <div class="iso-wrap">
         <div class="iso-topbar">
-          <div class="iso-topbar-left" data-iso-hq>HQ · <b>Floor 01</b> · Live</div>
+          <div class="iso-topbar-left">${BRAND_NAME} · <b>Floor 01</b> · Live</div>
           <div class="iso-topbar-right"><span class="live-dot"></span><span class="iso-clock">--:--</span></div>
         </div>
         <svg class="iso-scene" viewBox="115 10 1115 720" preserveAspectRatio="xMidYMid meet"></svg>
@@ -314,23 +319,18 @@
     setInterval(() => tickClock(clock), 30000);
   }
 
-  let BRAND_HQ_LABEL = 'HQ';
   async function init() {
-    // Load branding (assistant name + company name) before rendering
+    // Load brand config (company + assistant name) before rendering
     try {
       const res = await fetch('/brand');
       if (res.ok) {
         const b = await res.json();
         if (b && b.assistant_name) CHIEF.name = String(b.assistant_name).toUpperCase();
-        if (b && b.company_name) BRAND_HQ_LABEL = String(b.company_name) + ' HQ';
+        if (b && b.company_name) BRAND_NAME = `${String(b.company_name).toUpperCase()} HQ`;
       }
     } catch {}
     const containers = document.querySelectorAll('[data-iso-office]');
-    containers.forEach(c => {
-      initContainer(c);
-      const hq = c.querySelector('[data-iso-hq]');
-      if (hq) hq.innerHTML = BRAND_HQ_LABEL + ' · <b>Floor 01</b> · Live';
-    });
+    containers.forEach(initContainer);
   }
 
   if (document.readyState === 'loading') {
