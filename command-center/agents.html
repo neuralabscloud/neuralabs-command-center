@@ -334,6 +334,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="assistant">Assistant (Calendar)</option>
               <option value="ads_optimizer">Ads Optimizer</option>
               <option value="community_manager">Community Manager</option>
+              <option value="seo">SEO Audit</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -389,6 +390,7 @@ const AI_TEAM = [
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen AI Avatar & Video Agent', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks'], type: 'CONTENT' },
   { name: 'SCRIPT WRITER', emoji: '\u270D\uFE0F', role: 'Video & Content Scripts', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', taskApi: '/scriptwriter/tasks', type: 'SCRIPT' },
+  { name: 'SEO', emoji: '\u{1F50E}', role: 'Site Audit & Optimization', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', taskApi: '/seo/tasks', type: 'SEO' },
   { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
   { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
@@ -397,7 +399,7 @@ const AI_TEAM = [
 const AGENT_COLORS = {
   RESEARCH: 'var(--accent)', DESIGN: 'var(--warning)',
   VIDEO: 'var(--danger)', CONTENT: 'hsl(180 70% 45%)', SCRIPT: 'hsl(30 90% 55%)',
-  COMMUNITY: 'hsl(200 90% 55%)',
+  COMMUNITY: 'hsl(200 90% 55%)', SEO: 'hsl(160 70% 45%)',
 };
 
 let currentFilter = 'all';
@@ -563,6 +565,7 @@ async function loadAllTasks() {
     { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/research/tasks', agent: 'RESEARCHER', type: 'RESEARCH' },
+    { api: '/seo/tasks', agent: 'SEO', type: 'SEO' },
     { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
   ];
 
@@ -572,7 +575,7 @@ async function loadAllTasks() {
       const tasks = await (await fetch(src.api)).json();
       tasks.forEach(t => allTasks.push({
         ...t, _agent: src.agent, _type: src.type, _subtype: src.subtype || src.type, _api: src.api,
-        _desc: t.description || t.topic || t.query || t.prompt || t.design_type || '-',
+        _desc: t.description || t.topic || t.query || t.prompt || t.design_type || t.url || '-',
         _preview: t.script || t.prompt || t.result || null,
       }));
     } catch {}
@@ -702,7 +705,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER' };
+const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', seo: 'SEO' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   researcher: 'color:hsl(264 65% 49%)',
@@ -711,6 +714,7 @@ const AGENT_STYLES = {
   assistant: 'color:hsl(210 90% 55%)',
   ads_optimizer: 'color:hsl(142 76% 36%)',
   community_manager: 'color:hsl(200 90% 55%)',
+  seo: 'color:hsl(160 70% 45%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -720,6 +724,7 @@ const AGENT_DESCRIPTIONS = {
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
+  seo: 'Crawls your website (up to 100 pages), runs technical + on-page + content SEO checks, fetches Google PageSpeed Insights, and produces a prioritised improvement report.',
 };
 
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -752,6 +757,10 @@ function buildScheduleSummary(s) {
       const n = parseInt(p.post_count);
       const count = Number.isFinite(n) && n > 0 ? `${n}` : 'auto';
       return `Generates ${count} ${p.language || 'NL'} drafts for channel ${escHtml(p.channel_id || '?')} · spread across next 7 days`;
+    }
+    case 'seo': {
+      const maxPages = parseInt(p.max_pages) || 25;
+      return `${escHtml(p.url || '?')} · up to ${maxPages} pages · ${p.language || 'EN'}`;
     }
     default:
       return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
@@ -911,6 +920,17 @@ const PAYLOAD_FIELDS = {
           <option value="last_14d">Last 14 days</option>
           <option value="last_30d">Last 30 days</option>
         </select></div>
+    </div>`,
+  seo: `
+    <div class="sched-form-row">
+      <div style="grid-column:1/-1"><label class="sched-label">Website URL</label>
+        <input class="sched-input" id="sp-url" type="url" placeholder="https://example.com" style="width:100%"></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Max pages</label>
+        <input class="sched-input" id="sp-max_pages" type="number" min="1" max="100" value="25"></div>
+      <div><label class="sched-label">Language</label>
+        <select class="sched-select" id="sp-language"><option value="EN">EN</option><option value="NL">NL</option></select></div>
     </div>`,
 };
 

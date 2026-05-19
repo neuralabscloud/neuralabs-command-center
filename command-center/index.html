@@ -1618,6 +1618,7 @@ const aiTeam = [
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
   { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
   { name: 'SCRIPT WRITER', emoji: '✍️', role: 'Video & Content Scripts', status: 'idle', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', task: 'Awaiting assignment' },
+  { name: 'SEO', emoji: '🔎', role: 'Site Audit & Optimization', status: 'idle', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', task: 'Awaiting assignment' },
   { name: 'COMMUNITY MANAGER', emoji: '💬', role: 'Telegram / Discord Posts', status: 'idle', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', task: 'Awaiting assignment', isCommunity: true },
   { name: 'MARKETEER', emoji: '📣', role: 'Marketing Strategy & Content', status: 'idle', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', task: 'Awaiting assignment', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '📅', role: 'Google Calendar Assistant', status: 'idle', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', task: 'Awaiting assignment', isCalendar: true },
@@ -1629,6 +1630,7 @@ const TASK_APIS = {
   'VIDEO EDITOR': ['/video/tasks', '/video/ai-generate'],
   'CONTENT CREATOR': '/avatar/tasks',
   'SCRIPT WRITER': '/scriptwriter/tasks',
+  SEO: '/seo/tasks',
 };
 
 async function renderAiTeam() {

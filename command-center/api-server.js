@@ -6574,6 +6574,8 @@ async function executeSchedule(schedule) {
       await executeAdsOptimizerSchedule(schedule, today);
     } else if (schedule.agent === "community_manager") {
       await executeCommunityManagerSchedule(schedule, today);
+    } else if (schedule.agent === "seo") {
+      await executeSeoSchedule(schedule, today);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -6674,6 +6676,37 @@ INSTRUCTIONS:
   } catch (e) {
     console.error(`[SCHEDULER] Designer task failed:`, e.message);
   }
+}
+
+async function executeSeoSchedule(schedule, today) {
+  const p = schedule.payload || {};
+  if (!p.url) {
+    console.log(`[SCHEDULER] SEO skipped: no url configured`);
+    return;
+  }
+  const tasks = readTaskFile("seo-tasks.json");
+  const taskId = genId();
+  tasks.unshift({
+    id: taskId,
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    url: p.url,
+    max_pages: Math.min(Math.max(parseInt(p.max_pages, 10) || 25, 1), 100),
+    language: p.language || process.env.LANGUAGE || "EN",
+    error: null,
+  });
+  if (tasks.length > 50) tasks.length = 50;
+  writeTaskFile("seo-tasks.json", tasks);
+
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    schedules[idx].last_task_id = taskId;
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+  console.log(`[SCHEDULER] SEO task created: ${taskId} (${p.url})`);
 }
 
 async function executeResearcherSchedule(schedule, today) {
