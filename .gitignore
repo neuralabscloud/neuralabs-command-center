@@ -44,9 +44,6 @@ command-center/data/social-media/
 command-center/data/brand-assets/*/icon.png
 command-center/data/brand-assets/*/logo.png
 
-# Marketing skills cache
-command-center/data/marketingskills/
-
 # Transcripts
 command-center/data/transcripts/*
 !command-center/data/transcripts/.gitkeep

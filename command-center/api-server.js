@@ -3481,16 +3481,15 @@ COMMAND CENTER AGENTS:
 - Calendar — Google Calendar beheer (events, vrije slots, planning)
 - Alle agents hebben een takenlijst (pending/processing/completed)
 
-GEÏNSTALLEERDE SKILLS (49 totaal):
+GEÏNSTALLEERDE SKILLS (48 totaal):
 Media & Design:
   /create-video — Video maken via HeyGen prompt
   /avatar-video — Avatar video met exacte controle over script, stem, scenes
   /designer — Carousels, thumbnails, banners, infographics
-  /nano-banana-2 — AI image generation via Google Gemini 3.1 Flash
+  /nano-banana-2 — AI image generation via Google Gemini Flash
   /remotion-best-practices — Remotion video creation best practices
   /canvas-design — Posters, art, designs als PNG/PDF
   /web-artifacts-builder — Multi-component HTML artifacts (React + Tailwind + shadcn/ui)
-  /brand-guidelines — Brand styling toepassen op designs
 
 Marketing (25 skills via Marketeer agent):
   /copywriting, /copy-editing — Marketing copy schrijven en reviewen
@@ -3873,14 +3872,15 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "run_skill",
-        description: `Voer een Claude Code skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, A/B test opzet, content strategie, schema markup, brainstorming, etc.
+        description: `Voer een skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, content strategie, brainstorming, design briefs, plan writing, etc.
 
 Beschikbare skills:
 SEO & Analytics: seo-audit, analytics-tracking, programmatic-seo, schema-markup
 CRO & Conversion: page-cro, signup-flow-cro, onboarding-cro, form-cro, popup-cro, paywall-upgrade-cro, ab-test-setup
 Content & Marketing: content-strategy, copywriting, copy-editing, email-sequence, social-content, launch-strategy, pricing-strategy, paid-ads, marketing-psychology, marketing-ideas, referral-program, free-tool-strategy, product-marketing-context, competitor-alternatives, youtube-optimizer
-Design & Media: designer, canvas-design, nano-banana-2, brand-guidelines, web-artifacts-builder, create-video, avatar-video
-Development: brainstorming, writing-plans, executing-plans, systematic-debugging, test-driven-development
+Design & Media: designer, canvas-design, nano-banana-2, web-artifacts-builder, create-video, avatar-video, remotion-best-practices
+Planning & Process: brainstorming, writing-plans, executing-plans, writing-skills, find-skills, dispatching-parallel-agents
+Engineering: systematic-debugging, test-driven-development, verification-before-completion, requesting-code-review, receiving-code-review, subagent-driven-development, finishing-a-development-branch, using-git-worktrees, using-superpowers
 
 Gebruik NIET voor simpele marketing vragen — daarvoor heb je marketeer_query. Gebruik run_skill voor wanneer je een volledige skill-gebaseerde analyse, audit, of plan nodig hebt met diepgaande output.
 
@@ -3890,7 +3890,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         input_schema: {
           type: "object",
           properties: {
-            skill: { type: "string", description: "De skill slug, bijv. 'seo-audit', 'page-cro', 'ab-test-setup', 'brainstorming'" },
+            skill: { type: "string", description: "De skill slug, bijv. 'seo-audit', 'page-cro', 'copywriting', 'brainstorming', 'writing-plans'" },
             prompt: { type: "string", description: "De volledige opdracht EN alle benodigde input/context voor de skill. Stuur ALTIJD alle relevante data mee: het volledige transcript, de URL, de paginatekst, etc. De skill draait in een aparte sessie en heeft GEEN toegang tot de chathistorie. Alles wat de skill nodig heeft moet in dit veld staan." },
           },
           required: ["skill", "prompt"],
@@ -4181,34 +4181,21 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               : aiPrompt;
             console.log(`[SKILL] Running /${skill}: ${aiPrompt.substring(0, 100)}... (+ ${userContext.length} chars user context)`);
 
-            // Try to load skill instructions from marketing skills or claude commands
+            // Try to load skill instructions from marketing skills, then bundled Claude Code skills
             let skillContent = null;
             const marketingPath = path.join(__dirname, "data", "marketingskills", "skills", skill, "SKILL.md");
-            const commandPath = path.join("/root/.claude/commands", skill + ".md");
+            const claudeSkillPath = path.join(__dirname, "data", "claudeskills", skill, "SKILL.md");
             if (fs.existsSync(marketingPath)) {
               skillContent = fs.readFileSync(marketingPath, "utf8");
               console.log(`[SKILL] Loaded marketing skill: ${marketingPath}`);
-            } else if (fs.existsSync(commandPath)) {
-              skillContent = fs.readFileSync(commandPath, "utf8");
-              console.log(`[SKILL] Loaded command skill: ${commandPath}`);
+            } else if (fs.existsSync(claudeSkillPath)) {
+              skillContent = fs.readFileSync(claudeSkillPath, "utf8");
+              console.log(`[SKILL] Loaded bundled Claude skill: ${claudeSkillPath}`);
             }
 
             if (!skillContent) {
-              // Fallback: run via Claude Code CLI
-              console.log(`[SKILL] No SKILL.md found, falling back to CLI`);
-              const cliResult = await new Promise((resolve, reject) => {
-                execFile("/root/.local/bin/claude", ["-p", `/${skill} ${prompt}`, "--output-format", "json", "--max-turns", "8"], {
-                  timeout: 300000, maxBuffer: 10 * 1024 * 1024,
-                  env: { ...process.env, HOME: "/root" },
-                }, (err, stdout) => {
-                  if (err && !stdout) return reject(new Error(err.message));
-                  try { const p = JSON.parse(stdout); resolve(p.result || p.content || stdout); }
-                  catch { resolve(stdout || "Skill voltooid."); }
-                });
-              });
-              const t = typeof cliResult === "string" ? cliResult : JSON.stringify(cliResult);
-              const tr = t.length > 15000 ? t.substring(0, 15000) + "\n\n[...afgekapt, " + t.length + " tekens totaal]" : t;
-              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: true, skill, output: tr }) });
+              console.log(`[SKILL] Unknown skill: ${skill}`);
+              toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify({ success: false, error: `Skill '${skill}' niet gevonden. Beschikbare skills staan in data/marketingskills/skills/ en data/claudeskills/.` }), is_error: true });
               continue;
             }
 
