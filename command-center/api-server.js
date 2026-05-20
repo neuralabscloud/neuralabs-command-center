@@ -3,6 +3,31 @@ const _fs = require("fs");
 const _envPaths = [_path.join(__dirname, ".env"), _path.join(__dirname, "..", ".env")];
 const _envPath = _envPaths.find(p => _fs.existsSync(p)) || _envPaths[1];
 require("dotenv").config({ path: _envPath });
+
+// One-off: if the Inference.sh CLI is already authenticated locally but
+// INFERENCE_API_KEY isn't in .env yet, mirror the CLI key in so the Settings
+// page and `/api/settings` reflect the real configuration state. (The reverse
+// direction — settings → infsh config — happens in writeEnvFile.)
+try {
+  if (!process.env.INFERENCE_API_KEY) {
+    const _infshCfg = _path.join(process.env.HOME || "/root", ".inferencesh", "config.json");
+    if (_fs.existsSync(_infshCfg)) {
+      const _key = (JSON.parse(_fs.readFileSync(_infshCfg, "utf8")) || {}).api_key;
+      if (_key) {
+        process.env.INFERENCE_API_KEY = _key;
+        let _content = "";
+        try { _content = _fs.readFileSync(_envPath, "utf8"); } catch {}
+        if (!/^INFERENCE_API_KEY=/m.test(_content)) {
+          _content = _content.replace(/\s+$/, "") + `\nINFERENCE_API_KEY=${_key}\n`;
+          _fs.writeFileSync(_envPath, _content, { mode: 0o600 });
+          console.log("[INFSH] Imported existing CLI key into .env as INFERENCE_API_KEY");
+        }
+      }
+    }
+  }
+} catch (e) {
+  console.warn("[INFSH] Could not import CLI key:", e.message);
+}
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
