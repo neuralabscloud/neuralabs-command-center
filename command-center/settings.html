@@ -202,7 +202,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .nav-item .tooltip { display: none; }
   .nav-item svg { width: 17px; height: 17px; }
   .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
-  .sidebar > .nav-item:last-child { display: none; }
   .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
   .header-title { font-size: 17px; }
   .integrations-grid { grid-template-columns: 1fr; }
@@ -276,7 +275,22 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Bot Token</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Used by your AI assistant to reach you on Telegram (for DMs, reviews, alerts). Same bot is reused by Community Manager to publish to channels.</div><input type="text" id="cfg-tg-token" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Chat ID (your DM)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Your personal DM chat with the assistant. Review batches, alerts and /start go here. Not the same as community channel IDs — those are per-channel in Community Manager.</div><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">AI avatar + video generation in the Video Editor. Optional — only needed if you use the avatar/video features. Get it at <a href="https://app.heygen.com/settings" target="_blank" style="color:var(--primary)">app.heygen.com</a>.</div><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Shows revenue on the Overview page. Optional — only needed if you sell with Stripe. Use a restricted key with read-only access to charges. Starts with <code>sk_live_</code> or <code>sk_test_</code>. Get it at <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--primary)">dashboard.stripe.com/apikeys</a>.</div><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers the Finance page (subscriptions, MRR) and revenue widgets on Overview. Use a restricted key with read access to <code>charges</code>, <code>subscriptions</code>, <code>customers</code>, <code>invoices</code> and <code>products</code>. Starts with <code>sk_live_</code> or <code>sk_test_</code>. Get it at <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--primary)">dashboard.stripe.com/apikeys</a>.</div><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+            <div>
+              <label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Webhook Secret</label>
+              <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
+                Sends a Telegram message the moment a customer subscribes or cancels. Three quick steps:
+                <ol style="margin:6px 0 6px 18px;padding:0;list-style:decimal">
+                  <li>Open <a href="https://dashboard.stripe.com/webhooks/create" target="_blank" style="color:var(--primary)">dashboard.stripe.com/webhooks</a> → <b>Add endpoint</b>.</li>
+                  <li>Set the URL to <code id="cfg-stripe-webhook-url" style="color:var(--primary);user-select:all">your-domain.com/stripe/webhook</code> <button type="button" onclick="copyWebhookUrl()" style="margin-left:4px;font-size:9px;padding:2px 6px;background:hsla(264 65% 49%/0.08);border:1px solid var(--border);border-radius:4px;color:var(--primary);cursor:pointer">Copy</button></li>
+                  <li>Under <em>Events to send</em> select <code>customer.subscription.created</code> and <code>customer.subscription.deleted</code>, then <b>Add endpoint</b>.</li>
+                  <li>On the new endpoint page click <b>Signing secret → Reveal</b>, copy the value (<code>whsec_…</code>) and paste it below.</li>
+                </ol>
+                Without this secret, Stripe events are rejected for security.
+              </div>
+              <input type="password" id="cfg-stripe-webhook-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="whsec_…  (current kept if empty)">
+              <div id="cfg-stripe-webhook-status" style="margin-top:6px;font-family:var(--font-data);font-size:10px"></div>
+            </div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Image generation via Google Nano Banana 2. Used by the Designer agent for thumbnails, carousels and social visuals. Optional. Get it at <a href="https://inference.sh" target="_blank" style="color:var(--primary)">inference.sh</a>.</div><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Connects your assistant to external tools: Google Calendar, Gmail, Drive, Notion, Slack and 100+ more. Required for calendar/inbox queries. Get it at <a href="https://app.composio.dev/developers" target="_blank" style="color:var(--primary)">app.composio.dev</a>.</div><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
             <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Unlocks Instagram, Facebook and Meta Ads Manager (campaigns, insights, OAuth connect). Create a Business app in Meta for Developers, then copy the <code>App ID</code>. Get it at <a href="https://developers.facebook.com/apps" target="_blank" style="color:var(--primary)">developers.facebook.com/apps</a>.</div><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
@@ -628,6 +642,27 @@ async function loadConfig() {
       showMasked('cfg-anthropic', d.integrations.anthropic);
       showMasked('cfg-heygen', d.integrations.heygen);
       showMasked('cfg-stripe', d.integrations.stripe);
+      // Stripe webhook secret + dynamic webhook URL hint
+      if (d.integrations.stripe) {
+        const sw = d.integrations.stripe;
+        const wsEl = document.getElementById('cfg-stripe-webhook-secret');
+        const statusEl = document.getElementById('cfg-stripe-webhook-status');
+        const urlEl = document.getElementById('cfg-stripe-webhook-url');
+        if (urlEl && sw.webhook_url) urlEl.textContent = sw.webhook_url;
+        if (wsEl) {
+          wsEl.value = '';
+          wsEl.placeholder = sw.has_webhook_secret ? 'Configured  —  leave empty to keep' : 'whsec_…  (not configured yet)';
+        }
+        if (statusEl) {
+          if (!sw.has_key) {
+            statusEl.innerHTML = '<span style="color:var(--text-dim)">○ Add your Stripe Secret Key above first.</span>';
+          } else if (!sw.has_webhook_secret) {
+            statusEl.innerHTML = '<span style="color:var(--warning)">● Webhook secret not set — Telegram notifications are disabled until you complete the steps above.</span>';
+          } else {
+            statusEl.innerHTML = '<span style="color:var(--success)">● Webhook configured. New subscriptions and cancellations will be sent to Telegram.</span>';
+          }
+        }
+      }
       showMasked('cfg-inference', d.integrations.inference);
       showMasked('cfg-composio', d.integrations.composio);
       showMasked('cfg-youtube', d.integrations.youtube);
@@ -703,7 +738,7 @@ async function saveConfig() {
 
   const fields = {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
-    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
+    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', stripe_webhook_secret: 'cfg-stripe-webhook-secret', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
     meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect',
     canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
@@ -1168,6 +1203,18 @@ async function restartApiServer() {
     setTimeout(poll, 500);
   };
   setTimeout(poll, 1500);
+}
+
+function copyWebhookUrl() {
+  const el = document.getElementById('cfg-stripe-webhook-url');
+  if (!el) return;
+  const text = el.textContent.trim();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = el.style.background;
+    el.style.background = 'hsla(142 76% 36% / 0.15)';
+    setTimeout(() => { el.style.background = orig; }, 600);
+  }).catch(() => {});
 }
 
 loadConfig();

@@ -319,11 +319,14 @@ async function loadConfig() {
     document.getElementById('notify-canceled').checked = !!cfg.notify_canceled;
     const ws = document.getElementById('webhook-status');
     if (!cfg.stripe_connected) {
-      ws.innerHTML = `<span style="color:var(--danger)">● Stripe not connected</span>`;
+      ws.innerHTML = `<span style="color:var(--danger)">● Stripe not connected</span>
+        <div style="margin-top:4px">Add your Stripe Secret Key in <a href="settings.html" style="color:var(--primary)">Settings</a>.</div>`;
     } else if (!cfg.webhook_secret_set) {
-      ws.innerHTML = `<span style="color:var(--warning)">● Webhook secret missing</span><div style="margin-top:4px">Add <code>STRIPE_WEBHOOK_SECRET</code> in .env, set Stripe endpoint to <code>/stripe/webhook</code></div>`;
+      ws.innerHTML = `<span style="color:var(--warning)">● Webhook not configured</span>
+        <div style="margin-top:4px">Notifications are off until you set up the Stripe webhook in <a href="settings.html" style="color:var(--primary)">Settings</a>.</div>`;
     } else {
-      ws.innerHTML = `<span style="color:var(--success)">● Webhook ready</span><div style="margin-top:4px">Endpoint: <code>/stripe/webhook</code></div>`;
+      ws.innerHTML = `<span style="color:var(--success)">● Webhook ready</span>
+        <div style="margin-top:4px">New subs and cancellations will be sent to Telegram.</div>`;
     }
   } catch {}
 }
