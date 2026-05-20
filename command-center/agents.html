@@ -239,7 +239,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .nav-item .tooltip { display: none; }
   .nav-item svg { width: 17px; height: 17px; }
   .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
-  .sidebar > .nav-item:last-child { display: none; }
 
   .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
   .header-title { font-size: 17px; }
@@ -395,6 +394,7 @@ const AI_TEAM = [
   { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
   { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
+  { name: 'FINANCE', emoji: '\u{1F4B0}', role: 'Stripe Subscriptions', color: 'hsl(142 76% 36%)', hsl: '142 76% 36%', isFinance: true },
 ];
 
 const AGENT_COLORS = {
@@ -462,6 +462,40 @@ async function loadAiTeam() {
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
           <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
+        </div>
+      </div>`);
+      continue;
+    }
+
+    if (agent.isFinance) {
+      let kpi = null, configured = false;
+      try {
+        const fr = await fetch('/finance/subscriptions');
+        if (fr.ok) { const fd = await fr.json(); kpi = fd && fd.kpi ? fd.kpi : null; configured = true; }
+      } catch {}
+      const k = kpi || { mrr_display: '—', active_count: 0, trialing_count: 0, past_due_count: 0 };
+      const status = configured ? (k.active_count > 0 ? 'running' : 'idle') : 'idle';
+      const statusLabel = configured ? (k.active_count > 0 ? 'connected' : 'no subs') : 'not configured';
+      const taskLine = configured
+        ? `${k.mrr_display || '—'} MRR · ${k.active_count} active`
+        : 'Add your Stripe key in Settings to track subscriptions';
+      cards.push(`<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
+          <span class="agent-status ${status}">${statusLabel}</span>
+        </div>
+        <div class="agent-card-body">
+          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
+            <span style="color:var(--success)">${k.active_count} active</span>
+            <span style="color:var(--warning)">${k.trialing_count} trial</span>
+            ${k.past_due_count ? '<span style="color:var(--danger)">'+k.past_due_count+' past due</span>' : ''}
+          </div>
+          <div class="agent-task">${esc(taskLine)}</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">MRR <span>${k.mrr_display || '—'}</span></span>
+          <a href="finance.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
         </div>
       </div>`);
       continue;

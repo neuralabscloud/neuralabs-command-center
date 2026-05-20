@@ -935,9 +935,7 @@ body::after {
   }
   .nav-item .tooltip { display: none; }
   .nav-item svg { width: 17px; height: 17px; }
-  /* Hide bell/settings in bottom bar, keep compact */
   .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
-  .sidebar > .nav-item:last-child { display: none; }
 
   .main {
     margin-left: 0;
@@ -1622,6 +1620,7 @@ const aiTeam = [
   { name: 'COMMUNITY MANAGER', emoji: '💬', role: 'Telegram / Discord Posts', status: 'idle', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', task: 'Awaiting assignment', isCommunity: true },
   { name: 'MARKETEER', emoji: '📣', role: 'Marketing Strategy & Content', status: 'idle', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', task: 'Awaiting assignment', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '📅', role: 'Google Calendar Assistant', status: 'idle', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', task: 'Awaiting assignment', isCalendar: true },
+  { name: 'FINANCE', emoji: '💰', role: 'Stripe Subscriptions', status: 'idle', color: 'hsl(142 76% 36%)', hsl: '142 76% 36%', task: 'Awaiting assignment', isFinance: true },
 ];
 
 const TASK_APIS = {
@@ -1656,6 +1655,17 @@ async function renderAiTeam() {
   if (!Array.isArray(communityTasks)) communityTasks = [];
   if (!Array.isArray(communityChannels)) communityChannels = [];
 
+  // Finance: KPI summary from Stripe subscriptions
+  let financeKpi = null, financeConfigured = false;
+  try {
+    const fr = await fetch('/finance/subscriptions');
+    if (fr.ok) {
+      const fd = await fr.json();
+      financeKpi = fd && fd.kpi ? fd.kpi : null;
+      financeConfigured = true;
+    }
+  } catch {}
+
   document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
     if (a.isMarketeer) {
       return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
@@ -1687,6 +1697,34 @@ async function renderAiTeam() {
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
           <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
+        </div>
+      </div>`;
+    }
+
+    if (a.isFinance) {
+      const kpi = financeKpi || { mrr_display: '—', active_count: 0, trialing_count: 0, past_due_count: 0 };
+      const status = financeConfigured ? (kpi.active_count > 0 ? 'running' : 'idle') : 'idle';
+      const statusLabel = financeConfigured ? (kpi.active_count > 0 ? 'connected' : 'no subs') : 'not configured';
+      const taskLine = financeConfigured
+        ? `${kpi.mrr_display || '—'} MRR · ${kpi.active_count} active`
+        : 'Add your Stripe key in Settings to track subscriptions';
+      return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
+        <div class="agent-card-header">
+          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
+          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
+          <span class="agent-status ${status}">${statusLabel}</span>
+        </div>
+        <div class="agent-card-body">
+          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
+            <span style="color:var(--success)">${kpi.active_count} active</span>
+            <span style="color:var(--warning)">${kpi.trialing_count} trial</span>
+            ${kpi.past_due_count ? '<span style="color:var(--danger)">'+kpi.past_due_count+' past due</span>' : ''}
+          </div>
+          <div class="agent-task">${taskLine}</div>
+        </div>
+        <div class="agent-card-footer">
+          <span class="agent-footer-label">MRR <span>${kpi.mrr_display || '—'}</span></span>
+          <a href="finance.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
         </div>
       </div>`;
     }

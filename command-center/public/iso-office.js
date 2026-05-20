@@ -13,6 +13,7 @@
     { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,2], href:'chat.html' },
     { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[1,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
     { key:'seo',          name:'SEO',        role:'SITE AUDIT',         emoji:'\u{1F50E}', hsl:'160 70% 45%', pos:[2,2], href:'seo.html',             taskApi:'/seo/tasks' },
+    { key:'finance',      name:'FINANCE',    role:'STRIPE REVENUE',     emoji:'\u{1F4B0}', hsl:'142 76% 36%', pos:[3,1], href:'finance.html',         alwaysOn:true },
   ];
 
   const CONNECTIONS = [
@@ -28,6 +29,8 @@
     ['assistant',  'community',   3.2],
     ['researcher', 'seo',         4.0],
     ['seo',        'marketeer',   3.6],
+    ['marketeer',  'finance',     3.4],
+    ['finance',    'assistant',   3.8],
   ];
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
