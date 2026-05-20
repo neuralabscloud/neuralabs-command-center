@@ -5,6 +5,7 @@
     { href: 'seo.html', label: 'SEO Audit', icon: '<path d="M4 7h16M4 12h10M4 17h7"/><circle cx="17" cy="16" r="3"/><path d="M19.5 18.5L22 21"/>' },
     { href: 'performance.html', label: 'Performance', icon: '<path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-8"/>' },
     { href: 'ads.html', label: 'Ads Manager', icon: '<path d="M3 11l18-5v12L3 13v-2z"/><circle cx="7" cy="12" r="2"/>' },
+    { href: 'finance.html', label: 'Finance', icon: '<rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="17" cy="14.5" r="1.2" fill="currentColor"/>' },
     { href: 'agents.html', label: 'Agents', icon: '<circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/>' },
     { href: 'editor.html', label: 'Video Editor', icon: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>' },
     { href: 'designer.html', label: 'Designer', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },

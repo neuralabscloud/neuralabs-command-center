@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<link rel="stylesheet" href="/theme.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-deep: hsl(0 0% 0%); --bg-base: hsl(0 0% 3%); --bg-surface: hsl(0 0% 5%);
+  --bg-card: hsl(0 0% 5%); --bg-card-hover: hsl(0 0% 8%); --bg-sidebar: hsl(0 0% 2%);
+  --border: hsl(217 32% 20%); --border-glow: hsla(264 65% 49% / 0.3);
+  --primary: hsl(264 65% 49%); --primary-dim: hsla(264 65% 49% / 0.5); --primary-glow: hsla(264 65% 65% / 0.4);
+  --accent: hsl(264 65% 49%); --accent-dim: hsla(264 65% 49% / 0.5);
+  --success: hsl(142 76% 36%); --success-dim: hsla(142 76% 36% / 0.4);
+  --danger: hsl(0 72% 51%); --danger-dim: hsla(0 72% 51% / 0.4);
+  --warning: hsl(45 93% 55%); --warning-dim: hsla(45 93% 55% / 0.4); --premium: hsl(270 95% 65%);
+  --text: hsl(210 40% 98%); --text-dim: hsl(215 20% 65%); --text-muted: hsl(217 32% 17%);
+  --font-display: 'Akira Expanded', 'Orbitron', sans-serif;
+  --font-data: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --radius: 10px; --sidebar-w: 62px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; overflow-x: hidden; width: 100%; }
+body { font-family: var(--font-body); background: var(--bg-deep); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background: radial-gradient(ellipse 80% 60% at 20% 10%, hsla(264 65% 49% / 0.02) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 50% at 80% 80%, hsla(264 65% 49% / 0.02) 0%, transparent 60%);
+  pointer-events: none;
+}
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background-image: linear-gradient(var(--text-muted) 1px, transparent 1px), linear-gradient(90deg, var(--text-muted) 1px, transparent 1px);
+  background-size: 60px 60px; opacity: 0.04; pointer-events: none;
+}
+.layout { display: flex; min-height: 100vh; position: relative; z-index: 1; overflow-x: hidden; width: 100%; }
+.sidebar {
+  width: var(--sidebar-w); min-height: 100vh; background: var(--bg-sidebar);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; padding: 16px 0; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+}
+.sidebar-logo { font-family: var(--font-display); font-size: 10px; font-weight: 900; color: var(--primary); letter-spacing: 0.2em; margin-bottom: 28px; text-shadow: 0 0 20px var(--primary-glow); }
+.sidebar-nav { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.nav-item {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: all 0.2s;
+  position: relative; border: 1px solid transparent; text-decoration: none;
+}
+.nav-item:hover { color: var(--primary); background: hsla(264 65% 49% / 0.03); }
+.nav-item.active { color: var(--primary); background: hsla(264 65% 49% / 0.06); border-color: var(--border-glow); box-shadow: 0 0 16px hsla(264 65% 49% / 0.06); }
+.nav-item .tooltip {
+  position: absolute; left: 52px; top: 50%; transform: translateY(-50%);
+  background: var(--bg-card); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 6px; font-size: 11px; font-family: var(--font-body); color: var(--text);
+  white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.nav-item:hover .tooltip { opacity: 1; }
+.nav-item svg { width: 18px; height: 18px; }
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
+.header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
+.btn {
+  font-family: var(--font-data); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; background: hsla(264 65% 49% / 0.06);
+  color: var(--primary); border: 1px solid hsla(264 65% 49% / 0.15);
+  padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+}
+.btn:hover { background: hsla(264 65% 49% / 0.12); border-color: var(--border-glow); }
+.section-header {
+  font-family: var(--font-display); font-size: 11px; letter-spacing: 0.2em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-header::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+
+@keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.fade-up { opacity: 0; animation: fade-up 0.5s ease-out forwards; }
+.delay-1 { animation-delay: 0.05s; } .delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; } .delay-4 { animation-delay: 0.20s; }
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.summary-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 20px; transition: all 0.25s;
+}
+.summary-card:hover { border-color: var(--border-glow); box-shadow: 0 0 24px hsla(264 65% 49% / 0.03); }
+.summary-label {
+  font-family: var(--font-data); font-size: 9px; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
+}
+.summary-value { font-family: var(--font-data); font-size: 26px; font-weight: 700; }
+.summary-sub { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.value-success { color: var(--success); }
+.value-warning { color: var(--warning); }
+.value-danger { color: var(--danger); }
+
+.table-wrap {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); text-align: left;
+  padding: 12px 14px; border-bottom: 1px solid var(--border); background: hsla(0 0% 100% / 0.01);
+}
+.data-table td {
+  padding: 12px 14px; border-bottom: 1px solid hsla(217 32% 20% / 0.12); font-size: 13px;
+  vertical-align: middle; font-family: var(--font-data);
+}
+.data-table tr { transition: background 0.2s; }
+.data-table tr:hover { background: hsla(264 65% 49% / 0.015); }
+
+.status-badge {
+  display: inline-block; font-family: var(--font-data); font-size: 10px; font-weight: 600;
+  padding: 3px 9px; border-radius: 5px; letter-spacing: 0.06em; text-transform: uppercase;
+  border: 1px solid;
+}
+.s-active { color: var(--success); background: hsla(142 76% 36% / 0.08); border-color: hsla(142 76% 36% / 0.25); }
+.s-trialing { color: var(--premium); background: hsla(270 95% 65% / 0.08); border-color: hsla(270 95% 65% / 0.25); }
+.s-past_due { color: var(--warning); background: hsla(45 93% 55% / 0.08); border-color: hsla(45 93% 55% / 0.25); }
+.s-canceled, .s-unpaid, .s-incomplete_expired { color: var(--danger); background: hsla(0 72% 51% / 0.08); border-color: hsla(0 72% 51% / 0.25); }
+.s-incomplete, .s-paused { color: var(--text-dim); background: hsla(217 32% 20% / 0.3); border-color: var(--border); }
+
+.config-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap;
+}
+.toggle-row { display: flex; align-items: center; gap: 12px; }
+.toggle-row .label { font-size: 13px; color: var(--text); }
+.toggle-row .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: hsla(217 32% 20% / 0.6); border: 1px solid var(--border);
+  border-radius: 22px; transition: 0.2s;
+}
+.slider::before {
+  position: absolute; content: ''; height: 14px; width: 14px; left: 3px; top: 3px;
+  background: var(--text-dim); border-radius: 50%; transition: 0.2s;
+}
+.switch input:checked + .slider { background: hsla(264 65% 49% / 0.25); border-color: var(--primary); }
+.switch input:checked + .slider::before { transform: translateX(16px); background: var(--primary); }
+
+.empty-state {
+  background: var(--bg-card); border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 40px 20px; text-align: center; color: var(--text-dim); font-family: var(--font-data); font-size: 13px;
+}
+.warn-banner {
+  background: hsla(45 93% 55% / 0.05); border: 1px solid hsla(45 93% 55% / 0.25);
+  border-radius: var(--radius); padding: 14px 18px; font-size: 12px; color: var(--warning);
+  font-family: var(--font-data);
+}
+
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  .sidebar, .sidebar.open {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    width: 100%; min-height: auto; height: auto;
+    flex-direction: row; border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 6px 0 env(safe-area-inset-bottom, 4px);
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    z-index: 120; background: var(--bg-sidebar);
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar-logo { display: none; }
+  .sidebar-nav { flex-direction: row; gap: 1px; flex: none; padding: 0 4px; }
+  .nav-item { width: 38px; height: 38px; flex-shrink: 0; }
+  .nav-item .tooltip { display: none; }
+  .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
+  .main { padding: 16px; padding-bottom: 80px; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .table-wrap { overflow-x: auto; }
+  .data-table { min-width: 700px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar"></aside>
+
+  <main class="main">
+    <div class="header fade-up delay-1">
+      <div>
+        <div class="header-title">FINANCE</div>
+        <div class="header-sub">Stripe subscriptions &amp; recurring revenue</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="last-refresh" style="font-family:var(--font-data);font-size:10px;color:var(--text-muted)"></span>
+        <button class="btn" onclick="loadAll()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div id="warn-area"></div>
+
+    <section class="fade-up delay-2">
+      <div class="summary-grid" id="kpi-grid">
+        <div class="summary-card"><div class="summary-label">MRR</div><div class="summary-value" id="kpi-mrr">—</div><div class="summary-sub">Monthly recurring revenue</div></div>
+        <div class="summary-card"><div class="summary-label">Active</div><div class="summary-value value-success" id="kpi-active">—</div><div class="summary-sub">Paying subscribers</div></div>
+        <div class="summary-card"><div class="summary-label">Trialing</div><div class="summary-value" id="kpi-trial">—</div><div class="summary-sub">On trial</div></div>
+        <div class="summary-card"><div class="summary-label">Past due</div><div class="summary-value value-warning" id="kpi-past">—</div><div class="summary-sub">Need attention</div></div>
+      </div>
+    </section>
+
+    <section class="fade-up delay-3">
+      <div class="section-header">Notifications</div>
+      <div class="config-card">
+        <div style="display:flex;flex-direction:column;gap:14px;flex:1;min-width:240px">
+          <div class="toggle-row">
+            <label class="switch"><input type="checkbox" id="notify-new" onchange="saveConfig()"><span class="slider"></span></label>
+            <div>
+              <div class="label">Notify on new subscription</div>
+              <div class="sub">Telegram message when a customer subscribes</div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label class="switch"><input type="checkbox" id="notify-canceled" onchange="saveConfig()"><span class="slider"></span></label>
+            <div>
+              <div class="label">Notify on cancellation</div>
+              <div class="sub">Telegram message when a subscription is canceled</div>
+            </div>
+          </div>
+        </div>
+        <div id="webhook-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);min-width:260px;text-align:right"></div>
+      </div>
+    </section>
+
+    <section class="fade-up delay-4">
+      <div class="section-header">Subscriptions</div>
+      <div id="subs-container">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/sidebar.js"></script>
+<script src="/notif-panel.js"></script>
+<script>
+const FMT_DATE = d => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+
+async function loadAll() {
+  await Promise.all([loadSubscriptions(), loadConfig()]);
+  document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+async function loadSubscriptions() {
+  const container = document.getElementById('subs-container');
+  const warn = document.getElementById('warn-area');
+  try {
+    const r = await fetch('/finance/subscriptions', { credentials: 'include' });
+    if (r.status === 503) {
+      warn.innerHTML = `<div class="warn-banner">Stripe is not configured. Add <code>STRIPE_SECRET_KEY</code> in Settings to see subscriptions.</div>`;
+      container.innerHTML = '';
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    document.getElementById('kpi-mrr').textContent = data.kpi.mrr_display;
+    document.getElementById('kpi-active').textContent = data.kpi.active_count;
+    document.getElementById('kpi-trial').textContent = data.kpi.trialing_count;
+    document.getElementById('kpi-past').textContent = data.kpi.past_due_count;
+
+    if (!data.subscriptions.length) {
+      container.innerHTML = `<div class="empty-state">No subscriptions yet. New subscriptions will appear here automatically.</div>`;
+      return;
+    }
+
+    const rows = data.subscriptions.map(s => {
+      const who = s.customer_name
+        ? `${escapeHtml(s.customer_name)}<div style="color:var(--text-dim);font-size:11px">${escapeHtml(s.customer_email || '')}</div>`
+        : escapeHtml(s.customer_email || '—');
+      const cancelHint = s.cancel_at_period_end ? `<div style="color:var(--warning);font-size:11px;margin-top:2px">cancels at period end</div>` : '';
+      return `<tr>
+        <td>${who}</td>
+        <td>${escapeHtml(s.plan)}</td>
+        <td><strong>${escapeHtml(s.amount_display)}</strong><span style="color:var(--text-dim);font-size:11px">/${escapeHtml(s.interval)}</span></td>
+        <td><span class="status-badge s-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span>${cancelHint}</td>
+        <td>${FMT_DATE(s.start_date)}</td>
+        <td>${s.canceled_at ? FMT_DATE(s.canceled_at) : FMT_DATE(s.current_period_end)}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>Customer</th><th>Plan</th><th>Amount</th><th>Status</th><th>Started</th><th id="th-end">Period end / Canceled</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  } catch (e) {
+    warn.innerHTML = `<div class="warn-banner">Failed to load subscriptions: ${escapeHtml(e.message)}</div>`;
+    container.innerHTML = '';
+  }
+}
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/finance/config', { credentials: 'include' });
+    if (!r.ok) return;
+    const cfg = await r.json();
+    document.getElementById('notify-new').checked = !!cfg.notify_new;
+    document.getElementById('notify-canceled').checked = !!cfg.notify_canceled;
+    const ws = document.getElementById('webhook-status');
+    if (!cfg.stripe_connected) {
+      ws.innerHTML = `<span style="color:var(--danger)">● Stripe not connected</span>`;
+    } else if (!cfg.webhook_secret_set) {
+      ws.innerHTML = `<span style="color:var(--warning)">● Webhook secret missing</span><div style="margin-top:4px">Add <code>STRIPE_WEBHOOK_SECRET</code> in .env, set Stripe endpoint to <code>/stripe/webhook</code></div>`;
+    } else {
+      ws.innerHTML = `<span style="color:var(--success)">● Webhook ready</span><div style="margin-top:4px">Endpoint: <code>/stripe/webhook</code></div>`;
+    }
+  } catch {}
+}
+
+let saveTimer;
+function saveConfig() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const body = {
+      notify_new: document.getElementById('notify-new').checked,
+      notify_canceled: document.getElementById('notify-canceled').checked,
+    };
+    try {
+      await fetch('/finance/config', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {}
+  }, 200);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+loadAll();
+setInterval(loadSubscriptions, 60_000);
+</script>
+</body>
+</html>

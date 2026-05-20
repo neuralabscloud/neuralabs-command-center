@@ -24,6 +24,13 @@ const {
 } = require("./browser-tools");
 
 const app = express();
+
+// Stripe webhook must receive the RAW body for signature verification,
+// so register it BEFORE express.json(). The handler itself is defined later
+// in the file (handleStripeWebhook); function-scoped hoisting keeps it
+// available at request time even though we reference it here.
+app.post("/stripe/webhook", express.raw({ type: "application/json" }), (req, res) => handleStripeWebhook(req, res));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/generated-images", express.static(path.join(__dirname, "data", "generated-images")));
@@ -127,6 +134,9 @@ app.use("/theme.css", express.static(path.join(__dirname, "public", "theme.css")
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
+  // Stripe webhook authenticates via signature, not cookie — it was already
+  // handled by the raw-body route above, but allow as a safety net.
+  if (req.path === "/stripe/webhook") return next();
   if (
     (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") &&
     req.headers["x-internal-secret"] === INTERNAL_SECRET
@@ -6052,6 +6062,212 @@ app.get("/stripe/revenue", async (_req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── FINANCE: subscriptions, config, webhook ─────
+const FINANCE_CONFIG_PATH = path.join(__dirname, "data", "finance-config.json");
+const FINANCE_DEFAULTS = { notify_new: true, notify_canceled: true };
+
+function loadFinanceConfig() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(FINANCE_CONFIG_PATH, "utf8"));
+    return { ...FINANCE_DEFAULTS, ...raw };
+  } catch { return { ...FINANCE_DEFAULTS }; }
+}
+function saveFinanceConfig(cfg) {
+  fs.writeFileSync(FINANCE_CONFIG_PATH, JSON.stringify(cfg, null, 2));
+}
+
+function formatMoney(amountCents, currency) {
+  const symbol = { usd: "$", eur: "€", gbp: "£" }[(currency || "usd").toLowerCase()] || ((currency || "usd").toUpperCase() + " ");
+  return symbol + (amountCents / 100).toFixed(2);
+}
+
+// Normalize a Stripe Subscription into the shape the UI needs.
+function normalizeSubscription(sub) {
+  const items = sub.items?.data || [];
+  let mrrCents = 0;
+  const planLines = [];
+  for (const item of items) {
+    const price = item.price || {};
+    const unit = price.unit_amount || 0;
+    const qty = item.quantity || 1;
+    const interval = price.recurring?.interval;
+    let monthly = unit;
+    if (interval === "year") monthly = Math.round(unit / 12);
+    else if (interval === "week") monthly = unit * 4;
+    else if (interval === "day") monthly = unit * 30;
+    mrrCents += monthly * qty;
+    const product = price.product && typeof price.product === "object" ? price.product : null;
+    const productName = product?.name || price.nickname || "Plan";
+    planLines.push(`${productName} — ${formatMoney(unit * qty, price.currency)}/${interval || "mo"}`);
+  }
+  const customer = sub.customer && typeof sub.customer === "object" ? sub.customer : null;
+  return {
+    id: sub.id,
+    status: sub.status,
+    customer_email: customer?.email || "",
+    customer_name: customer?.name || "",
+    plan: planLines.join(", ") || "—",
+    currency: items[0]?.price?.currency || "usd",
+    mrr_cents: mrrCents,
+    amount_display: items.length ? formatMoney(mrrCents, items[0].price.currency) : "—",
+    interval: items[0]?.price?.recurring?.interval || "month",
+    start_date: sub.start_date ? new Date(sub.start_date * 1000).toISOString() : null,
+    current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+    canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+    cancel_at_period_end: !!sub.cancel_at_period_end,
+  };
+}
+
+app.get("/finance/subscriptions", async (_req, res) => {
+  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+  try {
+    // Stripe caps expand depth at 4 levels, so we resolve product names in
+    // a second pass and inline them onto each price before normalizing.
+    const subs = await stripe.subscriptions.list({
+      status: "all",
+      limit: 100,
+      expand: ["data.customer"],
+    });
+    const productIds = new Set();
+    for (const sub of subs.data) {
+      for (const item of (sub.items?.data || [])) {
+        const pid = item.price?.product;
+        if (typeof pid === "string") productIds.add(pid);
+      }
+    }
+    const productMap = {};
+    await Promise.all([...productIds].map(async pid => {
+      try { productMap[pid] = await stripe.products.retrieve(pid); }
+      catch { productMap[pid] = null; }
+    }));
+    for (const sub of subs.data) {
+      for (const item of (sub.items?.data || [])) {
+        const pid = item.price?.product;
+        if (typeof pid === "string" && productMap[pid]) item.price.product = productMap[pid];
+      }
+    }
+    const items = subs.data.map(normalizeSubscription);
+    items.sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""));
+    const active = items.filter(s => s.status === "active" || s.status === "trialing");
+    const mrrCents = active.reduce((s, x) => s + x.mrr_cents, 0);
+    const currency = active[0]?.currency || items[0]?.currency || "usd";
+    res.json({
+      subscriptions: items,
+      kpi: {
+        mrr_cents: mrrCents,
+        mrr_display: formatMoney(mrrCents, currency),
+        active_count: items.filter(s => s.status === "active").length,
+        trialing_count: items.filter(s => s.status === "trialing").length,
+        past_due_count: items.filter(s => s.status === "past_due").length,
+        canceled_count: items.filter(s => s.status === "canceled").length,
+      },
+      currency,
+    });
+  } catch (err) {
+    console.error("[FINANCE]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/finance/config", (_req, res) => {
+  const cfg = loadFinanceConfig();
+  res.json({
+    ...cfg,
+    stripe_connected: !!stripe,
+    webhook_secret_set: !!process.env.STRIPE_WEBHOOK_SECRET,
+  });
+});
+
+app.post("/finance/config", (req, res) => {
+  const cfg = loadFinanceConfig();
+  const next = { ...cfg };
+  if (typeof req.body.notify_new === "boolean") next.notify_new = req.body.notify_new;
+  if (typeof req.body.notify_canceled === "boolean") next.notify_canceled = req.body.notify_canceled;
+  saveFinanceConfig(next);
+  res.json(next);
+});
+
+// Build a Telegram message for a subscription event.
+function formatSubscriptionMessage(sub, eventType) {
+  const norm = normalizeSubscription(sub);
+  const who = norm.customer_name
+    ? `${norm.customer_name} (${norm.customer_email || "no email"})`
+    : (norm.customer_email || "Unknown customer");
+  if (eventType === "customer.subscription.created") {
+    return [
+      `<b>New subscription</b>`,
+      `Customer: ${who}`,
+      `Plan: ${norm.plan}`,
+      `MRR: ${norm.amount_display}/mo`,
+      `Status: ${norm.status}`,
+    ].join("\n");
+  }
+  if (eventType === "customer.subscription.deleted") {
+    return [
+      `<b>Subscription canceled</b>`,
+      `Customer: ${who}`,
+      `Plan: ${norm.plan}`,
+      `Was MRR: ${norm.amount_display}/mo`,
+      norm.canceled_at ? `Canceled: ${new Date(norm.canceled_at).toLocaleString()}` : "",
+    ].filter(Boolean).join("\n");
+  }
+  return null;
+}
+
+async function handleStripeWebhook(req, res) {
+  if (!stripe) return res.status(503).send("Stripe not configured");
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) return res.status(503).send("Webhook secret not configured");
+
+  const sig = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, secret);
+  } catch (err) {
+    console.error("[STRIPE-WH] Signature verification failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Invalidate the revenue cache so the UI shows fresh numbers.
+  stripeCache = { data: null, ts: 0 };
+
+  const cfg = loadFinanceConfig();
+  try {
+    if (event.type === "customer.subscription.created" && cfg.notify_new) {
+      // Re-fetch with expansions so the message has customer + plan names.
+      const sub = await stripe.subscriptions.retrieve(event.data.object.id, {
+        expand: ["customer"],
+      });
+      // Inline product names (expand-depth workaround, see /finance/subscriptions).
+      for (const item of (sub.items?.data || [])) {
+        const pid = item.price?.product;
+        if (typeof pid === "string") {
+          try { item.price.product = await stripe.products.retrieve(pid); } catch {}
+        }
+      }
+      const msg = formatSubscriptionMessage(sub, event.type);
+      if (msg) sendTelegram("New subscription", msg, "success");
+    } else if (event.type === "customer.subscription.deleted" && cfg.notify_canceled) {
+      const sub = await stripe.subscriptions.retrieve(event.data.object.id, {
+        expand: ["customer"],
+      });
+      // Inline product names (expand-depth workaround, see /finance/subscriptions).
+      for (const item of (sub.items?.data || [])) {
+        const pid = item.price?.product;
+        if (typeof pid === "string") {
+          try { item.price.product = await stripe.products.retrieve(pid); } catch {}
+        }
+      }
+      const msg = formatSubscriptionMessage(sub, event.type);
+      if (msg) sendTelegram("Subscription canceled", msg, "warning");
+    }
+  } catch (err) {
+    console.error("[STRIPE-WH] handler error:", err.message);
+  }
+
+  res.json({ received: true });
+}
 
 // ── REMOTION VIDEO PROJECTS ──
 const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
