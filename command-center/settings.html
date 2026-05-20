@@ -78,6 +78,47 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .detail-value a { color: var(--primary); text-decoration: none; }
 .detail-value a:hover { text-decoration: underline; }
 
+/* ── PER-TOOL CONFIG CARDS ── */
+.cfg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
+.cfg-grid > .cfg-branding { grid-column: 1 / -1; }
+.cfg-card { background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; transition: border-color 0.2s; display: flex; flex-direction: column; }
+.cfg-card:hover { border-color: hsla(264 65% 49% / 0.25); }
+.cfg-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.cfg-card-icon { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--font-data); font-size: 14px; font-weight: 700; flex-shrink: 0; color: var(--text); }
+.cfg-card-meta { flex: 1; min-width: 0; }
+.cfg-card-title-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cfg-card-title { font-family: var(--font-data); font-size: 13px; font-weight: 700; color: var(--text); }
+.cfg-card-desc { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); margin-top: 3px; line-height: 1.4; }
+.cfg-pill { font-family: var(--font-data); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 5px; border: 1px solid; white-space: nowrap; }
+.cfg-pill.required { color: var(--primary); background: hsla(264 65% 49% / 0.1); border-color: hsla(264 65% 49% / 0.25); }
+.cfg-pill.optional { color: var(--text-dim); background: transparent; border-color: var(--border); }
+.cfg-pill.ok { color: var(--success); background: hsla(142 76% 36% / 0.08); border-color: hsla(142 76% 36% / 0.25); display: inline-flex; align-items: center; gap: 5px; }
+.cfg-pill.ok::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--success); }
+.cfg-pill.partial { color: var(--warning); background: hsla(45 93% 55% / 0.08); border-color: hsla(45 93% 55% / 0.25); display: inline-flex; align-items: center; gap: 5px; }
+.cfg-pill.partial::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--warning); }
+.cfg-pill.empty { color: var(--text-dim); background: hsla(217 32% 20% / 0.4); border-color: var(--border); display: inline-flex; align-items: center; gap: 5px; }
+.cfg-pill.empty::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--text-dim); }
+.cfg-fields { display: flex; flex-direction: column; gap: 12px; margin-top: 2px; }
+.cfg-field { display: flex; flex-direction: column; gap: 4px; }
+.cfg-field-label { font-family: var(--font-data); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.cfg-field-hint { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); line-height: 1.45; }
+.cfg-field-hint a { color: var(--primary); text-decoration: none; }
+.cfg-field-hint a:hover { text-decoration: underline; }
+.cfg-field-hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; padding: 1px 5px; background: hsla(0 0% 100% / 0.04); border: 1px solid var(--border); border-radius: 4px; }
+.cfg-input { width: 100%; padding: 8px 12px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-body); font-size: 13px; outline: none; transition: border-color 0.2s; }
+.cfg-input:focus { border-color: hsla(264 65% 49% / 0.55); }
+.cfg-steps { margin: 4px 0 4px 16px; padding: 0; list-style: decimal; font-size: 10px; color: var(--text-dim); line-height: 1.6; }
+.cfg-steps li { margin-bottom: 2px; }
+.cfg-copy-btn { font-family: var(--font-data); font-size: 9px; padding: 2px 7px; background: hsla(264 65% 49% / 0.08); border: 1px solid var(--border); border-radius: 4px; color: var(--primary); cursor: pointer; margin-left: 4px; }
+.cfg-copy-btn:hover { background: hsla(264 65% 49% / 0.16); }
+.cfg-callback-hint { display: block; margin-top: 4px; font-family: var(--font-data); font-size: 10px; color: var(--primary); word-break: break-all; }
+.cfg-status-line { font-family: var(--font-data); font-size: 10px; line-height: 1.4; margin-top: -4px; }
+.cfg-status-line.ok { color: var(--success); }
+.cfg-status-line.warn { color: var(--warning); }
+.cfg-status-line.muted { color: var(--text-dim); }
+.cfg-row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 480px) { .cfg-row-pair { grid-template-columns: 1fr; } }
+
 .key-toggle {
   font-family: var(--font-data); font-size: 9px; color: var(--primary); background: hsla(264 65% 49% / 0.06);
   border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 2px 8px;
@@ -206,6 +247,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .header-title { font-size: 17px; }
   .integrations-grid { grid-template-columns: 1fr; }
   #config-grid { grid-template-columns: 1fr !important; }
+  .cfg-grid { grid-template-columns: 1fr; }
   .stats-row { flex-direction: column; }
 }
 </style>
@@ -250,61 +292,304 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div class="section-header">Configuration</div>
       <div id="config-saved" style="display:none;padding:8px 14px;background:hsla(142 76% 36%/0.1);border:1px solid hsla(142 76% 36%/0.2);border-radius:8px;color:var(--success);font-size:12px;margin-bottom:14px;text-align:center">Settings saved successfully</div>
       <div id="domain-notice" style="display:none;padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.5;margin-bottom:14px"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" id="config-grid">
-        <!-- Branding -->
-        <div class="integration-card">
-          <div class="integration-header" style="margin-bottom:12px">
-            <div class="integration-icon" style="background:hsla(264 65% 49%/0.1);border:1px solid hsla(264 65% 49%/0.2)">B</div>
-            <div><div class="integration-name">Branding</div><div class="integration-desc">Company name, colors & identity</div></div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Company Name</label><input type="text" id="cfg-company" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="MyCompany"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">AI Assistant Name</label><input type="text" id="cfg-assistant" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Assistant"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Tagline</label><input type="text" id="cfg-tagline" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Your Platform"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Primary Color</label><input type="range" id="cfg-hue" min="0" max="360" value="264" style="width:100%" oninput="document.getElementById('cfg-swatch').style.background='hsl('+this.value+' 65% 49%)'"><div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div id="cfg-swatch" style="width:24px;height:24px;border-radius:6px;background:hsl(264 65% 49%);border:1px solid var(--border)"></div><span style="font-size:11px;color:var(--text-dim)" id="cfg-hue-val">264</span></div></div>
-          </div>
-        </div>
-        <!-- API Keys -->
-        <div class="integration-card">
-          <div class="integration-header" style="margin-bottom:12px">
-            <div class="integration-icon" style="background:hsla(264 65% 49%/0.1);border:1px solid hsla(264 65% 49%/0.2)">K</div>
-            <div><div class="integration-name">API Keys & Integrations</div><div class="integration-desc">Leave empty to keep current value</div></div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Anthropic API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers all AI features: your assistant, the agents (researcher, designer, scriptwriter, marketeer) and chat. Required. Get it at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--primary)">console.anthropic.com</a>.</div><input type="password" id="cfg-anthropic" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current key kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Bot Token</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Used by your AI assistant to reach you on Telegram (for DMs, reviews, alerts). Same bot is reused by Community Manager to publish to channels.</div><input type="text" id="cfg-tg-token" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Assistant Telegram Chat ID (your DM)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Your personal DM chat with the assistant. Review batches, alerts and /start go here. Not the same as community channel IDs — those are per-channel in Community Manager.</div><input type="text" id="cfg-tg-chatid" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="123456789"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">HeyGen API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">AI avatar + video generation in the Video Editor. Optional — only needed if you use the avatar/video features. Get it at <a href="https://app.heygen.com/settings" target="_blank" style="color:var(--primary)">app.heygen.com</a>.</div><input type="password" id="cfg-heygen" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Secret Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers the Finance page (subscriptions, MRR) and revenue widgets on Overview. Use a restricted key with read access to <code>charges</code>, <code>subscriptions</code>, <code>customers</code>, <code>invoices</code> and <code>products</code>. Starts with <code>sk_live_</code> or <code>sk_test_</code>. Get it at <a href="https://dashboard.stripe.com/apikeys" target="_blank" style="color:var(--primary)">dashboard.stripe.com/apikeys</a>.</div><input type="password" id="cfg-stripe" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div>
-              <label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Stripe Webhook Secret</label>
-              <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px;line-height:1.55">
-                Sends a Telegram message the moment a customer subscribes or cancels. Three quick steps:
-                <ol style="margin:6px 0 6px 18px;padding:0;list-style:decimal">
-                  <li>Open <a href="https://dashboard.stripe.com/webhooks/create" target="_blank" style="color:var(--primary)">dashboard.stripe.com/webhooks</a> → <b>Add endpoint</b>.</li>
-                  <li>Set the URL to <code id="cfg-stripe-webhook-url" style="color:var(--primary);user-select:all">your-domain.com/stripe/webhook</code> <button type="button" onclick="copyWebhookUrl()" style="margin-left:4px;font-size:9px;padding:2px 6px;background:hsla(264 65% 49%/0.08);border:1px solid var(--border);border-radius:4px;color:var(--primary);cursor:pointer">Copy</button></li>
-                  <li>Under <em>Events to send</em> select <code>customer.subscription.created</code> and <code>customer.subscription.deleted</code>, then <b>Add endpoint</b>.</li>
-                  <li>On the new endpoint page click <b>Signing secret → Reveal</b>, copy the value (<code>whsec_…</code>) and paste it below.</li>
-                </ol>
-                Without this secret, Stripe events are rejected for security.
-              </div>
-              <input type="password" id="cfg-stripe-webhook-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="whsec_…  (current kept if empty)">
-              <div id="cfg-stripe-webhook-status" style="margin-top:6px;font-family:var(--font-data);font-size:10px"></div>
+      <div class="cfg-grid" id="config-grid">
+
+        <!-- Branding (full width) -->
+        <div class="cfg-card cfg-branding">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(264 65% 49%/0.12);border:1px solid hsla(264 65% 49%/0.25)">B</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row"><div class="cfg-card-title">Branding</div></div>
+              <div class="cfg-card-desc">Company name, assistant name, tagline and primary color used across the UI.</div>
             </div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Inference.sh API Key (Nano Banana)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Image generation via Google Nano Banana 2. Used by the Designer agent for thumbnails, carousels and social visuals. Optional. Get it at <a href="https://inference.sh" target="_blank" style="color:var(--primary)">inference.sh</a>.</div><input type="password" id="cfg-inference" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Composio API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Connects your assistant to external tools: Google Calendar, Gmail, Drive, Notion, Slack and 100+ more. Required for calendar/inbox queries. Get it at <a href="https://app.composio.dev/developers" target="_blank" style="color:var(--primary)">app.composio.dev</a>.</div><input type="password" id="cfg-composio" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App ID (Instagram/Facebook)</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Unlocks Instagram, Facebook and Meta Ads Manager (campaigns, insights, OAuth connect). Create a Business app in Meta for Developers, then copy the <code>App ID</code>. Get it at <a href="https://developers.facebook.com/apps" target="_blank" style="color:var(--primary)">developers.facebook.com/apps</a>.</div><input type="text" id="cfg-meta-app-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta App Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The <code>App Secret</code> paired with your Meta App ID. Signs the OAuth flow for Instagram/Facebook login. Found under Settings → Basic in your Meta app dashboard. Keep it private.</div><input type="password" id="cfg-meta-app-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Meta Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Where Meta sends users back after they approve the connection. Paste this URI under <em>Valid OAuth Redirect URIs</em> in your Meta app (Facebook Login for Business → Settings). Leave the input empty to auto-derive from your public domain. <span id="cfg-meta-callback-hint" style="display:block;margin-top:4px;font-family:var(--font-data);color:var(--primary)">—</span></div><input type="text" id="cfg-meta-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/social/meta/callback"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Client ID</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Powers Designer brand templates. Create an Integration in <a href="https://www.canva.com/developers" target="_blank" style="color:var(--primary)">canva.com/developers</a>, then copy the <code>Client ID</code>. Requires a public domain — see callback URI below.</div><input type="text" id="cfg-canva-client-id" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Client Secret</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">The Secret paired with your Canva Client ID. Generate it under <em>Authentication → Generate secret</em> in your Canva integration. Keep it private.</div><input type="password" id="cfg-canva-client-secret" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">Canva Redirect URI</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Paste this URI into your Canva integration under <em>Authentication → Authentication URLs</em>. Leave the input empty to auto-derive from your public domain. <span id="cfg-canva-callback-hint" style="display:block;margin-top:4px;font-family:var(--font-data);color:var(--primary)">—</span></div><input type="text" id="cfg-canva-redirect" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="https://your-domain.com/canva/callback"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">YouTube Data API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Pulls YouTube channel stats (subscribers, views, engagement) on the Performance page. No OAuth required — just a public API key. Enable <em>YouTube Data API v3</em> in Google Cloud and create an API key. Get it at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--primary)">console.cloud.google.com</a>.</div><input type="password" id="cfg-youtube" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
-            <div><label style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:3px">OpusClip API Key</label><div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;line-height:1.4">Turns long-form videos (YouTube/Vimeo/direct URL) into viral short-form clips. Used by the Content Creator → Clipper tab. Requires an OpusClip Pro plan. Get it at <a href="https://www.opus.pro/api" target="_blank" style="color:var(--primary)">opus.pro/api</a>.</div><input type="password" id="cfg-opusclip" style="width:100%;padding:8px 12px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none" placeholder="Current kept if empty"></div>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-row-pair">
+              <div class="cfg-field">
+                <div class="cfg-field-label">Company Name</div>
+                <input type="text" id="cfg-company" class="cfg-input" placeholder="MyCompany">
+              </div>
+              <div class="cfg-field">
+                <div class="cfg-field-label">AI Assistant Name</div>
+                <input type="text" id="cfg-assistant" class="cfg-input" placeholder="Assistant">
+              </div>
+            </div>
+            <div class="cfg-row-pair">
+              <div class="cfg-field">
+                <div class="cfg-field-label">Tagline</div>
+                <input type="text" id="cfg-tagline" class="cfg-input" placeholder="Your Platform">
+              </div>
+              <div class="cfg-field">
+                <div class="cfg-field-label">Primary Color</div>
+                <input type="range" id="cfg-hue" min="0" max="360" value="264" style="width:100%" oninput="document.getElementById('cfg-swatch').style.background='hsl('+this.value+' 65% 49%)';document.getElementById('cfg-hue-val').textContent=this.value">
+                <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+                  <div id="cfg-swatch" style="width:22px;height:22px;border-radius:6px;background:hsl(264 65% 49%);border:1px solid var(--border)"></div>
+                  <span style="font-size:11px;color:var(--text-dim)" id="cfg-hue-val">264</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- Anthropic -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(20 90% 50%/0.12);border:1px solid hsla(20 90% 50%/0.3);color:hsl(20 90% 60%)">A</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Anthropic</div>
+                <span class="cfg-pill required">Required</span>
+              </div>
+              <div class="cfg-card-desc">Powers every AI agent, the assistant and chat.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-anthropic">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-anthropic" class="cfg-input" placeholder="Current key kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a>.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(200 80% 50%/0.12);border:1px solid hsla(200 80% 50%/0.3);color:hsl(200 80% 60%)">T</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Telegram</div>
+                <span class="cfg-pill required">Required</span>
+              </div>
+              <div class="cfg-card-desc">Assistant DMs, reviews, alerts and Community Manager publishing.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-telegram">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">Bot Token</div>
+              <input type="text" id="cfg-tg-token" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Create a bot with <a href="https://t.me/BotFather" target="_blank">@BotFather</a> on Telegram, then paste the token here.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">Your Chat ID (DM)</div>
+              <input type="text" id="cfg-tg-chatid" class="cfg-input" placeholder="123456789">
+              <div class="cfg-field-hint">Your personal chat with the assistant. Not the same as community channel IDs — those are per-channel in Community Manager.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stripe -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(252 75% 60%/0.12);border:1px solid hsla(252 75% 60%/0.3);color:hsl(252 75% 70%)">S</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Stripe</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Subscriptions, MRR and revenue widgets. Webhook adds live Telegram notifications.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-stripe">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">Secret Key</div>
+              <input type="password" id="cfg-stripe" class="cfg-input" placeholder="sk_live_…  (current kept if empty)">
+              <div class="cfg-field-hint">Use a restricted key with read access to charges, subscriptions, customers, invoices and products. Get it at <a href="https://dashboard.stripe.com/apikeys" target="_blank">dashboard.stripe.com/apikeys</a>.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">Webhook Secret</div>
+              <div class="cfg-field-hint">Sends a Telegram message the moment a customer subscribes or cancels.</div>
+              <ol class="cfg-steps">
+                <li>Open <a href="https://dashboard.stripe.com/webhooks/create" target="_blank">dashboard.stripe.com/webhooks</a> → Add endpoint.</li>
+                <li>URL: <code id="cfg-stripe-webhook-url" style="user-select:all">your-domain.com/stripe/webhook</code><button type="button" class="cfg-copy-btn" onclick="copyWebhookUrl()">Copy</button></li>
+                <li>Events: <code>customer.subscription.created</code> + <code>customer.subscription.deleted</code>.</li>
+                <li>Reveal the signing secret (<code>whsec_…</code>) and paste below.</li>
+              </ol>
+              <input type="password" id="cfg-stripe-webhook-secret" class="cfg-input" placeholder="whsec_…  (current kept if empty)">
+              <div id="cfg-stripe-webhook-status" class="cfg-status-line muted"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meta -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(217 90% 55%/0.12);border:1px solid hsla(217 90% 55%/0.3);color:hsl(217 90% 65%)">M</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Meta (Instagram, Facebook, Ads)</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Unlocks Ads Manager, Instagram + Facebook publishing and Meta OAuth.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-meta">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">App ID</div>
+              <input type="text" id="cfg-meta-app-id" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Create a Business app at <a href="https://developers.facebook.com/apps" target="_blank">developers.facebook.com/apps</a> and copy its App ID.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">App Secret</div>
+              <input type="password" id="cfg-meta-app-secret" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Found under Settings → Basic in your Meta app. Keep it private.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">Redirect URI</div>
+              <input type="text" id="cfg-meta-redirect" class="cfg-input" placeholder="Auto-derived from public domain">
+              <div class="cfg-field-hint">Paste this URI under <em>Valid OAuth Redirect URIs</em> in your Meta app. Leave empty to auto-derive.<span id="cfg-meta-callback-hint" class="cfg-callback-hint">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Canva -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(180 80% 45%/0.12);border:1px solid hsla(180 80% 45%/0.3);color:hsl(180 80% 55%)">C</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Canva</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Brand templates for the Designer agent. Requires a public domain.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-canva">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">Client ID</div>
+              <input type="text" id="cfg-canva-client-id" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Create an Integration at <a href="https://www.canva.com/developers" target="_blank">canva.com/developers</a> and copy its Client ID.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">Client Secret</div>
+              <input type="password" id="cfg-canva-client-secret" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Generate under <em>Authentication → Generate secret</em>. Keep it private.</div>
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">Redirect URI</div>
+              <input type="text" id="cfg-canva-redirect" class="cfg-input" placeholder="Auto-derived from public domain">
+              <div class="cfg-field-hint">Paste under <em>Authentication → Authentication URLs</em> in your Canva integration. Leave empty to auto-derive.<span id="cfg-canva-callback-hint" class="cfg-callback-hint">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Composio -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(280 70% 60%/0.12);border:1px solid hsla(280 70% 60%/0.3);color:hsl(280 70% 70%)">Co</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Composio</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Calendar, Gmail, Drive, Notion, Slack and 100+ tools for the assistant.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-composio">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-composio" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://app.composio.dev/developers" target="_blank">app.composio.dev</a>.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- YouTube -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(0 80% 55%/0.12);border:1px solid hsla(0 80% 55%/0.3);color:hsl(0 80% 65%)">Y</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">YouTube</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Channel stats (subscribers, views, engagement) on the Performance page.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-youtube">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">Data API Key</div>
+              <input type="password" id="cfg-youtube" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Enable <em>YouTube Data API v3</em> at <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud</a> and create an API key.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inference.sh -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(48 95% 55%/0.12);border:1px solid hsla(48 95% 55%/0.3);color:hsl(48 95% 65%)">N</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">Inference.sh (Nano Banana)</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Image generation via Google Nano Banana 2 for the Designer agent.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-inference">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-inference" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://inference.sh" target="_blank">inference.sh</a>.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HeyGen -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(155 70% 45%/0.12);border:1px solid hsla(155 70% 45%/0.3);color:hsl(155 70% 55%)">H</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">HeyGen</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">AI avatar + video generation in the Video Editor.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-heygen">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-heygen" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://app.heygen.com/settings" target="_blank">app.heygen.com</a>.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OpusClip -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(320 65% 55%/0.12);border:1px solid hsla(320 65% 55%/0.3);color:hsl(320 65% 65%)">O</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">OpusClip</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Turn long-form videos into viral short clips. Requires an OpusClip Pro plan.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-opusclip">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-opusclip" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://www.opus.pro/api" target="_blank">opus.pro/api</a>.</div>
+            </div>
+          </div>
+        </div>
+
       </div>
-      <button onclick="saveConfig()" id="cfg-save-btn" style="margin-top:14px;padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;transition:all 0.2s">Save Changes</button>
+      <button onclick="saveConfig()" id="cfg-save-btn" style="margin-top:18px;padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;transition:all 0.2s">Save Changes</button>
     </section>
 
     <!-- BRAND ASSETS -->
@@ -714,6 +999,51 @@ async function loadConfig() {
         tgChat.value = d.integrations.telegram.chat_id || '';
         if (!d.integrations.telegram.chat_id) tgChat.placeholder = 'Not configured';
       }
+
+      // Per-tool status pills
+      const setStatus = (id, state, label) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'cfg-pill ' + state;
+        el.textContent = label;
+      };
+      const triState = (parts) => {
+        const filled = parts.filter(Boolean).length;
+        if (filled === 0) return ['empty', 'Not set'];
+        if (filled < parts.length) return ['partial', 'Partial'];
+        return ['ok', 'Set'];
+      };
+      const ig = d.integrations;
+      setStatus('cfg-status-anthropic', ...triState([ig.anthropic && ig.anthropic.has_key]));
+      setStatus('cfg-status-telegram', ...triState([
+        ig.telegram && !!ig.telegram.token_masked,
+        ig.telegram && !!ig.telegram.chat_id,
+      ]));
+      // Stripe: key required; webhook secret recommended but treat as partial when missing
+      if (ig.stripe) {
+        if (!ig.stripe.has_key) {
+          setStatus('cfg-status-stripe', 'empty', 'Not set');
+        } else if (!ig.stripe.has_webhook_secret) {
+          setStatus('cfg-status-stripe', 'partial', 'Key set · webhook missing');
+        } else {
+          setStatus('cfg-status-stripe', 'ok', 'Set');
+        }
+      } else {
+        setStatus('cfg-status-stripe', 'empty', 'Not set');
+      }
+      setStatus('cfg-status-meta', ...triState([
+        ig.meta && ig.meta.has_app_id,
+        ig.meta && ig.meta.has_secret,
+      ]));
+      setStatus('cfg-status-canva', ...triState([
+        ig.canva && ig.canva.has_client_id,
+        ig.canva && ig.canva.has_secret,
+      ]));
+      setStatus('cfg-status-composio', ...triState([ig.composio && ig.composio.has_key]));
+      setStatus('cfg-status-youtube', ...triState([ig.youtube && ig.youtube.has_key]));
+      setStatus('cfg-status-inference', ...triState([ig.inference && ig.inference.has_key]));
+      setStatus('cfg-status-heygen', ...triState([ig.heygen && ig.heygen.has_key]));
+      setStatus('cfg-status-opusclip', ...triState([ig.opusclip && ig.opusclip.has_key]));
     }
   } catch {}
 }
