@@ -2572,6 +2572,86 @@ app.post("/ads/ads/:adId/status", async (req, res) => {
   }
 });
 
+// ── META ADS — targeting + placements update (phase 3) ──
+// Accepts a partial targeting object and merges it into the adset's existing targeting.
+// Supports demographics (age_min/max, genders), geo (geo_locations), interests, custom audiences,
+// flexible_spec, AND placement fields (publisher_platforms, facebook_positions, instagram_positions,
+// messenger_positions, audience_network_positions, device_platforms).
+app.post("/ads/adsets/:adsetId/targeting", async (req, res) => {
+  const { adsetId } = req.params;
+  const { account_id, targeting, replace } = req.body;
+  if (!targeting || typeof targeting !== "object") return res.status(400).json({ error: "targeting object required" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    let finalTargeting = targeting;
+    if (!replace) {
+      const getR = await fetch(`https://graph.facebook.com/v21.0/${adsetId}?fields=targeting&access_token=${conn.user_access_token}`);
+      const getD = await getR.json();
+      if (getD.error) throw new Error(getD.error.message);
+      finalTargeting = { ...(getD.targeting || {}), ...targeting };
+    }
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adsetId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targeting: finalTargeting, access_token: conn.user_access_token }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, targeting: finalTargeting });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── META ADS — creative update (phase 3) ──
+// Either assigns an existing creative_id to the ad, or creates a new adcreative from raw fields
+// (page_id + message + link + image_url/video_id + headline + description + call_to_action) and assigns it.
+app.post("/ads/ads/:adId/creative", async (req, res) => {
+  const { adId } = req.params;
+  const {
+    account_id, creative_id,
+    page_id, message, link, image_url, image_hash, video_id,
+    headline, description, call_to_action,
+  } = req.body;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    let creativeIdToUse = creative_id;
+    if (!creativeIdToUse) {
+      if (!page_id) return res.status(400).json({ error: "page_id required when creating a new creative" });
+      const link_data = { message, link };
+      if (image_hash) link_data.image_hash = image_hash;
+      if (image_url) link_data.picture = image_url;
+      if (headline) link_data.name = headline;
+      if (description) link_data.description = description;
+      if (call_to_action) link_data.call_to_action = call_to_action;
+      const object_story_spec = video_id
+        ? { page_id, video_data: { video_id, message, title: headline, call_to_action } }
+        : { page_id, link_data };
+      const createR = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/adcreatives`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: headline || message?.slice(0, 60) || `creative_${Date.now()}`,
+          object_story_spec,
+          access_token: conn.user_access_token,
+        }),
+      });
+      const createD = await createR.json();
+      if (createD.error) throw new Error(createD.error.message);
+      creativeIdToUse = createD.id;
+    }
+    const updR = await fetch(`https://graph.facebook.com/v21.0/${adId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creative: { creative_id: creativeIdToUse }, access_token: conn.user_access_token }),
+    });
+    const updD = await updR.json();
+    if (updD.error) throw new Error(updD.error.message);
+    res.json({ ok: true, creative_id: creativeIdToUse });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── META ADS — automated rules (phase 3) ──
 
 app.get("/ads/rules", (_req, res) => {
@@ -3811,16 +3891,40 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "ads_action",
-        description: "Voer een actie uit op Meta Ads: campaign/adset/ad pauzeren of activeren, budget aanpassen. Gebruik na ads_query om context te hebben.",
+        description: "Voer een actie uit op Meta Ads: pauzeren/activeren, budget aanpassen, targeting/placements/creative wijzigen. Gebruik na ads_query om context te hebben. Voor update_targeting/update_placements is level='adset' verplicht; voor update_creative is level='ad' verplicht.",
         input_schema: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["pause", "activate", "set_budget"], description: "De actie" },
+            action: { type: "string", enum: ["pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative"], description: "De actie" },
             level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Op welk niveau. Default: campaign" },
             object_id: { type: "string", description: "Het ID van de campaign/adset/ad" },
             account_id: { type: "string", description: "Ad account ID" },
             daily_budget: { type: "number", description: "Nieuw daily budget in euro's (niet centen). Alleen voor set_budget." },
             lifetime_budget: { type: "number", description: "Nieuw lifetime budget in euro's. Alleen voor set_budget." },
+            geo_locations: { type: "object", description: "Geo targeting object voor update_targeting. Bijv. {countries:['NL','BE'], cities:[{key:'2421344'}], regions:[{key:'4040'}]}." },
+            age_min: { type: "integer", description: "Minimum leeftijd (13-65) voor update_targeting." },
+            age_max: { type: "integer", description: "Maximum leeftijd (13-65) voor update_targeting." },
+            genders: { type: "array", items: { type: "integer" }, description: "Geslacht voor update_targeting: [1]=man, [2]=vrouw, [1,2]=beide." },
+            interests: { type: "array", items: { type: "object" }, description: "Interesses voor update_targeting, bijv. [{id:'6003107902433', name:'Bitcoin'}]." },
+            custom_audiences: { type: "array", items: { type: "object" }, description: "Custom audiences voor update_targeting: [{id:'...'}]." },
+            excluded_custom_audiences: { type: "array", items: { type: "object" }, description: "Uit te sluiten custom audiences." },
+            flexible_spec: { type: "array", description: "Geavanceerde flexibele targeting spec (interests/behaviors per AND-groep)." },
+            publisher_platforms: { type: "array", items: { type: "string" }, description: "Placements (update_placements): bijv. ['facebook','instagram','messenger','audience_network']." },
+            facebook_positions: { type: "array", items: { type: "string" }, description: "Facebook posities: feed, marketplace, video_feeds, story, search, instream_video, facebook_reels." },
+            instagram_positions: { type: "array", items: { type: "string" }, description: "Instagram posities: stream, story, explore, reels, profile_feed." },
+            messenger_positions: { type: "array", items: { type: "string" }, description: "Messenger posities: messenger_home, story, sponsored_messages." },
+            audience_network_positions: { type: "array", items: { type: "string" }, description: "Audience Network posities: classic, rewarded_video." },
+            device_platforms: { type: "array", items: { type: "string" }, description: "Device platforms: ['mobile','desktop']." },
+            creative_id: { type: "string", description: "Bestaande creative ID koppelen aan de ad (update_creative)." },
+            page_id: { type: "string", description: "Facebook page ID (verplicht bij nieuwe creative)." },
+            message: { type: "string", description: "Primary text / body van de creative." },
+            link: { type: "string", description: "Bestemmings-URL van de creative." },
+            image_url: { type: "string", description: "URL naar afbeelding voor de creative (alternatief voor image_hash)." },
+            image_hash: { type: "string", description: "Image hash uit Meta's library (alternatief voor image_url)." },
+            video_id: { type: "string", description: "Video ID uit Meta's library voor een video-creative." },
+            headline: { type: "string", description: "Headline / titel van de creative." },
+            description: { type: "string", description: "Beschrijving onder de headline." },
+            call_to_action: { type: "object", description: "CTA, bijv. {type:'SHOP_NOW', value:{link:'https://...'}}." },
           },
           required: ["action", "object_id", "account_id"],
         },
@@ -4040,6 +4144,45 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               account_id: input.account_id,
               daily_budget: input.daily_budget ? Math.round(input.daily_budget * 100) : undefined,
               lifetime_budget: input.lifetime_budget ? Math.round(input.lifetime_budget * 100) : undefined,
+            },
+          };
+        }
+        if (input.action === "update_targeting" || input.action === "update_placements") {
+          const t = {};
+          if (input.geo_locations !== undefined) t.geo_locations = input.geo_locations;
+          if (input.age_min !== undefined) t.age_min = input.age_min;
+          if (input.age_max !== undefined) t.age_max = input.age_max;
+          if (input.genders !== undefined) t.genders = input.genders;
+          if (input.interests !== undefined) t.interests = input.interests;
+          if (input.custom_audiences !== undefined) t.custom_audiences = input.custom_audiences;
+          if (input.excluded_custom_audiences !== undefined) t.excluded_custom_audiences = input.excluded_custom_audiences;
+          if (input.flexible_spec !== undefined) t.flexible_spec = input.flexible_spec;
+          if (input.publisher_platforms !== undefined) t.publisher_platforms = input.publisher_platforms;
+          if (input.facebook_positions !== undefined) t.facebook_positions = input.facebook_positions;
+          if (input.instagram_positions !== undefined) t.instagram_positions = input.instagram_positions;
+          if (input.messenger_positions !== undefined) t.messenger_positions = input.messenger_positions;
+          if (input.audience_network_positions !== undefined) t.audience_network_positions = input.audience_network_positions;
+          if (input.device_platforms !== undefined) t.device_platforms = input.device_platforms;
+          return {
+            url: `http://localhost:3004/ads/adsets/${input.object_id}/targeting`,
+            body: { account_id: input.account_id, targeting: t },
+          };
+        }
+        if (input.action === "update_creative") {
+          return {
+            url: `http://localhost:3004/ads/ads/${input.object_id}/creative`,
+            body: {
+              account_id: input.account_id,
+              creative_id: input.creative_id,
+              page_id: input.page_id,
+              message: input.message,
+              link: input.link,
+              image_url: input.image_url,
+              image_hash: input.image_hash,
+              video_id: input.video_id,
+              headline: input.headline,
+              description: input.description,
+              call_to_action: input.call_to_action,
             },
           };
         }
