@@ -2652,6 +2652,60 @@ app.post("/ads/ads/:adId/creative", async (req, res) => {
   }
 });
 
+// ── META ADS — pixels list + promoted_object update (phase 3) ──
+
+app.get("/ads/pixels", async (req, res) => {
+  const { account_id } = req.query;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const fields = "id,name,code,last_fired_time,is_unavailable,creation_time,owner_business";
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/adspixels?fields=${fields}&limit=100&access_token=${conn.user_access_token}`);
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ pixels: d.data || [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update the conversion target (pixel) on an adset. Merges into existing promoted_object.
+// Optionally also sets conversion_domain on the adset (top-level field, not inside promoted_object).
+app.post("/ads/adsets/:adsetId/promoted-object", async (req, res) => {
+  const { adsetId } = req.params;
+  const { account_id, pixel_id, custom_event_type, custom_conversion_id, application_id, object_store_url, page_id, conversion_domain, replace } = req.body;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    let finalPO = {};
+    if (!replace) {
+      const getR = await fetch(`https://graph.facebook.com/v21.0/${adsetId}?fields=promoted_object&access_token=${conn.user_access_token}`);
+      const getD = await getR.json();
+      if (getD.error) throw new Error(getD.error.message);
+      finalPO = { ...(getD.promoted_object || {}) };
+    }
+    if (pixel_id !== undefined) finalPO.pixel_id = pixel_id;
+    if (custom_event_type !== undefined) finalPO.custom_event_type = custom_event_type;
+    if (custom_conversion_id !== undefined) finalPO.custom_conversion_id = custom_conversion_id;
+    if (application_id !== undefined) finalPO.application_id = application_id;
+    if (object_store_url !== undefined) finalPO.object_store_url = object_store_url;
+    if (page_id !== undefined) finalPO.page_id = page_id;
+
+    const body = { promoted_object: finalPO, access_token: conn.user_access_token };
+    if (conversion_domain !== undefined) body.conversion_domain = conversion_domain;
+
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adsetId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, promoted_object: finalPO, conversion_domain: conversion_domain });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── META ADS — automated rules (phase 3) ──
 
 app.get("/ads/rules", (_req, res) => {
@@ -3880,8 +3934,8 @@ app.post("/ctrl/chat", async (req, res) => {
         input_schema: {
           type: "object",
           properties: {
-            type: { type: "string", enum: ["accounts", "campaigns", "adsets", "ads", "insights"], description: "Type data om op te halen" },
-            account_id: { type: "string", description: "Ad account ID (verplicht voor campaigns/adsets/ads/insights). Haal eerst accounts op om IDs te vinden." },
+            type: { type: "string", enum: ["accounts", "campaigns", "adsets", "ads", "insights", "pixels"], description: "Type data om op te halen. 'pixels' = beschikbare Meta pixels op het ad account." },
+            account_id: { type: "string", description: "Ad account ID (verplicht voor campaigns/adsets/ads/insights/pixels). Haal eerst accounts op om IDs te vinden." },
             campaign_id: { type: "string", description: "Optioneel: filter op campaign ID (voor adsets/ads)" },
             date_preset: { type: "string", enum: ["today", "yesterday", "last_7d", "last_14d", "last_30d", "this_month", "last_month"], description: "Periode voor insights. Default: last_7d" },
           },
@@ -3891,11 +3945,11 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "ads_action",
-        description: "Voer een actie uit op Meta Ads: pauzeren/activeren, budget aanpassen, targeting/placements/creative wijzigen. Gebruik na ads_query om context te hebben. Voor update_targeting/update_placements is level='adset' verplicht; voor update_creative is level='ad' verplicht.",
+        description: "Voer een actie uit op Meta Ads: pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen. Gebruik na ads_query om context te hebben. Voor update_targeting/update_placements/update_pixel is level='adset' verplicht; voor update_creative is level='ad' verplicht. Voor update_pixel kun je eerst ads_query met type='pixels' doen om beschikbare pixel IDs te vinden.",
         input_schema: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative"], description: "De actie" },
+            action: { type: "string", enum: ["pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative", "update_pixel"], description: "De actie" },
             level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Op welk niveau. Default: campaign" },
             object_id: { type: "string", description: "Het ID van de campaign/adset/ad" },
             account_id: { type: "string", description: "Ad account ID" },
@@ -3925,6 +3979,12 @@ app.post("/ctrl/chat", async (req, res) => {
             headline: { type: "string", description: "Headline / titel van de creative." },
             description: { type: "string", description: "Beschrijving onder de headline." },
             call_to_action: { type: "object", description: "CTA, bijv. {type:'SHOP_NOW', value:{link:'https://...'}}." },
+            pixel_id: { type: "string", description: "Meta pixel ID voor update_pixel. Gebruik ads_query type='pixels' om beschikbare IDs te vinden." },
+            custom_event_type: { type: "string", description: "Conversion event voor update_pixel: PURCHASE, LEAD, COMPLETE_REGISTRATION, ADD_TO_CART, INITIATE_CHECKOUT, ADD_PAYMENT_INFO, VIEW_CONTENT, SEARCH, SUBSCRIBE, START_TRIAL, CONTACT, CUSTOMIZE_PRODUCT, DONATE, FIND_LOCATION, SCHEDULE, SUBMIT_APPLICATION, OTHER." },
+            custom_conversion_id: { type: "string", description: "Custom conversion ID (alternatief voor custom_event_type) voor update_pixel." },
+            application_id: { type: "string", description: "App ID voor app-install/event campagnes (update_pixel)." },
+            object_store_url: { type: "string", description: "App store URL voor app-campagnes (update_pixel)." },
+            conversion_domain: { type: "string", description: "Geverifieerd domein voor conversies, bijv. 'example.com' (update_pixel, top-level adset field)." },
           },
           required: ["action", "object_id", "account_id"],
         },
@@ -4130,6 +4190,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           adsets: "/ads/adsets",
           ads: "/ads/ads",
           insights: "/ads/insights",
+          pixels: "/ads/pixels",
         };
         return { url: `http://localhost:3004${endpoints[t] || "/ads/accounts"}?${qs}`, method: "GET", isAds: true };
       },
@@ -4183,6 +4244,21 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               headline: input.headline,
               description: input.description,
               call_to_action: input.call_to_action,
+            },
+          };
+        }
+        if (input.action === "update_pixel") {
+          return {
+            url: `http://localhost:3004/ads/adsets/${input.object_id}/promoted-object`,
+            body: {
+              account_id: input.account_id,
+              pixel_id: input.pixel_id,
+              custom_event_type: input.custom_event_type,
+              custom_conversion_id: input.custom_conversion_id,
+              application_id: input.application_id,
+              object_store_url: input.object_store_url,
+              page_id: input.page_id,
+              conversion_domain: input.conversion_domain,
             },
           };
         }
