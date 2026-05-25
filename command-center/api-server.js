@@ -5771,7 +5771,8 @@ async function processOpusclipTasks() {
             duration_ms: c.durationMs || 0,
             download_url: c.uriForExport || "",
             preview_url: c.uriForPreview || "",
-            keywords: c.keywords || [],
+            thumbnail_url: c.uriForThumbnail || "",
+            keywords: c.keywords || c.clipKeywords || [],
             hashtags: c.hashtags || "",
           }));
           task.status = "completed";

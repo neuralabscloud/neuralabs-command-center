@@ -137,7 +137,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .nav-item .tooltip { display: none; }
   .nav-item svg { width: 17px; height: 17px; }
   .sidebar .notif-bell { width: 36px; height: 36px; margin-top: 0; }
-  .sidebar > .nav-item:last-child { display: none; }
 
   .main { margin-left: 0; padding: 16px 14px 68px; gap: 20px; width: 100%; overflow-x: hidden; }
   .header-title { font-size: 17px; }
@@ -376,25 +375,31 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').repla
 
 function renderClipperCard(t) {
   const clips = Array.isArray(t.clips) ? t.clips : [];
-  const stage = t.stage ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
+  const projectUrl = t.project_id ? `https://clip.opus.pro/project/${esc(t.project_id)}` : '';
+  const projectLink = projectUrl ? `<div style="margin:8px 0;font-size:12px;"><a href="${projectUrl}" target="_blank" rel="noopener" style="color:var(--accent,#7c4dff);">Open project on OpusClip ↗</a></div>` : '';
   const clipsHtml = clips.length ? `<div class="clips-grid">` + clips.map(c => {
     const title = c.title || c.name || c.clipTitle || 'Clip';
-    const dur = c.duration ? Math.round(c.duration) + 's' : (c.endTime != null && c.startTime != null ? Math.round(c.endTime - c.startTime) + 's' : '');
+    const durMs = c.duration_ms || (c.durationMs || 0);
+    const dur = durMs ? Math.round(durMs / 1000) + 's' : (c.duration ? Math.round(c.duration) + 's' : '');
     const score = c.viralityScore != null ? 'Score ' + Math.round(c.viralityScore) : '';
-    const preview = c.previewUrl || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
-    const download = c.exportUrl || c.downloadUrl || c.videoUrl || c.url || '';
+    const poster = c.thumbnail_url || c.uriForThumbnail || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
+    const preview = c.preview_url || c.previewUrl || c.uriForPreview || '';
+    const download = c.download_url || c.exportUrl || c.downloadUrl || c.uriForExport || c.videoUrl || c.url || '';
     const opusUrl = c.shareUrl || c.editorUrl || '';
+    const media = preview
+      ? `<video src="${esc(preview)}" ${poster ? `poster="${esc(poster)}"` : ''} controls preload="none" playsinline style="width:100%;aspect-ratio:9/16;border-radius:6px;background:#000;object-fit:cover;"></video>`
+      : (poster ? `<img src="${esc(poster)}" loading="lazy" />` : '<div style="aspect-ratio:9/16;background:var(--bg-deep);border-radius:6px;"></div>');
     return `<div class="clip-card">
-      ${preview ? `<img src="${esc(preview)}" loading="lazy" />` : '<div style="aspect-ratio:9/16;background:var(--bg-deep);border-radius:6px;"></div>'}
+      ${media}
       <div class="clip-title">${esc(title)}</div>
       <div class="clip-meta">${dur ? '<span>' + dur + '</span>' : ''}${score ? '<span>' + score + '</span>' : ''}</div>
       <div class="clip-actions">
-        ${download ? `<a href="${esc(download)}" target="_blank" rel="noopener">Download</a>` : ''}
+        ${download ? `<a href="${esc(download)}" target="_blank" rel="noopener" download>Download</a>` : ''}
         ${opusUrl ? `<a href="${esc(opusUrl)}" target="_blank" rel="noopener">Edit</a>` : ''}
       </div>
     </div>`;
   }).join('') + `</div>` : '';
-  return clipsHtml;
+  return projectLink + clipsHtml;
 }
 
 async function loadTasks() {

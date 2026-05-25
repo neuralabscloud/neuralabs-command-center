@@ -70,6 +70,7 @@ async function listClips(projectId) {
   const path = `/api/exportable-clips?q=findByProjectId&projectId=${encodeURIComponent(projectId)}&pageSize=50`;
   const data = await apiRequest("GET", path);
   if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.data)) return data.data;
   if (data && Array.isArray(data.items)) return data.items;
   if (data && Array.isArray(data.results)) return data.results;
   return [];
