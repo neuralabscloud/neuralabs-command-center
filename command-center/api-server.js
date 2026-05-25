@@ -1584,10 +1584,18 @@ const VOICE_CACHE_TTL = 3600_000; // 1 hour
 app.get("/heygen/voices", async (req, res) => {
   try {
     if (!voiceCache.data || Date.now() - voiceCache.ts > VOICE_CACHE_TTL) {
+      if (!process.env.HEYGEN_API_KEY) {
+        return res.status(400).json({ error: "No HeyGen API key configured" });
+      }
       const r = await fetch("https://api.heygen.com/v2/voices", {
         headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
       });
       const json = await r.json();
+      if (!r.ok) {
+        const msg = json?.error?.message || json?.message || `HeyGen returned HTTP ${r.status}`;
+        console.error("[HEYGEN] voices error:", r.status, msg);
+        return res.status(r.status === 401 || r.status === 403 ? 400 : 502).json({ error: msg });
+      }
       const voices = (json?.data?.voices || []).map(v => ({
         id: v.voice_id,
         name: v.name || v.voice_id,

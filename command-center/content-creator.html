@@ -631,13 +631,19 @@ async function loadVoices() {
   if (!sel) return;
   try {
     const res = await fetch('/heygen/voices');
+    if (!res.ok) {
+      let detail = 'HTTP ' + res.status;
+      try { const e = await res.json(); if (e && e.error) detail = e.error; } catch {}
+      sel.innerHTML = '<option value="">Could not load voices (' + esc(detail) + ')</option>';
+      return;
+    }
     const data = await res.json();
     const voices = data.voices || [];
     if (!voices.length) { sel.innerHTML = '<option value="">No voices found — check your HeyGen API key</option>'; return; }
     sel.innerHTML = '<option value="">Select a voice…</option>' + voices.map(v =>
       `<option value="${esc(v.id)}">${esc(v.name)}${v.language ? ' (' + esc(v.language) + ')' : ''}</option>`).join('');
-  } catch {
-    sel.innerHTML = '<option value="">Could not load voices</option>';
+  } catch (err) {
+    sel.innerHTML = '<option value="">Could not load voices (' + esc(err.message || 'network error') + ')</option>';
   }
 }
 loadVoices();
