@@ -192,26 +192,16 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div>
             <div class="form-label">Avatar</div>
             <div class="avatar-picker" id="avatar-picker-cc">
-              <div class="avatar-selected">
-                <img src="https://resource2.heygen.ai/best_frame_selection/candidates/9e9394bd4552428ba3d812bddc00cc2a.jpg" />
-                <span class="avatar-selected-name">Meta Vers3</span>
-                <button class="avatar-clear" onclick="clearAvatar('avatar-picker-cc','cc-avatar')" title="Clear">&times;</button>
-              </div>
-              <input type="hidden" id="cc-avatar" value="703a2be1c9ae459e81be99b04636c5dc" />
-              <input class="avatar-picker-input" placeholder="Zoek andere avatar..." autocomplete="off" />
+              <div class="avatar-selected" style="display:none;"></div>
+              <input type="hidden" id="cc-avatar" value="" />
+              <input class="avatar-picker-input" placeholder="Search avatars..." autocomplete="off" />
               <div class="avatar-dropdown"></div>
             </div>
           </div>
           <div>
             <div class="form-label">Voice</div>
             <select class="form-select" id="cc-voice">
-              <option value="cae5f9ad5dec463b83565e8a38b74a09" selected>Meta Vers3 (Custom Clone)</option>
-              <option value="f3a93c83f9ec4294b41bd787ac93a247">Tijs (Nederlands)</option>
-              <option value="f728541039564551bad369a6da2445b8">Eric Sijbesma (Nederlands)</option>
-              <option value="f89d0301b13840ccb7a1814d77e336c6">Jann (Nederlands)</option>
-              <option value="fae30d24656e441fad8864951da79b75">Lucas (Nederlands)</option>
-              <option value="f38a635bee7a4d1f9b0a654a31d050d2">Chill Brian (English)</option>
-              <option value="d92994ae0de34b2e8659b456a2f388b8">John Doe (English)</option>
+              <option value="">Loading voices…</option>
             </select>
           </div>
           <div>
@@ -634,6 +624,23 @@ function clearAvatar(pickerId, hiddenId) {
 
 initAvatarPicker('avatar-picker-cc', 'cc-avatar');
 initAvatarPicker('avatar-picker-va', 'va-avatar');
+
+// ── Voices (loaded from the configured HeyGen account) ──
+async function loadVoices() {
+  const sel = document.getElementById('cc-voice');
+  if (!sel) return;
+  try {
+    const res = await fetch('/heygen/voices');
+    const data = await res.json();
+    const voices = data.voices || [];
+    if (!voices.length) { sel.innerHTML = '<option value="">No voices found — check your HeyGen API key</option>'; return; }
+    sel.innerHTML = '<option value="">Select a voice…</option>' + voices.map(v =>
+      `<option value="${esc(v.id)}">${esc(v.name)}${v.language ? ' (' + esc(v.language) + ')' : ''}</option>`).join('');
+  } catch {
+    sel.innerHTML = '<option value="">Could not load voices</option>';
+  }
+}
+loadVoices();
 
 // ── Brand selector ──
 function getSelectedBrand() {

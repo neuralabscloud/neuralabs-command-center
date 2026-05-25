@@ -1559,6 +1559,38 @@ app.get("/heygen/avatars", async (req, res) => {
   }
 });
 
+// ── HEYGEN VOICES (cached proxy) ─────────────
+// Returns the voices of the HeyGen account configured via HEYGEN_API_KEY, so
+// every install shows its own voices instead of any vendor defaults.
+let voiceCache = { data: null, ts: 0 };
+const VOICE_CACHE_TTL = 3600_000; // 1 hour
+
+app.get("/heygen/voices", async (req, res) => {
+  try {
+    if (!voiceCache.data || Date.now() - voiceCache.ts > VOICE_CACHE_TTL) {
+      const r = await fetch("https://api.heygen.com/v2/voices", {
+        headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
+      });
+      const json = await r.json();
+      const voices = (json?.data?.voices || []).map(v => ({
+        id: v.voice_id,
+        name: v.name || v.voice_id,
+        language: v.language || "",
+        gender: v.gender || "",
+      })).filter(v => v.id);
+      // Alphabetical by name: native <select> type-ahead matches on option text.
+      voices.sort((a, b) => a.name.localeCompare(b.name));
+      voiceCache = { data: voices, ts: Date.now() };
+    }
+    let results = voiceCache.data;
+    const q = (req.query.q || "").toLowerCase();
+    if (q) results = results.filter(v => v.name.toLowerCase().includes(q) || v.language.toLowerCase().includes(q));
+    res.json({ total: results.length, voices: results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── SCRIPTWRITER TASKS ────────────────────────
 app.get("/scriptwriter/tasks", (_req, res) => res.json(readTaskFile("scriptwriter-tasks.json")));
 
