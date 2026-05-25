@@ -71,7 +71,15 @@ ok "Backup saved to $BACKUP_FILE (and $ENV_BACKUP_FILE)"
 # ── PULL LATEST CODE ────────────────────────────
 info "Pulling latest code..."
 cd "$SCRIPT_DIR"
-git pull 2>&1
+# Hard-reset to the remote branch instead of `git pull`. A plain pull fails with
+# "Need to specify how to reconcile divergent branches" if the local repo has
+# diverged (e.g. a local edit created a divergent history). The git checkout is
+# only the code source; customer data is gitignored and lives in $INSTALL_DIR,
+# so reset --hard never touches it and always applies updates cleanly.
+git fetch origin --prune 2>&1
+UPDATE_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [ -z "$UPDATE_BRANCH" ] || [ "$UPDATE_BRANCH" = "HEAD" ]; then UPDATE_BRANCH="main"; fi
+git reset --hard "origin/$UPDATE_BRANCH" 2>&1
 ok "Code updated"
 
 # ── STOP SERVICE ────────────────────────────────
