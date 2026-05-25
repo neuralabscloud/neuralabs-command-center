@@ -7386,6 +7386,19 @@ function getConnectedYoutubeChannel() {
   } catch { return ""; }
 }
 
+// The browser frontend calls the YouTube API with a Referer matching the app's
+// public origin, which is what HTTP-referrer-restricted API keys allow. Server
+// side fetches send no referer and get blocked, so mirror that referer here.
+// Derived from configured origins (never hardcoded) so it stays white-label.
+function getApiReferer() {
+  const explicit = (process.env.PUBLIC_ORIGIN || "").trim();
+  if (explicit) return explicit.replace(/\/+$/, "") + "/";
+  for (const v of [process.env.META_REDIRECT_URI, process.env.CANVA_REDIRECT_URI]) {
+    try { if (v) return new URL(v).origin + "/"; } catch {}
+  }
+  return "";
+}
+
 async function fetchLatestYoutubeUploads(channelRef, max = 5) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error("YOUTUBE_API_KEY not configured");
@@ -7396,12 +7409,14 @@ async function fetchLatestYoutubeUploads(channelRef, max = 5) {
   const lookupParam = isChannelId
     ? `id=${encodeURIComponent(ref)}`
     : `forHandle=${encodeURIComponent(ref.replace(/^@/, ""))}`;
-  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&${lookupParam}&key=${apiKey}`);
+  const referer = getApiReferer();
+  const ytHeaders = referer ? { Referer: referer } : {};
+  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&${lookupParam}&key=${apiKey}`, { headers: ytHeaders });
   const chData = await chRes.json();
   if (!chRes.ok) throw new Error(`YouTube channel lookup failed: ${chData?.error?.message || chRes.status}`);
   const uploadsId = chData?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
   if (!uploadsId) throw new Error(`No uploads playlist for channel ${ref}`);
-  const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${max}&key=${apiKey}`);
+  const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${max}&key=${apiKey}`, { headers: ytHeaders });
   const plData = await plRes.json();
   if (!plRes.ok) throw new Error(`YouTube uploads list failed: ${plData?.error?.message || plRes.status}`);
   return (plData.items || []).map(it => ({
