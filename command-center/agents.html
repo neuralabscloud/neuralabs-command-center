@@ -803,7 +803,7 @@ function buildScheduleSummary(s) {
     case 'opusclip': {
       const minD = parseInt(p.min_duration) || 30;
       const maxD = parseInt(p.max_duration) || 90;
-      return `YouTube channel ${escHtml(p.channel_id || '?')} · clips ${minD}-${maxD}s · ${p.source_lang || 'auto'}`;
+      return `YouTube channel ${escHtml(p.channel_id || 'connected channel')} · clips ${minD}-${maxD}s · ${p.source_lang || 'auto'}`;
     }
     default:
       return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
@@ -987,8 +987,8 @@ const PAYLOAD_FIELDS = {
       </ul>
     </div>
     <div class="sched-form-row">
-      <div style="grid-column:1/-1"><label class="sched-label">YouTube Channel ID</label>
-        <input class="sched-input" id="sp-channel_id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" style="width:100%"></div>
+      <div style="grid-column:1/-1"><label class="sched-label">YouTube Channel ID <span style="opacity:.6;font-weight:400">(optional — leave empty to use the channel connected in Settings)</span></label>
+        <input class="sched-input" id="sp-channel_id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx or leave empty" style="width:100%"></div>
     </div>
     <div class="sched-form-row">
       <div><label class="sched-label">Min clip duration (s)</label>

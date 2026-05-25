@@ -7374,14 +7374,33 @@ async function executeSeoSchedule(schedule, today) {
 }
 
 // ── OpusClip: watch a YouTube channel, clip the newest unprocessed video ──
-async function fetchLatestYoutubeUploads(channelId, max = 5) {
+// Returns the YouTube channel configured in Settings (Social connections) as
+// either a channel ID (UC...) or an @handle, so the clipper can run without an
+// explicit channel_id in the schedule payload.
+function getConnectedYoutubeChannel() {
+  try {
+    const conns = readTaskFile("social-connections.json");
+    const yt = (Array.isArray(conns) ? conns : []).find(c => c.platform === "youtube");
+    if (!yt) return "";
+    return String(yt.channel_id || yt.handle || "").trim();
+  } catch { return ""; }
+}
+
+async function fetchLatestYoutubeUploads(channelRef, max = 5) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) throw new Error("YOUTUBE_API_KEY not configured");
-  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${encodeURIComponent(channelId)}&key=${apiKey}`);
+  const ref = String(channelRef || "").trim();
+  // Accept either a channel ID (UC...) or a @handle; the YouTube API needs
+  // different lookup params for each.
+  const isChannelId = /^UC[\w-]{20,}$/.test(ref);
+  const lookupParam = isChannelId
+    ? `id=${encodeURIComponent(ref)}`
+    : `forHandle=${encodeURIComponent(ref.replace(/^@/, ""))}`;
+  const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&${lookupParam}&key=${apiKey}`);
   const chData = await chRes.json();
   if (!chRes.ok) throw new Error(`YouTube channel lookup failed: ${chData?.error?.message || chRes.status}`);
   const uploadsId = chData?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploadsId) throw new Error(`No uploads playlist for channel ${channelId}`);
+  if (!uploadsId) throw new Error(`No uploads playlist for channel ${ref}`);
   const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${max}&key=${apiKey}`);
   const plData = await plRes.json();
   if (!plRes.ok) throw new Error(`YouTube uploads list failed: ${plData?.error?.message || plRes.status}`);
@@ -7394,9 +7413,17 @@ async function fetchLatestYoutubeUploads(channelId, max = 5) {
 
 async function executeOpusclipSchedule(schedule, today) {
   const p = schedule.payload || {};
-  const channelId = (p.channel_id || "").trim();
+  // Fall back to the YouTube channel connected in Settings when the schedule
+  // has no explicit channel_id, so the clipper just picks up the configured channel.
+  let channelId = (p.channel_id || "").trim();
   if (!channelId) {
-    console.log(`[SCHEDULER] OpusClip skipped: no channel_id configured`);
+    channelId = getConnectedYoutubeChannel();
+    if (channelId) {
+      console.log(`[SCHEDULER] OpusClip: no channel_id in schedule, using connected channel ${channelId}`);
+    }
+  }
+  if (!channelId) {
+    console.log(`[SCHEDULER] OpusClip skipped: no channel_id configured and no YouTube channel connected in Settings`);
     return;
   }
   if (!process.env.OPUSCLIP_API_KEY) {
