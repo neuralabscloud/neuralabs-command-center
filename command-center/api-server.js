@@ -626,8 +626,24 @@ const designerUpload = require("multer")({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
     filename: (_req, file, cb) => cb(null, "ref-" + Date.now() + path.extname(file.originalname || ".png")),
   }),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
+
+// Wrap the multer middleware so an oversized/invalid reference image returns a
+// clean 400 JSON error instead of crashing into Express's default 500 handler.
+const DESIGNER_MAX_MB = 50;
+function designerUploadMw(req, res, next) {
+  designerUpload.array("ref_image", 10)(req, res, (err) => {
+    if (err) {
+      console.error("[DESIGNER] Upload error:", err.code || err.name, err.message);
+      const msg = err.code === "LIMIT_FILE_SIZE"
+        ? `Reference image too large (max ${DESIGNER_MAX_MB}MB per file)`
+        : `Reference image upload failed: ${err.message}`;
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}
 
 function loadBrandContext(brandName) {
   const brand = String(brandName || (loadBrand().company_name || "DEFAULT")).toUpperCase();
@@ -651,7 +667,7 @@ function loadBrandContext(brandName) {
   };
 }
 
-app.post("/designer/tasks", designerUpload.array("ref_image", 10), async (req, res) => {
+app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const tasks = readTaskFile("designer-tasks.json");
   const desc = req.body.description || "";
   const refImagePaths = Array.isArray(req.files) ? req.files.map(f => f.path) : [];

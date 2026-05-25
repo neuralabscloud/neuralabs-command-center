@@ -380,6 +380,15 @@ async function submitTask() {
     const refImageInput = document.getElementById('design-ref-image');
     const hasRefImage = refImageInput.files && refImageInput.files.length > 0;
 
+    const MAX_REF_MB = 50;
+    if (hasRefImage) {
+      const tooBig = Array.from(refImageInput.files).find(f => f.size > MAX_REF_MB * 1024 * 1024);
+      if (tooBig) {
+        const mb = (tooBig.size / (1024 * 1024)).toFixed(1);
+        throw new Error(`"${tooBig.name}" is ${mb}MB — max ${MAX_REF_MB}MB per reference image.`);
+      }
+    }
+
     let res;
     if (hasRefImage) {
       const fd = new FormData();
@@ -417,7 +426,11 @@ async function submitTask() {
         }),
       });
     }
-    if (!res.ok) throw new Error('Failed');
+    if (!res.ok) {
+      let msg = `Request failed (${res.status})`;
+      try { const err = await res.json(); if (err && err.error) msg = err.error; } catch {}
+      throw new Error(msg);
+    }
     document.getElementById('design-desc').value = '';
     document.getElementById('design-ref-image').value = '';
     status.textContent = 'Task submitted!';
