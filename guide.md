@@ -559,6 +559,9 @@ server {
     listen 80;
     server_name yourdomain.com;
 
+    # Allow large reference image / media uploads (must match app limit)
+    client_max_body_size 50M;
+
     location / {
         proxy_pass http://127.0.0.1:3004;
         proxy_http_version 1.1;
