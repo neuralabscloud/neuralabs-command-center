@@ -5359,21 +5359,24 @@ async function processAvatarTasks() {
       task.updated_at = new Date().toISOString();
       writeTaskFile("avatar-tasks.json", tasks);
 
+      // Resolve avatar/voice, falling back to configured defaults
+      const avatarId = task.avatar_id || defaultAvatarId();
+      const voiceId = task.voice_id || defaultVoiceId();
+      if (!HEYGEN_KEY) throw new Error("No HeyGen API key configured. Add HEYGEN_API_KEY to your .env and restart.");
+      if (!avatarId) throw new Error("No avatar selected. Pick an avatar before generating.");
+      if (!voiceId) throw new Error("No voice selected. Pick a voice before generating.");
+
       // Call HeyGen API
       const res = await fetch("https://api.heygen.com/v2/video/generate", {
         method: "POST",
         headers: HEYGEN_HEADERS,
         body: JSON.stringify({
           video_inputs: [{
-            character: {
-              type: "avatar",
-              avatar_id: task.avatar_id || defaultAvatarId(),
-              avatar_style: "normal",
-            },
+            character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
             voice: {
               type: "text",
               input_text: task.script,
-              voice_id: task.voice_id || defaultVoiceId(),
+              voice_id: voiceId,
               voice_engine: task.voice_engine || defaultVoiceEngine(),
             },
           }],
@@ -5382,8 +5385,12 @@ async function processAvatarTasks() {
       });
       const json = await res.json();
 
-      if (json.error || !json.data?.video_id) {
-        throw new Error(json.error?.message || json.error || "No video_id returned");
+      if (!res.ok || json.error || !json.data?.video_id) {
+        let m = json.error?.message || json.error || `HeyGen HTTP ${res.status}` || "No video_id returned";
+        if (res.status === 401 || res.status === 403 || /unauthor/i.test(String(m))) {
+          m = "HeyGen rejected the request (unauthorized). The selected avatar or voice does not belong to your HeyGen account, or your API key is invalid/has no video access.";
+        }
+        throw new Error(m);
       }
 
       task.result_video_id = json.data.video_id;

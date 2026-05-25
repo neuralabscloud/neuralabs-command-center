@@ -5,6 +5,9 @@
 # OAuth tokens
 command-center/data/canva-oauth.json
 
+# Per-install HeyGen avatar/voice config (contains account-specific IDs)
+command-center/data/avatars.json
+
 # Runtime data
 */node_modules/
 */venv/
