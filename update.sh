@@ -124,8 +124,11 @@ fi
 
 # ── UPDATE DEPENDENCIES ─────────────────────────
 info "Updating npm dependencies..."
-cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit 2>&1
-npm audit fix --no-fund 2>&1 || true
+# --legacy-peer-deps: some transitive deps (composio-core / langchain / @langchain/*)
+# declare conflicting peer ranges that npm 7+ refuses to resolve strictly. This
+# flag accepts the known-good resolution instead of aborting the whole install.
+cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit --legacy-peer-deps 2>&1
+npm audit fix --no-fund --legacy-peer-deps 2>&1 || true
 ok "Dependencies updated"
 
 # ── INFERENCE.SH CLI (backfill for older installs) ──

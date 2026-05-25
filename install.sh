@@ -267,9 +267,12 @@ bash "$INSTALL_DIR/config/generate-configs.sh"
 
 # ── INSTALL NODE.JS DEPENDENCIES ─────────────────────────
 info "Installing Command Center dependencies (this may take a few minutes)..."
-cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit 2>&1
+# --legacy-peer-deps: some transitive deps (composio-core / langchain / @langchain/*)
+# declare conflicting peer ranges that npm 7+ refuses to resolve strictly. This
+# flag accepts the known-good resolution instead of aborting the whole install.
+cd "$INSTALL_DIR/command-center" && npm install --omit=dev --no-fund --no-audit --legacy-peer-deps 2>&1
 info "Running security audit fix..."
-npm audit fix --no-fund 2>&1 || true
+npm audit fix --no-fund --legacy-peer-deps 2>&1 || true
 ok "Command Center npm packages installed"
 
 # Playwright browsers (needed for slide designer and browser tools)
