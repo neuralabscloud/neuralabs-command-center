@@ -155,6 +155,7 @@ app.get("/api/setup-status", (_req, res) => {
 app.use("/login.html", express.static(path.join(__dirname, "login.html")));
 app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
 app.use("/theme.css", express.static(path.join(__dirname, "public", "theme.css")));
+app.use("/brand-loader.js", express.static(path.join(__dirname, "public", "brand-loader.js")));
 
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {

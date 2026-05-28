@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <script>try{var t=localStorage.getItem("cc_theme");if(t==="light")document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <link rel="stylesheet" href="/theme.css">
+<script src="/brand-loader.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -321,7 +322,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               </div>
               <div class="cfg-field">
                 <div class="cfg-field-label">Primary Color</div>
-                <input type="range" id="cfg-hue" min="0" max="360" value="264" style="width:100%" oninput="document.getElementById('cfg-swatch').style.background='hsl('+this.value+' 65% 49%)';document.getElementById('cfg-hue-val').textContent=this.value">
+                <input type="range" id="cfg-hue" min="0" max="360" value="264" style="width:100%" oninput="document.getElementById('cfg-swatch').style.background='hsl('+this.value+' 65% 49%)';document.getElementById('cfg-hue-val').textContent=this.value;window.ccApplyHue&&window.ccApplyHue(this.value)">
                 <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
                   <div id="cfg-swatch" style="width:22px;height:22px;border-radius:6px;background:hsl(264 65% 49%);border:1px solid var(--border)"></div>
                   <span style="font-size:11px;color:var(--text-dim)" id="cfg-hue-val">264</span>
@@ -911,6 +912,7 @@ async function loadConfig() {
       document.getElementById('cfg-hue').value = hue;
       document.getElementById('cfg-swatch').style.background = `hsl(${hue} 65% 49%)`;
       document.getElementById('cfg-hue-val').textContent = hue;
+      if (window.ccApplyHue) window.ccApplyHue(hue, true);
     }
     if (d.integrations) {
       // Show masked key as value in the field so users see what's configured
@@ -1086,6 +1088,7 @@ async function saveConfig() {
     const saved = document.getElementById('config-saved');
     saved.style.display = 'block';
     setTimeout(() => saved.style.display = 'none', 3000);
+    if (window.ccApplyHue) window.ccApplyHue(payload.branding.primary_hue, true);
     loadIntegrations(); // Refresh status cards
     loadConfig();       // Re-populate config fields with saved values
   } catch (e) {
