@@ -12,7 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "0.80.0",
     "@remotion/bundler": "^4.0.448",
     "@remotion/cli": "^4.0.448",
     "@remotion/google-fonts": "^4.0.448",

@@ -2,7 +2,11 @@ const _path = require("path");
 const _fs = require("fs");
 const _envPaths = [_path.join(__dirname, ".env"), _path.join(__dirname, "..", ".env")];
 const _envPath = _envPaths.find(p => _fs.existsSync(p)) || _envPaths[1];
-require("dotenv").config({ path: _envPath });
+// override: true so the .env file is authoritative. Without this, anything
+// already in process.env (e.g. stale shell exports, systemd EnvironmentFile
+// values loaded before .env was rewritten by the setup wizard) silently wins,
+// which can make new/changed API keys appear to not take effect.
+require("dotenv").config({ path: _envPath, override: true });
 
 // One-off: if the Inference.sh CLI is already authenticated locally but
 // INFERENCE_API_KEY isn't in .env yet, mirror the CLI key in so the Settings
