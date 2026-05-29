@@ -4064,14 +4064,19 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "ads_action",
-        description: "Voer een actie uit op Meta Ads: pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen. Gebruik na ads_query om context te hebben. Voor update_targeting/update_placements/update_pixel is level='adset' verplicht; voor update_creative is level='ad' verplicht. Voor update_pixel kun je eerst ads_query met type='pixels' doen om beschikbare pixel IDs te vinden.",
+        description: "Voer een actie uit op Meta Ads: nieuwe campagne aanmaken, campagne dupliceren, pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen. Gebruik na ads_query om context te hebben. create_campaign maakt een nieuwe campagne (altijd PAUSED) — vereist name + objective, object_id niet nodig. duplicate_campaign kopieert een bestaande campagne incl. adsets+ads (altijd PAUSED) — object_id = campaign ID. Voor update_targeting/update_placements/update_pixel is level='adset' verplicht; voor update_creative is level='ad' verplicht. Voor update_pixel kun je eerst ads_query met type='pixels' doen om beschikbare pixel IDs te vinden.",
         input_schema: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative", "update_pixel"], description: "De actie" },
+            action: { type: "string", enum: ["create_campaign", "duplicate_campaign", "pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative", "update_pixel"], description: "De actie" },
             level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Op welk niveau. Default: campaign" },
-            object_id: { type: "string", description: "Het ID van de campaign/adset/ad" },
+            object_id: { type: "string", description: "Het ID van de campaign/adset/ad. Verplicht voor alle acties behalve create_campaign. Voor duplicate_campaign = het campaign ID dat je wilt kopiëren." },
             account_id: { type: "string", description: "Ad account ID" },
+            name: { type: "string", description: "Campagnenaam. Verplicht voor create_campaign." },
+            objective: { type: "string", enum: ["OUTCOME_TRAFFIC", "OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT", "OUTCOME_AWARENESS", "OUTCOME_APP_PROMOTION"], description: "Campagne-doel. Verplicht voor create_campaign." },
+            buying_type: { type: "string", enum: ["AUCTION", "RESERVED"], description: "Buying type voor create_campaign. Default AUCTION." },
+            special_ad_categories: { type: "array", items: { type: "string" }, description: "Speciale advertentiecategorieën voor create_campaign, bijv. ['CREDIT'], ['EMPLOYMENT'], ['HOUSING'], ['FINANCIAL_PRODUCTS_SERVICES'], ['ISSUES_ELECTIONS_POLITICS']. Default leeg ([])." },
+            rename_suffix: { type: "string", description: "Optioneel suffix voor de gedupliceerde campagne (duplicate_campaign). Default ' - Copy'." },
             daily_budget: { type: "number", description: "Nieuw daily budget in euro's (niet centen). Alleen voor set_budget." },
             lifetime_budget: { type: "number", description: "Nieuw lifetime budget in euro's. Alleen voor set_budget." },
             geo_locations: { type: "object", description: "Geo targeting object voor update_targeting. Bijv. {countries:['NL','BE'], cities:[{key:'2421344'}], regions:[{key:'4040'}]}." },
@@ -4105,7 +4110,7 @@ app.post("/ctrl/chat", async (req, res) => {
             object_store_url: { type: "string", description: "App store URL voor app-campagnes (update_pixel)." },
             conversion_domain: { type: "string", description: "Geverifieerd domein voor conversies, bijv. 'example.com' (update_pixel, top-level adset field)." },
           },
-          required: ["action", "object_id", "account_id"],
+          required: ["action", "account_id"],
         },
       },
       {
@@ -4317,6 +4322,26 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         const level = input.level || "campaign";
         const endpoints = { campaign: "campaigns", adset: "adsets", ad: "ads" };
         const seg = endpoints[level] || "campaigns";
+        if (input.action === "create_campaign") {
+          return {
+            url: `http://localhost:3004/ads/campaigns`,
+            body: {
+              account_id: input.account_id,
+              name: input.name,
+              objective: input.objective,
+              buying_type: input.buying_type,
+              special_ad_categories: Array.isArray(input.special_ad_categories) ? input.special_ad_categories : [],
+              daily_budget: input.daily_budget ? Math.round(input.daily_budget * 100) : undefined,
+              lifetime_budget: input.lifetime_budget ? Math.round(input.lifetime_budget * 100) : undefined,
+            },
+          };
+        }
+        if (input.action === "duplicate_campaign") {
+          return {
+            url: `http://localhost:3004/ads/campaigns/${input.object_id}/copy`,
+            body: { account_id: input.account_id, rename_suffix: input.rename_suffix },
+          };
+        }
         if (input.action === "set_budget") {
           return {
             url: `http://localhost:3004/ads/${seg}/${input.object_id}/budget`,
