@@ -2532,6 +2532,64 @@ app.post("/ads/campaigns/:campaignId/budget", async (req, res) => {
   }
 });
 
+// ── META ADS — create & duplicate campaign ──
+
+app.post("/ads/campaigns", async (req, res) => {
+  const { account_id, name, objective, buying_type, daily_budget, lifetime_budget, special_ad_categories, bid_strategy } = req.body;
+  if (!name || !objective) return res.status(400).json({ error: "name and objective are required" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const body = {
+      name,
+      objective,
+      status: "PAUSED", // always create paused so nothing goes live by accident
+      buying_type: buying_type || "AUCTION",
+      special_ad_categories: Array.isArray(special_ad_categories) ? special_ad_categories : [],
+      access_token: conn.user_access_token,
+    };
+    // Campaign-level budget (CBO) requires a bid strategy
+    if (daily_budget) body.daily_budget = Math.round(Number(daily_budget));
+    if (lifetime_budget) body.lifetime_budget = Math.round(Number(lifetime_budget));
+    if (daily_budget || lifetime_budget) body.bid_strategy = bid_strategy || "LOWEST_COST_WITHOUT_CAP";
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, id: d.id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/ads/campaigns/:campaignId/copy", async (req, res) => {
+  const { campaignId } = req.params;
+  const { account_id, rename_suffix } = req.body;
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    const body = {
+      deep_copy: true, // copy campaign + all its adsets + ads
+      status_option: "PAUSED", // copy stays paused regardless of source status
+      rename_options: { rename_strategy: "DEEP_RENAME", rename_suffix: rename_suffix || " - Copy" },
+      access_token: conn.user_access_token,
+    };
+    const r = await fetch(`https://graph.facebook.com/v21.0/${campaignId}/copies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message);
+    res.json({ ok: true, copied_campaign_id: d.copied_campaign_id || d.id, ad_object_ids: d.ad_object_ids });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── META ADS — adset management (phase 3) ──
 
 app.get("/ads/adsets", async (req, res) => {

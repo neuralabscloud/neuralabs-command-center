@@ -141,6 +141,12 @@ body::after {
   border-radius: 6px; color: var(--text); font-family: var(--font-data); font-size: 14px; outline: none;
 }
 .modal input[type="number"]:focus { border-color: var(--primary); }
+.modal input[type="text"], .modal select {
+  width: 100%; padding: 8px 12px; background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-family: var(--font-data); font-size: 14px; outline: none;
+}
+.modal input[type="text"]:focus, .modal select:focus { border-color: var(--primary); }
+.modal-field { margin-top: 12px; }
 .modal-hint { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
 .modal-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: flex-end; }
 .modal-actions .btn { padding: 8px 16px; font-size: 11px; }
@@ -244,6 +250,9 @@ body::after {
       </div>
 
       <div class="view-panel active" id="panel-campaigns">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-primary" onclick="openNewCampaignModal()">+ New Campaign</button>
+        </div>
         <div class="table-wrap">
           <table class="data-table">
             <thead><tr>
@@ -307,6 +316,52 @@ body::after {
     <div class="modal-actions">
       <button class="btn" onclick="closeBudgetModal()">Cancel</button>
       <button class="btn btn-confirm" id="budget-save-btn" onclick="saveBudget()">Save Budget</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="newcampaign-modal">
+  <div class="modal">
+    <h3>NEW CAMPAIGN</h3>
+    <label>Campaign name</label>
+    <input type="text" id="nc-name" placeholder="My campaign">
+    <div class="modal-field">
+      <label>Objective</label>
+      <select id="nc-objective">
+        <option value="OUTCOME_TRAFFIC">Traffic</option>
+        <option value="OUTCOME_SALES">Sales</option>
+        <option value="OUTCOME_LEADS">Leads</option>
+        <option value="OUTCOME_ENGAGEMENT">Engagement</option>
+        <option value="OUTCOME_AWARENESS">Awareness</option>
+        <option value="OUTCOME_APP_PROMOTION">App promotion</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Buying type</label>
+      <select id="nc-buying">
+        <option value="AUCTION">Auction</option>
+        <option value="RESERVED">Reserved (Reach &amp; Frequency)</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Special ad category</label>
+      <select id="nc-category">
+        <option value="">None</option>
+        <option value="CREDIT">Credit</option>
+        <option value="EMPLOYMENT">Employment</option>
+        <option value="HOUSING">Housing</option>
+        <option value="FINANCIAL_PRODUCTS_SERVICES">Financial products &amp; services</option>
+        <option value="ISSUES_ELECTIONS_POLITICS">Issues, elections &amp; politics</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Daily budget (optional, campaign-level CBO)</label>
+      <input type="number" id="nc-daily" step="0.01" min="0" placeholder="0.00">
+      <div class="modal-hint">Leave empty to set budgets at the ad set level instead.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeNewCampaignModal()">Cancel</button>
+      <button class="btn btn-confirm" id="nc-save-btn" onclick="createCampaign()">Create (paused)</button>
     </div>
   </div>
 </div>
@@ -465,6 +520,7 @@ async function loadData() {
       <td style="text-align:right"><div class="actions-cell">
         ${canToggle ? `<button class="action-btn ${toggleClass}" onclick="toggleCampaign('${r.c.id}','${r.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}',this)">${toggleLabel}</button>` : ''}
         <button class="action-btn" data-id="${r.c.id}" data-name="${escapeHtml(r.c.name)}" data-daily="${r.dailyBudget}" data-lifetime="${r.lifetimeBudget}" onclick="openBudgetModal(this.dataset.id,this.dataset.name,+this.dataset.daily,+this.dataset.lifetime)">Budget</button>
+        <button class="action-btn" onclick="duplicateCampaign('${r.c.id}',this)">Duplicate</button>
       </div></td>
     </tr>`}).join('');
   } catch (e) {
@@ -554,6 +610,68 @@ async function saveBudget() {
 }
 // Close modal on overlay click
 document.getElementById('budget-modal').addEventListener('click', function(e) { if (e.target === this) closeBudgetModal(); });
+
+// ── NEW CAMPAIGN ──
+function openNewCampaignModal() {
+  if (!getAccountId()) { alert('Select an ad account first'); return; }
+  document.getElementById('nc-name').value = '';
+  document.getElementById('nc-daily').value = '';
+  document.getElementById('nc-objective').value = 'OUTCOME_TRAFFIC';
+  document.getElementById('nc-buying').value = 'AUCTION';
+  document.getElementById('nc-category').value = '';
+  document.getElementById('newcampaign-modal').classList.add('open');
+}
+function closeNewCampaignModal() { document.getElementById('newcampaign-modal').classList.remove('open'); }
+async function createCampaign() {
+  const name = document.getElementById('nc-name').value.trim();
+  if (!name) { alert('Enter a campaign name'); return; }
+  const cat = document.getElementById('nc-category').value;
+  const body = {
+    account_id: getAccountId(),
+    name,
+    objective: document.getElementById('nc-objective').value,
+    buying_type: document.getElementById('nc-buying').value,
+    special_ad_categories: cat ? [cat] : [],
+  };
+  const daily = document.getElementById('nc-daily').value;
+  if (daily) body.daily_budget = Math.round(Number(daily) * 100);
+  const btn = document.getElementById('nc-save-btn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    const r = await fetch('/ads/campaigns', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    closeNewCampaignModal();
+    loadData();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = 'Create (paused)';
+}
+document.getElementById('newcampaign-modal').addEventListener('click', function(e) { if (e.target === this) closeNewCampaignModal(); });
+
+async function duplicateCampaign(campaignId, btn) {
+  if (!confirm('Duplicate this campaign (incl. ad sets & ads)? The copy will be created paused.')) return;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch(`/ads/campaigns/${campaignId}/copy`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_id: getAccountId() }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    loadData();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 
 // ── ADSETS TAB ──
 let _cachedCampaigns = [];
