@@ -2551,14 +2551,19 @@ app.post("/ads/campaigns", async (req, res) => {
     // Campaign-level budget (CBO) requires a bid strategy
     if (daily_budget) body.daily_budget = Math.round(Number(daily_budget));
     if (lifetime_budget) body.lifetime_budget = Math.round(Number(lifetime_budget));
-    if (daily_budget || lifetime_budget) body.bid_strategy = bid_strategy || "LOWEST_COST_WITHOUT_CAP";
+    if (daily_budget || lifetime_budget) {
+      body.bid_strategy = bid_strategy || "LOWEST_COST_WITHOUT_CAP";
+    } else {
+      // Meta requires this flag explicitly when there is no campaign-level budget
+      body.is_adset_budget_sharing_enabled = false;
+    }
     const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
+    if (d.error) throw new Error(d.error.error_user_msg || d.error.message);
     res.json({ ok: true, id: d.id });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2583,7 +2588,7 @@ app.post("/ads/campaigns/:campaignId/copy", async (req, res) => {
       body: JSON.stringify(body),
     });
     const d = await r.json();
-    if (d.error) throw new Error(d.error.message);
+    if (d.error) throw new Error(d.error.error_user_msg || d.error.message);
     res.json({ ok: true, copied_campaign_id: d.copied_campaign_id || d.id, ad_object_ids: d.ad_object_ids });
   } catch (e) {
     res.status(500).json({ error: e.message });
