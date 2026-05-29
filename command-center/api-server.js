@@ -4636,7 +4636,8 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
     console.log(`[CHAT] API call #1 done — stop_reason: ${response.stop_reason}, blocks: [${response.content.map(b => b.type).join(",")}], text_len: ${response.content.filter(b => b.type === "text").map(b => (b.text||"").length).reduce((a,b) => a+b, 0)}`);
     // Handle tool use loop (web search + agent actions)
     let loopCount = 0;
-    while (response.stop_reason === "tool_use" && loopCount < 10) {
+    const MAX_TOOL_LOOPS = 20; // multi-step ads flows (campaign→adset→ad) need headroom
+    while (response.stop_reason === "tool_use" && loopCount < MAX_TOOL_LOOPS) {
       loopCount++;
       history.push({ role: "assistant", content: response.content });
 
@@ -4917,6 +4918,23 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
       } catch (apiErr) {
         console.log(`[CHAT] API call #${loopCount + 1} FAILED: ${apiErr?.status || 'no-status'} — ${apiErr?.error?.error?.message || apiErr.message}`);
         throw apiErr;
+      }
+    }
+
+    // If we exited because the tool-loop cap was hit, the model still wants to call
+    // tools and produced no text. Answer the pending tool_use blocks, then force one
+    // final text-only reply so the user always gets a real answer.
+    if (response.stop_reason === "tool_use") {
+      console.log(`[CHAT] Tool-loop cap (${MAX_TOOL_LOOPS}) hit — forcing final text reply`);
+      history.push({ role: "assistant", content: response.content });
+      const pending = response.content
+        .filter(b => b.type === "tool_use")
+        .map(b => ({ type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ success: false, error: "Tool-limiet bereikt. Rond af en vat samen wat al is uitgevoerd." }), is_error: true }));
+      if (pending.length) history.push({ role: "user", content: pending });
+      try {
+        response = await anthropic.messages.create({ ...apiParams, tool_choice: { type: "none" } });
+      } catch (finalErr) {
+        console.log(`[CHAT] Final forced reply FAILED: ${finalErr?.error?.error?.message || finalErr.message}`);
       }
     }
 
