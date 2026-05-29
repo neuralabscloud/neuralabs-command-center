@@ -2830,6 +2830,119 @@ app.post("/ads/adsets/:adsetId/promoted-object", async (req, res) => {
   }
 });
 
+// ── META ADS — create adset & ad (build campaigns from scratch) ──
+
+// Create a new ad set under a campaign. Always PAUSED.
+// Requires campaign_id, name, optimization_goal and targeting (with geo_locations).
+// Needs an adset-level budget unless the campaign uses campaign budget (CBO).
+// For conversion goals, pass promoted_object fields (pixel_id + custom_event_type).
+app.post("/ads/adsets", async (req, res) => {
+  const {
+    account_id, campaign_id, name,
+    optimization_goal, billing_event, bid_amount, bid_strategy,
+    daily_budget, lifetime_budget, start_time, end_time,
+    targeting, destination_type, conversion_domain,
+    pixel_id, custom_event_type, custom_conversion_id, application_id, object_store_url, page_id,
+  } = req.body;
+  if (!campaign_id || !name || !optimization_goal) return res.status(400).json({ error: "campaign_id, name and optimization_goal are required" });
+  if (!targeting || typeof targeting !== "object" || !targeting.geo_locations) return res.status(400).json({ error: "targeting with at least geo_locations is required" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  // Meta requires Advantage audience to be explicitly on (1) or off (0); default off
+  if (!targeting.targeting_automation) targeting.targeting_automation = { advantage_audience: 0 };
+  try {
+    const body = {
+      name,
+      campaign_id,
+      optimization_goal,
+      billing_event: billing_event || "IMPRESSIONS",
+      status: "PAUSED", // never go live by accident
+      targeting,
+      access_token: conn.user_access_token,
+    };
+    if (daily_budget) body.daily_budget = Math.round(Number(daily_budget));
+    if (lifetime_budget) body.lifetime_budget = Math.round(Number(lifetime_budget));
+    if (daily_budget || lifetime_budget) body.bid_strategy = bid_strategy || "LOWEST_COST_WITHOUT_CAP";
+    if (bid_amount) body.bid_amount = Math.round(Number(bid_amount));
+    if (start_time) body.start_time = start_time;
+    if (end_time) body.end_time = end_time;
+    if (destination_type) body.destination_type = destination_type;
+    if (conversion_domain) body.conversion_domain = conversion_domain;
+    // promoted_object — required for conversion-optimized adsets
+    const po = {};
+    if (pixel_id) po.pixel_id = pixel_id;
+    if (custom_event_type) po.custom_event_type = custom_event_type;
+    if (custom_conversion_id) po.custom_conversion_id = custom_conversion_id;
+    if (application_id) po.application_id = application_id;
+    if (object_store_url) po.object_store_url = object_store_url;
+    if (page_id) po.page_id = page_id;
+    if (Object.keys(po).length) body.promoted_object = po;
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/adsets`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.error_user_msg || d.error.message);
+    res.json({ ok: true, id: d.id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a new ad under an ad set. Always PAUSED.
+// Either pass an existing creative_id, or page_id + creative fields to build one.
+app.post("/ads/ads", async (req, res) => {
+  const {
+    account_id, adset_id, name, creative_id,
+    page_id, message, link, image_url, image_hash, video_id,
+    headline, description, call_to_action,
+  } = req.body;
+  if (!adset_id || !name) return res.status(400).json({ error: "adset_id and name are required" });
+  const conn = readSocial().find(c => c.platform === "meta_ads" && (c.account_id === account_id || c.ad_account_id === account_id));
+  if (!conn) return res.status(404).json({ error: "Ad account not found" });
+  try {
+    let creativeIdToUse = creative_id;
+    if (!creativeIdToUse) {
+      if (!page_id) return res.status(400).json({ error: "creative_id, or page_id + creative fields, required" });
+      const link_data = { message, link };
+      if (image_hash) link_data.image_hash = image_hash;
+      if (image_url) link_data.picture = image_url;
+      if (headline) link_data.name = headline;
+      if (description) link_data.description = description;
+      if (call_to_action) link_data.call_to_action = call_to_action;
+      const object_story_spec = video_id
+        ? { page_id, video_data: { video_id, message, title: headline, call_to_action } }
+        : { page_id, link_data };
+      const createR = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/adcreatives`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: headline || message?.slice(0, 60) || `creative_${Date.now()}`,
+          object_story_spec,
+          access_token: conn.user_access_token,
+        }),
+      });
+      const createD = await createR.json();
+      if (createD.error) throw new Error(createD.error.error_user_msg || createD.error.message);
+      creativeIdToUse = createD.id;
+    }
+    const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ad_account_id}/ads`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        adset_id,
+        creative: { creative_id: creativeIdToUse },
+        status: "PAUSED", // never go live by accident
+        access_token: conn.user_access_token,
+      }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.error_user_msg || d.error.message);
+    res.json({ ok: true, id: d.id, creative_id: creativeIdToUse });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── META ADS — automated rules (phase 3) ──
 
 app.get("/ads/rules", (_req, res) => {
@@ -4069,11 +4182,11 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "ads_action",
-        description: "Voer een actie uit op Meta Ads: nieuwe campagne aanmaken, campagne dupliceren, pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen. Gebruik na ads_query om context te hebben. create_campaign maakt een nieuwe campagne (altijd PAUSED) — vereist name + objective, object_id niet nodig. duplicate_campaign kopieert een bestaande campagne incl. adsets+ads (altijd PAUSED) — object_id = campaign ID. Voor update_targeting/update_placements/update_pixel is level='adset' verplicht; voor update_creative is level='ad' verplicht. Voor update_pixel kun je eerst ads_query met type='pixels' doen om beschikbare pixel IDs te vinden.",
+        description: "Voer een actie uit op Meta Ads: nieuwe campagne/adset/ad aanmaken, campagne dupliceren, pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen. Gebruik na ads_query om context te hebben. Een complete campagne van nul bouw je in 3 stappen: create_campaign → create_adset (met campaign_id uit stap 1) → create_ad (met adset_id uit stap 2). Alles komt altijd PAUSED binnen. create_campaign: vereist name + objective, object_id niet nodig. duplicate_campaign: kopieert bestaande campagne incl. adsets+ads, object_id = campaign ID. create_adset: vereist campaign_id, name, optimization_goal en targeting (minstens geo_locations via de geo_locations/age_min/genders/etc velden); geef daily_budget of lifetime_budget tenzij de campagne campagnebudget (CBO) heeft; voor conversie-doelen geef pixel_id + custom_event_type. create_ad: vereist adset_id + name, plus óf creative_id óf page_id + creative-velden (message/link/image_url/headline/call_to_action). Voor update_targeting/update_placements/update_pixel is level='adset' verplicht; voor update_creative is level='ad' verplicht. Voor update_pixel kun je eerst ads_query met type='pixels' doen om beschikbare pixel IDs te vinden.",
         input_schema: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["create_campaign", "duplicate_campaign", "pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative", "update_pixel"], description: "De actie" },
+            action: { type: "string", enum: ["create_campaign", "create_adset", "create_ad", "duplicate_campaign", "pause", "activate", "set_budget", "update_targeting", "update_placements", "update_creative", "update_pixel"], description: "De actie" },
             level: { type: "string", enum: ["campaign", "adset", "ad"], description: "Op welk niveau. Default: campaign" },
             object_id: { type: "string", description: "Het ID van de campaign/adset/ad. Verplicht voor alle acties behalve create_campaign. Voor duplicate_campaign = het campaign ID dat je wilt kopiëren." },
             account_id: { type: "string", description: "Ad account ID" },
@@ -4082,6 +4195,16 @@ app.post("/ctrl/chat", async (req, res) => {
             buying_type: { type: "string", enum: ["AUCTION", "RESERVED"], description: "Buying type voor create_campaign. Default AUCTION." },
             special_ad_categories: { type: "array", items: { type: "string" }, description: "Speciale advertentiecategorieën voor create_campaign, bijv. ['CREDIT'], ['EMPLOYMENT'], ['HOUSING'], ['FINANCIAL_PRODUCTS_SERVICES'], ['ISSUES_ELECTIONS_POLITICS']. Default leeg ([])." },
             rename_suffix: { type: "string", description: "Optioneel suffix voor de gedupliceerde campagne (duplicate_campaign). Default ' - Copy'." },
+            campaign_id: { type: "string", description: "Campaign ID waaronder de nieuwe ad set valt (verplicht voor create_adset)." },
+            adset_id: { type: "string", description: "Ad set ID waaronder de nieuwe ad valt (verplicht voor create_ad)." },
+            optimization_goal: { type: "string", description: "Optimalisatiedoel voor create_adset, bijv. LINK_CLICKS, LANDING_PAGE_VIEWS, OFFSITE_CONVERSIONS, REACH, IMPRESSIONS, THRUPLAY, POST_ENGAGEMENT, LEAD_GENERATION, QUALITY_CALL." },
+            billing_event: { type: "string", description: "Facturatie-event voor create_adset, bijv. IMPRESSIONS of LINK_CLICKS. Default IMPRESSIONS." },
+            bid_amount: { type: "number", description: "Bod in euro's (niet centen) voor create_adset. Alleen nodig bij bid_strategy met cap (LOWEST_COST_WITH_BID_CAP / COST_CAP)." },
+            bid_strategy: { type: "string", description: "Bod-strategie bij adset-budget, bijv. LOWEST_COST_WITHOUT_CAP (default), LOWEST_COST_WITH_BID_CAP, COST_CAP." },
+            start_time: { type: "string", description: "Starttijd ISO-8601, bijv. '2026-06-01T09:00:00+0200' (create_adset, optioneel)." },
+            end_time: { type: "string", description: "Eindtijd ISO-8601 (create_adset). Verplicht bij lifetime_budget." },
+            destination_type: { type: "string", description: "Bestemmingstype voor create_adset, bijv. WEBSITE, MESSENGER, WHATSAPP, INSTAGRAM_DIRECT, APP." },
+            advantage_audience: { type: "integer", description: "Meta Advantage-doelgroep voor create_adset/update_targeting: 1=aan (Meta verbreedt je targeting), 0=uit. Default 0 als niet opgegeven." },
             daily_budget: { type: "number", description: "Nieuw daily budget in euro's (niet centen). Alleen voor set_budget." },
             lifetime_budget: { type: "number", description: "Nieuw lifetime budget in euro's. Alleen voor set_budget." },
             geo_locations: { type: "object", description: "Geo targeting object voor update_targeting. Bijv. {countries:['NL','BE'], cities:[{key:'2421344'}], regions:[{key:'4040'}]}." },
@@ -4327,6 +4450,73 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         const level = input.level || "campaign";
         const endpoints = { campaign: "campaigns", adset: "adsets", ad: "ads" };
         const seg = endpoints[level] || "campaigns";
+        // Assemble a targeting object from the individual targeting fields
+        const buildTargeting = () => {
+          const t = {};
+          if (input.geo_locations !== undefined) t.geo_locations = input.geo_locations;
+          if (input.age_min !== undefined) t.age_min = input.age_min;
+          if (input.age_max !== undefined) t.age_max = input.age_max;
+          if (input.genders !== undefined) t.genders = input.genders;
+          if (input.interests !== undefined) t.interests = input.interests;
+          if (input.custom_audiences !== undefined) t.custom_audiences = input.custom_audiences;
+          if (input.excluded_custom_audiences !== undefined) t.excluded_custom_audiences = input.excluded_custom_audiences;
+          if (input.flexible_spec !== undefined) t.flexible_spec = input.flexible_spec;
+          if (input.publisher_platforms !== undefined) t.publisher_platforms = input.publisher_platforms;
+          if (input.facebook_positions !== undefined) t.facebook_positions = input.facebook_positions;
+          if (input.instagram_positions !== undefined) t.instagram_positions = input.instagram_positions;
+          if (input.messenger_positions !== undefined) t.messenger_positions = input.messenger_positions;
+          if (input.audience_network_positions !== undefined) t.audience_network_positions = input.audience_network_positions;
+          if (input.device_platforms !== undefined) t.device_platforms = input.device_platforms;
+          if (input.advantage_audience !== undefined) t.targeting_automation = { advantage_audience: input.advantage_audience };
+          return t;
+        };
+        if (input.action === "create_adset") {
+          return {
+            url: `http://localhost:3004/ads/adsets`,
+            body: {
+              account_id: input.account_id,
+              campaign_id: input.campaign_id,
+              name: input.name,
+              optimization_goal: input.optimization_goal,
+              billing_event: input.billing_event,
+              bid_amount: input.bid_amount ? Math.round(input.bid_amount * 100) : undefined,
+              bid_strategy: input.bid_strategy,
+              daily_budget: input.daily_budget ? Math.round(input.daily_budget * 100) : undefined,
+              lifetime_budget: input.lifetime_budget ? Math.round(input.lifetime_budget * 100) : undefined,
+              start_time: input.start_time,
+              end_time: input.end_time,
+              destination_type: input.destination_type,
+              conversion_domain: input.conversion_domain,
+              targeting: buildTargeting(),
+              pixel_id: input.pixel_id,
+              custom_event_type: input.custom_event_type,
+              custom_conversion_id: input.custom_conversion_id,
+              application_id: input.application_id,
+              object_store_url: input.object_store_url,
+              page_id: input.page_id,
+            },
+          };
+        }
+        if (input.action === "create_ad") {
+          return {
+            url: `http://localhost:3004/ads/ads`,
+            body: {
+              account_id: input.account_id,
+              adset_id: input.adset_id || input.object_id,
+              name: input.name,
+              creative_id: input.creative_id,
+              page_id: input.page_id,
+              message: input.message,
+              link: input.link,
+              image_url: input.image_url,
+              image_hash: input.image_hash,
+              video_id: input.video_id,
+              headline: input.headline,
+              description: input.description,
+              call_to_action: input.call_to_action,
+            },
+          };
+        }
         if (input.action === "create_campaign") {
           return {
             url: `http://localhost:3004/ads/campaigns`,
@@ -4358,24 +4548,9 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           };
         }
         if (input.action === "update_targeting" || input.action === "update_placements") {
-          const t = {};
-          if (input.geo_locations !== undefined) t.geo_locations = input.geo_locations;
-          if (input.age_min !== undefined) t.age_min = input.age_min;
-          if (input.age_max !== undefined) t.age_max = input.age_max;
-          if (input.genders !== undefined) t.genders = input.genders;
-          if (input.interests !== undefined) t.interests = input.interests;
-          if (input.custom_audiences !== undefined) t.custom_audiences = input.custom_audiences;
-          if (input.excluded_custom_audiences !== undefined) t.excluded_custom_audiences = input.excluded_custom_audiences;
-          if (input.flexible_spec !== undefined) t.flexible_spec = input.flexible_spec;
-          if (input.publisher_platforms !== undefined) t.publisher_platforms = input.publisher_platforms;
-          if (input.facebook_positions !== undefined) t.facebook_positions = input.facebook_positions;
-          if (input.instagram_positions !== undefined) t.instagram_positions = input.instagram_positions;
-          if (input.messenger_positions !== undefined) t.messenger_positions = input.messenger_positions;
-          if (input.audience_network_positions !== undefined) t.audience_network_positions = input.audience_network_positions;
-          if (input.device_platforms !== undefined) t.device_platforms = input.device_platforms;
           return {
             url: `http://localhost:3004/ads/adsets/${input.object_id}/targeting`,
-            body: { account_id: input.account_id, targeting: t },
+            body: { account_id: input.account_id, targeting: buildTargeting() },
           };
         }
         if (input.action === "update_creative") {
