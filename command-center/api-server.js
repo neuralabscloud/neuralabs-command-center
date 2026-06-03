@@ -328,7 +328,7 @@ app.get("/api/settings", (req, res) => {
     integrations: {
       anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
-      higgsfield: { has_key: !!env.HIGGSFIELD_API_KEY, masked: maskKey(env.HIGGSFIELD_API_KEY) },
+      higgsfield: { has_key: (env.HIGGSFIELD_API_KEY || "").includes(":") && (env.HIGGSFIELD_API_KEY || "").split(":").every(Boolean), has_id: !!((env.HIGGSFIELD_API_KEY || "").split(":")[0]), has_secret: !!((env.HIGGSFIELD_API_KEY || "").split(":").slice(1).join(":")), masked: maskKey(env.HIGGSFIELD_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY), has_webhook_secret: !!env.STRIPE_WEBHOOK_SECRET, webhook_url: pub.origin ? `${pub.origin}/stripe/webhook` : "" },
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
@@ -358,7 +358,6 @@ app.post("/api/settings", (req, res) => {
       anthropic_key: "ANTHROPIC_API_KEY",
       telegram_token: "TELEGRAM_BOT_TOKEN",
       telegram_chat_id: "TELEGRAM_CHAT_ID",
-      higgsfield_key: "HIGGSFIELD_API_KEY",
       stripe_key: "STRIPE_SECRET_KEY",
       stripe_webhook_secret: "STRIPE_WEBHOOK_SECRET",
       composio_key: "COMPOSIO_API_KEY",
@@ -376,6 +375,17 @@ app.post("/api/settings", (req, res) => {
       if (integrations[field] !== undefined && integrations[field] !== "") {
         updates[envKey] = integrations[field].trim();
       }
+    }
+    // Higgsfield credentials are a KEY_ID:KEY_SECRET pair entered as two
+    // separate fields; combine them into the single HIGGSFIELD_API_KEY env
+    // var. Each field is "kept if empty", so updating one preserves the other.
+    if (integrations.higgsfield_key_id !== undefined || integrations.higgsfield_secret !== undefined) {
+      const cur = (readEnvFile().HIGGSFIELD_API_KEY || "").split(":");
+      const curId = cur[0] || "";
+      const curSecret = cur.slice(1).join(":") || "";
+      const newId = (integrations.higgsfield_key_id || "").trim() || curId;
+      const newSecret = (integrations.higgsfield_secret || "").trim() || curSecret;
+      if (newId || newSecret) updates.HIGGSFIELD_API_KEY = `${newId}:${newSecret}`;
     }
   }
 
@@ -1898,10 +1908,9 @@ app.post("/ugc/tasks", (req, res) => {
     image_url: b.image_url || "",
     prompt: b.prompt || "",
     script: b.script || "",
-    motion_preset: b.motion_preset || "ugc",
-    aspect_ratio: b.aspect_ratio || "9:16",
-    duration: b.duration || "",
-    quality: b.quality || "mid",
+    model: b.model || "dop-lite",
+    motion_id: b.motion_id || "",
+    audio_url: b.audio_url || "",
     brand: b.brand || "",
     description: b.description || "",
     request_id: "",
@@ -1926,6 +1935,19 @@ app.patch("/ugc/tasks/:id", (req, res) => {
 app.delete("/ugc/tasks/:id", (req, res) => {
   writeTaskFile("ugc-tasks.json", readTaskFile("ugc-tasks.json").filter(x => x.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ── UGC MOTIONS (Higgsfield) — cached list for the Clip-mode dropdown ─
+let _ugcMotionsCache = null, _ugcMotionsAt = 0;
+app.get("/ugc/motions", async (_req, res) => {
+  try {
+    if (_ugcMotionsCache && Date.now() - _ugcMotionsAt < 3600000) return res.json(_ugcMotionsCache);
+    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.motions, { headers: higgsfieldHeaders() });
+    const data = await r.json();
+    const list = Array.isArray(data) ? data.map(m => ({ id: m.id, name: m.name })) : [];
+    if (list.length) { _ugcMotionsCache = list; _ugcMotionsAt = Date.now(); }
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── UGC IMAGE UPLOAD PROXY ──────────────────────────────────────────
@@ -5479,16 +5501,20 @@ app.get("/canva/brand-kits", async (_req, res) => {
 // ── HIGGSFIELD CONFIG ────────────────────────────────────────────────
 // Credentials are a single "KEY_ID:KEY_SECRET" string in HIGGSFIELD_API_KEY.
 // Field names / enums below are the one place to adjust against the live API.
+// Validated against the live platform API (June 2026):
+//   auth header `Authorization: Key KEY_ID:KEY_SECRET`
+//   clip  POST /v1/image2video/dop  body { params: { model, prompt, input_images:[{type:"image_url",image_url}], motion_id? } }
+//   speak POST /v1/speak/higgsfield body { params: { input_image:{type:"image_url",image_url}, input_audio:{type:"audio_url",audio_url}, prompt } }
+//   poll  GET  /v1/job-sets/{id}
 const HIGGSFIELD = {
   base: "https://platform.higgsfield.ai",
   endpoints: {
-    clip:   "/v1/image2video/dop",     // image-to-video (UGC motion presets)
-    speak:  "/v1/speak/higgsfield",    // talking avatar, built-in TTS (Speak 2.0)
-    upload: "/v1/uploads/image",       // returns hosted image URL
-    status: (id) => `/requests/${id}/status`,
+    clip:    "/v1/image2video/dop",   // image-to-video
+    speak:   "/v1/speak/higgsfield",  // talking avatar (requires input_audio)
+    motions: "/v1/motions",           // list of motions { id, name, description }
+    jobSet:  (id) => `/v1/job-sets/${id}`,
   },
-  // Default UGC motion presets shown in the Clip-mode dropdown.
-  motionPresets: ["ugc", "unboxing", "product-review", "hyper-motion", "tv-spot"],
+  models: ["dop-lite", "dop-preview", "dop-turbo"],
 };
 function higgsfieldHeaders() {
   const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
@@ -5508,13 +5534,36 @@ async function processUgcTasks() {
     try {
       const isSpeak = t.mode === "speak";
       const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
-      const body = isSpeak
-        ? { input_image: t.image_url, script: t.script, quality: t.quality, duration: t.duration }
-        : { input_image: t.image_url, prompt: t.prompt, motion: t.motion_preset, aspect_ratio: t.aspect_ratio, duration: t.duration };
-      const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify(body) });
-      const data = await r.json();
-      if (!r.ok) { t.status = "failed"; t.error = JSON.stringify(data).slice(0, 300); }
-      else { t.request_id = data.request_id || data.id || ""; t.status = "processing"; }
+      let params;
+      if (isSpeak) {
+        // Speak requires an audio file URL — the platform API has no built-in
+        // TTS. ElevenLabs generates t.audio_url upstream (see prepareUgcAudio).
+        params = {
+          input_image: { type: "image_url", image_url: t.image_url },
+          input_audio: { type: "audio_url", audio_url: t.audio_url || "" },
+          prompt: t.prompt || t.description || "",
+        };
+      } else {
+        params = {
+          model: HIGGSFIELD.models.includes(t.model) ? t.model : "dop-lite",
+          prompt: t.prompt || t.description || "",
+          input_images: [{ type: "image_url", image_url: t.image_url }],
+        };
+        if (t.motion_id) params.motion_id = t.motion_id;
+      }
+      const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ params }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        t.status = "failed";
+        t.error = (data && data.detail ? JSON.stringify(data.detail) : JSON.stringify(data)).slice(0, 400);
+      } else {
+        // Submit returns a job-set; its id is what we poll. Field name not yet
+        // confirmed against a successful (credited) response — try known shapes
+        // and keep the raw response when none match so it can be corrected.
+        t.request_id = data.id || data.job_set_id || (data.job_set && data.job_set.id) || "";
+        t.status = t.request_id ? "processing" : "failed";
+        if (!t.request_id) t.error = "no job-set id in response: " + JSON.stringify(data).slice(0, 300);
+      }
       changed = true;
       processingTasks.delete(t.id);
     } catch (e) { t.status = "failed"; t.error = e.message; changed = true; processingTasks.delete(t.id); }
@@ -5529,14 +5578,17 @@ async function pollUgcStatus() {
   for (const t of tasks) {
     if (t.status !== "processing" || !t.request_id) continue;
     try {
-      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.status(t.request_id), { headers: higgsfieldHeaders() });
-      const data = await r.json();
-      if (data.status === "completed") {
-        t.status = "completed";
-        t.result_url = (data.video && data.video.url) || data.url || "";
-        changed = true;
-      } else if (data.status === "failed" || data.status === "nsfw") {
-        t.status = "failed"; t.error = data.status; changed = true;
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.request_id), { headers: higgsfieldHeaders() });
+      const data = await r.json().catch(() => ({}));
+      // A job-set holds one or more jobs; read the first job's status + result.
+      const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
+      const status = String(job.status || data.status || "").toLowerCase();
+      const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
+        || job.result_url || (job.video && job.video.url) || (job.result && job.result.url) || "";
+      if (status === "completed" || status === "success") {
+        t.status = "completed"; t.result_url = url; changed = true;
+      } else if (status === "failed" || status === "nsfw" || status === "error") {
+        t.status = "failed"; t.error = status; changed = true;
       }
     } catch (e) { /* transient — retry next tick */ }
   }

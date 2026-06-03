@@ -165,7 +165,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div class="task-form">
         <div style="display:flex;gap:8px;margin-bottom:16px;">
           <button type="button" class="ugc-mode-btn active" data-ugcmode="clip" onclick="setUgcMode('clip')">Clip (image → video)</button>
-          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" onclick="setUgcMode('speak')">Talking Avatar</button>
+          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" disabled title="Coming soon — requires voice (TTS) setup" style="opacity:0.5;cursor:not-allowed;">Talking Avatar (soon)</button>
         </div>
         <div style="margin-bottom:16px;">
           <div class="form-label">Image (URL or upload)</div>
@@ -180,21 +180,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
           <div class="form-grid" style="grid-template-columns:1fr 1fr;">
             <div>
-              <div class="form-label">Motion preset</div>
-              <select class="form-select" id="ugc-preset">
-                <option value="ugc" selected>UGC</option>
-                <option value="unboxing">Unboxing</option>
-                <option value="product-review">Product review</option>
-                <option value="hyper-motion">Hyper motion</option>
-                <option value="tv-spot">TV spot</option>
+              <div class="form-label">Model</div>
+              <select class="form-select" id="ugc-model">
+                <option value="dop-lite" selected>DoP Lite (fast)</option>
+                <option value="dop-preview">DoP Preview (quality)</option>
+                <option value="dop-turbo">DoP Turbo (max)</option>
               </select>
             </div>
             <div>
-              <div class="form-label">Aspect ratio</div>
-              <select class="form-select" id="ugc-aspect">
-                <option value="9:16" selected>Portrait (9:16)</option>
-                <option value="1:1">Square (1:1)</option>
-                <option value="16:9">Landscape (16:9)</option>
+              <div class="form-label">Motion</div>
+              <select class="form-select" id="ugc-motion">
+                <option value="">Loading motions…</option>
               </select>
             </div>
           </div>
@@ -336,10 +332,8 @@ async function submitUgcTask() {
     image_url: document.getElementById('ugc-image').value.trim(),
     prompt: document.getElementById('ugc-prompt').value.trim(),
     script: document.getElementById('ugc-script').value.trim(),
-    motion_preset: document.getElementById('ugc-preset').value,
-    aspect_ratio: document.getElementById('ugc-aspect').value,
-    quality: document.getElementById('ugc-quality').value,
-    duration: document.getElementById('ugc-duration').value,
+    model: document.getElementById('ugc-model').value,
+    motion_id: document.getElementById('ugc-motion').value,
     description: document.getElementById('ugc-desc').value.trim(),
     brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',
   };
@@ -423,7 +417,7 @@ async function loadTasks() {
       const apiBase = isClipper ? API_CLIPPER : API_UGC;
       const stagePill = isClipper && t.stage && t.status === 'processing' ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
       const clipsBlock = isClipper ? renderClipperCard(t) : '';
-      const ugcMeta = isUgc && t.motion_preset ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + esc(t.motion_preset) + (t.aspect_ratio ? ' / ' + esc(t.aspect_ratio) : '') + '</span>' : '';
+      const ugcMeta = isUgc ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + esc(t.mode === 'speak' ? 'speak' : (t.model || 'clip')) + '</span>' : '';
       return `<div class="task-card" style="${isClipper ? 'align-items:stretch;flex-direction:column;' : ''}">
         <div style="display:flex;gap:16px;align-items:flex-start;width:100%;">
           <div style="flex:1;min-width:0;">
@@ -510,6 +504,23 @@ async function loadBrandOptions() {
   } catch {}
 }
 loadBrandOptions();
+
+async function loadUgcMotions() {
+  const sel = document.getElementById('ugc-motion');
+  if (!sel) return;
+  try {
+    const res = await fetch('/ugc/motions');
+    const motions = await res.json();
+    if (Array.isArray(motions) && motions.length) {
+      sel.innerHTML = motions.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    } else {
+      sel.innerHTML = '<option value="">No motions (check Higgsfield key)</option>';
+    }
+  } catch {
+    sel.innerHTML = '<option value="">Could not load motions</option>';
+  }
+}
+loadUgcMotions();
 
 setUgcMode('clip');
 loadTasks();

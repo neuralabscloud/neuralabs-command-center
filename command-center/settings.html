@@ -560,9 +560,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
           <div class="cfg-fields">
             <div class="cfg-field">
-              <div class="cfg-field-label">API Key</div>
-              <input type="password" id="cfg-higgsfield" class="cfg-input" placeholder="KEY_ID:KEY_SECRET — kept if empty">
-              <div class="cfg-field-hint">Get it at
+              <div class="cfg-field-label">Key ID</div>
+              <input type="password" id="cfg-higgsfield-id" class="cfg-input" placeholder="Key ID — kept if empty">
+            </div>
+            <div class="cfg-field">
+              <div class="cfg-field-label">App Secret</div>
+              <input type="password" id="cfg-higgsfield-secret" class="cfg-input" placeholder="App Secret — kept if empty">
+              <div class="cfg-field-hint">Get both at
                 <a href="https://cloud.higgsfield.ai/api-keys" target="_blank">cloud.higgsfield.ai</a>.
               </div>
             </div>
@@ -929,7 +933,6 @@ async function loadConfig() {
         }
       };
       showMasked('cfg-anthropic', d.integrations.anthropic);
-      showMasked('cfg-higgsfield', d.integrations.higgsfield);
       showMasked('cfg-stripe', d.integrations.stripe);
       // Stripe webhook secret + dynamic webhook URL hint
       if (d.integrations.stripe) {
@@ -956,6 +959,13 @@ async function loadConfig() {
       showMasked('cfg-composio', d.integrations.composio);
       showMasked('cfg-youtube', d.integrations.youtube);
       showMasked('cfg-opusclip', d.integrations.opusclip);
+      // Higgsfield is a Key ID + App Secret pair (two fields); show which part
+      // is already stored so saving one doesn't look like the other vanished.
+      const hf = d.integrations.higgsfield || {};
+      const hfIdEl = document.getElementById('cfg-higgsfield-id');
+      if (hfIdEl) { hfIdEl.value = ''; hfIdEl.placeholder = hf.has_id ? 'Configured  —  leave empty to keep' : 'Key ID'; }
+      const hfSecEl = document.getElementById('cfg-higgsfield-secret');
+      if (hfSecEl) { hfSecEl.value = ''; hfSecEl.placeholder = hf.has_secret ? 'Configured  —  leave empty to keep' : 'App Secret'; }
       if (d.integrations.meta) {
         const m = d.integrations.meta;
         const metaId = document.getElementById('cfg-meta-app-id');
@@ -1073,7 +1083,7 @@ async function saveConfig() {
 
   const fields = {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
-    higgsfield_key: 'cfg-higgsfield', stripe_key: 'cfg-stripe', stripe_webhook_secret: 'cfg-stripe-webhook-secret', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
+    higgsfield_key_id: 'cfg-higgsfield-id', higgsfield_secret: 'cfg-higgsfield-secret', stripe_key: 'cfg-stripe', stripe_webhook_secret: 'cfg-stripe-webhook-secret', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
     meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect',
     canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
