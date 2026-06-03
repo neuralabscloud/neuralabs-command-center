@@ -5570,8 +5570,17 @@ async function generateUgcAudio(task) {
   const buf = Buffer.from(await r.arrayBuffer());
   const dir = path.join(__dirname, "data", "ugc-audio");
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, task.id + ".mp3"), buf);
-  return task.public_origin.replace(/\/$/, "") + "/ugc-media/" + task.id + ".mp3";
+  const mp3Path = path.join(dir, task.id + ".mp3");
+  const wavPath = path.join(dir, task.id + ".wav");
+  fs.writeFileSync(mp3Path, buf);
+  // Higgsfield's speak endpoint rejects mp3 ("invalid_audio_format") — convert
+  // to 16-bit PCM WAV (mono, 44.1 kHz) with ffmpeg, which it accepts.
+  await new Promise((resolve, reject) => {
+    execFile("ffmpeg", ["-y", "-i", mp3Path, "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", wavPath],
+      { timeout: 60000 }, (err) => err ? reject(new Error("ffmpeg mp3->wav failed: " + err.message)) : resolve());
+  });
+  try { fs.unlinkSync(mp3Path); } catch {}
+  return task.public_origin.replace(/\/$/, "") + "/ugc-media/" + task.id + ".wav";
 }
 
 // Track which tasks are already being processed to avoid duplicates
