@@ -341,7 +341,7 @@ function renderChannelCard(c) {
         </div>
         <div>
           <label class="edit-label">${isDiscord ? 'Guild ID (optional)' : 'Topic ID (optional, Telegram forum)'}</label>
-          <input class="edit-input" id="ch-topicid-${esc(c.id)}" value="${esc(isDiscord ? (c.guild_id || '') : (c.topic_id || ''))}" placeholder="${isDiscord ? 'Guild / server ID' : 'e.g. 9501'}">
+          <input class="edit-input" id="ch-topicid-${esc(c.id)}" value="${esc(isDiscord ? (c.guild_id || '') : (c.topic_id || ''))}" placeholder="${isDiscord ? 'Guild / server ID' : 'e.g. 12345'}">
         </div>
         <div>
           <label class="edit-label">Archetype Set</label>
