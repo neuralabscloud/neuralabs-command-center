@@ -139,10 +139,10 @@ done
 info "Updating package lists..."
 apt-get update -q || { error "apt-get update failed — check your internet connection"; exit 1; }
 
-# Node.js 20+ (via NodeSource) — required by langchain, vite, and other deps
-if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 20 ]; then
-  info "Installing Node.js 20..."
-  curl -fsSL --max-time 30 https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh || {
+# Node.js 22+ (via NodeSource) — required by langchain, vite, http-proxy-middleware, and other deps
+if ! command -v node &>/dev/null || [ "$(node -v | tr -d 'v' | cut -d. -f1)" -lt 22 ]; then
+  info "Installing Node.js 22..."
+  curl -fsSL --max-time 30 https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh || {
     error "Failed to download NodeSource setup. Check internet connection."
     exit 1
   }
@@ -273,6 +273,7 @@ TELEGRAM_CHAT_ID=$(env_quote "$TELEGRAM_CHAT_ID")
 HEYGEN_API_KEY=$(env_quote "$HEYGEN_API_KEY")
 STRIPE_SECRET_KEY=$(env_quote "$STRIPE_SECRET_KEY")
 COMPOSIO_API_KEY=$(env_quote "$COMPOSIO_API_KEY")
+COMPOSIO_ACCOUNT_ID=''
 BRAND_ASSET_URL=''
 LANGUAGE=''
 TIMEZONE=''

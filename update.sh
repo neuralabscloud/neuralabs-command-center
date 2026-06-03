@@ -178,7 +178,7 @@ for tpl in "$INSTALL_DIR/config/systemd/"*.tpl; do
     sed "s|{{INSTALL_DIR}}|${INSTALL_DIR}|g" "$tpl" > "/etc/systemd/system/${svc_name}.service"
   fi
 done
-systemctl daemon-reload
+systemctl daemon-reload || true
 ok "Systemd services updated"
 
 # ── RESTART SERVICE ─────────────────────────────

@@ -4904,7 +4904,7 @@ app.delete("/ctrl/chat/:sessionId", (req, res) => {
 const { Composio } = require("composio-core");
 const COMPOSIO_KEY = process.env.COMPOSIO_API_KEY || "";
 const COMPOSIO_ENTITY = "default";
-const COMPOSIO_ACCOUNT_ID = "30f9a8b5-8eae-4368-ad0f-da973486a34d";
+const COMPOSIO_ACCOUNT_ID = process.env.COMPOSIO_ACCOUNT_ID || "";
 const TIMEZONE = process.env.TIMEZONE || "Europe/Amsterdam";
 
 const calendarSessions = {};
