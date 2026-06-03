@@ -595,6 +595,28 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
         </div>
 
+        <!-- ElevenLabs -->
+        <div class="cfg-card">
+          <div class="cfg-card-head">
+            <div class="cfg-card-icon" style="background:hsla(174 72% 56%/0.12);border:1px solid hsla(174 72% 56%/0.3);color:hsl(174 72% 56%)">E</div>
+            <div class="cfg-card-meta">
+              <div class="cfg-card-title-row">
+                <div class="cfg-card-title">ElevenLabs</div>
+                <span class="cfg-pill optional">Optional</span>
+              </div>
+              <div class="cfg-card-desc">Text-to-speech voice for the UGC Talking Avatar. Without it the talking-avatar mode is unavailable.</div>
+            </div>
+            <span class="cfg-pill empty" id="cfg-status-elevenlabs">Not set</span>
+          </div>
+          <div class="cfg-fields">
+            <div class="cfg-field">
+              <div class="cfg-field-label">API Key</div>
+              <input type="password" id="cfg-elevenlabs" class="cfg-input" placeholder="Current kept if empty">
+              <div class="cfg-field-hint">Get it at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank">elevenlabs.io</a>.</div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <button onclick="saveConfig()" id="cfg-save-btn" style="margin-top:18px;padding:10px 28px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;background:linear-gradient(135deg,var(--primary),hsl(264 65% 65%));color:#fff;transition:all 0.2s">Save Changes</button>
     </section>
@@ -959,6 +981,7 @@ async function loadConfig() {
       showMasked('cfg-composio', d.integrations.composio);
       showMasked('cfg-youtube', d.integrations.youtube);
       showMasked('cfg-opusclip', d.integrations.opusclip);
+      showMasked('cfg-elevenlabs', d.integrations.elevenlabs);
       // Higgsfield is a Key ID + App Secret pair (two fields); show which part
       // is already stored so saving one doesn't look like the other vanished.
       const hf = d.integrations.higgsfield || {};
@@ -1088,6 +1111,7 @@ async function saveConfig() {
     canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
     opusclip_key: 'cfg-opusclip',
+    elevenlabs_key: 'cfg-elevenlabs',
   };
   for (const [key, id] of Object.entries(fields)) {
     const val = document.getElementById(id)?.value?.trim();

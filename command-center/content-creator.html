@@ -165,7 +165,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div class="task-form">
         <div style="display:flex;gap:8px;margin-bottom:16px;">
           <button type="button" class="ugc-mode-btn active" data-ugcmode="clip" onclick="setUgcMode('clip')">Clip (image → video)</button>
-          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" disabled title="Coming soon — requires voice (TTS) setup" style="opacity:0.5;cursor:not-allowed;">Talking Avatar (soon)</button>
+          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" onclick="setUgcMode('speak')">Talking Avatar</button>
         </div>
         <div style="margin-bottom:16px;">
           <div class="form-label">Image (URL or upload)</div>
@@ -197,24 +197,15 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         </div>
         <div id="ugc-speak-fields" style="display:none;">
           <div style="margin-bottom:16px;">
-            <div class="form-label">Script (avatar speaks this — built-in voice)</div>
+            <div class="form-label">Script (the avatar speaks this — voice via ElevenLabs)</div>
             <textarea class="form-textarea" id="ugc-script" placeholder="Write the script the avatar should perform..."></textarea>
           </div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-            <div>
-              <div class="form-label">Quality</div>
-              <select class="form-select" id="ugc-quality">
-                <option value="mid" selected>Mid</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div>
-              <div class="form-label">Duration</div>
-              <select class="form-select" id="ugc-duration">
-                <option value="short" selected>Short</option>
-                <option value="long">Long</option>
-              </select>
-            </div>
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Voice</div>
+            <select class="form-select" id="ugc-voice">
+              <option value="">Default voice</option>
+            </select>
+            <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Uses the avatar image above + this voice. Requires an ElevenLabs key in Settings.</div>
           </div>
         </div>
         <div class="form-grid" style="grid-template-columns:2fr 1fr;margin-top:16px;">
@@ -334,6 +325,7 @@ async function submitUgcTask() {
     script: document.getElementById('ugc-script').value.trim(),
     model: document.getElementById('ugc-model').value,
     motion_id: document.getElementById('ugc-motion').value,
+    voice_id: document.getElementById('ugc-voice').value,
     description: document.getElementById('ugc-desc').value.trim(),
     brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',
   };
@@ -521,6 +513,19 @@ async function loadUgcMotions() {
   }
 }
 loadUgcMotions();
+
+async function loadUgcVoices() {
+  const sel = document.getElementById('ugc-voice');
+  if (!sel) return;
+  try {
+    const res = await fetch('/ugc/voices');
+    const voices = await res.json();
+    if (Array.isArray(voices) && voices.length) {
+      sel.innerHTML = '<option value="">Default voice</option>' + voices.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    }
+  } catch {}
+}
+loadUgcVoices();
 
 setUgcMode('clip');
 loadTasks();

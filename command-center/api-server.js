@@ -160,6 +160,15 @@ app.use("/login.html", express.static(path.join(__dirname, "login.html")));
 app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
 app.use("/theme.css", express.static(path.join(__dirname, "public", "theme.css")));
 app.use("/brand-loader.js", express.static(path.join(__dirname, "public", "brand-loader.js")));
+// Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
+// fetch the generated voice file by URL (no session cookie). Filenames are
+// random task ids, served read-only from data/ugc-audio.
+app.get("/ugc-media/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^a-zA-Z0-9._-]/g, "");
+  const p = path.join(__dirname, "data", "ugc-audio", file);
+  if (!file || !fs.existsSync(p)) return res.status(404).end();
+  res.sendFile(p);
+});
 
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
@@ -241,7 +250,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "ELEVENLABS_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -336,6 +345,7 @@ app.get("/api/settings", (req, res) => {
       canva: { has_client_id: !!env.CANVA_CLIENT_ID, client_id_masked: maskKey(env.CANVA_CLIENT_ID), has_secret: !!env.CANVA_CLIENT_SECRET, redirect_uri: env.CANVA_REDIRECT_URI || "" },
       youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
       opusclip: { has_key: !!env.OPUSCLIP_API_KEY, masked: maskKey(env.OPUSCLIP_API_KEY) },
+      elevenlabs: { has_key: !!env.ELEVENLABS_API_KEY, masked: maskKey(env.ELEVENLABS_API_KEY) },
     }
   });
 });
@@ -370,6 +380,7 @@ app.post("/api/settings", (req, res) => {
       canva_redirect_uri: "CANVA_REDIRECT_URI",
       youtube_api_key: "YOUTUBE_API_KEY",
       opusclip_key: "OPUSCLIP_API_KEY",
+      elevenlabs_key: "ELEVENLABS_API_KEY",
     };
     for (const [field, envKey] of Object.entries(keyMap)) {
       if (integrations[field] !== undefined && integrations[field] !== "") {
@@ -1910,7 +1921,9 @@ app.post("/ugc/tasks", (req, res) => {
     script: b.script || "",
     model: b.model || "dop-lite",
     motion_id: b.motion_id || "",
+    voice_id: b.voice_id || "",
     audio_url: b.audio_url || "",
+    public_origin: detectPublicOrigin(req).origin || "",
     brand: b.brand || "",
     description: b.description || "",
     request_id: "",
@@ -1946,6 +1959,18 @@ app.get("/ugc/motions", async (_req, res) => {
     const data = await r.json();
     const list = Array.isArray(data) ? data.map(m => ({ id: m.id, name: m.name })) : [];
     if (list.length) { _ugcMotionsCache = list; _ugcMotionsAt = Date.now(); }
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── UGC VOICES (ElevenLabs) — for the Talking-Avatar voice dropdown ──
+app.get("/ugc/voices", async (_req, res) => {
+  try {
+    const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+    if (!key) return res.json([]);
+    const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
+    const data = await r.json();
+    const list = Array.isArray(data.voices) ? data.voices.map(v => ({ id: v.voice_id, name: v.name })) : [];
     res.json(list);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -5521,6 +5546,30 @@ function higgsfieldHeaders() {
   return { "Authorization": `Key ${creds}`, "Content-Type": "application/json" };
 }
 
+// Talking-avatar voice: Higgsfield's speak endpoint needs a public audio URL and
+// has no TTS, so we generate the voice from the script via ElevenLabs, save it to
+// data/ugc-audio and serve it at <public_origin>/ugc-media/<id>.mp3 for Higgsfield.
+const ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"; // Rachel
+async function generateUgcAudio(task) {
+  const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+  if (!key) throw new Error("ELEVENLABS_API_KEY not set");
+  if (!task.public_origin) throw new Error("no public_origin — server must be reachable for Higgsfield to fetch the audio");
+  const text = (task.script || task.prompt || "").trim();
+  if (!text) throw new Error("no script for the avatar to speak");
+  const voiceId = task.voice_id || ELEVENLABS_DEFAULT_VOICE;
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: "POST",
+    headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+    body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+  });
+  if (!r.ok) throw new Error("ElevenLabs TTS " + r.status + ": " + (await r.text()).slice(0, 200));
+  const buf = Buffer.from(await r.arrayBuffer());
+  const dir = path.join(__dirname, "data", "ugc-audio");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, task.id + ".mp3"), buf);
+  return task.public_origin.replace(/\/$/, "") + "/ugc-media/" + task.id + ".mp3";
+}
+
 // Track which tasks are already being processed to avoid duplicates
 const processingTasks = new Set();
 
@@ -5536,11 +5585,16 @@ async function processUgcTasks() {
       const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
       let params;
       if (isSpeak) {
-        // Speak requires an audio file URL — the platform API has no built-in
-        // TTS. ElevenLabs generates t.audio_url upstream (see prepareUgcAudio).
+        // Generate the voice from the script (ElevenLabs) and host it publicly,
+        // then hand the audio URL to Higgsfield's speak endpoint.
+        if (!t.audio_url) {
+          t.audio_url = await generateUgcAudio(t);
+          changed = true;
+          writeTaskFile("ugc-tasks.json", tasks);
+        }
         params = {
           input_image: { type: "image_url", image_url: t.image_url },
-          input_audio: { type: "audio_url", audio_url: t.audio_url || "" },
+          input_audio: { type: "audio_url", audio_url: t.audio_url },
           prompt: t.prompt || t.description || "",
         };
       } else {
