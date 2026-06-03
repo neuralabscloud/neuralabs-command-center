@@ -1978,6 +1978,38 @@ app.get("/ugc/voices", async (_req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── UGC AVATAR LIBRARY (Higgsfield Soul portraits) ──────────────────
+// Create reusable avatar portraits from a prompt; the Talking Avatar mode
+// selects them by their generated image URL.
+app.get("/ugc/avatars", (_req, res) => res.json(readTaskFile("ugc-avatars.json")));
+
+app.post("/ugc/avatars", async (req, res) => {
+  const b = req.body || {};
+  const prompt = (b.prompt || "").trim();
+  if (!prompt) return res.status(400).json({ error: "prompt required" });
+  try {
+    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+      method: "POST", headers: higgsfieldHeaders(),
+      body: JSON.stringify({ params: { prompt, width_and_height: HIGGSFIELD.avatarSize } }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(502).json({ error: (data && data.detail ? JSON.stringify(data.detail) : JSON.stringify(data)).slice(0, 300) });
+    const request_id = data.id || data.job_set_id || (data.job_set && data.job_set.id) || "";
+    if (!request_id) return res.status(502).json({ error: "no job-set id: " + JSON.stringify(data).slice(0, 200) });
+    const avatars = readTaskFile("ugc-avatars.json");
+    const avatar = { id: "av_" + Date.now().toString(36), name: b.name || "Avatar", prompt, status: "processing", request_id, image_url: "", created_at: new Date().toISOString() };
+    avatars.unshift(avatar);
+    if (avatars.length > 100) avatars.length = 100;
+    writeTaskFile("ugc-avatars.json", avatars);
+    res.json({ ok: true, avatar });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/ugc/avatars/:id", (req, res) => {
+  writeTaskFile("ugc-avatars.json", readTaskFile("ugc-avatars.json").filter(x => x.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ── UGC IMAGE UPLOAD PROXY ──────────────────────────────────────────
 app.post("/ugc/upload", async (req, res) => {
   try {
@@ -5711,6 +5743,26 @@ async function pollUgcStatus() {
   if (changed) writeTaskFile("ugc-tasks.json", tasks);
 }
 
+// ── AVATAR LIBRARY WORKER — poll Soul portrait generations ──────────
+async function pollAvatarCreator() {
+  const avatars = readTaskFile("ugc-avatars.json");
+  let changed = false;
+  for (const a of avatars) {
+    if (a.status !== "processing" || !a.request_id) continue;
+    try {
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(a.request_id), { headers: higgsfieldHeaders() });
+      const data = await r.json().catch(() => ({}));
+      const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
+      const status = String(job.status || data.status || "").toLowerCase();
+      const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
+        || job.result_url || (job.image && job.image.url) || (job.result && job.result.url) || "";
+      if ((status === "completed" || status === "success") && url) { a.status = "ready"; a.image_url = url; changed = true; }
+      else if (status === "failed" || status === "nsfw" || status === "error") { a.status = "failed"; a.error = status; changed = true; }
+    } catch (e) { /* transient — retry next tick */ }
+  }
+  if (changed) writeTaskFile("ugc-avatars.json", avatars);
+}
+
 // ── SCRIPT WRITER WORKER (Claude) ──
 async function processScriptwriterTasks() {
   const tasks = readTaskFile("scriptwriter-tasks.json");
@@ -6458,6 +6510,7 @@ setInterval(() => {
 
 // Poll Higgsfield status every 30 seconds
 setInterval(pollUgcStatus, 30_000);
+setInterval(pollAvatarCreator, 30_000);
 
 // Run once on startup
 setTimeout(() => {
@@ -6469,6 +6522,7 @@ setTimeout(() => {
   processCommunityTasks().catch(() => {});
   processUgcTasks().catch(() => {});
   pollUgcStatus().catch(() => {});
+  pollAvatarCreator().catch(() => {});
 }, 3000);
 
 // ── STRIPE REVENUE ───────────────────────────
