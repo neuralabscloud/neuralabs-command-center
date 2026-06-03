@@ -1925,6 +1925,7 @@ app.post("/ugc/tasks", (req, res) => {
     avatar_prompt: b.avatar_prompt || "",
     avatar_request_id: "",
     audio_url: b.audio_url || "",
+    audio_duration: 0,
     public_origin: detectPublicOrigin(req).origin || "",
     brand: b.brand || "",
     description: b.description || "",
@@ -5580,6 +5581,9 @@ async function generateUgcAudio(task) {
       { timeout: 60000 }, (err) => err ? reject(new Error("ffmpeg mp3->wav failed: " + err.message)) : resolve());
   });
   try { fs.unlinkSync(mp3Path); } catch {}
+  // Duration from WAV size (PCM 16-bit mono 44.1kHz = 88200 bytes/sec) so we can
+  // pick Higgsfield's speak length (5/10/15s) to fit the voice without truncating.
+  try { task.audio_duration = Math.max(1, (fs.statSync(wavPath).size - 44) / 88200); } catch { task.audio_duration = 0; }
   return task.public_origin.replace(/\/$/, "") + "/ugc-media/" + task.id + ".wav";
 }
 
@@ -5627,10 +5631,15 @@ async function processUgcTasks() {
       const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
       let params;
       if (isSpeak) {
+        // Higgsfield speak caps at 5/10/15s — pick the smallest that fits the voice.
+        const d = t.audio_duration || 0;
+        const speakDuration = d > 10 ? 15 : d > 5 ? 10 : 5;
         params = {
           input_image: { type: "image_url", image_url: t.image_url },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
           prompt: t.prompt || t.description || "",
+          duration: speakDuration,
+          quality: "high",
         };
       } else {
         params = {
