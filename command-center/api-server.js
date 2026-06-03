@@ -3832,12 +3832,15 @@ You can:
    - create_video_edit: edit a video via Remotion (Video Editor)
    - create_research: run research (Researcher)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
-   - marketeer_query: marketing strategy, content planning, copywriting, SEO, ads — ask the Marketeer agent
+   - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
+   - ads_query: read LIVE Meta Ads data from the connected ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Use this for any question about campaign status, performance, spend or results.
+   - ads_action: take LIVE actions on Meta Ads — create/duplicate campaigns/adsets/ads, pause/activate, set budget, update targeting/placements/creative/pixel.
 
 IMPORTANT when orchestrating agents:
 - Use the tools to actually create tasks, don't just describe what you would do
 - Always confirm which tasks you created and at which agent
-- For marketing questions → use marketeer_query
+- For LIVE Meta Ads data/status (campaigns, ROAS, spend, results) or actions (pause/budget/create) → use ads_query / ads_action, NOT marketeer_query. Meta Ads IS connected; first call ads_query type="accounts" to get the account_id, then query campaigns/insights with that account_id.
+- For marketing STRATEGY/advice only (no live account data) → use marketeer_query
 - For calendar questions → use calendar_query
 
 You have access to web search. Use it when the user asks for current news, price movement, or information more recent than your training data.
@@ -3931,7 +3934,9 @@ Je kunt:
    - create_video_edit: Video laten editen via Remotion (Video Editor)
    - create_research: Onderzoek laten doen (Researcher)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
-   - marketeer_query: Marketing strategie, content planning, copywriting, SEO, ads — vraag de Marketeer agent
+   - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
+   - ads_query: LIVE Meta Ads data ophalen uit de gekoppelde ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Gebruik dit voor elke vraag over campagne-status, performance, spend of resultaten.
+   - ads_action: LIVE acties op Meta Ads — campagnes/adsets/ads aanmaken/dupliceren, pauzeren/activeren, budget aanpassen, targeting/placements/creative/pixel wijzigen.
 8. SKILLS KENNIS — als de gebruiker vraagt over een skill, leg uit wat het doet en hoe het aan te roepen. Skills worden aangeroepen als /skill-name in Claude Code.
 9. MARKETING EXPERTISE — via de marketeer_query tool kun je alle 25 marketing skills inzetten. Route marketing-gerelateerde vragen naar de Marketeer agent.
 
@@ -3939,7 +3944,8 @@ BELANGRIJK bij het aansturen van agents:
 - Gebruik de tools om taken daadwerkelijk aan te maken, niet alleen beschrijven wat je zou doen
 - Als de gebruiker vraagt om een video te maken, maak dan direct de taak aan
 - Bevestig altijd welke taken je hebt aangemaakt en bij welke agent
-- Bij marketing vragen (SEO, copy, ads, CRO, etc.) → gebruik marketeer_query
+- Bij LIVE Meta Ads data/status (campagnes, ROAS, spend, resultaten) of acties (pauzeren/budget/aanmaken) → gebruik ads_query / ads_action, NIET marketeer_query. Meta Ads IS verbonden; roep eerst ads_query type="accounts" aan voor het account_id, en query daarna campaigns/insights met dat account_id.
+- Bij marketing STRATEGIE/advies zonder live accountdata (SEO, copy, CRO, etc.) → gebruik marketeer_query
 - Bij calendar vragen → gebruik calendar_query
 - Je bent proactief: stel voor om meerdere agents tegelijk in te zetten als dat zinvol is
 
