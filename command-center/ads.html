@@ -258,12 +258,15 @@ body::after {
             <thead><tr>
               <th>Campaign</th><th>Status</th><th>Objective</th>
               <th style="text-align:right">Budget</th><th style="text-align:right">Spend</th>
-              <th style="text-align:right">Impressions</th><th style="text-align:right">Clicks</th>
+              <th style="text-align:right">Impressions</th><th style="text-align:right">Reach</th>
+              <th style="text-align:right">Freq</th><th style="text-align:right">Clicks</th>
               <th style="text-align:right">CTR</th><th style="text-align:right">CPC</th>
+              <th style="text-align:right">CPM</th>
+              <th style="text-align:right">Results</th><th style="text-align:right">Cost/Result</th>
               <th style="text-align:right">ROAS</th><th style="text-align:right">Actions</th>
             </tr></thead>
             <tbody id="campaigns-tbody">
-              <tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)">Loading...</td></tr>
+              <tr><td colspan="16" style="text-align:center;padding:24px;color:var(--text-dim)">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -392,6 +395,26 @@ function extractRoas(row) {
   if (Array.isArray(row.website_purchase_roas) && row.website_purchase_roas[0]) return Number(row.website_purchase_roas[0].value) || 0;
   return 0;
 }
+// Pick the primary "result" for a campaign the way Meta's Results column does:
+// walk a priority list of conversion events and return the first one with a count.
+const RESULT_PRIORITY = [
+  { keys: ['offsite_conversion.fct.purchase', 'omni_purchase', 'purchase'], label: 'Purchases' },
+  { keys: ['offsite_conversion.fct.complete_registration', 'complete_registration'], label: 'Registrations' },
+  { keys: ['offsite_conversion.fct.lead', 'onsite_conversion.lead_grouped', 'lead'], label: 'Leads' },
+  { keys: ['offsite_conversion.fct.initiate_checkout', 'omni_initiated_checkout', 'initiate_checkout'], label: 'Checkouts' },
+  { keys: ['offsite_conversion.fct.add_to_cart', 'omni_add_to_cart', 'add_to_cart'], label: 'Add to cart' },
+  { keys: ['landing_page_view'], label: 'LP views' },
+  { keys: ['link_click'], label: 'Link clicks' },
+];
+function extractResult(actions) {
+  if (!Array.isArray(actions)) return { count: 0, label: '—' };
+  for (const grp of RESULT_PRIORITY) {
+    let sum = 0;
+    for (const k of grp.keys) sum += extractAction(actions, k);
+    if (sum > 0) return { count: sum, label: grp.label };
+  }
+  return { count: 0, label: '—' };
+}
 
 async function loadAccounts() {
   const res = await fetch('/ads/accounts', { credentials: 'include' });
@@ -416,7 +439,7 @@ async function renderEmpty() {
     ? `<button id="connect-meta-btn" class="btn btn-primary" style="margin-top:12px">+ Connect Meta</button>`
     : `<a href="/settings.html#integrations" class="btn btn-primary" style="margin-top:12px;text-decoration:none;display:inline-block">Configureer Meta App</a>`;
   document.getElementById('campaigns-tbody').innerHTML = `
-    <tr><td colspan="11">
+    <tr><td colspan="16">
       <div class="empty-state">
         <h3>Geen ad accounts gekoppeld</h3>
         <p>Koppel je Meta account — de OAuth flow vraagt automatisch <code>ads_read</code> + <code>ads_management</code> scopes aan en haalt alle ad accounts op die onder je Business Manager vallen.</p>
@@ -438,7 +461,7 @@ async function loadData() {
   const datePreset = document.getElementById('range-select').value;
 
   const tbody = document.getElementById('campaigns-tbody');
-  tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Fetching ad data...</span></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:24px;color:var(--text-dim)"><span style="animation:pulse-glow 1.5s infinite">◌ Fetching ad data...</span></td></tr>`;
 
   try {
     const [campRes, insRes] = await Promise.all([
@@ -479,7 +502,7 @@ async function loadData() {
     </div>`).join('');
 
     if (!campaigns.length) {
-      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--text-dim)">Geen campagnes gevonden voor dit ad account</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:24px;color:var(--text-dim)">Geen campagnes gevonden voor dit ad account</td></tr>`;
       return;
     }
 
@@ -492,10 +515,15 @@ async function loadData() {
       const clicks = Number(i.clicks) || 0;
       const ctr = Number(i.ctr) || 0;
       const cpc = Number(i.cpc) || 0;
+      const cpm = Number(i.cpm) || 0;
+      const reach = Number(i.reach) || 0;
+      const freq = Number(i.frequency) || 0;
       const roas = extractRoas(i);
+      const result = extractResult(i.actions);
+      const costPerResult = result.count > 0 ? spend / result.count : 0;
       const dailyBudget = Number(c.daily_budget) || 0;
       const lifetimeBudget = Number(c.lifetime_budget) || 0;
-      return { c, i, status, cls, spend, impr, clicks, ctr, cpc, roas, dailyBudget, lifetimeBudget };
+      return { c, i, status, cls, spend, impr, clicks, ctr, cpc, cpm, reach, freq, roas, result, costPerResult, dailyBudget, lifetimeBudget };
     }).sort((a, b) => b.spend - a.spend);
 
     tbody.innerHTML = rows.map(r => {
@@ -513,9 +541,14 @@ async function loadData() {
       <td class="num" style="text-align:right;font-size:11px">${budgetDisplay}</td>
       <td class="num" style="text-align:right">${fmtMoney(r.spend, currency)}</td>
       <td class="num" style="text-align:right">${fmtNum(r.impr)}</td>
+      <td class="num" style="text-align:right">${r.reach ? fmtNum(r.reach) : '—'}</td>
+      <td class="num" style="text-align:right">${r.freq ? r.freq.toFixed(2) : '—'}</td>
       <td class="num" style="text-align:right">${fmtNum(r.clicks)}</td>
       <td class="num" style="text-align:right">${fmtPct(r.ctr)}</td>
       <td class="num" style="text-align:right">${r.cpc ? fmtMoney(r.cpc, currency) : '—'}</td>
+      <td class="num" style="text-align:right">${r.cpm ? fmtMoney(r.cpm, currency) : '—'}</td>
+      <td class="num" style="text-align:right">${r.result.count > 0 ? `<div style="font-weight:600;color:var(--text)">${fmtNum(r.result.count)}</div><div style="font-size:10px;color:var(--text-dim)">${r.result.label}</div>` : '—'}</td>
+      <td class="num" style="text-align:right">${r.costPerResult > 0 ? fmtMoney(r.costPerResult, currency) : '—'}</td>
       <td class="num" style="text-align:right;color:${r.roas >= 2 ? 'var(--success)' : (r.roas > 0 ? 'var(--warning)' : 'var(--text-dim)')}">${r.roas > 0 ? r.roas.toFixed(2) + 'x' : '—'}</td>
       <td style="text-align:right"><div class="actions-cell">
         ${canToggle ? `<button class="action-btn ${toggleClass}" onclick="toggleCampaign('${r.c.id}','${r.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}',this)">${toggleLabel}</button>` : ''}
@@ -524,7 +557,7 @@ async function loadData() {
       </div></td>
     </tr>`}).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="16" style="text-align:center;padding:24px;color:var(--danger)">${escapeHtml(e.message)}</td></tr>`;
   }
 }
 
