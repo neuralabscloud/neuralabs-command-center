@@ -1922,6 +1922,8 @@ app.post("/ugc/tasks", (req, res) => {
     model: b.model || "dop-lite",
     motion_id: b.motion_id || "",
     voice_id: b.voice_id || "",
+    avatar_prompt: b.avatar_prompt || "",
+    avatar_request_id: "",
     audio_url: b.audio_url || "",
     public_origin: detectPublicOrigin(req).origin || "",
     brand: b.brand || "",
@@ -5534,12 +5536,14 @@ app.get("/canva/brand-kits", async (_req, res) => {
 const HIGGSFIELD = {
   base: "https://platform.higgsfield.ai",
   endpoints: {
-    clip:    "/v1/image2video/dop",   // image-to-video
-    speak:   "/v1/speak/higgsfield",  // talking avatar (requires input_audio)
-    motions: "/v1/motions",           // list of motions { id, name, description }
-    jobSet:  (id) => `/v1/job-sets/${id}`,
+    clip:      "/v1/image2video/dop",   // image-to-video
+    speak:     "/v1/speak/higgsfield",  // talking avatar (requires input_audio)
+    text2image:"/v1/text2image/soul",   // generate an avatar portrait from a prompt
+    motions:   "/v1/motions",           // list of motions { id, name, description }
+    jobSet:    (id) => `/v1/job-sets/${id}`,
   },
   models: ["dop-lite", "dop-preview", "dop-turbo"],
+  avatarSize: "1152x2048",              // 9:16 portrait for generated avatars
 };
 function higgsfieldHeaders() {
   const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
@@ -5582,16 +5586,38 @@ async function processUgcTasks() {
     processingTasks.add(t.id);
     try {
       const isSpeak = t.mode === "speak";
-      const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
-      let params;
       if (isSpeak) {
-        // Generate the voice from the script (ElevenLabs) and host it publicly,
-        // then hand the audio URL to Higgsfield's speak endpoint.
+        // 1. Voice from the script (ElevenLabs), hosted publicly for Higgsfield.
         if (!t.audio_url) {
           t.audio_url = await generateUgcAudio(t);
           changed = true;
           writeTaskFile("ugc-tasks.json", tasks);
         }
+        // 2. No avatar image yet but a face prompt is given → generate the
+        //    avatar portrait via Higgsfield Soul first. It's async, so set the
+        //    gen_avatar state; pollUgcStatus stores the image and resumes.
+        if (!t.image_url && t.avatar_prompt) {
+          const ar = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+            method: "POST", headers: higgsfieldHeaders(),
+            body: JSON.stringify({ params: { prompt: t.avatar_prompt, width_and_height: HIGGSFIELD.avatarSize } }),
+          });
+          const ad = await ar.json().catch(() => ({}));
+          if (!ar.ok) {
+            t.status = "failed";
+            t.error = "avatar: " + (ad && ad.detail ? JSON.stringify(ad.detail) : JSON.stringify(ad)).slice(0, 300);
+          } else {
+            t.avatar_request_id = ad.id || ad.job_set_id || (ad.job_set && ad.job_set.id) || "";
+            t.status = t.avatar_request_id ? "gen_avatar" : "failed";
+            if (!t.avatar_request_id) t.error = "avatar: no job-set id " + JSON.stringify(ad).slice(0, 200);
+          }
+          changed = true;
+          processingTasks.delete(t.id);
+          continue;
+        }
+      }
+      const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
+      let params;
+      if (isSpeak) {
         params = {
           input_image: { type: "image_url", image_url: t.image_url },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
@@ -5630,6 +5656,24 @@ async function pollUgcStatus() {
   const tasks = readTaskFile("ugc-tasks.json");
   let changed = false;
   for (const t of tasks) {
+    // Avatar-generation stage (speak with a face prompt): when the portrait is
+    // ready, store it as the avatar image and resume to the speak submit.
+    if (t.status === "gen_avatar" && t.avatar_request_id) {
+      try {
+        const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.avatar_request_id), { headers: higgsfieldHeaders() });
+        const data = await r.json().catch(() => ({}));
+        const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
+        const status = String(job.status || data.status || "").toLowerCase();
+        const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
+          || job.result_url || (job.image && job.image.url) || (job.result && job.result.url) || "";
+        if ((status === "completed" || status === "success") && url) {
+          t.image_url = url; t.status = "pending"; changed = true;
+        } else if (status === "failed" || status === "nsfw" || status === "error") {
+          t.status = "failed"; t.error = "avatar " + status; changed = true;
+        }
+      } catch (e) { /* transient — retry next tick */ }
+      continue;
+    }
     if (t.status !== "processing" || !t.request_id) continue;
     try {
       const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.request_id), { headers: higgsfieldHeaders() });

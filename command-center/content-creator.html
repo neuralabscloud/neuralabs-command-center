@@ -205,7 +205,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="form-select" id="ugc-voice">
               <option value="">Default voice</option>
             </select>
-            <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Uses the avatar image above + this voice. Requires an ElevenLabs key in Settings.</div>
+            <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Requires an ElevenLabs key in Settings.</div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Avatar — describe a face to generate (or leave empty and paste an image URL above)</div>
+            <input class="form-input" id="ugc-avatar-prompt" placeholder="e.g. friendly young woman, UGC creator, neutral background, soft lighting" />
+            <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">If filled, Higgsfield generates the portrait for you (no image URL needed).</div>
           </div>
         </div>
         <div class="form-grid" style="grid-template-columns:2fr 1fr;margin-top:16px;">
@@ -326,10 +331,16 @@ async function submitUgcTask() {
     model: document.getElementById('ugc-model').value,
     motion_id: document.getElementById('ugc-motion').value,
     voice_id: document.getElementById('ugc-voice').value,
+    avatar_prompt: document.getElementById('ugc-avatar-prompt').value.trim(),
     description: document.getElementById('ugc-desc').value.trim(),
     brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',
   };
-  if (!payload.image_url) { st.textContent = 'Image URL required'; return; }
+  if (ugcMode === 'speak') {
+    if (!payload.script) { st.textContent = 'Script required'; return; }
+    if (!payload.image_url && !payload.avatar_prompt) { st.textContent = 'Avatar image URL or description required'; return; }
+  } else if (!payload.image_url) {
+    st.textContent = 'Image URL required'; return;
+  }
   st.textContent = 'Submitting…';
   try {
     const res = await fetch(API_UGC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
