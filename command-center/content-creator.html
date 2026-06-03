@@ -200,7 +200,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
         </div>
         <div id="ugc-speak-fields" style="display:none;">
-          <div style="margin-bottom:16px;">
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+            <div>
+              <div class="form-label">Model</div>
+              <select class="form-select" id="ugc-speak-model">
+                <option value="higgsfield" selected>Higgsfield Speak (WAN) — max 15s</option>
+                <option value="kling">Kling Speak (experimental)</option>
+              </select>
+            </div>
+            <div></div>
+          </div>
+          <div style="margin-bottom:16px;margin-top:16px;">
             <div class="form-label">Script (the avatar speaks this — voice via ElevenLabs)</div>
             <textarea class="form-textarea" id="ugc-script" placeholder="Write the script the avatar should perform..."></textarea>
           </div>
@@ -368,6 +378,7 @@ async function submitUgcTask() {
     model: document.getElementById('ugc-model').value,
     motion_id: document.getElementById('ugc-motion').value,
     voice_id: document.getElementById('ugc-voice').value,
+    speak_model: document.getElementById('ugc-speak-model').value,
     avatar_prompt: document.getElementById('ugc-avatar-prompt').value.trim(),
     description: document.getElementById('ugc-desc').value.trim(),
     brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',

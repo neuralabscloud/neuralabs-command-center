@@ -1922,6 +1922,7 @@ app.post("/ugc/tasks", (req, res) => {
     model: b.model || "dop-lite",
     motion_id: b.motion_id || "",
     voice_id: b.voice_id || "",
+    speak_model: b.speak_model || "higgsfield",
     avatar_prompt: b.avatar_prompt || "",
     avatar_request_id: "",
     audio_url: b.audio_url || "",
@@ -5576,6 +5577,7 @@ const HIGGSFIELD = {
     jobSet:    (id) => `/v1/job-sets/${id}`,
   },
   models: ["dop-lite", "dop-preview", "dop-turbo"],
+  speakModels: ["higgsfield", "kling"], // talking-avatar models (/v1/speak/{model})
   avatarSize: "1152x2048",              // 9:16 portrait for generated avatars
 };
 function higgsfieldHeaders() {
@@ -5660,19 +5662,21 @@ async function processUgcTasks() {
           continue;
         }
       }
-      const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
+      const speakModel = HIGGSFIELD.speakModels.includes(t.speak_model) ? t.speak_model : "higgsfield";
+      const ep = isSpeak ? ("/v1/speak/" + speakModel) : HIGGSFIELD.endpoints.clip;
       let params;
       if (isSpeak) {
-        // Higgsfield speak caps at 5/10/15s — pick the smallest that fits the voice.
-        const d = t.audio_duration || 0;
-        const speakDuration = d > 10 ? 15 : d > 5 ? 10 : 5;
         params = {
           input_image: { type: "image_url", image_url: t.image_url },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
           prompt: t.prompt || t.description || "",
-          duration: speakDuration,
-          quality: "high",
         };
+        if (speakModel === "higgsfield") {
+          // WAN caps at 5/10/15s — pick the smallest that fits the voice.
+          const d = t.audio_duration || 0;
+          params.duration = d > 10 ? 15 : d > 5 ? 10 : 5;
+          params.quality = "high";
+        }
       } else {
         params = {
           model: HIGGSFIELD.models.includes(t.model) ? t.model : "dop-lite",
