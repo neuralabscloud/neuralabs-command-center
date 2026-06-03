@@ -1615,7 +1615,7 @@ const aiTeam = [
   { name: 'RESEARCHER', emoji: '🔍', role: 'Trend Analysis (Daily)', status: 'idle', color: 'var(--accent)', hsl: '264 65% 49%', task: 'Awaiting assignment' },
   { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
   { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
-  { name: 'CONTENT CREATOR', emoji: '🎬', role: 'HeyGen AI Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
+  { name: 'CONTENT CREATOR', emoji: '🎬', role: 'Higgsfield UGC Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
   { name: 'SCRIPT WRITER', emoji: '✍️', role: 'Video & Content Scripts', status: 'idle', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', task: 'Awaiting assignment' },
   { name: 'SEO', emoji: '🔎', role: 'Site Audit & Optimization', status: 'idle', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', task: 'Awaiting assignment' },
   { name: 'COMMUNITY MANAGER', emoji: '💬', role: 'Telegram / Discord Posts', status: 'idle', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', task: 'Awaiting assignment', isCommunity: true },
@@ -1628,7 +1628,7 @@ const TASK_APIS = {
   RESEARCHER: '/research/tasks',
   DESIGNER: '/designer/tasks',
   'VIDEO EDITOR': ['/video/tasks', '/video/ai-generate'],
-  'CONTENT CREATOR': '/avatar/tasks',
+  'CONTENT CREATOR': '/ugc/tasks',
   'SCRIPT WRITER': '/scriptwriter/tasks',
   SEO: '/seo/tasks',
 };
@@ -1802,8 +1802,7 @@ setInterval(renderAiTeam, 10000);
 
 // ── AGENT TASK FEED (right sidebar) ────────────
 const TASK_FEED_SOURCES = [
-  { api: '/avatar/tasks',       agent: 'CONTENT',  subtype: 'AVATAR',     color: 'hsl(180 70% 45%)' },
-  { api: '/video-agent/tasks',  agent: 'CONTENT',  subtype: 'VIDEO AGENT',color: 'hsl(180 70% 45%)' },
+  { api: '/ugc/tasks',          agent: 'CONTENT',  subtype: 'UGC',        color: 'hsl(180 70% 45%)' },
   { api: '/scriptwriter/tasks', agent: 'SCRIPT',   subtype: 'SCRIPT',     color: 'hsl(30 90% 55%)' },
   { api: '/designer/tasks',     agent: 'DESIGN',   subtype: 'DESIGN',     color: 'var(--warning)' },
   { api: '/video/tasks',        agent: 'VIDEO',    subtype: 'REMOTION',   color: 'var(--danger)' },

@@ -230,16 +230,6 @@ app.use(express.static(path.join(__dirname, "public")));
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
 
-// Avatar / voice config for HeyGen. Read from data/avatars.json so customers can
-// replace vendor defaults with their own avatar/voice IDs without editing code.
-function getAvatarsConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "avatars.json"), "utf8"));
-  } catch { return {}; }
-}
-function defaultAvatarId() { return getAvatarsConfig().default_avatar_id || ""; }
-function defaultVoiceId() { return getAvatarsConfig().default_voice_id || ""; }
-function defaultVoiceEngine() { return getAvatarsConfig().default_voice_engine || "panda"; }
 
 function readEnvFile() {
   const env = {};
@@ -251,7 +241,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HEYGEN_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -338,7 +328,7 @@ app.get("/api/settings", (req, res) => {
     integrations: {
       anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
-      heygen: { has_key: !!env.HEYGEN_API_KEY, masked: maskKey(env.HEYGEN_API_KEY) },
+      higgsfield: { has_key: !!env.HIGGSFIELD_API_KEY, masked: maskKey(env.HIGGSFIELD_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY), has_webhook_secret: !!env.STRIPE_WEBHOOK_SECRET, webhook_url: pub.origin ? `${pub.origin}/stripe/webhook` : "" },
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
@@ -368,7 +358,7 @@ app.post("/api/settings", (req, res) => {
       anthropic_key: "ANTHROPIC_API_KEY",
       telegram_token: "TELEGRAM_BOT_TOKEN",
       telegram_chat_id: "TELEGRAM_CHAT_ID",
-      heygen_key: "HEYGEN_API_KEY",
+      higgsfield_key: "HIGGSFIELD_API_KEY",
       stripe_key: "STRIPE_SECRET_KEY",
       stripe_webhook_secret: "STRIPE_WEBHOOK_SECRET",
       composio_key: "COMPOSIO_API_KEY",
@@ -1463,162 +1453,7 @@ app.delete("/video/ai-generate/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── AVATAR TASKS (HeyGen) ─────────────────────
-app.get("/avatar/tasks", (_req, res) => res.json(readTaskFile("avatar-tasks.json")));
 
-app.post("/avatar/tasks", (req, res) => {
-  const tasks = readTaskFile("avatar-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    avatar_id: req.body.avatar_id || defaultAvatarId(),
-    voice_id: req.body.voice_id || defaultVoiceId(),
-    voice_engine: req.body.voice_engine || defaultVoiceEngine(),
-    motion_engine: req.body.motion_engine || "avatar_iii",
-    script: req.body.script || "",
-    description: req.body.description || "",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    result_url: null, result_video_id: null, error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("avatar-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/avatar/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("avatar-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("avatar-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/avatar/tasks/:id", (req, res) => {
-  writeTaskFile("avatar-tasks.json", readTaskFile("avatar-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
-// ── VIDEO AGENT TASKS (HeyGen Video Agent) ───
-app.get("/video-agent/tasks", (_req, res) => res.json(readTaskFile("video-agent-tasks.json")));
-
-app.post("/video-agent/tasks", (req, res) => {
-  const tasks = readTaskFile("video-agent-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    prompt: req.body.prompt || "",
-    duration_sec: req.body.duration_sec || 30,
-    orientation: req.body.orientation || "portrait",
-    avatar_id: req.body.avatar_id || null,
-    description: req.body.description || "",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    result_url: null, result_video_id: null, error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("video-agent-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/video-agent/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("video-agent-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("video-agent-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/video-agent/tasks/:id", (req, res) => {
-  writeTaskFile("video-agent-tasks.json", readTaskFile("video-agent-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
-// ── HEYGEN AVATARS (cached proxy) ─────────────
-let avatarCache = { data: null, ts: 0 };
-const AVATAR_CACHE_TTL = 3600_000; // 1 hour
-
-app.get("/heygen/avatars", async (req, res) => {
-  try {
-    if (!avatarCache.data || Date.now() - avatarCache.ts > AVATAR_CACHE_TTL) {
-      const r = await fetch("https://api.heygen.com/v2/avatars", {
-        headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
-      });
-      const json = await r.json();
-      // Deduplicate by avatar_id
-      const seen = new Set();
-      const unique = [];
-      for (const a of json.data.avatars) {
-        if (!seen.has(a.avatar_id)) {
-          seen.add(a.avatar_id);
-          unique.push({
-            id: a.avatar_id,
-            name: a.avatar_name,
-            gender: a.gender,
-            preview: a.preview_image_url,
-            custom: !a.avatar_id.includes("public") && !a.avatar_id.includes("_expressive_") && !a.avatar_id.includes("_standing_") && !a.avatar_id.includes("_sitting_"),
-          });
-        }
-      }
-      // Sort: custom first, then alphabetical
-      unique.sort((a, b) => (b.custom - a.custom) || a.name.localeCompare(b.name));
-      avatarCache = { data: unique, ts: Date.now() };
-    }
-    let results = avatarCache.data;
-    const q = (req.query.q || "").toLowerCase();
-    const gender = req.query.gender || "";
-    if (q) results = results.filter(a => a.name.toLowerCase().includes(q));
-    if (gender) results = results.filter(a => a.gender === gender);
-    const limit = parseInt(req.query.limit) || 50;
-    res.json({ total: results.length, avatars: results.slice(0, limit) });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── HEYGEN VOICES (cached proxy) ─────────────
-// Returns the voices of the HeyGen account configured via HEYGEN_API_KEY, so
-// every install shows its own voices instead of any vendor defaults.
-let voiceCache = { data: null, ts: 0 };
-const VOICE_CACHE_TTL = 3600_000; // 1 hour
-
-app.get("/heygen/voices", async (req, res) => {
-  try {
-    if (!voiceCache.data || Date.now() - voiceCache.ts > VOICE_CACHE_TTL) {
-      if (!process.env.HEYGEN_API_KEY) {
-        return res.status(400).json({ error: "No HeyGen API key configured" });
-      }
-      const r = await fetch("https://api.heygen.com/v2/voices", {
-        headers: { "X-Api-Key": process.env.HEYGEN_API_KEY },
-      });
-      const json = await r.json();
-      if (!r.ok) {
-        const msg = json?.error?.message || json?.message || `HeyGen returned HTTP ${r.status}`;
-        console.error("[HEYGEN] voices error:", r.status, msg);
-        return res.status(r.status === 401 || r.status === 403 ? 400 : 502).json({ error: msg });
-      }
-      const voices = (json?.data?.voices || []).map(v => ({
-        id: v.voice_id,
-        name: v.name || v.voice_id,
-        language: v.language || "",
-        gender: v.gender || "",
-      })).filter(v => v.id);
-      // Alphabetical by name: native <select> type-ahead matches on option text.
-      voices.sort((a, b) => a.name.localeCompare(b.name));
-      voiceCache = { data: voices, ts: Date.now() };
-    }
-    let results = voiceCache.data;
-    const q = (req.query.q || "").toLowerCase();
-    if (q) results = results.filter(v => v.name.toLowerCase().includes(q) || v.language.toLowerCase().includes(q));
-    res.json({ total: results.length, voices: results });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // ── SCRIPTWRITER TASKS ────────────────────────
 app.get("/scriptwriter/tasks", (_req, res) => res.json(readTaskFile("scriptwriter-tasks.json")));
@@ -2049,6 +1884,65 @@ app.delete("/opusclip/tasks/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── UGC TASKS (Higgsfield) ───────────────────────────────────────────
+app.get("/ugc/tasks", (_req, res) => res.json(readTaskFile("ugc-tasks.json")));
+
+app.post("/ugc/tasks", (req, res) => {
+  const b = req.body || {};
+  const mode = b.mode === "speak" ? "speak" : "clip";
+  const tasks = readTaskFile("ugc-tasks.json");
+  const task = {
+    id: "ugc_" + Date.now().toString(36),
+    status: "pending",
+    mode,
+    image_url: b.image_url || "",
+    prompt: b.prompt || "",
+    script: b.script || "",
+    motion_preset: b.motion_preset || "ugc",
+    aspect_ratio: b.aspect_ratio || "9:16",
+    duration: b.duration || "",
+    quality: b.quality || "mid",
+    brand: b.brand || "",
+    description: b.description || "",
+    request_id: "",
+    result_url: "",
+    created_at: new Date().toISOString(),
+  };
+  tasks.unshift(task);
+  if (tasks.length > 50) tasks.length = 50;
+  writeTaskFile("ugc-tasks.json", tasks);
+  res.json({ ok: true, task });
+});
+
+app.patch("/ugc/tasks/:id", (req, res) => {
+  const tasks = readTaskFile("ugc-tasks.json");
+  const t = tasks.find(x => x.id === req.params.id);
+  if (!t) return res.status(404).json({ error: "not found" });
+  Object.assign(t, req.body || {});
+  writeTaskFile("ugc-tasks.json", tasks);
+  res.json({ ok: true, task: t });
+});
+
+app.delete("/ugc/tasks/:id", (req, res) => {
+  writeTaskFile("ugc-tasks.json", readTaskFile("ugc-tasks.json").filter(x => x.id !== req.params.id));
+  res.json({ ok: true });
+});
+
+// ── UGC IMAGE UPLOAD PROXY ──────────────────────────────────────────
+app.post("/ugc/upload", async (req, res) => {
+  try {
+    const { image_base64, format } = req.body || {};
+    if (!image_base64) return res.status(400).json({ error: "image_base64 required" });
+    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.upload, {
+      method: "POST", headers: higgsfieldHeaders(),
+      body: JSON.stringify({ image: image_base64, format: format || "jpeg" }),
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(502).json({ error: "upload failed", detail: data });
+    res.json({ url: data.url || data.image_url || "" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── MEDIA LIBRARY ─────────────────────────────
 const MEDIA_DIR = path.join(__dirname, "public", "media");
 
@@ -2087,17 +1981,6 @@ app.get("/settings/integrations", (_req, res) => {
       { label: "API Key", value: anthropicKey, secret: true },
       { label: "Model", value: "claude-sonnet-4-20250514" },
       { label: "Used by", value: "AI Chat, Research, Analyst, Designer (Claude engine)" },
-    ],
-  });
-
-  // 2. HeyGen
-  const heygenKey = process.env.HEYGEN_API_KEY || "";
-  integrations.push({
-    id: "heygen", status: heygenKey ? "connected" : "not-configured",
-    details: [
-      { label: "API Key", value: heygenKey, secret: true },
-      { label: "Endpoints", value: "v1 Video Agent, v2 Avatar Video" },
-      { label: "Used by", value: "Content Creator, Video Editor" },
     ],
   });
 
@@ -2194,6 +2077,17 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
+  // 9. Higgsfield
+  const higgsfieldKey = process.env.HIGGSFIELD_API_KEY || "";
+  integrations.push({
+    id: "higgsfield", status: higgsfieldKey ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: higgsfieldKey, secret: true },
+      { label: "Endpoint", value: "https://platform.higgsfield.ai" },
+      { label: "Used by", value: "UGC video generation — image-to-video and talking avatar" },
+    ],
+  });
+
   res.json({ integrations });
 });
 
@@ -2205,10 +2099,6 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       const client = new Anthropic();
       const msg = await client.messages.create({ model: "claude-sonnet-4-20250514", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
       res.json({ ok: true, message: `Model responded (${msg.usage.input_tokens + msg.usage.output_tokens} tokens)` });
-    } else if (id === "heygen") {
-      const r = await fetch("https://api.heygen.com/v2/avatars", { headers: { "X-Api-Key": process.env.HEYGEN_API_KEY } });
-      const d = await r.json();
-      res.json({ ok: r.ok, message: r.ok ? `${d.data?.avatars?.length || 0} avatars available` : d.message || "Auth failed" });
     } else if (id === "stripe") {
       const bal = await stripe.balance.retrieve();
       const amount = (bal.available?.[0]?.amount || 0) / 100;
@@ -2242,6 +2132,10 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
         res.json({ ok, message: ok ? "CLI authenticated & model available" : "CLI not authenticated" });
       });
       return;
+    } else if (id === "higgsfield") {
+      if (!process.env.HIGGSFIELD_API_KEY) return res.json({ ok: false, message: "HIGGSFIELD_API_KEY not set in .env" });
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.status("ping"), { headers: higgsfieldHeaders() });
+      res.json({ ok: r.status !== 401 && r.status !== 403, status: r.status, message: r.status !== 401 && r.status !== 403 ? "API key accepted" : "Auth failed" });
     } else {
       res.json({ ok: false, message: "Unknown integration" });
     }
@@ -3707,10 +3601,9 @@ app.delete("/notifications/:id", (req, res) => {
 const WATCHED_TASKS = {
   Designer: "designer-tasks.json",
   "Video Editor": "video-tasks.json",
-  "Content Creator": "avatar-tasks.json",
-  "Video Agent": "video-agent-tasks.json",
   Researcher: "research-tasks.json",
   "Script Writer": "scriptwriter-tasks.json",
+  "UGC Video": "ugc-tasks.json",
 };
 
 let prevSnapshot = {};
@@ -3739,18 +3632,14 @@ setInterval(() => {
     const justCompleted = prev && prev.status !== "completed" && cur.status === "completed";
     if (isNewAndCompleted || justCompleted) {
       const title = `${cur.agent} klaar`;
-      const heygenLink = cur.result_video_id ? `https://app.heygen.com/videos/${cur.result_video_id}` : null;
       let message = cur.desc || "Taak afgerond";
-      if (heygenLink) message += `\n\nVideo: ${heygenLink}`;
       if (cur.result_url) message += `\nDownload: ${cur.result_url}`;
       notifs.unshift({
         id: genId(), type: "task_completed", agent: cur.agent,
         title, message, severity: "success", read: false, created_at: new Date().toISOString(),
         result_url: cur.result_url || null,
-        heygen_url: heygenLink || null,
       });
-      const tgMsg = heygenLink ? `${cur.desc || "Taak afgerond"}\n\n🎬 ${heygenLink}` : (cur.desc || "Taak afgerond");
-      sendTelegram(title, tgMsg, "success");
+      sendTelegram(title, cur.desc || "Taak afgerond", "success");
       changed = true;
     }
     const isNewAndError = !prev && cur.status === "error";
@@ -3818,7 +3707,7 @@ app.get("/brand", (_req, res) => {
   const brand = loadBrand();
   brand.features = {
     telegram: !!TG_TOKEN,
-    heygen: !!process.env.HEYGEN_API_KEY,
+    higgsfield: !!process.env.HIGGSFIELD_API_KEY,
     stripe: !!process.env.STRIPE_SECRET_KEY,
     composio: !!process.env.COMPOSIO_API_KEY,
     youtube: !!process.env.YOUTUBE_API_KEY,
@@ -3840,7 +3729,7 @@ You are the central brain of the Command Center — you have access to ALL agent
 COMMAND CENTER AGENTS:
 - Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — video editing via Remotion
-- Content Creator — HeyGen avatar videos + AI Video Agent
+- Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Analyst — performance analyses, risk reports, daily reports
 - Researcher — trending content, competitor analysis, market research, keyword research
 - Script Writer — video scripts, social posts, threads, newsletters
@@ -3855,8 +3744,6 @@ You can:
 4. Propose content ideas and scripts
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
-   - create_avatar_video: produce an avatar video (Content Creator)
-   - create_video_agent: produce an AI-generated video (Video Agent)
    - create_script: write a script (Script Writer)
    - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
    - create_video_edit: edit a video via Remotion (Video Editor)
@@ -3881,7 +3768,7 @@ Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE a
 COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — Video editing via Remotion (React-based video)
-- Content Creator — HeyGen avatar video's + AI Video Agent
+- Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
 - Script Writer — Video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
@@ -3890,7 +3777,6 @@ COMMAND CENTER AGENTS:
 
 GEÏNSTALLEERDE SKILLS (48 totaal):
 Media & Design:
-  /create-video — Video maken via HeyGen prompt
   /avatar-video — Avatar video met exacte controle over script, stem, scenes
   /designer — Carousels, thumbnails, banners, infographics
   /nano-banana-2 — AI image generation via Google Gemini Flash
@@ -3957,8 +3843,6 @@ Je kunt:
 5. Content ideeën en scripts voorstellen
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
-   - create_avatar_video: Avatar video laten maken (Content Creator)
-   - create_video_agent: AI-gegenereerde video laten maken (Video Agent)
    - create_script: Script laten schrijven (Script Writer)
    - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
@@ -4026,54 +3910,10 @@ app.post("/ctrl/chat", async (req, res) => {
   try {
     const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext();
 
-    const _av = getAvatarsConfig();
-    const _avatarDesc = _av.default_avatar_id
-      ? `Avatar ID. Default: ${_av.default_avatar_id}${_av.default_avatar_label ? ` (${_av.default_avatar_label})` : ""}`
-      : "Avatar ID (see data/avatars.json for available options).";
-    const _voiceDesc = (() => {
-      let base = _av.default_voice_id
-        ? `Voice ID. Default: ${_av.default_voice_id}${_av.default_voice_label ? ` (${_av.default_voice_label})` : ""}`
-        : "Voice ID (see data/avatars.json for available options).";
-      const extra = Array.isArray(_av.voices) ? _av.voices.filter(v => v.id !== _av.default_voice_id) : [];
-      if (extra.length) base += ". Other options: " + extra.map(v => `${v.id} (${v.label})`).join(", ");
-      return base;
-    })();
-
     const agentTools = [
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
       // Browser automation tools (Playwright)
       ...BROWSER_TOOLS.map(t => ({ type: "custom", ...t })),
-      {
-        type: "custom",
-        name: "create_avatar_video",
-        description: "Maak een avatar video task aan bij de Content Creator agent. De avatar spreekt het opgegeven script in.",
-        input_schema: {
-          type: "object",
-          properties: {
-            script: { type: "string", description: "Het volledige script dat de avatar moet spreken" },
-            description: { type: "string", description: "Korte beschrijving van de video (bijv. 'Trading recap voor TikTok')" },
-            avatar_id: { type: "string", description: _avatarDesc },
-            voice_id: { type: "string", description: _voiceDesc },
-            voice_engine: { type: "string", enum: ["panda", "coral"], description: `Voice engine. Default: ${_av.default_voice_engine || "panda"}` },
-          },
-          required: ["script", "description"],
-        },
-      },
-      {
-        type: "custom",
-        name: "create_video_agent",
-        description: "Maak een Video Agent task aan. AI genereert automatisch een complete video op basis van een prompt (script, avatar, visuals, voiceover).",
-        input_schema: {
-          type: "object",
-          properties: {
-            prompt: { type: "string", description: "Beschrijving van de gewenste video" },
-            duration_sec: { type: "integer", description: "Gewenste duur in seconden (5-300). Standaard: 30" },
-            orientation: { type: "string", enum: ["portrait", "landscape"], description: "Orientatie. Standaard: portrait" },
-            avatar_id: { type: "string", description: "Optioneel: specifiek avatar ID" },
-          },
-          required: ["prompt"],
-        },
-      },
       {
         type: "custom",
         name: "create_script",
@@ -4323,6 +4163,24 @@ app.post("/ctrl/chat", async (req, res) => {
       },
       {
         type: "custom",
+        name: "create_ugc_video",
+        description: "Create a UGC video via Higgsfield. mode 'clip' animates an image with a UGC motion preset; mode 'speak' makes a talking avatar from an image + script (built-in TTS).",
+        input_schema: {
+          type: "object",
+          properties: {
+            mode: { type: "string", enum: ["clip", "speak"] },
+            image_url: { type: "string", description: "URL of the source/product/avatar image" },
+            prompt: { type: "string", description: "Clip mode: animation prompt" },
+            script: { type: "string", description: "Speak mode: the script the avatar speaks" },
+            motion_preset: { type: "string", description: "Clip mode preset, e.g. ugc, unboxing, product-review" },
+            aspect_ratio: { type: "string", enum: ["9:16", "1:1", "16:9"] },
+            description: { type: "string" },
+          },
+          required: ["mode", "image_url"],
+        },
+      },
+      {
+        type: "custom",
         name: "run_skill",
         description: `Voer een skill uit met een prompt. Gebruik dit voor taken die een specifieke skill vereisen, zoals SEO audits, CRO analyses, content strategie, brainstorming, design briefs, plan writing, etc.
 
@@ -4352,26 +4210,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
 
     // Map tool names to internal API endpoints and body builders
     const TOOL_ACTIONS = {
-      create_avatar_video: (input) => ({
-        url: "http://localhost:3004/avatar/tasks",
-        body: {
-          script: input.script,
-          description: input.description,
-          avatar_id: input.avatar_id || defaultAvatarId(),
-          voice_id: input.voice_id || defaultVoiceId(),
-          voice_engine: input.voice_engine || "panda",
-        },
-      }),
-      create_video_agent: (input) => ({
-        url: "http://localhost:3004/video-agent/tasks",
-        body: {
-          prompt: input.prompt,
-          duration_sec: input.duration_sec || 30,
-          orientation: input.orientation || "portrait",
-          avatar_id: input.avatar_id || null,
-          description: (input.prompt || "").substring(0, 60),
-        },
-      }),
       create_script: (input) => ({
         url: "http://localhost:3004/scriptwriter/tasks",
         body: {
@@ -4620,6 +4458,18 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         method: "GET",
         isOpusclip: true,
         opusclipTaskId: input.task_id || null,
+      }),
+      create_ugc_video: (input) => ({
+        url: "http://localhost:3004/ugc/tasks",
+        body: {
+          mode: input.mode || "clip",
+          image_url: input.image_url,
+          prompt: input.prompt || "",
+          script: input.script || "",
+          motion_preset: input.motion_preset || "ugc",
+          aspect_ratio: input.aspect_ratio || "9:16",
+          description: input.description || "",
+        },
       }),
     };
 
@@ -5232,7 +5082,7 @@ ${skillList}
 
 TOOLS:
 - load_marketing_skill: Load a specific marketing skill for detailed frameworks and methodologies. Always load 1-3 relevant skills before advising. Use the skill slug as parameter.
-- create_marketing_task: Create a task for another agent to execute (designer, scriptwriter, researcher, content_creator).
+- create_marketing_task: Create a task for another agent to execute (designer, scriptwriter, researcher).
 
 RULES:
 - Reply in the user's language. Be strategic but practical — give concrete action items, not vague advice.
@@ -5250,7 +5100,7 @@ ${skillList}
 
 TOOLS:
 - load_marketing_skill: Laad een specifieke marketing skill voor gedetailleerde frameworks en methodologieën. Laad ALTIJD 1-3 relevante skills voordat je advies geeft. Gebruik de skill slug als parameter.
-- create_marketing_task: Maak een taak aan die door andere agents uitgevoerd kan worden (designer, scriptwriter, researcher, content_creator).
+- create_marketing_task: Maak een taak aan die door andere agents uitgevoerd kan worden (designer, scriptwriter, researcher).
 
 REGELS:
 - Spreek Nederlands tenzij de gebruiker Engels praat.
@@ -5275,11 +5125,11 @@ const MARKETEER_TOOLS = [
   },
   {
     name: "create_marketing_task",
-    description: "Create a task for another agent to execute: designer (visual assets), scriptwriter (scripts/copy), researcher (market research), content_creator (video content).",
+    description: "Create a task for another agent to execute: designer (visual assets), scriptwriter (scripts/copy), researcher (market research).",
     input_schema: {
       type: "object",
       properties: {
-        agent: { type: "string", enum: ["designer", "scriptwriter", "researcher", "content_creator"], description: "Which agent should execute this task" },
+        agent: { type: "string", enum: ["designer", "scriptwriter", "researcher"], description: "Which agent should execute this task" },
         description: { type: "string", description: "What the task should produce" },
       },
       required: ["agent", "description"],
@@ -5291,7 +5141,6 @@ const MARKETEER_TASK_APIS = {
   designer: "/designer/tasks",
   scriptwriter: "/scriptwriter/tasks",
   researcher: "/research/tasks",
-  content_creator: "/avatar/tasks",
 };
 
 app.get("/marketeer/status", (_req, res) => {
@@ -5626,162 +5475,72 @@ app.get("/canva/brand-kits", async (_req, res) => {
 });
 
 // ── TASK WORKERS (auto-execute pending tasks) ─────────
-const HEYGEN_KEY = process.env.HEYGEN_API_KEY;
-const HEYGEN_HEADERS = { "X-Api-Key": HEYGEN_KEY, "Content-Type": "application/json" };
+
+// ── HIGGSFIELD CONFIG ────────────────────────────────────────────────
+// Credentials are a single "KEY_ID:KEY_SECRET" string in HIGGSFIELD_API_KEY.
+// Field names / enums below are the one place to adjust against the live API.
+const HIGGSFIELD = {
+  base: "https://platform.higgsfield.ai",
+  endpoints: {
+    clip:   "/v1/image2video/dop",     // image-to-video (UGC motion presets)
+    speak:  "/v1/speak/higgsfield",    // talking avatar, built-in TTS (Speak 2.0)
+    upload: "/v1/uploads/image",       // returns hosted image URL
+    status: (id) => `/requests/${id}/status`,
+  },
+  // Default UGC motion presets shown in the Clip-mode dropdown.
+  motionPresets: ["ugc", "unboxing", "product-review", "hyper-motion", "tv-spot"],
+};
+function higgsfieldHeaders() {
+  const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
+  return { "Authorization": `Key ${creds}`, "Content-Type": "application/json" };
+}
 
 // Track which tasks are already being processed to avoid duplicates
 const processingTasks = new Set();
 
-async function processAvatarTasks() {
-  const tasks = readTaskFile("avatar-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing avatar task ${task.id}`);
-
+// ── UGC WORKER — submit pending tasks to Higgsfield ─────────────────
+async function processUgcTasks() {
+  const tasks = readTaskFile("ugc-tasks.json");
+  let changed = false;
+  for (const t of tasks) {
+    if (t.status !== "pending" || processingTasks.has(t.id)) continue;
+    processingTasks.add(t.id);
     try {
-      // Update to processing
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("avatar-tasks.json", tasks);
-
-      // Resolve avatar/voice, falling back to configured defaults
-      const avatarId = task.avatar_id || defaultAvatarId();
-      const voiceId = task.voice_id || defaultVoiceId();
-      if (!HEYGEN_KEY) throw new Error("No HeyGen API key configured. Add HEYGEN_API_KEY to your .env and restart.");
-      if (!avatarId) throw new Error("No avatar selected. Pick an avatar before generating.");
-      if (!voiceId) throw new Error("No voice selected. Pick a voice before generating.");
-
-      // Call HeyGen API
-      const res = await fetch("https://api.heygen.com/v2/video/generate", {
-        method: "POST",
-        headers: HEYGEN_HEADERS,
-        body: JSON.stringify({
-          video_inputs: [{
-            character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
-            voice: {
-              type: "text",
-              input_text: task.script,
-              voice_id: voiceId,
-              voice_engine: task.voice_engine || defaultVoiceEngine(),
-            },
-          }],
-          dimension: { width: 1080, height: 1920 },
-        }),
-      });
-      const json = await res.json();
-
-      if (!res.ok || json.error || !json.data?.video_id) {
-        let m = json.error?.message || json.error || `HeyGen HTTP ${res.status}` || "No video_id returned";
-        if (res.status === 401 || res.status === 403 || /unauthor/i.test(String(m))) {
-          m = "HeyGen rejected the request (unauthorized). The selected avatar or voice does not belong to your HeyGen account, or your API key is invalid/has no video access.";
-        }
-        throw new Error(m);
-      }
-
-      task.result_video_id = json.data.video_id;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("avatar-tasks.json", tasks);
-      console.log(`[WORKER] Avatar task ${task.id} submitted to HeyGen: ${json.data.video_id}`);
-    } catch (e) {
-      console.error(`[WORKER] Avatar task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("avatar-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
+      const isSpeak = t.mode === "speak";
+      const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
+      const body = isSpeak
+        ? { input_image: t.image_url, script: t.script, quality: t.quality, duration: t.duration }
+        : { input_image: t.image_url, prompt: t.prompt, motion: t.motion_preset, aspect_ratio: t.aspect_ratio, duration: t.duration };
+      const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify(body) });
+      const data = await r.json();
+      if (!r.ok) { t.status = "failed"; t.error = JSON.stringify(data).slice(0, 300); }
+      else { t.request_id = data.request_id || data.id || ""; t.status = "processing"; }
+      changed = true;
+      processingTasks.delete(t.id);
+    } catch (e) { t.status = "failed"; t.error = e.message; changed = true; processingTasks.delete(t.id); }
   }
+  if (changed) writeTaskFile("ugc-tasks.json", tasks);
 }
 
-async function processVideoAgentTasks() {
-  const tasks = readTaskFile("video-agent-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing video agent task ${task.id}`);
-
+// ── UGC WORKER — poll processing tasks ──────────────────────────────
+async function pollUgcStatus() {
+  const tasks = readTaskFile("ugc-tasks.json");
+  let changed = false;
+  for (const t of tasks) {
+    if (t.status !== "processing" || !t.request_id) continue;
     try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("video-agent-tasks.json", tasks);
-
-      const body = { prompt: task.prompt };
-      const config = {};
-      if (task.duration_sec) config.duration_sec = task.duration_sec;
-      if (task.orientation) config.orientation = task.orientation;
-      if (task.avatar_id) config.avatar_id = task.avatar_id;
-      if (Object.keys(config).length) body.config = config;
-
-      const res = await fetch("https://api.heygen.com/v1/video_agent/generate", {
-        method: "POST",
-        headers: HEYGEN_HEADERS,
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-
-      if (json.error || !json.data?.video_id) {
-        throw new Error(json.error?.message || json.error || "No video_id returned");
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.status(t.request_id), { headers: higgsfieldHeaders() });
+      const data = await r.json();
+      if (data.status === "completed") {
+        t.status = "completed";
+        t.result_url = (data.video && data.video.url) || data.url || "";
+        changed = true;
+      } else if (data.status === "failed" || data.status === "nsfw") {
+        t.status = "failed"; t.error = data.status; changed = true;
       }
-
-      task.result_video_id = json.data.video_id;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("video-agent-tasks.json", tasks);
-      console.log(`[WORKER] Video agent task ${task.id} submitted to HeyGen: ${json.data.video_id}`);
-    } catch (e) {
-      console.error(`[WORKER] Video agent task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("video-agent-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
+    } catch (e) { /* transient — retry next tick */ }
   }
-}
-
-// Poll HeyGen for video completion
-async function pollVideoStatus() {
-  const taskFiles = [
-    { file: "avatar-tasks.json", label: "avatar" },
-    { file: "video-agent-tasks.json", label: "video-agent" },
-  ];
-
-  for (const { file, label } of taskFiles) {
-    const tasks = readTaskFile(file);
-    let changed = false;
-
-    for (const task of tasks) {
-      if (task.status !== "processing" || !task.result_video_id) continue;
-
-      try {
-        const res = await fetch(`https://api.heygen.com/v2/videos/${task.result_video_id}`, {
-          headers: { "X-Api-Key": HEYGEN_KEY },
-        });
-        const json = await res.json();
-        const video = json.data;
-
-        if (video.status === "completed") {
-          task.status = "completed";
-          task.result_url = video.video_url || null;
-          task.updated_at = new Date().toISOString();
-          changed = true;
-          processingTasks.delete(task.id);
-          console.log(`[WORKER] ${label} task ${task.id} completed: ${task.result_url}`);
-        } else if (video.status === "failed") {
-          task.status = "failed";
-          task.error = video.failure_message || "Video generation failed";
-          task.updated_at = new Date().toISOString();
-          changed = true;
-          processingTasks.delete(task.id);
-          console.error(`[WORKER] ${label} task ${task.id} failed: ${task.error}`);
-        }
-      } catch (e) {
-        console.error(`[WORKER] Poll error for ${label} task ${task.id}:`, e.message);
-      }
-    }
-
-    if (changed) writeTaskFile(file, tasks);
-  }
+  if (changed) writeTaskFile("ugc-tasks.json", tasks);
 }
 
 // ── SCRIPT WRITER WORKER (Claude) ──
@@ -6520,32 +6279,28 @@ async function processCommunityTasks() {
 
 // Run workers every 15 seconds
 setInterval(() => {
-  processAvatarTasks().catch(e => console.error("[WORKER] Avatar error:", e.message));
-  processVideoAgentTasks().catch(e => console.error("[WORKER] Video agent error:", e.message));
   processScriptwriterTasks().catch(e => console.error("[WORKER] Scriptwriter error:", e.message));
   processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
   processSeoTasks().catch(e => console.error("[WORKER] SEO error:", e.message));
   processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
+  processUgcTasks().catch(e => console.error("[WORKER] UGC error:", e.message));
 }, 15_000);
 
-// Poll video status every 30 seconds
-setInterval(() => {
-  pollVideoStatus().catch(e => console.error("[WORKER] Poll error:", e.message));
-}, 30_000);
+// Poll Higgsfield status every 30 seconds
+setInterval(pollUgcStatus, 30_000);
 
 // Run once on startup
 setTimeout(() => {
-  processAvatarTasks().catch(() => {});
-  processVideoAgentTasks().catch(() => {});
   processScriptwriterTasks().catch(() => {});
   processResearchTasks().catch(() => {});
   processSeoTasks().catch(() => {});
   processOpusclipTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
-  pollVideoStatus().catch(() => {});
+  processUgcTasks().catch(() => {});
+  pollUgcStatus().catch(() => {});
 }, 3000);
 
 // ── STRIPE REVENUE ───────────────────────────

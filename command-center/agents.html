@@ -389,7 +389,7 @@ const AI_TEAM = [
   { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
-  { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'HeyGen Avatar, Video Agent & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/avatar/tasks', '/video-agent/tasks', '/opusclip/tasks'], type: 'CONTENT' },
+  { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'Higgsfield UGC & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/ugc/tasks', '/opusclip/tasks'], type: 'CONTENT' },
   { name: 'SCRIPT WRITER', emoji: '\u270D\uFE0F', role: 'Video & Content Scripts', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', taskApi: '/scriptwriter/tasks', type: 'SCRIPT' },
   { name: 'SEO', emoji: '\u{1F50E}', role: 'Site Audit & Optimization', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', taskApi: '/seo/tasks', type: 'SEO' },
   { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
@@ -594,8 +594,7 @@ async function loadAiTeam() {
 // ── TASK FEED ──
 async function loadAllTasks() {
   const sources = [
-    { api: '/avatar/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Avatar' },
-    { api: '/video-agent/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Video Agent' },
+    { api: '/ugc/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'UGC' },
     { api: '/scriptwriter/tasks', agent: 'SCRIPT WRITER', type: 'SCRIPT' },
     { api: '/designer/tasks', agent: 'DESIGNER', type: 'DESIGN' },
     { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },

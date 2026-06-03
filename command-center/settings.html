@@ -545,24 +545,26 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
         </div>
 
-        <!-- HeyGen -->
+        <!-- Higgsfield -->
         <div class="cfg-card">
           <div class="cfg-card-head">
-            <div class="cfg-card-icon" style="background:hsla(155 70% 45%/0.12);border:1px solid hsla(155 70% 45%/0.3);color:hsl(155 70% 55%)">H</div>
+            <div class="cfg-card-icon" style="background:hsla(264 65% 49% / 0.15);color:var(--primary);">H</div>
             <div class="cfg-card-meta">
               <div class="cfg-card-title-row">
-                <div class="cfg-card-title">HeyGen</div>
+                <div class="cfg-card-title">Higgsfield</div>
                 <span class="cfg-pill optional">Optional</span>
               </div>
-              <div class="cfg-card-desc">AI avatar + video generation in the Video Editor.</div>
+              <div class="cfg-card-desc">AI UGC video generation in the Content Creator.</div>
             </div>
-            <span class="cfg-pill empty" id="cfg-status-heygen">Not set</span>
+            <span class="cfg-pill empty" id="cfg-status-higgsfield">Not set</span>
           </div>
           <div class="cfg-fields">
             <div class="cfg-field">
               <div class="cfg-field-label">API Key</div>
-              <input type="password" id="cfg-heygen" class="cfg-input" placeholder="Current kept if empty">
-              <div class="cfg-field-hint">Get it at <a href="https://app.heygen.com/settings" target="_blank">app.heygen.com</a>.</div>
+              <input type="password" id="cfg-higgsfield" class="cfg-input" placeholder="KEY_ID:KEY_SECRET — kept if empty">
+              <div class="cfg-field-hint">Get it at
+                <a href="https://cloud.higgsfield.ai/api-keys" target="_blank">cloud.higgsfield.ai</a>.
+              </div>
             </div>
           </div>
         </div>
@@ -705,7 +707,7 @@ function iconBg(color) {
 
 const SERVICE_META = {
   anthropic: { icon: '🧠', color: '264 65% 49%', label: 'Anthropic / Claude', desc: 'AI chat, research, design generation' },
-  heygen: { icon: '🎬', color: '210 90% 55%', label: 'HeyGen', desc: 'AI avatar video generation' },
+  higgsfield: { icon: '🎬', color: '264 65% 49%', label: 'Higgsfield', desc: 'AI UGC video generation' },
   stripe: { icon: '💳', color: '265 65% 60%', label: 'Stripe', desc: 'Payments, subscriptions & revenue' },
   canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Brand templates via Canva Connect API' },
   telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
@@ -927,7 +929,7 @@ async function loadConfig() {
         }
       };
       showMasked('cfg-anthropic', d.integrations.anthropic);
-      showMasked('cfg-heygen', d.integrations.heygen);
+      showMasked('cfg-higgsfield', d.integrations.higgsfield);
       showMasked('cfg-stripe', d.integrations.stripe);
       // Stripe webhook secret + dynamic webhook URL hint
       if (d.integrations.stripe) {
@@ -1045,7 +1047,7 @@ async function loadConfig() {
       setStatus('cfg-status-composio', ...triState([ig.composio && ig.composio.has_key]));
       setStatus('cfg-status-youtube', ...triState([ig.youtube && ig.youtube.has_key]));
       setStatus('cfg-status-inference', ...triState([ig.inference && ig.inference.has_key]));
-      setStatus('cfg-status-heygen', ...triState([ig.heygen && ig.heygen.has_key]));
+      setStatus('cfg-status-higgsfield', ...triState([ig.higgsfield && ig.higgsfield.has_key]));
       setStatus('cfg-status-opusclip', ...triState([ig.opusclip && ig.opusclip.has_key]));
     }
   } catch {}
@@ -1071,7 +1073,7 @@ async function saveConfig() {
 
   const fields = {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
-    heygen_key: 'cfg-heygen', stripe_key: 'cfg-stripe', stripe_webhook_secret: 'cfg-stripe-webhook-secret', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
+    higgsfield_key: 'cfg-higgsfield', stripe_key: 'cfg-stripe', stripe_webhook_secret: 'cfg-stripe-webhook-secret', inference_key: 'cfg-inference', composio_key: 'cfg-composio',
     meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect',
     canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
@@ -1100,12 +1102,9 @@ async function saveConfig() {
 // ── INSTALLED SKILLS ──────────────────────────
 const SKILLS = [
   // ── Media & Design ──
-  { icon: '🎬', color: '210 90% 55%', name: 'Create Video', cat: 'media',
-    desc: 'Create videos from a text prompt using HeyGen\'s Video Agent',
-    command: '/create-video', tags: ['HeyGen', 'Video'] },
-  { icon: '🧑‍💼', color: '265 65% 60%', name: 'Avatar Video', cat: 'media',
-    desc: 'Precise control over avatars, voices, scripts, scenes & backgrounds via HeyGen v2',
-    command: '/avatar-video', tags: ['HeyGen', 'Avatar'] },
+  { icon: '🎬', color: '264 65% 49%', name: 'UGC Video', cat: 'media',
+    desc: 'Create UGC videos (clip or talking avatar) via Higgsfield',
+    command: '/ugc', tags: ['Higgsfield', 'Video'] },
   { icon: '🎨', color: '142 70% 40%', name: 'Designer', cat: 'media',
     desc: 'Create carousels, thumbnails, banners & infographics for social media',
     command: '/designer', tags: ['Canva', 'Nano Banana', 'Playwright'] },

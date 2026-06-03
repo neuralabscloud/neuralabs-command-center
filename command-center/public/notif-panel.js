@@ -131,7 +131,7 @@
       // Build message: strip URLs from text, show as buttons
       let msgText = (n.message || '').replace(/\n?(Video|Download): https?:\/\/\S+/g, '').trim();
       let links = '';
-      if (n.heygen_url) links += `<a class="notif-link" href="${n.heygen_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open in HeyGen</a> `;
+      if (n.higgsfield_url) links += `<a class="notif-link" href="${n.higgsfield_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open video</a> `;
       if (n.result_url) links += `<a class="notif-link" href="${n.result_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Download video</a>`;
 
       return `<div class="notif-item ${n.read ? '' : 'unread'}" onclick="notifMarkRead('${n.id}', this)">

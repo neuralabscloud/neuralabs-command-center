@@ -71,14 +71,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .mode-tab { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text-dim); font-size: 12px; font-weight: 500; font-family: var(--font-data); cursor: pointer; transition: all 0.2s; }
 .mode-tab svg { width: 15px; height: 15px; }
 .mode-tab:hover { color: var(--text); background: hsla(0 0% 100% / 0.03); }
-.mode-tab.active[data-mode="avatar"] { color: var(--teal); background: hsla(180 70% 45% / 0.08); border-color: hsla(180 70% 45% / 0.25); }
-.mode-tab.active[data-mode="agent"] { color: var(--primary); background: hsla(264 65% 49% / 0.08); border-color: hsla(264 65% 49% / 0.25); }
+.mode-tab.active[data-mode="ugc"] { color: hsl(174 72% 56%); background: hsla(174 72% 56% / 0.1); border-color: hsla(174 72% 56% / 0.25); }
 .mode-tab.active[data-mode="clipper"] { color: var(--danger); background: hsla(0 72% 51% / 0.08); border-color: hsla(0 72% 51% / 0.25); }
-.task-badge.agent { color: var(--primary); background: hsla(264 65% 49% / 0.08); }
-.task-badge.agent::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.ugc-mode-btn { padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);font-size:12px;cursor:pointer; }
+.ugc-mode-btn.active { color: hsl(174 72% 56%); border-color: hsl(174 72% 56%); background: hsla(174 72% 56% / 0.1); }
 .task-type-tag { font-family: var(--font-data); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
-.task-type-tag.avatar { color: var(--teal); background: hsla(180 70% 45% / 0.08); }
-.task-type-tag.agent { color: var(--primary); background: hsla(264 65% 49% / 0.08); }
+.task-type-tag.ugc { color: hsl(174 72% 56%); background: hsla(174 72% 56% / 0.08); }
 .task-type-tag.clipper { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
 .clips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
 .clip-card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -89,26 +87,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .clip-actions a { flex: 1; text-align: center; font-size: 10px; padding: 5px 8px; border-radius: 5px; background: hsla(0 72% 51% / 0.08); color: var(--danger); text-decoration: none; font-family: var(--font-data); border: 1px solid hsla(0 72% 51% / 0.2); }
 .clip-actions a:hover { background: hsla(0 72% 51% / 0.15); }
 .stage-pill { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); background: hsla(0 0% 100% / 0.04); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
-.avatar-picker { position: relative; }
-.avatar-picker-input { width: 100%; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 13px; font-family: var(--font-body); outline: none; transition: border-color 0.2s; }
-.avatar-picker-input:focus { border-color: var(--teal); }
-.avatar-picker-input::placeholder { color: var(--text-dim); }
-.avatar-dropdown { position: absolute; top: 100%; left: 0; right: 0; max-height: 280px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; z-index: 50; display: none; }
-.avatar-dropdown.open { display: block; }
-.avatar-option { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; transition: background 0.15s; }
-.avatar-option:hover { background: hsla(0 0% 100% / 0.04); }
-.avatar-option.selected { background: hsla(180 70% 45% / 0.08); }
-.avatar-option img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; background: var(--bg-surface); }
-.avatar-option-name { font-size: 12px; color: var(--text); }
-.avatar-option-meta { font-size: 10px; color: var(--text-dim); font-family: var(--font-data); }
-.avatar-option-custom { font-size: 9px; color: var(--teal); font-family: var(--font-data); font-weight: 600; text-transform: uppercase; }
-.avatar-filters { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-.avatar-filter-btn { padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--text-dim); font-size: 10px; font-family: var(--font-data); cursor: pointer; transition: all 0.15s; }
-.avatar-filter-btn.active { color: var(--teal); border-color: hsla(180 70% 45% / 0.3); background: hsla(180 70% 45% / 0.08); }
-.avatar-selected { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.avatar-selected img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
-.avatar-selected-name { font-size: 11px; color: var(--text-dim); font-family: var(--font-data); }
-.avatar-clear { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; margin-left: auto; }
 ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
 /* ── RESPONSIVE: MOBILE ── */
@@ -164,19 +142,15 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   <main class="main">
     <div class="fade-up delay-1">
       <div class="header-title">CONTENT CREATOR</div>
-      <div class="header-sub">HeyGen AI video generation</div>
+      <div class="header-sub">Higgsfield UGC video generation</div>
     </div>
 
     <!-- MODE TABS -->
     <section class="fade-up delay-2">
       <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="avatar" onclick="switchMode('avatar')">
+        <button class="mode-tab active" data-mode="ugc" onclick="switchMode('ugc')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-          Avatar Video
-        </button>
-        <button class="mode-tab" data-mode="agent" onclick="switchMode('agent')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-3.5-6.5L16 7m-8 10l-1.5 1.5M20.5 17.5L19 16M5 7L3.5 5.5"/><circle cx="12" cy="12" r="3"/></svg>
-          Video Agent
+          UGC
         </button>
         <button class="mode-tab" data-mode="clipper" onclick="switchMode('clipper')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
@@ -185,102 +159,81 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
-    <!-- AVATAR VIDEO FORM -->
-    <section class="fade-up delay-2" id="form-avatar">
-      <div class="section-header">New Avatar Video</div>
+    <!-- UGC FORM (Higgsfield) -->
+    <section class="fade-up delay-2" id="form-ugc">
+      <div class="section-header">New UGC Video</div>
       <div class="task-form">
-        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;">
-          <div>
-            <div class="form-label">Avatar</div>
-            <div class="avatar-picker" id="avatar-picker-cc">
-              <div class="avatar-selected" style="display:none;"></div>
-              <input type="hidden" id="cc-avatar" value="" />
-              <input class="avatar-picker-input" placeholder="Search avatars..." autocomplete="off" />
-              <div class="avatar-dropdown"></div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button type="button" class="ugc-mode-btn active" data-ugcmode="clip" onclick="setUgcMode('clip')">Clip (image → video)</button>
+          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" onclick="setUgcMode('speak')">Talking Avatar</button>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="form-label">Image (URL or upload)</div>
+          <input class="form-input" id="ugc-image" placeholder="https://... product or avatar image" autocomplete="off" />
+          <input type="file" id="ugc-file" accept="image/*" style="margin-top:8px;font-size:12px;" onchange="uploadUgcImage()" />
+          <span id="ugc-upload-status" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+        <div id="ugc-clip-fields">
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Prompt</div>
+            <textarea class="form-textarea" id="ugc-prompt" placeholder="Describe the UGC clip / motion..."></textarea>
+          </div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+            <div>
+              <div class="form-label">Motion preset</div>
+              <select class="form-select" id="ugc-preset">
+                <option value="ugc" selected>UGC</option>
+                <option value="unboxing">Unboxing</option>
+                <option value="product-review">Product review</option>
+                <option value="hyper-motion">Hyper motion</option>
+                <option value="tv-spot">TV spot</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-label">Aspect ratio</div>
+              <select class="form-select" id="ugc-aspect">
+                <option value="9:16" selected>Portrait (9:16)</option>
+                <option value="1:1">Square (1:1)</option>
+                <option value="16:9">Landscape (16:9)</option>
+              </select>
             </div>
           </div>
-          <div>
-            <div class="form-label">Voice</div>
-            <select class="form-select" id="cc-voice">
-              <option value="">Loading voices…</option>
-            </select>
+        </div>
+        <div id="ugc-speak-fields" style="display:none;">
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Script (avatar speaks this — built-in voice)</div>
+            <textarea class="form-textarea" id="ugc-script" placeholder="Write the script the avatar should perform..."></textarea>
           </div>
-          <div>
-            <div class="form-label">Voice Engine</div>
-            <select class="form-select" id="cc-engine">
-              <option value="panda" selected>Panda (Best)</option>
-              <option value="coral">Coral</option>
-            </select>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+            <div>
+              <div class="form-label">Quality</div>
+              <select class="form-select" id="ugc-quality">
+                <option value="mid" selected>Mid</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-label">Duration</div>
+              <select class="form-select" id="ugc-duration">
+                <option value="short" selected>Short</option>
+                <option value="long">Long</option>
+              </select>
+            </div>
           </div>
         </div>
-        <div class="form-grid" style="grid-template-columns:2fr 1fr;">
+        <div class="form-grid" style="grid-template-columns:2fr 1fr;margin-top:16px;">
           <div>
             <div class="form-label">Description (what is this video for?)</div>
-            <input class="form-input" id="cc-desc" placeholder="e.g. Daily trading recap for TikTok, Education video about funding rates..." />
+            <input class="form-input" id="ugc-desc" placeholder="e.g. TikTok product ad" />
           </div>
           <div>
             <div class="form-label">Brand</div>
             <select class="form-select cc-brand-select"></select>
-          </div>
-        </div>
-        <div style="margin-bottom:16px;">
-          <div class="form-label">Script</div>
-          <textarea class="form-textarea" id="cc-script" placeholder="Write the full script the avatar should speak..."></textarea>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button class="btn-submit" id="cc-submit" onclick="submitAvatarTask()">Submit Avatar Video</button>
-          <span id="cc-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
-        </div>
-      </div>
-    </section>
-
-    <!-- VIDEO AGENT FORM -->
-    <section class="fade-up delay-2" id="form-agent" style="display:none;">
-      <div class="section-header">New Video Agent</div>
-      <div class="task-form">
-        <div style="margin-bottom:16px;padding:12px 16px;background:hsla(264 65% 49% / 0.06);border:1px solid hsla(264 65% 49% / 0.15);border-radius:8px;">
-          <div style="font-size:11px;color:var(--primary);font-family:var(--font-data);font-weight:600;margin-bottom:4px;">AI-POWERED</div>
-          <div style="font-size:12px;color:var(--text-dim);">Beschrijf wat je wilt en de AI regelt script, avatar, visuals, voiceover en pacing automatisch.</div>
-        </div>
-        <div style="margin-bottom:16px;">
-          <div class="form-label">Prompt (beschrijf je video)</div>
-          <textarea class="form-textarea" id="va-prompt" style="min-height:120px;" placeholder="e.g. Maak een 30 seconden UGC-style video over crypto trading tips voor beginners. Casual toon, gericht op Gen-Z TikTok publiek..."></textarea>
-        </div>
-        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;">
-          <div>
-            <div class="form-label">Brand</div>
-            <select class="form-select cc-brand-select"></select>
-          </div>
-          <div>
-            <div class="form-label">Duur (seconden)</div>
-            <select class="form-select" id="va-duration">
-              <option value="15">15s — Quick hook</option>
-              <option value="30" selected>30s — Short-form</option>
-              <option value="60">60s — Standard</option>
-              <option value="90">90s — Extended</option>
-              <option value="120">120s — Long-form</option>
-            </select>
-          </div>
-          <div>
-            <div class="form-label">Orientatie</div>
-            <select class="form-select" id="va-orientation">
-              <option value="portrait" selected>Portrait (9:16)</option>
-              <option value="landscape">Landscape (16:9)</option>
-            </select>
-          </div>
-          <div>
-            <div class="form-label">Avatar (optioneel)</div>
-            <div class="avatar-picker" id="avatar-picker-va">
-              <div class="avatar-selected" style="display:none;"></div>
-              <input type="hidden" id="va-avatar" value="" />
-              <input class="avatar-picker-input" placeholder="AI kiest, of zoek avatar..." autocomplete="off" />
-              <div class="avatar-dropdown"></div>
-            </div>
           </div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
-          <button class="btn-submit" id="va-submit" onclick="submitAgentTask()" style="background:linear-gradient(135deg, var(--primary), var(--premium));">Submit Video Agent</button>
-          <span id="va-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+          <button class="btn-submit" id="ugc-submit" onclick="submitUgcTask()">Submit UGC Video</button>
+          <span id="ugc-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
         </div>
       </div>
     </section>
@@ -348,17 +301,62 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 </div>
 
 <script>
-const API_AVATAR = '/avatar/tasks';
-const API_AGENT = '/video-agent/tasks';
+const API_UGC = '/ugc/tasks';
 const API_CLIPPER = '/opusclip/tasks';
 
-let currentMode = 'avatar';
+let currentMode = 'ugc';
+let ugcMode = 'clip';
+
+function setUgcMode(m) {
+  ugcMode = m;
+  document.querySelectorAll('.ugc-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.ugcmode === m));
+  document.getElementById('ugc-clip-fields').style.display  = m === 'clip'  ? '' : 'none';
+  document.getElementById('ugc-speak-fields').style.display = m === 'speak' ? '' : 'none';
+}
+
+async function uploadUgcImage() {
+  const f = document.getElementById('ugc-file').files[0];
+  if (!f) return;
+  const st = document.getElementById('ugc-upload-status');
+  st.textContent = 'Uploading…';
+  const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(f); });
+  try {
+    const res = await fetch('/ugc/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: b64, format: (f.type.split('/')[1] || 'jpeg') }) });
+    const d = await res.json();
+    if (d.url) { document.getElementById('ugc-image').value = d.url; st.textContent = 'Uploaded ✓'; }
+    else st.textContent = 'Upload failed';
+  } catch (e) { st.textContent = 'Upload failed'; }
+}
+
+async function submitUgcTask() {
+  const st = document.getElementById('ugc-status');
+  const payload = {
+    mode: ugcMode,
+    image_url: document.getElementById('ugc-image').value.trim(),
+    prompt: document.getElementById('ugc-prompt').value.trim(),
+    script: document.getElementById('ugc-script').value.trim(),
+    motion_preset: document.getElementById('ugc-preset').value,
+    aspect_ratio: document.getElementById('ugc-aspect').value,
+    quality: document.getElementById('ugc-quality').value,
+    duration: document.getElementById('ugc-duration').value,
+    description: document.getElementById('ugc-desc').value.trim(),
+    brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',
+  };
+  if (!payload.image_url) { st.textContent = 'Image URL required'; return; }
+  st.textContent = 'Submitting…';
+  try {
+    const res = await fetch(API_UGC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const d = await res.json();
+    st.textContent = d.ok ? 'Queued ✓' : 'Failed';
+    loadTasks();
+  } catch (e) { st.textContent = 'Failed'; }
+}
 
 function switchMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
-  document.getElementById('form-avatar').style.display = mode === 'avatar' ? '' : 'none';
-  document.getElementById('form-agent').style.display = mode === 'agent' ? '' : 'none';
+  document.getElementById('form-ugc').style.display     = mode === 'ugc'     ? '' : 'none';
   document.getElementById('form-clipper').style.display = mode === 'clipper' ? '' : 'none';
 }
 
@@ -395,41 +393,37 @@ function renderClipperCard(t) {
 
 async function loadTasks() {
   try {
-    const [avatarTasks, agentTasks, clipperTasks] = await Promise.all([
-      fetch(API_AVATAR).then(r => r.json()).catch(() => []),
-      fetch(API_AGENT).then(r => r.json()).catch(() => []),
+    const [ugcTasks, clipperTasks] = await Promise.all([
+      fetch(API_UGC).then(r => r.json()).catch(() => []),
       fetch(API_CLIPPER).then(r => r.json()).catch(() => []),
     ]);
     const all = [
-      ...avatarTasks.map(t => ({ ...t, _type: 'avatar' })),
-      ...agentTasks.map(t => ({ ...t, _type: 'agent' })),
+      ...ugcTasks.map(t => ({ ...t, _type: 'ugc' })),
       ...clipperTasks.map(t => ({ ...t, _type: 'clipper' })),
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const el = document.getElementById('tasks-list');
     if (!all.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No video tasks yet</div>'; return; }
     el.innerHTML = all.map(t => {
-      const time = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
-      const isAgent = t._type === 'agent';
+      const time = new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       const isClipper = t._type === 'clipper';
+      const isUgc = t._type === 'ugc';
       let preview;
       let label;
       if (isClipper) {
         preview = (t.video_url || '').substring(0, 80) + ((t.video_url || '').length > 80 ? '...' : '');
         label = t.description || 'Clipper job';
-      } else if (isAgent) {
-        preview = (t.prompt || '').substring(0, 80) + ((t.prompt || '').length > 80 ? '...' : '');
-        label = t.description || 'Video Agent';
       } else {
-        preview = (t.script || '').substring(0, 80) + ((t.script || '').length > 80 ? '...' : '');
-        label = t.description || 'Avatar video';
+        const ugcPreviewText = t.prompt || t.script || '';
+        preview = ugcPreviewText.substring(0, 80) + (ugcPreviewText.length > 80 ? '...' : '');
+        label = t.description || ('UGC ' + (t.mode || 'clip'));
       }
-      const typeLabel = isClipper ? 'Clipper' : (isAgent ? 'Agent' : 'Avatar');
+      const typeLabel = isClipper ? 'Clipper' : ('UGC ' + (t.mode || 'clip'));
       const typeTag = `<span class="task-type-tag ${t._type}">${typeLabel}</span>`;
-      const apiBase = isClipper ? API_CLIPPER : (isAgent ? API_AGENT : API_AVATAR);
+      const apiBase = isClipper ? API_CLIPPER : API_UGC;
       const stagePill = isClipper && t.stage && t.status === 'processing' ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
       const clipsBlock = isClipper ? renderClipperCard(t) : '';
-      const extraMeta = isAgent && t.duration_sec ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + t.duration_sec + 's / ' + (t.orientation || 'portrait') + '</span>' : '';
+      const ugcMeta = isUgc && t.motion_preset ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + esc(t.motion_preset) + (t.aspect_ratio ? ' / ' + esc(t.aspect_ratio) : '') + '</span>' : '';
       return `<div class="task-card" style="${isClipper ? 'align-items:stretch;flex-direction:column;' : ''}">
         <div style="display:flex;gap:16px;align-items:flex-start;width:100%;">
           <div style="flex:1;min-width:0;">
@@ -439,9 +433,9 @@ async function loadTasks() {
               ${stagePill}
             </div>
             <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;word-break:break-all;">${esc(preview)}</div>
-            ${extraMeta}
+            ${ugcMeta}
             ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
-            ${t.result_url ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:var(--teal);font-family:var(--font-data);text-decoration:none;">Download video</a>' : ''}
+            ${t.result_url ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Download video ↗</a>' : ''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
             <span class="task-badge ${t.status}">${t.status}</span>
@@ -453,60 +447,6 @@ async function loadTasks() {
       </div>`;
     }).join('');
   } catch { document.getElementById('tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'; }
-}
-
-async function submitAvatarTask() {
-  const script = document.getElementById('cc-script').value.trim();
-  const desc = document.getElementById('cc-desc').value.trim();
-  if (!script) { document.getElementById('cc-status').textContent = 'Write a script first'; return; }
-  const btn = document.getElementById('cc-submit');
-  btn.disabled = true;
-  document.getElementById('cc-status').textContent = 'Submitting...';
-  try {
-    await fetch(API_AVATAR, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        avatar_id: document.getElementById('cc-avatar').value,
-        voice_id: document.getElementById('cc-voice').value,
-        voice_engine: document.getElementById('cc-engine').value,
-        script, description: desc || 'Avatar video',
-        brand: getSelectedBrand(),
-      }),
-    });
-    document.getElementById('cc-script').value = '';
-    document.getElementById('cc-desc').value = '';
-    document.getElementById('cc-status').textContent = 'Task submitted!';
-    loadTasks();
-    setTimeout(() => { document.getElementById('cc-status').textContent = ''; }, 3000);
-  } catch(e) { document.getElementById('cc-status').textContent = 'Error: ' + e.message; }
-  finally { btn.disabled = false; }
-}
-
-async function submitAgentTask() {
-  const prompt = document.getElementById('va-prompt').value.trim();
-  if (!prompt) { document.getElementById('va-status').textContent = 'Schrijf eerst een prompt'; return; }
-  const btn = document.getElementById('va-submit');
-  btn.disabled = true;
-  document.getElementById('va-status').textContent = 'Submitting...';
-  try {
-    const avatarId = document.getElementById('va-avatar').value;
-    await fetch(API_AGENT, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt,
-        duration_sec: parseInt(document.getElementById('va-duration').value),
-        orientation: document.getElementById('va-orientation').value,
-        avatar_id: avatarId || null,
-        description: prompt.substring(0, 60) + (prompt.length > 60 ? '...' : ''),
-        brand: getSelectedBrand(),
-      }),
-    });
-    document.getElementById('va-prompt').value = '';
-    document.getElementById('va-status').textContent = 'Task submitted!';
-    loadTasks();
-    setTimeout(() => { document.getElementById('va-status').textContent = ''; }, 3000);
-  } catch(e) { document.getElementById('va-status').textContent = 'Error: ' + e.message; }
-  finally { btn.disabled = false; }
 }
 
 async function submitClipperTask() {
@@ -549,105 +489,6 @@ async function deleteTask(apiBase, id) {
   loadTasks();
 }
 
-// ── Avatar Picker ──
-function initAvatarPicker(pickerId, hiddenId) {
-  const picker = document.getElementById(pickerId);
-  const input = picker.querySelector('.avatar-picker-input');
-  const dropdown = picker.querySelector('.avatar-dropdown');
-  const hidden = document.getElementById(hiddenId);
-  const selectedEl = picker.querySelector('.avatar-selected');
-  let gender = '';
-  let debounce = null;
-
-  input.addEventListener('focus', () => { fetchAvatars(input.value.trim()); dropdown.classList.add('open'); });
-  input.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => fetchAvatars(input.value.trim()), 250); });
-  document.addEventListener('click', (e) => { if (!picker.contains(e.target)) dropdown.classList.remove('open'); });
-
-  async function fetchAvatars(q) {
-    try {
-      const params = new URLSearchParams({ limit: 50 });
-      if (q) params.set('q', q);
-      if (gender) params.set('gender', gender);
-      const res = await fetch('/heygen/avatars?' + params);
-      const data = await res.json();
-      renderDropdown(data.avatars, data.total);
-    } catch { dropdown.innerHTML = '<div style="padding:12px;font-size:11px;color:var(--danger);">Could not load avatars</div>'; }
-  }
-
-  function renderDropdown(avatars, total) {
-    const filters = `<div class="avatar-filters">
-      <button class="avatar-filter-btn ${!gender ? 'active' : ''}" onclick="setGender('${pickerId}','${hiddenId}','')">All</button>
-      <button class="avatar-filter-btn ${gender === 'male' ? 'active' : ''}" onclick="setGender('${pickerId}','${hiddenId}','male')">Male</button>
-      <button class="avatar-filter-btn ${gender === 'female' ? 'active' : ''}" onclick="setGender('${pickerId}','${hiddenId}','female')">Female</button>
-      <span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-left:auto;">${total} results</span>
-    </div>`;
-    const items = avatars.map(a => `<div class="avatar-option ${hidden.value === a.id ? 'selected' : ''}" onclick="selectAvatar('${pickerId}','${hiddenId}','${a.id}',\`${a.name}\`,\`${a.preview}\`,${a.custom})">
-      <img src="${a.preview}" loading="lazy" />
-      <div>
-        <div class="avatar-option-name">${a.name}</div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          ${a.custom ? '<span class="avatar-option-custom">Custom</span>' : ''}
-          <span class="avatar-option-meta">${a.gender || ''}</span>
-        </div>
-      </div>
-    </div>`).join('');
-    dropdown.innerHTML = filters + (items || '<div style="padding:12px;font-size:11px;color:var(--text-dim);">No avatars found</div>');
-  }
-
-  picker._setGender = (g) => { gender = g; fetchAvatars(input.value.trim()); };
-}
-
-function setGender(pickerId, hiddenId, g) {
-  document.getElementById(pickerId)._setGender(g);
-}
-
-function selectAvatar(pickerId, hiddenId, id, name, preview, isCustom) {
-  const picker = document.getElementById(pickerId);
-  const hidden = document.getElementById(hiddenId);
-  const selectedEl = picker.querySelector('.avatar-selected');
-  const dropdown = picker.querySelector('.avatar-dropdown');
-  const input = picker.querySelector('.avatar-picker-input');
-  hidden.value = id;
-  input.value = '';
-  dropdown.classList.remove('open');
-  selectedEl.innerHTML = `<img src="${preview}" /><span class="avatar-selected-name">${name}${isCustom ? ' (Custom)' : ''}</span><button class="avatar-clear" onclick="clearAvatar('${pickerId}','${hiddenId}')" title="Clear">&times;</button>`;
-  selectedEl.style.display = 'flex';
-}
-
-function clearAvatar(pickerId, hiddenId) {
-  const picker = document.getElementById(pickerId);
-  const hidden = document.getElementById(hiddenId);
-  const selectedEl = picker.querySelector('.avatar-selected');
-  hidden.value = '';
-  selectedEl.style.display = 'none';
-  selectedEl.innerHTML = '';
-}
-
-initAvatarPicker('avatar-picker-cc', 'cc-avatar');
-initAvatarPicker('avatar-picker-va', 'va-avatar');
-
-// ── Voices (loaded from the configured HeyGen account) ──
-async function loadVoices() {
-  const sel = document.getElementById('cc-voice');
-  if (!sel) return;
-  try {
-    const res = await fetch('/heygen/voices');
-    if (!res.ok) {
-      let detail = 'HTTP ' + res.status;
-      try { const e = await res.json(); if (e && e.error) detail = e.error; } catch {}
-      sel.innerHTML = '<option value="">Could not load voices (' + esc(detail) + ')</option>';
-      return;
-    }
-    const data = await res.json();
-    const voices = data.voices || [];
-    if (!voices.length) { sel.innerHTML = '<option value="">No voices found — check your HeyGen API key</option>'; return; }
-    sel.innerHTML = '<option value="">Select a voice…</option>' + voices.map(v =>
-      `<option value="${esc(v.id)}">${esc(v.name)}${v.language ? ' (' + esc(v.language) + ')' : ''}</option>`).join('');
-  } catch (err) {
-    sel.innerHTML = '<option value="">Could not load voices (' + esc(err.message || 'network error') + ')</option>';
-  }
-}
-loadVoices();
 
 // ── Brand selector ──
 function getSelectedBrand() {
@@ -670,6 +511,7 @@ async function loadBrandOptions() {
 }
 loadBrandOptions();
 
+setUgcMode('clip');
 loadTasks();
 setInterval(loadTasks, 10000);
 </script>

@@ -5,7 +5,7 @@
   let BRAND_NAME = "HQ";
   const OFFICE = [
     { key:'researcher',   name:'RESEARCHER', role:'TREND RESEARCH',    emoji:'\u{1F50D}', hsl:'264 65% 49%', pos:[0,0], href:'research.html',        taskApi:'/research/tasks' },
-    { key:'content',      name:'CONTENT',    role:'HEYGEN AVATARS',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[1,0], href:'content-creator.html', taskApis:['/avatar/tasks','/video-agent/tasks'] },
+    { key:'content',      name:'CONTENT',    role:'HIGGSFIELD UGC',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[1,0], href:'content-creator.html', taskApis:['/ugc/tasks'] },
     { key:'scriptwriter', name:'WRITER',     role:'VIDEO SCRIPTS',     emoji:'\u270D\uFE0F', hsl:'30 90% 55%',  pos:[2,0], href:'scriptwriter.html',    taskApi:'/scriptwriter/tasks' },
     { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[0,1], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
     { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[1,1], href:'ads.html' },
