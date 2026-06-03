@@ -241,7 +241,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -328,6 +328,7 @@ app.get("/api/settings", (req, res) => {
     integrations: {
       anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
+      higgsfield: { has_key: (env.HIGGSFIELD_API_KEY || "").includes(":") && (env.HIGGSFIELD_API_KEY || "").split(":").every(Boolean), has_id: !!((env.HIGGSFIELD_API_KEY || "").split(":")[0]), has_secret: !!((env.HIGGSFIELD_API_KEY || "").split(":").slice(1).join(":")), masked: maskKey(env.HIGGSFIELD_API_KEY) },
       stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY), has_webhook_secret: !!env.STRIPE_WEBHOOK_SECRET, webhook_url: pub.origin ? `${pub.origin}/stripe/webhook` : "" },
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
@@ -374,6 +375,17 @@ app.post("/api/settings", (req, res) => {
       if (integrations[field] !== undefined && integrations[field] !== "") {
         updates[envKey] = integrations[field].trim();
       }
+    }
+    // Higgsfield credentials are a KEY_ID:KEY_SECRET pair entered as two
+    // separate fields; combine them into the single HIGGSFIELD_API_KEY env
+    // var. Each field is "kept if empty", so updating one preserves the other.
+    if (integrations.higgsfield_key_id !== undefined || integrations.higgsfield_secret !== undefined) {
+      const cur = (readEnvFile().HIGGSFIELD_API_KEY || "").split(":");
+      const curId = cur[0] || "";
+      const curSecret = cur.slice(1).join(":") || "";
+      const newId = (integrations.higgsfield_key_id || "").trim() || curId;
+      const newSecret = (integrations.higgsfield_secret || "").trim() || curSecret;
+      if (newId || newSecret) updates.HIGGSFIELD_API_KEY = `${newId}:${newSecret}`;
     }
   }
 
@@ -1882,26 +1894,31 @@ app.delete("/opusclip/tasks/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── UGC LIBRARY ──────────────────────────────────────────────────────
-// UGC videos are generated in the Higgsfield web app; here we keep a library
-// of their output links (title, brand, description) with an inline preview.
+// ── UGC TASKS (Higgsfield) ───────────────────────────────────────────
 app.get("/ugc/tasks", (_req, res) => res.json(readTaskFile("ugc-tasks.json")));
 
 app.post("/ugc/tasks", (req, res) => {
   const b = req.body || {};
-  if (!b.video_url) return res.status(400).json({ error: "video_url required" });
+  const mode = b.mode === "speak" ? "speak" : "clip";
   const tasks = readTaskFile("ugc-tasks.json");
   const task = {
     id: "ugc_" + Date.now().toString(36),
-    status: "ready",
-    title: b.title || "",
-    video_url: b.video_url,
+    status: "pending",
+    mode,
+    image_url: b.image_url || "",
+    prompt: b.prompt || "",
+    script: b.script || "",
+    model: b.model || "dop-lite",
+    motion_id: b.motion_id || "",
+    audio_url: b.audio_url || "",
     brand: b.brand || "",
     description: b.description || "",
+    request_id: "",
+    result_url: "",
     created_at: new Date().toISOString(),
   };
   tasks.unshift(task);
-  if (tasks.length > 100) tasks.length = 100;
+  if (tasks.length > 50) tasks.length = 50;
   writeTaskFile("ugc-tasks.json", tasks);
   res.json({ ok: true, task });
 });
@@ -1918,6 +1935,34 @@ app.patch("/ugc/tasks/:id", (req, res) => {
 app.delete("/ugc/tasks/:id", (req, res) => {
   writeTaskFile("ugc-tasks.json", readTaskFile("ugc-tasks.json").filter(x => x.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ── UGC MOTIONS (Higgsfield) — cached list for the Clip-mode dropdown ─
+let _ugcMotionsCache = null, _ugcMotionsAt = 0;
+app.get("/ugc/motions", async (_req, res) => {
+  try {
+    if (_ugcMotionsCache && Date.now() - _ugcMotionsAt < 3600000) return res.json(_ugcMotionsCache);
+    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.motions, { headers: higgsfieldHeaders() });
+    const data = await r.json();
+    const list = Array.isArray(data) ? data.map(m => ({ id: m.id, name: m.name })) : [];
+    if (list.length) { _ugcMotionsCache = list; _ugcMotionsAt = Date.now(); }
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── UGC IMAGE UPLOAD PROXY ──────────────────────────────────────────
+app.post("/ugc/upload", async (req, res) => {
+  try {
+    const { image_base64, format } = req.body || {};
+    if (!image_base64) return res.status(400).json({ error: "image_base64 required" });
+    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.upload, {
+      method: "POST", headers: higgsfieldHeaders(),
+      body: JSON.stringify({ image: image_base64, format: format || "jpeg" }),
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(502).json({ error: "upload failed", detail: data });
+    res.json({ url: data.url || data.image_url || "" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── MEDIA LIBRARY ─────────────────────────────
@@ -2054,6 +2099,16 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
+  // 9. Higgsfield
+  const higgsfieldKey = process.env.HIGGSFIELD_API_KEY || "";
+  integrations.push({
+    id: "higgsfield", status: higgsfieldKey ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: higgsfieldKey, secret: true },
+      { label: "Endpoint", value: "https://platform.higgsfield.ai" },
+      { label: "Used by", value: "UGC video generation — image-to-video and talking avatar" },
+    ],
+  });
 
   res.json({ integrations });
 });
@@ -2099,6 +2154,10 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
         res.json({ ok, message: ok ? "CLI authenticated & model available" : "CLI not authenticated" });
       });
       return;
+    } else if (id === "higgsfield") {
+      if (!process.env.HIGGSFIELD_API_KEY) return res.json({ ok: false, message: "HIGGSFIELD_API_KEY not set in .env" });
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.status("ping"), { headers: higgsfieldHeaders() });
+      res.json({ ok: r.status !== 401 && r.status !== 403, status: r.status, message: r.status !== 401 && r.status !== 403 ? "API key accepted" : "Auth failed" });
     } else {
       res.json({ ok: false, message: "Unknown integration" });
     }
@@ -3566,6 +3625,7 @@ const WATCHED_TASKS = {
   "Video Editor": "video-tasks.json",
   Researcher: "research-tasks.json",
   "Script Writer": "scriptwriter-tasks.json",
+  "UGC Video": "ugc-tasks.json",
 };
 
 let prevSnapshot = {};
@@ -3669,6 +3729,7 @@ app.get("/brand", (_req, res) => {
   const brand = loadBrand();
   brand.features = {
     telegram: !!TG_TOKEN,
+    higgsfield: !!process.env.HIGGSFIELD_API_KEY,
     stripe: !!process.env.STRIPE_SECRET_KEY,
     composio: !!process.env.COMPOSIO_API_KEY,
     youtube: !!process.env.YOUTUBE_API_KEY,
@@ -3690,7 +3751,7 @@ You are the central brain of the Command Center — you have access to ALL agent
 COMMAND CENTER AGENTS:
 - Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — video editing via Remotion
-- Content Creator — UGC video library + OpusClip clipper
+- Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Analyst — performance analyses, risk reports, daily reports
 - Researcher — trending content, competitor analysis, market research, keyword research
 - Script Writer — video scripts, social posts, threads, newsletters
@@ -3729,7 +3790,7 @@ Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE a
 COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — Video editing via Remotion (React-based video)
-- Content Creator — UGC video library + OpusClip clipper
+- Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
 - Script Writer — Video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
@@ -4125,15 +4186,19 @@ app.post("/ctrl/chat", async (req, res) => {
       {
         type: "custom",
         name: "create_ugc_video",
-        description: "Add a UGC video to the library by its URL (e.g. a Higgsfield web-app output link).",
+        description: "Create a UGC video via Higgsfield. mode 'clip' animates an image with a UGC motion preset; mode 'speak' makes a talking avatar from an image + script (built-in TTS).",
         input_schema: {
           type: "object",
           properties: {
-            video_url: { type: "string", description: "Direct URL of the UGC video" },
-            title: { type: "string", description: "Short title for the video" },
+            mode: { type: "string", enum: ["clip", "speak"] },
+            image_url: { type: "string", description: "URL of the source/product/avatar image" },
+            prompt: { type: "string", description: "Clip mode: animation prompt" },
+            script: { type: "string", description: "Speak mode: the script the avatar speaks" },
+            motion_preset: { type: "string", description: "Clip mode preset, e.g. ugc, unboxing, product-review" },
+            aspect_ratio: { type: "string", enum: ["9:16", "1:1", "16:9"] },
             description: { type: "string" },
           },
-          required: ["video_url"],
+          required: ["mode", "image_url"],
         },
       },
       {
@@ -4419,8 +4484,12 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
       create_ugc_video: (input) => ({
         url: "http://localhost:3004/ugc/tasks",
         body: {
-          video_url: input.video_url,
-          title: input.title || "",
+          mode: input.mode || "clip",
+          image_url: input.image_url,
+          prompt: input.prompt || "",
+          script: input.script || "",
+          motion_preset: input.motion_preset || "ugc",
+          aspect_ratio: input.aspect_ratio || "9:16",
           description: input.description || "",
         },
       }),
@@ -5429,8 +5498,102 @@ app.get("/canva/brand-kits", async (_req, res) => {
 
 // ── TASK WORKERS (auto-execute pending tasks) ─────────
 
+// ── HIGGSFIELD CONFIG ────────────────────────────────────────────────
+// Credentials are a single "KEY_ID:KEY_SECRET" string in HIGGSFIELD_API_KEY.
+// Field names / enums below are the one place to adjust against the live API.
+// Validated against the live platform API (June 2026):
+//   auth header `Authorization: Key KEY_ID:KEY_SECRET`
+//   clip  POST /v1/image2video/dop  body { params: { model, prompt, input_images:[{type:"image_url",image_url}], motion_id? } }
+//   speak POST /v1/speak/higgsfield body { params: { input_image:{type:"image_url",image_url}, input_audio:{type:"audio_url",audio_url}, prompt } }
+//   poll  GET  /v1/job-sets/{id}
+const HIGGSFIELD = {
+  base: "https://platform.higgsfield.ai",
+  endpoints: {
+    clip:    "/v1/image2video/dop",   // image-to-video
+    speak:   "/v1/speak/higgsfield",  // talking avatar (requires input_audio)
+    motions: "/v1/motions",           // list of motions { id, name, description }
+    jobSet:  (id) => `/v1/job-sets/${id}`,
+  },
+  models: ["dop-lite", "dop-preview", "dop-turbo"],
+};
+function higgsfieldHeaders() {
+  const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
+  return { "Authorization": `Key ${creds}`, "Content-Type": "application/json" };
+}
+
 // Track which tasks are already being processed to avoid duplicates
 const processingTasks = new Set();
+
+// ── UGC WORKER — submit pending tasks to Higgsfield ─────────────────
+async function processUgcTasks() {
+  const tasks = readTaskFile("ugc-tasks.json");
+  let changed = false;
+  for (const t of tasks) {
+    if (t.status !== "pending" || processingTasks.has(t.id)) continue;
+    processingTasks.add(t.id);
+    try {
+      const isSpeak = t.mode === "speak";
+      const ep = isSpeak ? HIGGSFIELD.endpoints.speak : HIGGSFIELD.endpoints.clip;
+      let params;
+      if (isSpeak) {
+        // Speak requires an audio file URL — the platform API has no built-in
+        // TTS. ElevenLabs generates t.audio_url upstream (see prepareUgcAudio).
+        params = {
+          input_image: { type: "image_url", image_url: t.image_url },
+          input_audio: { type: "audio_url", audio_url: t.audio_url || "" },
+          prompt: t.prompt || t.description || "",
+        };
+      } else {
+        params = {
+          model: HIGGSFIELD.models.includes(t.model) ? t.model : "dop-lite",
+          prompt: t.prompt || t.description || "",
+          input_images: [{ type: "image_url", image_url: t.image_url }],
+        };
+        if (t.motion_id) params.motion_id = t.motion_id;
+      }
+      const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ params }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        t.status = "failed";
+        t.error = (data && data.detail ? JSON.stringify(data.detail) : JSON.stringify(data)).slice(0, 400);
+      } else {
+        // Submit returns a job-set; its id is what we poll. Field name not yet
+        // confirmed against a successful (credited) response — try known shapes
+        // and keep the raw response when none match so it can be corrected.
+        t.request_id = data.id || data.job_set_id || (data.job_set && data.job_set.id) || "";
+        t.status = t.request_id ? "processing" : "failed";
+        if (!t.request_id) t.error = "no job-set id in response: " + JSON.stringify(data).slice(0, 300);
+      }
+      changed = true;
+      processingTasks.delete(t.id);
+    } catch (e) { t.status = "failed"; t.error = e.message; changed = true; processingTasks.delete(t.id); }
+  }
+  if (changed) writeTaskFile("ugc-tasks.json", tasks);
+}
+
+// ── UGC WORKER — poll processing tasks ──────────────────────────────
+async function pollUgcStatus() {
+  const tasks = readTaskFile("ugc-tasks.json");
+  let changed = false;
+  for (const t of tasks) {
+    if (t.status !== "processing" || !t.request_id) continue;
+    try {
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.request_id), { headers: higgsfieldHeaders() });
+      const data = await r.json().catch(() => ({}));
+      // A job-set holds one or more jobs; read the first job's status + result.
+      const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
+      const status = String(job.status || data.status || "").toLowerCase();
+      const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
+        || job.result_url || (job.video && job.video.url) || (job.result && job.result.url) || "";
+      if (status === "completed" || status === "success") {
+        t.status = "completed"; t.result_url = url; changed = true;
+      } else if (status === "failed" || status === "nsfw" || status === "error") {
+        t.status = "failed"; t.error = status; changed = true;
+      }
+    } catch (e) { /* transient — retry next tick */ }
+  }
+  if (changed) writeTaskFile("ugc-tasks.json", tasks);
+}
 
 // ── SCRIPT WRITER WORKER (Claude) ──
 async function processScriptwriterTasks() {
@@ -6174,7 +6337,11 @@ setInterval(() => {
   processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
+  processUgcTasks().catch(e => console.error("[WORKER] UGC error:", e.message));
 }, 15_000);
+
+// Poll Higgsfield status every 30 seconds
+setInterval(pollUgcStatus, 30_000);
 
 // Run once on startup
 setTimeout(() => {
@@ -6184,6 +6351,8 @@ setTimeout(() => {
   processOpusclipTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
+  processUgcTasks().catch(() => {});
+  pollUgcStatus().catch(() => {});
 }, 3000);
 
 // ── STRIPE REVENUE ───────────────────────────

@@ -142,7 +142,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   <main class="main">
     <div class="fade-up delay-1">
       <div class="header-title">CONTENT CREATOR</div>
-      <div class="header-sub">UGC video library &amp; clipper</div>
+      <div class="header-sub">Higgsfield UGC video generation</div>
     </div>
 
     <!-- MODE TABS -->
@@ -159,34 +159,76 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
-    <!-- UGC LIBRARY -->
+    <!-- UGC FORM (Higgsfield) -->
     <section class="fade-up delay-2" id="form-ugc">
-      <div class="section-header">Add UGC Video</div>
+      <div class="section-header">New UGC Video</div>
       <div class="task-form">
-        <div style="margin-bottom:16px;padding:12px 16px;background:hsla(174 72% 56% / 0.06);border:1px solid hsla(174 72% 56% / 0.15);border-radius:8px;">
-          <div style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);font-weight:600;margin-bottom:4px;">HIGGSFIELD</div>
-          <div style="font-size:12px;color:var(--text-dim);">Generate your UGC video in the <a href="https://cloud.higgsfield.ai" target="_blank" style="color:hsl(174 72% 56%);">Higgsfield web app</a>, then paste its output link here to save it to your library.</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button type="button" class="ugc-mode-btn active" data-ugcmode="clip" onclick="setUgcMode('clip')">Clip (image → video)</button>
+          <button type="button" class="ugc-mode-btn" data-ugcmode="speak" disabled title="Coming soon — requires voice (TTS) setup" style="opacity:0.5;cursor:not-allowed;">Talking Avatar (soon)</button>
         </div>
         <div style="margin-bottom:16px;">
-          <div class="form-label">Video URL</div>
-          <input class="form-input" id="ugc-url" placeholder="https://... direct link to the generated video" autocomplete="off" />
+          <div class="form-label">Image (URL or upload)</div>
+          <input class="form-input" id="ugc-image" placeholder="https://... product or avatar image" autocomplete="off" />
+          <input type="file" id="ugc-file" accept="image/*" style="margin-top:8px;font-size:12px;" onchange="uploadUgcImage()" />
+          <span id="ugc-upload-status" style="font-size:11px;color:var(--text-dim);"></span>
         </div>
-        <div class="form-grid" style="grid-template-columns:2fr 1fr;">
+        <div id="ugc-clip-fields">
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Prompt</div>
+            <textarea class="form-textarea" id="ugc-prompt" placeholder="Describe the UGC clip / motion..."></textarea>
+          </div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+            <div>
+              <div class="form-label">Model</div>
+              <select class="form-select" id="ugc-model">
+                <option value="dop-lite" selected>DoP Lite (fast)</option>
+                <option value="dop-preview">DoP Preview (quality)</option>
+                <option value="dop-turbo">DoP Turbo (max)</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-label">Motion</div>
+              <select class="form-select" id="ugc-motion">
+                <option value="">Loading motions…</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="ugc-speak-fields" style="display:none;">
+          <div style="margin-bottom:16px;">
+            <div class="form-label">Script (avatar speaks this — built-in voice)</div>
+            <textarea class="form-textarea" id="ugc-script" placeholder="Write the script the avatar should perform..."></textarea>
+          </div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+            <div>
+              <div class="form-label">Quality</div>
+              <select class="form-select" id="ugc-quality">
+                <option value="mid" selected>Mid</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div>
+              <div class="form-label">Duration</div>
+              <select class="form-select" id="ugc-duration">
+                <option value="short" selected>Short</option>
+                <option value="long">Long</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="form-grid" style="grid-template-columns:2fr 1fr;margin-top:16px;">
           <div>
-            <div class="form-label">Title</div>
-            <input class="form-input" id="ugc-title" placeholder="e.g. Product unboxing UGC" />
+            <div class="form-label">Description (what is this video for?)</div>
+            <input class="form-input" id="ugc-desc" placeholder="e.g. TikTok product ad" />
           </div>
           <div>
             <div class="form-label">Brand</div>
             <select class="form-select cc-brand-select"></select>
           </div>
         </div>
-        <div style="margin-top:16px;">
-          <div class="form-label">Description (optional)</div>
-          <input class="form-input" id="ugc-desc" placeholder="e.g. TikTok product ad, 9:16" />
-        </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
-          <button class="btn-submit" id="ugc-submit" onclick="submitUgcTask()">Add to library</button>
+          <button class="btn-submit" id="ugc-submit" onclick="submitUgcTask()">Submit UGC Video</button>
           <span id="ugc-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
         </div>
       </div>
@@ -259,26 +301,48 @@ const API_UGC = '/ugc/tasks';
 const API_CLIPPER = '/opusclip/tasks';
 
 let currentMode = 'ugc';
+let ugcMode = 'clip';
+
+function setUgcMode(m) {
+  ugcMode = m;
+  document.querySelectorAll('.ugc-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.ugcmode === m));
+  document.getElementById('ugc-clip-fields').style.display  = m === 'clip'  ? '' : 'none';
+  document.getElementById('ugc-speak-fields').style.display = m === 'speak' ? '' : 'none';
+}
+
+async function uploadUgcImage() {
+  const f = document.getElementById('ugc-file').files[0];
+  if (!f) return;
+  const st = document.getElementById('ugc-upload-status');
+  st.textContent = 'Uploading…';
+  const b64 = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(f); });
+  try {
+    const res = await fetch('/ugc/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_base64: b64, format: (f.type.split('/')[1] || 'jpeg') }) });
+    const d = await res.json();
+    if (d.url) { document.getElementById('ugc-image').value = d.url; st.textContent = 'Uploaded ✓'; }
+    else st.textContent = 'Upload failed';
+  } catch (e) { st.textContent = 'Upload failed'; }
+}
 
 async function submitUgcTask() {
   const st = document.getElementById('ugc-status');
   const payload = {
-    video_url: document.getElementById('ugc-url').value.trim(),
-    title: document.getElementById('ugc-title').value.trim(),
+    mode: ugcMode,
+    image_url: document.getElementById('ugc-image').value.trim(),
+    prompt: document.getElementById('ugc-prompt').value.trim(),
+    script: document.getElementById('ugc-script').value.trim(),
+    model: document.getElementById('ugc-model').value,
+    motion_id: document.getElementById('ugc-motion').value,
     description: document.getElementById('ugc-desc').value.trim(),
     brand: (document.querySelector('#form-ugc .cc-brand-select') || {}).value || '',
   };
-  if (!payload.video_url) { st.textContent = 'Video URL required'; return; }
-  st.textContent = 'Saving…';
+  if (!payload.image_url) { st.textContent = 'Image URL required'; return; }
+  st.textContent = 'Submitting…';
   try {
     const res = await fetch(API_UGC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await res.json();
-    if (d.ok) {
-      st.textContent = 'Added ✓';
-      document.getElementById('ugc-url').value = '';
-      document.getElementById('ugc-title').value = '';
-      document.getElementById('ugc-desc').value = '';
-    } else st.textContent = 'Failed';
+    st.textContent = d.ok ? 'Queued ✓' : 'Failed';
     loadTasks();
   } catch (e) { st.textContent = 'Failed'; }
 }
@@ -344,17 +408,17 @@ async function loadTasks() {
         preview = (t.video_url || '').substring(0, 80) + ((t.video_url || '').length > 80 ? '...' : '');
         label = t.description || 'Clipper job';
       } else {
-        preview = (t.video_url || '').substring(0, 80) + ((t.video_url || '').length > 80 ? '...' : '');
-        label = t.title || 'UGC video';
+        const ugcPreviewText = t.prompt || t.script || '';
+        preview = ugcPreviewText.substring(0, 80) + (ugcPreviewText.length > 80 ? '...' : '');
+        label = t.description || ('UGC ' + (t.mode || 'clip'));
       }
-      const typeLabel = isClipper ? 'Clipper' : 'UGC';
+      const typeLabel = isClipper ? 'Clipper' : ('UGC ' + (t.mode || 'clip'));
       const typeTag = `<span class="task-type-tag ${t._type}">${typeLabel}</span>`;
       const apiBase = isClipper ? API_CLIPPER : API_UGC;
       const stagePill = isClipper && t.stage && t.status === 'processing' ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
       const clipsBlock = isClipper ? renderClipperCard(t) : '';
-      const ugcVideo = isUgc && t.video_url ? `<video src="${esc(t.video_url)}" controls preload="metadata" style="width:100%;max-height:320px;border-radius:8px;margin-top:10px;background:#000;"></video>` : '';
-      const ugcMeta = isUgc && t.brand ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + esc(t.brand) + '</span>' : '';
-      return `<div class="task-card" style="${(isClipper || isUgc) ? 'align-items:stretch;flex-direction:column;' : ''}">
+      const ugcMeta = isUgc ? '<span style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">' + esc(t.mode === 'speak' ? 'speak' : (t.model || 'clip')) + '</span>' : '';
+      return `<div class="task-card" style="${isClipper ? 'align-items:stretch;flex-direction:column;' : ''}">
         <div style="display:flex;gap:16px;align-items:flex-start;width:100%;">
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
@@ -364,9 +428,8 @@ async function loadTasks() {
             </div>
             <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;word-break:break-all;">${esc(preview)}</div>
             ${ugcMeta}
-            ${isUgc && t.description ? '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">' + esc(t.description) + '</div>' : ''}
             ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
-            ${isUgc && t.video_url ? '<a href="' + esc(t.video_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video ↗</a>' : ''}
+            ${t.result_url ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video on Higgsfield ↗</a>' : ''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
             <span class="task-badge ${t.status}">${t.status}</span>
@@ -375,7 +438,6 @@ async function loadTasks() {
           <button onclick="deleteTask('${apiBase}','${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
         </div>
         ${clipsBlock}
-        ${ugcVideo}
       </div>`;
     }).join('');
   } catch { document.getElementById('tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'; }
@@ -443,6 +505,24 @@ async function loadBrandOptions() {
 }
 loadBrandOptions();
 
+async function loadUgcMotions() {
+  const sel = document.getElementById('ugc-motion');
+  if (!sel) return;
+  try {
+    const res = await fetch('/ugc/motions');
+    const motions = await res.json();
+    if (Array.isArray(motions) && motions.length) {
+      sel.innerHTML = motions.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+    } else {
+      sel.innerHTML = '<option value="">No motions (check Higgsfield key)</option>';
+    }
+  } catch {
+    sel.innerHTML = '<option value="">Could not load motions</option>';
+  }
+}
+loadUgcMotions();
+
+setUgcMode('clip');
 loadTasks();
 setInterval(loadTasks, 10000);
 </script>
