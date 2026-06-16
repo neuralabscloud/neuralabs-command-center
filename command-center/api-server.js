@@ -2062,7 +2062,7 @@ app.get("/settings/integrations", (_req, res) => {
     id: "anthropic", status: anthropicKey ? "connected" : "not-configured",
     details: [
       { label: "API Key", value: anthropicKey, secret: true },
-      { label: "Model", value: "claude-sonnet-4-20250514" },
+      { label: "Model", value: "claude-sonnet-4-6" },
       { label: "Used by", value: "AI Chat, Research, Analyst, Designer (Claude engine)" },
     ],
   });
@@ -2180,7 +2180,7 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
     if (id === "anthropic") {
       const Anthropic = require("@anthropic-ai/sdk");
       const client = new Anthropic();
-      const msg = await client.messages.create({ model: "claude-sonnet-4-20250514", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
+      const msg = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
       res.json({ ok: true, message: `Model responded (${msg.usage.input_tokens + msg.usage.output_tokens} tokens)` });
     } else if (id === "stripe") {
       const bal = await stripe.balance.retrieve();
@@ -4563,7 +4563,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
     };
 
     const apiParams = {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 8192,
       system: systemWithContext,
       messages: history,
@@ -4726,7 +4726,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               ? `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`
               : `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections. Reply in the user's language.`;
             const skillResponse = await skillClient.messages.create({
-              model: "claude-sonnet-4-20250514",
+              model: "claude-sonnet-4-6",
               max_tokens: 8192,
               system: skillSystem,
               messages: [{ role: "user", content: prompt }],
@@ -5052,7 +5052,7 @@ app.post("/calendar/chat", async (req, res) => {
       loopCount++;
 
       const response = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2048,
         system: CALENDAR_SYSTEM,
         tools,
@@ -5265,7 +5265,7 @@ app.post("/marketeer/chat", async (req, res) => {
       loopCount++;
 
       const response = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         system: buildMarketeerSystem(),
         tools: MARKETEER_TOOLS,
@@ -5815,7 +5815,7 @@ ${task.format === "short-form" ? "Keep it short: max 60 seconds of spoken time (
 ${task.format === "hook" ? "Write 5 different hooks/openers that grab attention immediately." : ""}`;
 
       const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       });
@@ -5968,7 +5968,7 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
       ];
       const researchMessages = [{ role: "user", content: prompt }];
       const researchParams = {
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         messages: researchMessages,
         tools: researchTools,
@@ -6236,7 +6236,7 @@ ${task.description}
 Return the final design URL when done.`;
 
       const response = await anthropic.beta.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 16384,
         betas: ["mcp-client-2025-11-20"],
         mcp_servers: [{
@@ -8397,7 +8397,7 @@ Analyseer de data en voer acties uit. Geef een kort rapport.`;
     }];
 
     let response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userMsg }],
@@ -8450,7 +8450,7 @@ Analyseer de data en voer acties uit. Geef een kort rapport.`;
       }
 
       response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [
