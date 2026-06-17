@@ -5591,6 +5591,14 @@ function higgsfieldHeaders() {
   const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
   return { "Authorization": `Key ${creds}`, "Content-Type": "application/json" };
 }
+// Avatar images are stored locally (/ugc-avatars/...), but Higgsfield needs a
+// fully-qualified, publicly reachable URL to fetch the input image. Resolve any
+// relative path against the task's public_origin; leave absolute URLs untouched.
+function resolveHiggsfieldImageUrl(url, origin) {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  const base = (origin || "").replace(/\/$/, "");
+  return base ? base + (url.startsWith("/") ? url : "/" + url) : url;
+}
 
 // Talking-avatar voice: Higgsfield's speak endpoint needs a public audio URL and
 // has no TTS, so we generate the voice from the script via ElevenLabs, save it to
@@ -5671,10 +5679,11 @@ async function processUgcTasks() {
       }
       const speakModel = HIGGSFIELD.speakModels.includes(t.speak_model) ? t.speak_model : "higgsfield";
       const ep = isSpeak ? ("/v1/speak/" + speakModel) : HIGGSFIELD.endpoints.clip;
+      const inputImageUrl = resolveHiggsfieldImageUrl(t.image_url, t.public_origin);
       let params;
       if (isSpeak) {
         params = {
-          input_image: { type: "image_url", image_url: t.image_url },
+          input_image: { type: "image_url", image_url: inputImageUrl },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
           prompt: t.prompt || t.description || "",
         };
@@ -5688,7 +5697,7 @@ async function processUgcTasks() {
         params = {
           model: HIGGSFIELD.models.includes(t.model) ? t.model : "dop-lite",
           prompt: t.prompt || t.description || "",
-          input_images: [{ type: "image_url", image_url: t.image_url }],
+          input_images: [{ type: "image_url", image_url: inputImageUrl }],
         };
         if (t.motion_id) params.motion_id = t.motion_id;
       }
