@@ -112,6 +112,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/ads-rules.json' \
         --exclude='data/video-projects/' \
         --exclude='data/generated-images/' \
+        --exclude='data/ugc-avatars/' \
         --exclude='data/ai-video-uploads/' \
         --exclude='data/transcripts/' \
         --exclude='data/community/' \

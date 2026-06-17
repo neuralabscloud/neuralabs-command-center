@@ -63,6 +63,7 @@ app.post("/stripe/webhook", express.raw({ type: "application/json" }), (req, res
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/generated-images", express.static(path.join(__dirname, "data", "generated-images")));
+app.use("/ugc-avatars", express.static(path.join(__dirname, "data", "ugc-avatars")));
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
@@ -5754,6 +5755,19 @@ async function pollUgcStatus() {
 }
 
 // ── AVATAR LIBRARY WORKER — poll Soul portrait generations ──────────
+// Download a generated avatar portrait to data/ugc-avatars/<id>.png and return
+// the local served path. Throws on any network/write error (caller falls back).
+async function downloadAvatarImage(id, url) {
+  const dir = path.join(__dirname, "data", "ugc-avatars");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("download failed: " + r.status);
+  const buf = Buffer.from(await r.arrayBuffer());
+  const outFile = path.join(dir, `${id}.png`);
+  fs.writeFileSync(outFile, buf);
+  return `/ugc-avatars/${id}.png`;
+}
+
 async function pollAvatarCreator() {
   const avatars = readTaskFile("ugc-avatars.json");
   let changed = false;
@@ -5766,7 +5780,12 @@ async function pollAvatarCreator() {
       const status = String(job.status || data.status || "").toLowerCase();
       const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
         || job.result_url || (job.image && job.image.url) || (job.result && job.result.url) || "";
-      if ((status === "completed" || status === "success") && url) { a.status = "ready"; a.image_url = url; changed = true; }
+      if ((status === "completed" || status === "success") && url) {
+        // Higgsfield's CloudFront URLs expire after ~2 weeks, so download the
+        // image to local disk and serve it from /ugc-avatars/ to keep it forever.
+        const local = await downloadAvatarImage(a.id, url).catch(() => "");
+        a.status = "ready"; a.image_url = local || url; changed = true;
+      }
       else if (status === "failed" || status === "nsfw" || status === "error") { a.status = "failed"; a.error = status; changed = true; }
     } catch (e) { /* transient — retry next tick */ }
   }
