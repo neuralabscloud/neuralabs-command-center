@@ -3998,7 +3998,13 @@ app.post("/ctrl/chat", async (req, res) => {
   }
 
   try {
-    const systemWithContext = buildSystemPrompt() + "\n\nAGENT & TAAK STATUS:\n" + gatherContext();
+    // Prompt caching: split the system prompt into a STABLE block (cached across all
+    // chats — brand-based, byte-identical) and a VOLATILE block (live agent/task status,
+    // never cached). The cache_control marker on the stable block caches tools + that block.
+    const systemWithContext = [
+      { type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } },
+      { type: "text", text: "\n\nAGENT & TAAK STATUS:\n" + gatherContext() },
+    ];
 
     const agentTools = [
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
@@ -4571,9 +4577,27 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
       tools: agentTools,
     };
 
+    // Prompt caching: rolling breakpoint on the last block of the growing history so each
+    // tool-loop iteration reads the prior conversation prefix from cache. Clears old message
+    // markers first to stay under the 4-marker cap (system already uses 1).
+    const setMsgCache = (msgs) => {
+      for (const m of msgs) {
+        if (Array.isArray(m.content)) for (const b of m.content) { if (b && b.cache_control) delete b.cache_control; }
+      }
+      const last = msgs[msgs.length - 1];
+      if (!last) return;
+      if (typeof last.content === "string") {
+        last.content = [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }];
+      } else if (Array.isArray(last.content) && last.content.length) {
+        last.content[last.content.length - 1].cache_control = { type: "ephemeral" };
+      }
+    };
+
+    setMsgCache(history);
     console.log(`[CHAT] API call #1 starting — history: ${JSON.stringify(history).length} chars, ${history.length} msgs`);
     let response = await anthropic.messages.create(apiParams);
     console.log(`[CHAT] API call #1 done — stop_reason: ${response.stop_reason}, blocks: [${response.content.map(b => b.type).join(",")}], text_len: ${response.content.filter(b => b.type === "text").map(b => (b.text||"").length).reduce((a,b) => a+b, 0)}`);
+    { const u = response.usage || {}; console.log(`[CHAT][cache] in:${u.input_tokens} cache_write:${u.cache_creation_input_tokens||0} cache_read:${u.cache_read_input_tokens||0}`); }
     // Handle tool use loop (web search + agent actions)
     let loopCount = 0;
     const MAX_TOOL_LOOPS = 20; // multi-step ads flows (campaign→adset→ad) need headroom
@@ -4853,6 +4877,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
       const historyChars = JSON.stringify(history).length;
       console.log(`[CHAT] API call #${loopCount + 1} starting — history: ${historyChars} chars, ${history.length} msgs`);
       try {
+        setMsgCache(history);
         response = await anthropic.messages.create(apiParams);
         console.log(`[CHAT] API call #${loopCount + 1} done — stop_reason: ${response.stop_reason}`);
       } catch (apiErr) {
@@ -4872,6 +4897,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         .map(b => ({ type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ success: false, error: "Tool-limiet bereikt. Rond af en vat samen wat al is uitgevoerd." }), is_error: true }));
       if (pending.length) history.push({ role: "user", content: pending });
       try {
+        setMsgCache(history);
         response = await anthropic.messages.create({ ...apiParams, tool_choice: { type: "none" } });
       } catch (finalErr) {
         console.log(`[CHAT] Final forced reply FAILED: ${finalErr?.error?.error?.message || finalErr.message}`);
