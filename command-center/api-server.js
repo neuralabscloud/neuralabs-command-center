@@ -5892,6 +5892,71 @@ ${task.format === "hook" ? "Write 5 different hooks/openers that grab attention 
   }
 }
 
+// ── MARKET ANALYSIS PUBLISH (optioneel, extern kanaal) ──
+// Publiceert het marktanalyse-gedeelte van een daily research naar een extern
+// content-kanaal (bijv. een membership-/academy-platform) zodra beide env-vars
+// zijn ingesteld. Generiek en opt-in: zonder MARKET_ANALYSIS_WEBHOOK_URL gebeurt
+// er niets.
+async function publishMarketAnalysis(report) {
+  const url = process.env.MARKET_ANALYSIS_WEBHOOK_URL;
+  const key = process.env.MARKET_ANALYSIS_WEBHOOK_KEY || "";
+  if (!url) return;
+
+  // Alleen de marktanalyse-secties (geen social-media contentsuggesties).
+  const norm = (s) => (s || "").replace(/[^\p{L}\p{N} ]/gu, "").trim().toLowerCase();
+  const WANTED = [
+    ["marktoverzicht", "market overview"],
+    ["belangrijkste trends", "key trends"],
+    ["nieuws ontwikkelingen", "news developments", "nieuws", "news"],
+  ];
+  const picked = [];
+  for (const group of WANTED) {
+    const sec = (report.sections || []).find(
+      (s) => group.some((g) => norm(s.title).startsWith(g)) && !picked.includes(s),
+    );
+    if (sec) picked.push(sec);
+  }
+  if (picked.length === 0) {
+    console.log("[MARKET] geen marktanalyse-secties gevonden — niets gepubliceerd");
+    return;
+  }
+
+  const body = picked.map((s) => `## ${s.title.trim()}\n\n${s.content.trim()}`).join("\n\n");
+  const isNL = (report.language || process.env.LANGUAGE || "NL").toUpperCase() === "NL";
+  const dateLabel = new Date().toLocaleDateString(isNL ? "nl-NL" : "en-GB", {
+    weekday: "long", day: "numeric", month: "long",
+    timeZone: process.env.TIMEZONE || "Europe/Amsterdam",
+  });
+  const title = isNL ? `Marktanalyse — ${dateLabel}` : `Market analysis — ${dateLabel}`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-ingest-key": key },
+      body: JSON.stringify({ title, body }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`[MARKET] publiceren mislukt (${res.status}):`, data.error || "");
+      return;
+    }
+    console.log(`[MARKET] marktanalyse ${data.updated ? "bijgewerkt" : "gepubliceerd"} → ${data.url || url}`);
+    if (TG_TOKEN && TG_CHAT) {
+      const preview = body.replace(/[#*_>`]/g, "").replace(/\s+/g, " ").slice(0, 320);
+      const verb = isNL
+        ? (data.updated ? "bijgewerkt" : "gepubliceerd")
+        : (data.updated ? "updated" : "published");
+      const line = isNL
+        ? `📊 *${title}* is ${verb} in het marktanalyse-kanaal.`
+        : `📊 *${title}* was ${verb} to the market-analysis channel.`;
+      tgSend(TG_CHAT, `${line}\n\n${preview}…\n\n${data.url || url}`);
+    }
+  } catch (e) {
+    console.error("[MARKET] publiceren mislukt:", e.message);
+  }
+}
+
 // ── RESEARCHER WORKER (Claude + Web Search) ──
 async function processResearchTasks() {
   const tasks = readTaskFile("research-tasks.json");
@@ -6091,6 +6156,11 @@ ${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees conc
       writeTaskFile("research-tasks.json", tasks);
       processingTasks.delete(task.id);
       console.log(`[WORKER] Research task ${task.id} completed`);
+
+      // Dagelijkse marktanalyse doorzetten naar een extern kanaal (opt-in via env).
+      if (task.type === "daily") {
+        publishMarketAnalysis(reports[0]).catch((e) => console.error("[MARKET]", e.message));
+      }
     } catch (e) {
       console.error(`[WORKER] Research task ${task.id} failed:`, e.message);
       task.status = "failed";
