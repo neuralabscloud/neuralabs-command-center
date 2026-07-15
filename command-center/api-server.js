@@ -5896,7 +5896,7 @@ ${task.format === "hook" ? "Write 5 different hooks/openers that grab attention 
 // Publiceert het marktanalyse-gedeelte van een daily research naar een extern
 // content-kanaal (bijv. een membership-/academy-platform) zodra beide env-vars
 // zijn ingesteld. Generiek en opt-in: zonder MARKET_ANALYSIS_WEBHOOK_URL gebeurt
-// er niets.
+// er niets, zodat dit white-label blijft.
 async function publishMarketAnalysis(report) {
   const url = process.env.MARKET_ANALYSIS_WEBHOOK_URL;
   const key = process.env.MARKET_ANALYSIS_WEBHOOK_KEY || "";
@@ -5942,6 +5942,7 @@ async function publishMarketAnalysis(report) {
       return;
     }
     console.log(`[MARKET] marktanalyse ${data.updated ? "bijgewerkt" : "gepubliceerd"} → ${data.url || url}`);
+    // Telegram-notificatie zodat het team achteraf kan nalezen/bijsturen.
     if (TG_TOKEN && TG_CHAT) {
       const preview = body.replace(/[#*_>`]/g, "").replace(/\s+/g, " ").slice(0, 320);
       const verb = isNL
@@ -6771,7 +6772,7 @@ app.get("/stripe/revenue", async (_req, res) => {
 
 // ── FINANCE: subscriptions, config, webhook ─────
 const FINANCE_CONFIG_PATH = path.join(__dirname, "data", "finance-config.json");
-const FINANCE_DEFAULTS = { notify_new: true, notify_canceled: true };
+const FINANCE_DEFAULTS = { notify_new: true, notify_canceled: true, notify_past_due: true, notify_recovered: true };
 
 function loadFinanceConfig() {
   try {
@@ -6890,6 +6891,8 @@ app.post("/finance/config", (req, res) => {
   const next = { ...cfg };
   if (typeof req.body.notify_new === "boolean") next.notify_new = req.body.notify_new;
   if (typeof req.body.notify_canceled === "boolean") next.notify_canceled = req.body.notify_canceled;
+  if (typeof req.body.notify_past_due === "boolean") next.notify_past_due = req.body.notify_past_due;
+  if (typeof req.body.notify_recovered === "boolean") next.notify_recovered = req.body.notify_recovered;
   saveFinanceConfig(next);
   res.json(next);
 });
@@ -6918,7 +6921,38 @@ function formatSubscriptionMessage(sub, eventType) {
       norm.canceled_at ? `Canceled: ${new Date(norm.canceled_at).toLocaleString()}` : "",
     ].filter(Boolean).join("\n");
   }
+  if (eventType === "past_due") {
+    return [
+      `<b>Payment past due</b>`,
+      `Customer: ${who}`,
+      `Plan: ${norm.plan}`,
+      `MRR at risk: ${norm.amount_display}/mo`,
+      `Status: ${norm.status}`,
+    ].join("\n");
+  }
+  if (eventType === "recovered") {
+    return [
+      `<b>Payment recovered</b>`,
+      `Customer: ${who}`,
+      `Plan: ${norm.plan}`,
+      `MRR: ${norm.amount_display}/mo`,
+      `Status: past_due → ${norm.status}`,
+    ].join("\n");
+  }
   return null;
+}
+
+// Retrieve a subscription with customer + product names expanded, for notification messages.
+async function retrieveSubscriptionForMessage(id) {
+  const sub = await stripe.subscriptions.retrieve(id, { expand: ["customer"] });
+  // Inline product names (expand-depth workaround, see /finance/subscriptions).
+  for (const item of (sub.items?.data || [])) {
+    const pid = item.price?.product;
+    if (typeof pid === "string") {
+      try { item.price.product = await stripe.products.retrieve(pid); } catch {}
+    }
+  }
+  return sub;
 }
 
 async function handleStripeWebhook(req, res) {
@@ -6942,31 +6976,28 @@ async function handleStripeWebhook(req, res) {
   try {
     if (event.type === "customer.subscription.created" && cfg.notify_new) {
       // Re-fetch with expansions so the message has customer + plan names.
-      const sub = await stripe.subscriptions.retrieve(event.data.object.id, {
-        expand: ["customer"],
-      });
-      // Inline product names (expand-depth workaround, see /finance/subscriptions).
-      for (const item of (sub.items?.data || [])) {
-        const pid = item.price?.product;
-        if (typeof pid === "string") {
-          try { item.price.product = await stripe.products.retrieve(pid); } catch {}
-        }
-      }
+      const sub = await retrieveSubscriptionForMessage(event.data.object.id);
       const msg = formatSubscriptionMessage(sub, event.type);
       if (msg) sendTelegram("New subscription", msg, "success");
     } else if (event.type === "customer.subscription.deleted" && cfg.notify_canceled) {
-      const sub = await stripe.subscriptions.retrieve(event.data.object.id, {
-        expand: ["customer"],
-      });
-      // Inline product names (expand-depth workaround, see /finance/subscriptions).
-      for (const item of (sub.items?.data || [])) {
-        const pid = item.price?.product;
-        if (typeof pid === "string") {
-          try { item.price.product = await stripe.products.retrieve(pid); } catch {}
-        }
-      }
+      const sub = await retrieveSubscriptionForMessage(event.data.object.id);
       const msg = formatSubscriptionMessage(sub, event.type);
       if (msg) sendTelegram("Subscription canceled", msg, "warning");
+    } else if (event.type === "customer.subscription.updated") {
+      // Status transitions: previous_attributes.status is only present when the status changed.
+      const newStatus = event.data.object.status;
+      const prevStatus = event.data.previous_attributes?.status;
+      if (prevStatus && prevStatus !== newStatus) {
+        if (newStatus === "past_due" && cfg.notify_past_due) {
+          const sub = await retrieveSubscriptionForMessage(event.data.object.id);
+          const msg = formatSubscriptionMessage(sub, "past_due");
+          if (msg) sendTelegram("Payment past due", msg, "danger");
+        } else if (prevStatus === "past_due" && (newStatus === "active" || newStatus === "trialing") && cfg.notify_recovered) {
+          const sub = await retrieveSubscriptionForMessage(event.data.object.id);
+          const msg = formatSubscriptionMessage(sub, "recovered");
+          if (msg) sendTelegram("Payment recovered", msg, "success");
+        }
+      }
     }
   } catch (err) {
     console.error("[STRIPE-WH] handler error:", err.message);

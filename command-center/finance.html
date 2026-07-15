@@ -234,6 +234,20 @@ body::after {
               <div class="sub">Telegram message when a subscription is canceled</div>
             </div>
           </div>
+          <div class="toggle-row">
+            <label class="switch"><input type="checkbox" id="notify-past-due" onchange="saveConfig()"><span class="slider"></span></label>
+            <div>
+              <div class="label">Notify on past due</div>
+              <div class="sub">Telegram message when a subscription payment becomes past due</div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label class="switch"><input type="checkbox" id="notify-recovered" onchange="saveConfig()"><span class="slider"></span></label>
+            <div>
+              <div class="label">Notify on recovery</div>
+              <div class="sub">Telegram message when a past due subscription becomes active again</div>
+            </div>
+          </div>
         </div>
         <div id="webhook-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);min-width:260px;text-align:right"></div>
       </div>
@@ -318,6 +332,8 @@ async function loadConfig() {
     const cfg = await r.json();
     document.getElementById('notify-new').checked = !!cfg.notify_new;
     document.getElementById('notify-canceled').checked = !!cfg.notify_canceled;
+    document.getElementById('notify-past-due').checked = !!cfg.notify_past_due;
+    document.getElementById('notify-recovered').checked = !!cfg.notify_recovered;
     const ws = document.getElementById('webhook-status');
     if (!cfg.stripe_connected) {
       ws.innerHTML = `<span style="color:var(--danger)">● Stripe not connected</span>
@@ -339,6 +355,8 @@ function saveConfig() {
     const body = {
       notify_new: document.getElementById('notify-new').checked,
       notify_canceled: document.getElementById('notify-canceled').checked,
+      notify_past_due: document.getElementById('notify-past-due').checked,
+      notify_recovered: document.getElementById('notify-recovered').checked,
     };
     try {
       await fetch('/finance/config', {
