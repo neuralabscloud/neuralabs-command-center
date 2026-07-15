@@ -402,11 +402,11 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </div>
             <div class="cfg-field">
               <div class="cfg-field-label">Webhook Secret</div>
-              <div class="cfg-field-hint">Sends a Telegram message the moment a customer subscribes or cancels.</div>
+              <div class="cfg-field-hint">Sends a Telegram message the moment a customer subscribes, cancels, goes past due or recovers.</div>
               <ol class="cfg-steps">
                 <li>Open <a href="https://dashboard.stripe.com/webhooks/create" target="_blank">dashboard.stripe.com/webhooks</a> → Add endpoint.</li>
                 <li>URL: <code id="cfg-stripe-webhook-url" style="user-select:all">your-domain.com/stripe/webhook</code><button type="button" class="cfg-copy-btn" onclick="copyWebhookUrl()">Copy</button></li>
-                <li>Events: <code>customer.subscription.created</code> + <code>customer.subscription.deleted</code>.</li>
+                <li>Events: <code>customer.subscription.created</code> + <code>customer.subscription.deleted</code> + <code>customer.subscription.updated</code>.</li>
                 <li>Reveal the signing secret (<code>whsec_…</code>) and paste below.</li>
               </ol>
               <input type="password" id="cfg-stripe-webhook-secret" class="cfg-input" placeholder="whsec_…  (current kept if empty)">
