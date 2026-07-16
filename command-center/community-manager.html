@@ -300,7 +300,7 @@ function renderChannelCard(c) {
   const isDiscord = c.platform === 'discord';
   const isTwitter = c.platform === 'twitter';
   const discordNote = isDiscord ? `<div class="discord-banner">⚠ Discord publishing is not implemented yet. Settings are saved so you can wire up a bot later.</div>` : '';
-  const twitterNote = isTwitter ? `<div class="discord-banner">𝕏 Posts publish to the X account of the API keys in .env (TWITTER_API_KEY / TWITTER_API_SECRET / TWITTER_ACCESS_TOKEN / TWITTER_ACCESS_SECRET). A monthly counter guards the post limit (default 500, X free tier). Use Validate to test the connection and see usage.</div>` : '';
+  const twitterNote = isTwitter ? `<div class="discord-banner">𝕏 Posts publish to the X account of the API keys in .env (TWITTER_API_KEY / TWITTER_API_SECRET / TWITTER_ACCESS_TOKEN / TWITTER_ACCESS_SECRET). Requires an X API plan with post-write access (pay-per-use: ~$0.015 per post, $0.20 if it contains a link). A monthly counter caps posts as a cost guard (TWITTER_MONTHLY_POST_LIMIT, default 500). Use Validate to test the connection and see usage.</div>` : '';
   const setNames = archetypeSetsCache.map(s => typeof s === 'string' ? s : s.name);
   const setOptions = ['<option value="">— none —</option>', ...setNames.map(s => `<option value="${esc(s)}"${c.archetype_set === s ? ' selected' : ''}>${esc(s)}</option>`)].join('');
   const dayOptions = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => `<option value="${d}"${(c.review?.day||'sunday') === d ? ' selected' : ''}>${d}</option>`).join('');

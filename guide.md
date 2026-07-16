@@ -485,12 +485,12 @@ https://api.telegram.org/botYOUR_TOKEN/getUpdates
 
 ### Setting up X (Twitter) publishing
 
-The Community Manager can schedule and publish posts directly to an X account. You need a (free) X developer account:
+The Community Manager can schedule and publish posts directly to an X account. You need an X developer account with the **Pay Per Use** plan (X discontinued the free tier in early 2026; posting costs about $0.015 per post, or $0.20 per post that contains a link — you buy credits upfront, there is no monthly minimum):
 
 **Step 1: Create an X app**
 
-1. Go to **developer.x.com** and sign up for the Free tier with the X account you want to post from
-2. Create a Project + App
+1. Go to **developer.x.com**, sign up with the X account you want to post from, choose the **Pay Per Use** plan and buy a small amount of credits
+2. Create a Project + App (a "Default project" is usually created for you)
 3. In the app settings, under **User authentication settings**, enable **Read and write** permissions (App type: "Web App, Automated App or Bot" — callback/website URL can be any valid URL, it is not used)
 4. Under **Keys and tokens**, copy four values:
    - **API Key** and **API Key Secret** (Consumer Keys)
@@ -516,7 +516,7 @@ Then restart: `systemctl restart commandcenter`
 2. Add a channel with platform **X (Twitter)** and click **Validate** — it should show your @handle
 3. Schedule posts to this channel like any other; they are published automatically at the scheduled time
 
-**Limits:** the X Free tier allows about 500 posts per month; the Command Center keeps a monthly counter and stops publishing when the limit is reached (posts fail with a clear error and can be rescheduled next month). Media is supported: up to 4 images, or 1 video/GIF per post. Note that the Free tier has a low daily limit on *media* uploads (about 17 per 24 hours) — text-only posts are not affected.
+**Costs & limits:** with pay-per-use pricing every published post costs money (~$0.015, or $0.20 with a link), so the Command Center keeps a monthly post counter as a cost guard and stops publishing when `TWITTER_MONTHLY_POST_LIMIT` is reached (default 500 ≈ $7.50/month for link-free posts; posts beyond it fail with a clear error and can be rescheduled next month). Tip: avoid links in X posts where possible — a link makes a post roughly 13x more expensive. Media is supported: up to 4 images, or 1 video/GIF per post.
 
 ---
 
