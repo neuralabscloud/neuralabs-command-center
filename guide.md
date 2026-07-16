@@ -483,6 +483,41 @@ https://api.telegram.org/botYOUR_TOKEN/getUpdates
 2. Fill in **Telegram Bot Token** and **Chat ID**
 3. Click **Save Changes**
 
+### Setting up X (Twitter) publishing
+
+The Community Manager can schedule and publish posts directly to an X account. You need a (free) X developer account:
+
+**Step 1: Create an X app**
+
+1. Go to **developer.x.com** and sign up for the Free tier with the X account you want to post from
+2. Create a Project + App
+3. In the app settings, under **User authentication settings**, enable **Read and write** permissions (App type: "Web App, Automated App or Bot" — callback/website URL can be any valid URL, it is not used)
+4. Under **Keys and tokens**, copy four values:
+   - **API Key** and **API Key Secret** (Consumer Keys)
+   - **Access Token** and **Access Token Secret** (generate them AFTER enabling read/write — regenerate if they say "Read Only")
+
+**Step 2: Enter the keys on your server**
+
+Edit the `.env` file in your install directory and fill in:
+
+```
+TWITTER_API_KEY="your-api-key"
+TWITTER_API_SECRET="your-api-key-secret"
+TWITTER_ACCESS_TOKEN="your-access-token"
+TWITTER_ACCESS_SECRET="your-access-token-secret"
+TWITTER_MONTHLY_POST_LIMIT=500
+```
+
+Then restart: `systemctl restart commandcenter`
+
+**Step 3: Add an X channel**
+
+1. Go to **Community Manager → Channels**
+2. Add a channel with platform **X (Twitter)** and click **Validate** — it should show your @handle
+3. Schedule posts to this channel like any other; they are published automatically at the scheduled time
+
+**Limits:** the X Free tier allows about 500 posts per month; the Command Center keeps a monthly counter and stops publishing when the limit is reached (posts fail with a clear error and can be rescheduled next month). Media is supported: up to 4 images, or 1 video/GIF per post. Note that the Free tier has a low daily limit on *media* uploads (about 17 per 24 hours) — text-only posts are not affected.
+
 ---
 
 ## 9. Trading Bots Addon

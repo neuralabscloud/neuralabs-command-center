@@ -1521,7 +1521,7 @@ app.post("/community/channels", (req, res) => {
   const channels = readChannels();
   const id = (req.body.id || genId()).toString().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
   if (channels.some(c => c.id === id)) return res.status(409).json({ error: "Channel id already exists" });
-  const platform = req.body.platform === "discord" ? "discord" : "telegram";
+  const platform = ["discord", "twitter"].includes(req.body.platform) ? req.body.platform : "telegram";
   const channel = {
     id,
     name: req.body.name || "Unnamed channel",
@@ -1569,6 +1569,15 @@ app.delete("/community/channels/:id", (req, res) => {
 app.post("/community/channels/:id/validate", async (req, res) => {
   const channel = getChannel(req.params.id);
   if (!channel) return res.status(404).json({ ok: false, error: "Channel not found" });
+  if (channel.platform === "twitter") {
+    try {
+      const me = await twitterVerifyCredentials();
+      const usage = twitterUsageSummary();
+      return res.json({ ok: true, title: `@${me.username}`, type: "X account", usage });
+    } catch (e) {
+      return res.status(400).json({ ok: false, error: e.message });
+    }
+  }
   if (channel.platform !== "telegram") {
     return res.status(400).json({ ok: false, error: `Validation not available for ${channel.platform}` });
   }
@@ -1583,6 +1592,9 @@ app.post("/community/channels/:id/validate", async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+// Twitter/X monthly post usage (free tier = 500 writes/month)
+app.get("/community/twitter/usage", (_req, res) => res.json(twitterUsageSummary()));
 
 // ── COMMUNITY MANAGER: ARCHETYPE SETS ─────────
 app.get("/community/archetype-sets", (_req, res) => {
@@ -6474,8 +6486,178 @@ async function publishToChannel(task, channel) {
   if (!channel) throw new Error(`Channel "${task.channel_id}" not found`);
   if (channel.enabled === false) throw new Error(`Channel "${channel.id}" is disabled`);
   if (channel.platform === "telegram") return publishTelegramPost(task, channel);
+  if (channel.platform === "twitter") return publishTwitterPost(task);
   if (channel.platform === "discord") throw new Error("Discord publishing is not yet implemented");
   throw new Error(`Unknown platform: ${channel.platform}`);
+}
+
+// ── TWITTER / X PUBLISHING ────────────────────
+// Auth: OAuth 1.0a user context (4 static keys from the developer portal, no token refresh).
+// Posting: POST /2/tweets. Media: chunked upload via POST /2/media/upload (INIT/APPEND/FINALIZE).
+const TWITTER_USAGE_FILE = path.join(__dirname, "data", "twitter-usage.json");
+const TWITTER_UPLOAD_URL = "https://api.x.com/2/media/upload";
+
+function twitterCreds() {
+  const { TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET } = process.env;
+  if (!TWITTER_API_KEY || !TWITTER_API_SECRET || !TWITTER_ACCESS_TOKEN || !TWITTER_ACCESS_SECRET) {
+    throw new Error("X credentials missing — set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN and TWITTER_ACCESS_SECRET in .env");
+  }
+  return { key: TWITTER_API_KEY, secret: TWITTER_API_SECRET, token: TWITTER_ACCESS_TOKEN, tokenSecret: TWITTER_ACCESS_SECRET };
+}
+
+// OAuth 1.0a HMAC-SHA1 signature. Only oauth_* params and URL query params are signed —
+// JSON and multipart bodies are excluded per spec, which is exactly what we send.
+function twitterOAuthHeader(method, url, creds) {
+  const enc = (s) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  const oauth = {
+    oauth_consumer_key: creds.key,
+    oauth_nonce: crypto.randomBytes(16).toString("hex"),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_token: creds.token,
+    oauth_version: "1.0",
+  };
+  const [baseUrl, qs] = url.split("?");
+  const params = { ...oauth };
+  if (qs) for (const [k, v] of new URLSearchParams(qs)) params[k] = v;
+  const paramStr = Object.keys(params).sort().map((k) => `${enc(k)}=${enc(params[k])}`).join("&");
+  const base = [method.toUpperCase(), enc(baseUrl), enc(paramStr)].join("&");
+  const signingKey = `${enc(creds.secret)}&${enc(creds.tokenSecret)}`;
+  oauth.oauth_signature = crypto.createHmac("sha1", signingKey).update(base).digest("base64");
+  return "OAuth " + Object.keys(oauth).sort().map((k) => `${enc(k)}="${enc(oauth[k])}"`).join(", ");
+}
+
+function twitterMonthKey() { return new Date().toISOString().slice(0, 7); }
+function twitterPostLimit() { return Number(process.env.TWITTER_MONTHLY_POST_LIMIT) || 500; }
+function twitterPostsUsed() {
+  try { return Number(JSON.parse(fs.readFileSync(TWITTER_USAGE_FILE, "utf8"))[twitterMonthKey()]) || 0; } catch { return 0; }
+}
+function twitterUsageSummary() { return { month: twitterMonthKey(), used: twitterPostsUsed(), limit: twitterPostLimit() }; }
+function bumpTwitterUsage() {
+  let usage = {};
+  try { usage = JSON.parse(fs.readFileSync(TWITTER_USAGE_FILE, "utf8")); } catch {}
+  const key = twitterMonthKey();
+  usage[key] = (Number(usage[key]) || 0) + 1;
+  fs.writeFileSync(TWITTER_USAGE_FILE, JSON.stringify(usage, null, 2));
+}
+
+// X counts every URL as 23 chars; other chars counted as code points (close enough for a guard)
+function twitterWeightedLength(text) {
+  const urlRe = /https?:\/\/\S+/g;
+  let len = 0, last = 0, m;
+  while ((m = urlRe.exec(text))) {
+    len += [...text.slice(last, m.index)].length + 23;
+    last = m.index + m[0].length;
+  }
+  return len + [...text.slice(last)].length;
+}
+
+async function twitterApi(method, url, creds, { json, form } = {}) {
+  const headers = { Authorization: twitterOAuthHeader(method, url, creds) };
+  let body;
+  if (json) { headers["Content-Type"] = "application/json"; body = JSON.stringify(json); }
+  else if (form) body = form;
+  const r = await fetch(url, { method, headers, body });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) {
+    const msg = data.detail || data.title || (Array.isArray(data.errors) && data.errors.map((e) => e.message || e.detail).join("; ")) || `HTTP ${r.status}`;
+    throw new Error(`X API: ${msg}`);
+  }
+  return data;
+}
+
+async function twitterVerifyCredentials() {
+  const creds = twitterCreds();
+  const d = await twitterApi("GET", "https://api.x.com/2/users/me", creds);
+  if (!d.data?.username) throw new Error("X API: unexpected /users/me response");
+  return d.data;
+}
+
+const TWITTER_MEDIA_TYPES = {
+  jpg: { mime: "image/jpeg", category: "tweet_image", max: 5 * 1024 * 1024 },
+  jpeg: { mime: "image/jpeg", category: "tweet_image", max: 5 * 1024 * 1024 },
+  png: { mime: "image/png", category: "tweet_image", max: 5 * 1024 * 1024 },
+  webp: { mime: "image/webp", category: "tweet_image", max: 5 * 1024 * 1024 },
+  gif: { mime: "image/gif", category: "tweet_gif", max: 15 * 1024 * 1024 },
+  mp4: { mime: "video/mp4", category: "tweet_video", max: 512 * 1024 * 1024 },
+  mov: { mime: "video/quicktime", category: "tweet_video", max: 512 * 1024 * 1024 },
+  m4v: { mime: "video/mp4", category: "tweet_video", max: 512 * 1024 * 1024 },
+};
+
+async function twitterUploadMedia(mediaPath, creds) {
+  const { full, name } = resolveMediaPath(mediaPath);
+  const ext = name.toLowerCase().split(".").pop();
+  const kind = TWITTER_MEDIA_TYPES[ext];
+  if (!kind) throw new Error(`Unsupported media type for X: .${ext}`);
+  const buffer = fs.readFileSync(full);
+  if (buffer.length > kind.max) throw new Error(`${name} is too large for X (${Math.round(buffer.length / 1024 / 1024)}MB > ${Math.round(kind.max / 1024 / 1024)}MB)`);
+
+  const init = new FormData();
+  init.append("command", "INIT");
+  init.append("media_type", kind.mime);
+  init.append("total_bytes", String(buffer.length));
+  init.append("media_category", kind.category);
+  let d = await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: init });
+  const mediaId = d.data?.id || d.media_id_string;
+  if (!mediaId) throw new Error("X API: media INIT returned no id");
+
+  const CHUNK = 4 * 1024 * 1024;
+  for (let offset = 0, seg = 0; offset < buffer.length; offset += CHUNK, seg++) {
+    const append = new FormData();
+    append.append("command", "APPEND");
+    append.append("media_id", mediaId);
+    append.append("segment_index", String(seg));
+    append.append("media", new Blob([buffer.subarray(offset, offset + CHUNK)]), name);
+    await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: append });
+  }
+
+  const fin = new FormData();
+  fin.append("command", "FINALIZE");
+  fin.append("media_id", mediaId);
+  d = await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: fin });
+
+  // Videos/GIFs are processed async — poll STATUS until done
+  let info = d.data?.processing_info || d.processing_info;
+  while (info && info.state !== "succeeded") {
+    if (info.state === "failed") throw new Error(`X media processing failed: ${info.error?.message || "unknown error"}`);
+    await new Promise((res) => setTimeout(res, Math.min(info.check_after_secs || 2, 15) * 1000));
+    const statusUrl = `${TWITTER_UPLOAD_URL}?command=STATUS&media_id=${mediaId}`;
+    d = await twitterApi("GET", statusUrl, creds);
+    info = d.data?.processing_info || d.processing_info;
+  }
+  return String(mediaId);
+}
+
+async function publishTwitterPost(task) {
+  const creds = twitterCreds();
+  const { used, limit } = twitterUsageSummary();
+  if (used >= limit) {
+    throw new Error(`X monthly post limit reached (${used}/${limit}). Resets next month, or raise TWITTER_MONTHLY_POST_LIMIT if your API tier allows more.`);
+  }
+
+  const text = task.text || "";
+  const wLen = twitterWeightedLength(text);
+  if (wLen > 280) throw new Error(`Post is too long for X: ~${wLen}/280 chars (URLs count as 23)`);
+  const mediaPaths = (Array.isArray(task.media_paths) && task.media_paths.length
+    ? task.media_paths
+    : (task.media_path ? [task.media_path] : [])).filter(Boolean);
+  if (!text.trim() && !mediaPaths.length) throw new Error("X post needs text or media");
+  if (mediaPaths.length > 4) throw new Error("X supports max 4 media items per post");
+  if (mediaPaths.length > 1) {
+    const nonImage = mediaPaths.some((p) => !["jpg", "jpeg", "png", "webp"].includes(p.toLowerCase().split(".").pop()));
+    if (nonImage) throw new Error("X allows multiple media only for images (video/GIF must be a single item)");
+  }
+
+  const mediaIds = [];
+  for (const p of mediaPaths) mediaIds.push(await twitterUploadMedia(p, creds));
+
+  const body = { text };
+  if (mediaIds.length) body.media = { media_ids: mediaIds };
+  const d = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: body });
+  if (!d.data?.id) throw new Error("X API: tweet created but no id returned");
+  bumpTwitterUsage();
+  return { message_id: d.data.id };
 }
 
 async function publishTelegramPost(task, channel) {

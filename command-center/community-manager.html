@@ -107,6 +107,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 .channel-platform { font-family: var(--font-data); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
 .channel-platform.telegram { color: var(--agent-color); background: hsla(200 90% 55% / 0.08); }
 .channel-platform.discord { color: hsl(227 58% 65%); background: hsla(227 58% 65% / 0.08); }
+.channel-platform.twitter { color: hsl(210 15% 88%); background: hsla(210 15% 88% / 0.08); }
 .channel-platform.disabled { color: var(--text-dim); background: hsla(217 32% 20% / 0.3); }
 .discord-banner { font-family: var(--font-data); font-size: 11px; color: var(--warning); padding: 8px 12px; border: 1px dashed hsla(45 93% 55% / 0.3); border-radius: 6px; background: hsla(45 93% 55% / 0.04); }
 
@@ -224,6 +225,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
         <input type="text" id="new-chan-name" placeholder="Channel name (e.g. Main Community)">
         <select id="new-chan-platform">
           <option value="telegram">Telegram</option>
+          <option value="twitter">X (Twitter)</option>
           <option value="discord">Discord (config only — publishing later)</option>
         </select>
         <button class="btn-sm primary" onclick="createChannel()">+ Add Channel</button>
@@ -296,7 +298,9 @@ async function loadChannels() {
 
 function renderChannelCard(c) {
   const isDiscord = c.platform === 'discord';
+  const isTwitter = c.platform === 'twitter';
   const discordNote = isDiscord ? `<div class="discord-banner">⚠ Discord publishing is not implemented yet. Settings are saved so you can wire up a bot later.</div>` : '';
+  const twitterNote = isTwitter ? `<div class="discord-banner">𝕏 Posts publish to the X account of the API keys in .env (TWITTER_API_KEY / TWITTER_API_SECRET / TWITTER_ACCESS_TOKEN / TWITTER_ACCESS_SECRET). A monthly counter guards the post limit (default 500, X free tier). Use Validate to test the connection and see usage.</div>` : '';
   const setNames = archetypeSetsCache.map(s => typeof s === 'string' ? s : s.name);
   const setOptions = ['<option value="">— none —</option>', ...setNames.map(s => `<option value="${esc(s)}"${c.archetype_set === s ? ' selected' : ''}>${esc(s)}</option>`)].join('');
   const dayOptions = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => `<option value="${d}"${(c.review?.day||'sunday') === d ? ' selected' : ''}>${d}</option>`).join('');
@@ -311,11 +315,11 @@ function renderChannelCard(c) {
           <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">id: ${esc(c.id)}</span>
         </div>
         <div style="display:flex;gap:8px">
-          ${c.platform === 'telegram' ? `<button class="btn-sm" onclick="validateChannel('${esc(c.id)}')">Validate</button>` : ''}
+          ${['telegram','twitter'].includes(c.platform) ? `<button class="btn-sm" onclick="validateChannel('${esc(c.id)}')">Validate</button>` : ''}
           <button class="btn-sm danger" onclick="deleteChannel('${esc(c.id)}')">Delete</button>
         </div>
       </div>
-      ${discordNote}
+      ${discordNote}${twitterNote}
       <div class="edit-grid">
         <div>
           <label class="edit-label">Name</label>
@@ -325,6 +329,7 @@ function renderChannelCard(c) {
           <label class="edit-label">Platform</label>
           <select class="edit-select" id="ch-platform-${esc(c.id)}">
             <option value="telegram"${c.platform === 'telegram' ? ' selected' : ''}>Telegram</option>
+            <option value="twitter"${c.platform === 'twitter' ? ' selected' : ''}>X (Twitter)</option>
             <option value="discord"${c.platform === 'discord' ? ' selected' : ''}>Discord</option>
           </select>
         </div>
@@ -335,6 +340,7 @@ function renderChannelCard(c) {
             <option value="false"${c.enabled === false ? ' selected' : ''}>No</option>
           </select>
         </div>
+        ${isTwitter ? '' : `
         <div>
           <label class="edit-label">${isDiscord ? 'Channel ID' : 'Chat ID'}</label>
           <input class="edit-input" id="ch-chatid-${esc(c.id)}" value="${esc(c.chat_id)}" placeholder="${isDiscord ? '1234567890123456' : '-1001234567890'}">
@@ -342,7 +348,7 @@ function renderChannelCard(c) {
         <div>
           <label class="edit-label">${isDiscord ? 'Guild ID (optional)' : 'Topic ID (optional, Telegram forum)'}</label>
           <input class="edit-input" id="ch-topicid-${esc(c.id)}" value="${esc(isDiscord ? (c.guild_id || '') : (c.topic_id || ''))}" placeholder="${isDiscord ? 'Guild / server ID' : 'e.g. 12345'}">
-        </div>
+        </div>`}
         <div>
           <label class="edit-label">Archetype Set</label>
           <select class="edit-select" id="ch-arch-${esc(c.id)}">${setOptions}</select>
@@ -390,7 +396,6 @@ async function saveChannel(id) {
     name: gv('name').value,
     platform,
     enabled: gv('enabled').value === 'true',
-    chat_id: gv('chatid').value.trim(),
     archetype_set: gv('arch').value,
     schedule_window_days: Number(gv('window').value) || 7,
     review: {
@@ -400,10 +405,13 @@ async function saveChannel(id) {
       dm_chat_id: gv('rev-dm').value.trim(),
     },
   };
+  const chatEl = gv('chatid');
+  if (chatEl) payload.chat_id = chatEl.value.trim();
+  const topicEl = gv('topicid');
   if (platform === 'telegram') {
-    payload.topic_id = gv('topicid').value.trim();
-  } else {
-    payload.guild_id = gv('topicid').value.trim();
+    if (topicEl) payload.topic_id = topicEl.value.trim();
+  } else if (platform === 'discord') {
+    if (topicEl) payload.guild_id = topicEl.value.trim();
     const wh = gv('webhook'); if (wh) payload.webhook_url = wh.value.trim();
   }
   try {
@@ -434,7 +442,8 @@ async function deleteChannel(id) {
 async function validateChannel(id) {
   try {
     const d = await fetchJson(`/community/channels/${encodeURIComponent(id)}/validate`, { method: 'POST' });
-    if (d.ok) alert(`✅ ${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`);
+    if (d.ok && d.usage) alert(`✅ ${d.title} (${d.type}) — ${d.usage.used}/${d.usage.limit} posts this month`);
+    else if (d.ok) alert(`✅ ${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`);
     else alert(`❌ ${d.error}`);
   } catch (e) { alert('Error: ' + e.message); }
 }
@@ -461,11 +470,12 @@ async function validateSelectedChannel() {
   if (!id) return validateAllChannels();
   const c = channelsCache.find(x => x.id === id);
   if (!c) { dot.className = 'status-dot err'; txt.textContent = 'Channel not found'; return; }
-  if (c.platform !== 'telegram') { dot.className = 'status-dot unk'; txt.textContent = `${c.name} — ${c.platform} (validation only for Telegram)`; return; }
+  if (!['telegram','twitter'].includes(c.platform)) { dot.className = 'status-dot unk'; txt.textContent = `${c.name} — ${c.platform} (validation only for Telegram and X)`; return; }
   dot.className = 'status-dot unk'; txt.textContent = 'Checking…';
   try {
     const d = await fetchJson(`/community/channels/${encodeURIComponent(id)}/validate`, { method: 'POST' });
-    if (d.ok) { dot.className = 'status-dot ok'; txt.textContent = `${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`; }
+    if (d.ok && d.usage) { dot.className = 'status-dot ok'; txt.textContent = `${d.title} (${d.type}) — ${d.usage.used}/${d.usage.limit} posts this month`; }
+    else if (d.ok) { dot.className = 'status-dot ok'; txt.textContent = `${d.title} (${d.type}) — topic ${d.topic_id || 'none'}`; }
     else { dot.className = 'status-dot err'; txt.textContent = `Chat error: ${d.error}`; }
   } catch (e) { dot.className = 'status-dot err'; txt.textContent = `Network error: ${e.message}`; }
 }
@@ -473,10 +483,10 @@ async function validateSelectedChannel() {
 async function validateAllChannels() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
-  const telegramChannels = channelsCache.filter(c => c.platform === 'telegram' && c.enabled !== false);
-  if (!telegramChannels.length) { dot.className = 'status-dot unk'; txt.textContent = 'No enabled Telegram channels to validate'; return; }
-  dot.className = 'status-dot unk'; txt.textContent = `Checking ${telegramChannels.length} channel(s)…`;
-  const results = await Promise.all(telegramChannels.map(async c => {
+  const validatable = channelsCache.filter(c => ['telegram','twitter'].includes(c.platform) && c.enabled !== false);
+  if (!validatable.length) { dot.className = 'status-dot unk'; txt.textContent = 'No enabled Telegram/X channels to validate'; return; }
+  dot.className = 'status-dot unk'; txt.textContent = `Checking ${validatable.length} channel(s)…`;
+  const results = await Promise.all(validatable.map(async c => {
     try {
       const d = await fetchJson(`/community/channels/${encodeURIComponent(c.id)}/validate`, { method: 'POST' });
       return { c, ok: !!d.ok, detail: d.ok ? d.title : d.error };
@@ -980,7 +990,7 @@ function toggleNewPostForm() {
 function populateNewPostChannels() {
   const sel = document.getElementById('np-channel');
   const current = document.getElementById('queue-channel-filter').value;
-  const writable = channelsCache.filter(c => c.enabled !== false && c.platform === 'telegram');
+  const writable = channelsCache.filter(c => c.enabled !== false && ['telegram','twitter'].includes(c.platform));
   if (!writable.length) {
     sel.innerHTML = '<option value="">— no publish-capable channels —</option>';
     return;
