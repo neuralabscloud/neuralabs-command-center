@@ -6623,29 +6623,22 @@ async function twitterUploadMedia(mediaPath, creds) {
   const buffer = fs.readFileSync(full);
   if (buffer.length > kind.max) throw new Error(`${name} is too large for X (${Math.round(buffer.length / 1024 / 1024)}MB > ${Math.round(kind.max / 1024 / 1024)}MB)`);
 
-  const init = new FormData();
-  init.append("command", "INIT");
-  init.append("media_type", kind.mime);
-  init.append("total_bytes", String(buffer.length));
-  init.append("media_category", kind.category);
-  let d = await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: init });
-  const mediaId = d.data?.id || d.media_id_string;
-  if (!mediaId) throw new Error("X API: media INIT returned no id");
+  // GA endpoints: initialize is JSON, append/finalize live under /{media_id}/
+  let d = await twitterApi("POST", `${TWITTER_UPLOAD_URL}/initialize`, creds, {
+    json: { media_type: kind.mime, total_bytes: buffer.length, media_category: kind.category },
+  });
+  const mediaId = d.data?.id;
+  if (!mediaId) throw new Error("X API: media initialize returned no id");
 
   const CHUNK = 4 * 1024 * 1024;
   for (let offset = 0, seg = 0; offset < buffer.length; offset += CHUNK, seg++) {
     const append = new FormData();
-    append.append("command", "APPEND");
-    append.append("media_id", mediaId);
     append.append("segment_index", String(seg));
     append.append("media", new Blob([buffer.subarray(offset, offset + CHUNK)]), name);
-    await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: append });
+    await twitterApi("POST", `${TWITTER_UPLOAD_URL}/${mediaId}/append`, creds, { form: append });
   }
 
-  const fin = new FormData();
-  fin.append("command", "FINALIZE");
-  fin.append("media_id", mediaId);
-  d = await twitterApi("POST", TWITTER_UPLOAD_URL, creds, { form: fin });
+  d = await twitterApi("POST", `${TWITTER_UPLOAD_URL}/${mediaId}/finalize`, creds);
 
   // Videos/GIFs are processed async — poll STATUS until done
   let info = d.data?.processing_info || d.processing_info;
