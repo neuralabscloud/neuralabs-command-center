@@ -150,6 +150,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
         <select class="edit-select" id="queue-channel-filter" onchange="onChannelFilterChange()" style="max-width:240px"></select>
         <button class="btn-sm" onclick="validateSelectedChannel()">Validate chat</button>
         <button class="btn-sm primary" onclick="toggleNewPostForm()" id="new-post-btn" style="margin-left:auto">+ New post</button>
+        <button class="btn-sm" onclick="generatePosts()" id="generate-posts-btn">⚡ Generate posts</button>
         <button class="btn-sm" onclick="sendReview()">Send review batch</button>
         <button class="btn-sm" onclick="loadTasks()">Refresh</button>
       </div>
@@ -764,6 +765,45 @@ async function sendReview() {
     else alert('Failed: ' + (d.error || 'unknown'));
   } catch (e) { alert('Error: ' + e.message); }
   loadTasks();
+}
+
+let generatePollTimer = null;
+async function generatePosts() {
+  const channelId = document.getElementById('queue-channel-filter').value;
+  if (!channelId) { alert('Select a channel first (generation uses that channel\'s archetype set).'); return; }
+  const c = channelsCache.find(x => x.id === channelId);
+  if (c && !c.archetype_set) { alert(`Channel "${c.name}" has no archetype set assigned. Set one on the Channels tab first.`); return; }
+  const countRaw = prompt('How many posts? Leave empty for auto (follows the week schedule in the archetype doc).', '');
+  if (countRaw === null) return;
+  const post_count = countRaw.trim() ? parseInt(countRaw.trim()) : undefined;
+  if (countRaw.trim() && (!Number.isFinite(post_count) || post_count <= 0)) { alert('Enter a positive number or leave empty.'); return; }
+
+  const btn = document.getElementById('generate-posts-btn');
+  try {
+    const d = await fetchJson('/community/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, post_count }) });
+    if (!d.ok) { alert('Failed: ' + (d.error || 'unknown')); return; }
+    btn.disabled = true;
+    btn.textContent = '⚡ Generating…';
+    const scheduleId = d.schedule_id;
+    clearInterval(generatePollTimer);
+    generatePollTimer = setInterval(async () => {
+      try {
+        const runs = await fetchJson('/community-manager/tasks');
+        const run = runs.find(r => r.schedule_id === scheduleId);
+        if (!run || run.status === 'processing') return;
+        clearInterval(generatePollTimer);
+        btn.disabled = false;
+        btn.textContent = '⚡ Generate posts';
+        if (run.status === 'completed') alert(`✅ ${run.drafts_added} draft(s) generated for ${run.channel_name || channelId}. Review and approve them below.`);
+        else alert(`❌ Generation failed: ${run.error || 'unknown error'}`);
+        loadTasks();
+      } catch {}
+    }, 5000);
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '⚡ Generate posts';
+  }
 }
 
 async function publishNow(id) {

@@ -1658,6 +1658,36 @@ app.get("/community-manager/tasks", (_req, res) => {
   res.json(readTaskFile("community-manager-tasks.json"));
 });
 
+// Generate drafts for a channel right now — same engine as the weekly scheduler,
+// but triggered manually from the UI. Fire-and-forget; poll /community-manager/tasks
+// (schedule_id match) for progress.
+const communityGenerating = new Set();
+app.post("/community/generate", (req, res) => {
+  const channelId = req.body?.channel_id;
+  if (!channelId) return res.status(400).json({ error: "channel_id required" });
+  const channel = getChannel(channelId);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+  if (channel.enabled === false) return res.status(400).json({ error: "Channel is disabled" });
+  if (!channel.archetype_set) return res.status(400).json({ error: "Channel has no archetype set assigned" });
+  if (communityGenerating.has(channelId)) return res.status(409).json({ error: "Generation already running for this channel" });
+
+  const syntheticSchedule = {
+    id: `manual-${genId()}`,
+    name: `Generate Posts — ${channel.name}`,
+    payload: {
+      channel_id: channelId,
+      post_count: req.body?.post_count,
+      language: req.body?.language || process.env.LANGUAGE || "NL",
+      notify: req.body?.notify === true,
+    },
+  };
+  communityGenerating.add(channelId);
+  executeCommunityManagerSchedule(syntheticSchedule, new Date())
+    .catch((e) => console.error(`[COMMUNITY] Manual generation for ${channelId} failed: ${e.message}`))
+    .finally(() => communityGenerating.delete(channelId));
+  res.status(202).json({ ok: true, started: true, schedule_id: syntheticSchedule.id, channel_id: channelId });
+});
+
 app.post("/community/tasks", (req, res) => {
   const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
   const allowedStatus = ["draft", "scheduled", "manual"];
@@ -8435,7 +8465,10 @@ async function executeCommunityManagerSchedule(schedule, today) {
   const startIso = now.toISOString();
   const endIso = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const aiPrompt = `You are a community content planner generating draft social posts for a Telegram channel.
+  const platformRules = channel.platform === "twitter"
+    ? `\n- PLATFORM = X (Twitter): every post MUST be 280 characters or less (URLs count as 23 chars). Plain text only, no markdown. Avoid links unless the archetype explicitly requires one. Ignore any footer-link instructions in the archetype doc.`
+    : "";
+  const aiPrompt = `You are a community content planner generating draft social posts for a ${channel.platform === "twitter" ? "X (Twitter) account" : `${channel.platform} channel`}.
 
 CHANNEL: ${channel.name} (platform: ${channel.platform})
 ARCHETYPE SET: ${channel.archetype_set}
@@ -8449,7 +8482,7 @@ ARCHETYPES & WEEK SCHEDULE (source of truth):
 ${archetypeMd}
 ---
 
-${researchContext ? `LATEST RESEARCH CONTEXT (for hooks and angles):\n---\n${researchContext}\n---\n\n` : ""}RULES:
+${researchContext ? `LATEST RESEARCH CONTEXT (for hooks and angles):\n---\n${researchContext}\n---\n\n` : ""}RULES:${platformRules}
 - ${autoCount
     ? "Generate exactly as many drafts as the week schedule in the archetype doc prescribes. Count every non-manual slot in the schedule table; one post per slot. Do not skip, add, or duplicate slots."
     : `Generate exactly ${postCount} draft posts, spread across the next 7 days using the week schedule in the archetype doc. If the schedule has more slots than ${postCount}, pick the highest-cadence archetypes first.`}
