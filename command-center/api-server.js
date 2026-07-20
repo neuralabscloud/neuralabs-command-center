@@ -978,9 +978,15 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
           let parseError = null;
           if (!err && stdout) {
             try {
-              const jsonStart = stdout.indexOf("{");
-              const cleanOutput = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
-              result = JSON.parse(cleanOutput);
+              // Strip ANSI codes; infsh prints a version banner and (on failure) a
+              // plain-text error to stdout with exit code 0, so no JSON may be present
+              const stripped = stdout.replace(/\x1b\[[0-9;]*m/g, "");
+              const jsonStart = stripped.indexOf("{");
+              if (jsonStart < 0) {
+                const cliMsg = stripped.replace(/^inference\.sh\s+v[\d.]+\s*/i, "").trim();
+                throw new Error(cliMsg.slice(0, 300) || "No JSON in output");
+              }
+              result = JSON.parse(stripped.slice(jsonStart));
               images = result.output?.images || result.images || [];
             } catch (e) {
               parseError = e;
@@ -989,7 +995,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
 
           // Retry on empty images (Gemini returned text-only / FinishReason.STOP)
           if (!err && images.length === 0 && attempt < 3) {
-            const reason = result?.output?.description || result?.error || "No images generated (Gemini returned text-only response)";
+            const reason = parseError?.message || result?.output?.description || result?.error || "No images generated (Gemini returned text-only response)";
             console.warn(`[DESIGNER] Nano Banana attempt ${attempt}: no images returned, retrying in 5s. Reason: ${reason.slice(0, 200)}`);
             return setTimeout(() => runInfsh(attempt + 1), 5000);
           }
@@ -1011,7 +1017,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
           if (parseError) {
             console.error("[DESIGNER] Nano Banana parse error:", parseError.message);
             allTasks[idx].status = "failed";
-            allTasks[idx].error = "Failed to parse output: " + parseError.message.slice(0, 200);
+            allTasks[idx].error = "Image generation failed: " + parseError.message.slice(0, 300);
             allTasks[idx].updated_at = new Date().toISOString();
             writeTaskFile("designer-tasks.json", allTasks);
             resolveBatch(); return;
