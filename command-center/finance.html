@@ -61,7 +61,7 @@ body::after {
 }
 .nav-item:hover .tooltip { opacity: 1; }
 .nav-item svg { width: 18px; height: 18px; }
-.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
+.main { flex: 1; min-width: 0; margin-left: var(--sidebar-w); padding: 28px 32px; display: flex; flex-direction: column; gap: 24px; }
 .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .header-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-data); }
@@ -154,6 +154,53 @@ body::after {
 .switch input:checked + .slider { background: hsla(264 65% 49% / 0.25); border-color: var(--primary); }
 .switch input:checked + .slider::before { transform: translateX(16px); background: var(--primary); }
 
+/* ── Charts (palette validated for dark & light surfaces) ── */
+:root {
+  --ch-subs: #8e57db; --ch-onetime: #189daa; --ch-new: #1fad53; --ch-churn: #dc2828;
+  --ch-net: #cbd5e1; --ch-grid: hsla(210 40% 98% / 0.07);
+}
+html[data-theme="light"] {
+  --ch-new: #188a42; --ch-net: #475569; --ch-grid: hsla(217 32% 12% / 0.08);
+}
+.chart-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+}
+.chart-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.chart-sub { font-family: var(--font-data); font-size: 12px; font-weight: 600; color: var(--text); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+.lg-item { display: flex; align-items: center; gap: 6px; }
+.lg-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.lg-line { width: 14px; height: 2px; border-radius: 1px; display: inline-block; }
+.btn-mini { padding: 4px 10px; font-size: 10px; }
+.chart-box { position: relative; width: 100%; }
+.chart-box svg { display: block; width: 100%; height: auto; }
+.chart-box svg text { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.chart-table { overflow-x: auto; margin-top: 8px; }
+.chart-table table { width: 100%; border-collapse: collapse; }
+.chart-table th {
+  font-family: var(--font-data); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-dim); text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.chart-table th:first-child, .chart-table td:first-child { text-align: left; }
+.chart-table td {
+  padding: 7px 10px; border-bottom: 1px solid hsla(217 32% 20% / 0.12);
+  font-family: var(--font-data); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.chart-tip {
+  position: fixed; z-index: 500; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 11px; font-family: var(--font-data); font-size: 11px;
+  pointer-events: none; display: none; box-shadow: 0 8px 32px rgba(0,0,0,0.45); min-width: 140px;
+}
+.tip-title { color: var(--text-dim); margin-bottom: 5px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+.tip-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+.tip-key { width: 10px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+.tip-val { font-weight: 700; color: var(--text); }
+.tip-lbl { color: var(--text-dim); }
+.delta-pos { color: var(--success); }
+.delta-neg { color: var(--danger); }
+
 .empty-state {
   background: var(--bg-card); border: 1px dashed var(--border); border-radius: var(--radius);
   padding: 40px 20px; text-align: center; color: var(--text-dim); font-family: var(--font-data); font-size: 13px;
@@ -186,6 +233,7 @@ body::after {
   .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .table-wrap { overflow-x: auto; }
   .data-table { min-width: 700px; }
+  .grid2 { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -214,6 +262,49 @@ body::after {
         <div class="summary-card"><div class="summary-label">Trialing</div><div class="summary-value" id="kpi-trial">—</div><div class="summary-sub">On trial</div></div>
         <div class="summary-card"><div class="summary-label">Past due</div><div class="summary-value value-warning" id="kpi-past">—</div><div class="summary-sub">Need attention</div></div>
       </div>
+    </section>
+
+    <section class="fade-up delay-2" id="stats-area" style="display:none">
+      <div class="section-header">Revenue · Last 12 Months</div>
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div class="legend">
+            <span class="lg-item"><span class="lg-swatch" style="background:var(--ch-subs)"></span>Subscriptions</span>
+            <span class="lg-item"><span class="lg-swatch" style="background:var(--ch-onetime)"></span>One-time</span>
+            <span class="lg-item"><span class="lg-line" style="background:var(--ch-net)"></span>Net (after fees &amp; refunds)</span>
+          </div>
+          <button class="btn btn-mini" onclick="toggleTable('revenue')">Table</button>
+        </div>
+        <div class="chart-box" id="chart-revenue"></div>
+        <div class="chart-table" id="table-revenue" hidden></div>
+      </div>
+
+      <div class="section-header" style="margin-top:24px">Growth &amp; Churn</div>
+      <div class="grid2">
+        <div class="chart-card">
+          <div class="chart-toolbar">
+            <div class="chart-sub">Subscribers gained vs lost</div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <div class="legend">
+                <span class="lg-item"><span class="lg-swatch" style="background:var(--ch-new)"></span>New</span>
+                <span class="lg-item"><span class="lg-swatch" style="background:var(--ch-churn)"></span>Canceled</span>
+              </div>
+              <button class="btn btn-mini" onclick="toggleTable('growth')">Table</button>
+            </div>
+          </div>
+          <div class="chart-box" id="chart-growth"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-toolbar"><div class="chart-sub">Monthly churn rate</div></div>
+          <div class="chart-box" id="chart-churn"></div>
+        </div>
+      </div>
+      <div class="chart-card" id="growth-table-card" style="margin-top:14px" hidden>
+        <div class="chart-table" id="table-growth"></div>
+      </div>
+
+      <div class="section-header" style="margin-top:24px">Unit Economics &amp; Balance</div>
+      <div class="summary-grid" id="econ-grid"></div>
     </section>
 
     <section class="fade-up delay-3">
@@ -262,15 +353,392 @@ body::after {
   </main>
 </div>
 
+<div class="chart-tip" id="chart-tip"></div>
+
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
 <script>
 const FMT_DATE = d => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
 async function loadAll() {
-  await Promise.all([loadSubscriptions(), loadConfig()]);
+  await Promise.all([loadSubscriptions(), loadConfig(), loadStats()]);
   document.getElementById('last-refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
+
+// ── Extended stats: charts + unit economics ─────────────────
+let statsData = null;
+let CURRENCY = 'usd';
+const CCY_SYM = { usd: '$', eur: '€', gbp: '£' };
+const sym = () => CCY_SYM[CURRENCY] || CURRENCY.toUpperCase() + ' ';
+const money = c => sym() + Math.round(c / 100).toLocaleString();
+const moneyCompact = c => {
+  const v = c / 100;
+  if (Math.abs(v) >= 1000) return sym() + (v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1) + 'k';
+  return sym() + Math.round(v);
+};
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const monthLabel = key => MONTH_NAMES[parseInt(key.slice(5), 10) - 1] || key;
+
+function chartColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = n => cs.getPropertyValue(n).trim();
+  return {
+    subs: g('--ch-subs'), onetime: g('--ch-onetime'), neu: g('--ch-new'), churn: g('--ch-churn'),
+    net: g('--ch-net'), grid: g('--ch-grid'), card: g('--bg-card'), dim: g('--text-dim'), text: g('--text'),
+  };
+}
+
+const svgEl = (tag, attrs) => {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+};
+// Bar with a 4px rounded data-end, square at the baseline.
+function roundedTopRect(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h));
+  return `M${x},${y + h} L${x},${y + r} Q${x},${y} ${x + r},${y} L${x + w - r},${y} Q${x + w},${y} ${x + w},${y + r} L${x + w},${y + h} Z`;
+}
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+
+// One shared tooltip; rows are [color, value, label] built with textContent.
+function tipShow(evt, title, rows) {
+  const tip = document.getElementById('chart-tip');
+  tip.textContent = '';
+  const t = document.createElement('div');
+  t.className = 'tip-title';
+  t.textContent = title;
+  tip.appendChild(t);
+  for (const [color, value, label] of rows) {
+    const row = document.createElement('div');
+    row.className = 'tip-row';
+    const key = document.createElement('span');
+    key.className = 'tip-key';
+    key.style.background = color || 'transparent';
+    const val = document.createElement('span');
+    val.className = 'tip-val';
+    val.textContent = value;
+    const lbl = document.createElement('span');
+    lbl.className = 'tip-lbl';
+    lbl.textContent = label;
+    row.append(key, val, lbl);
+    tip.appendChild(row);
+  }
+  tip.style.display = 'block';
+  const pad = 14;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  const r = tip.getBoundingClientRect();
+  if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+const tipHide = () => { document.getElementById('chart-tip').style.display = 'none'; };
+
+function axisAndGrid(svg, m, plotW, plotH, max, fmt, C, intervals) {
+  const n = intervals || 4;
+  for (let i = 0; i <= n; i++) {
+    const y = m.t + plotH - (plotH * i) / n;
+    svg.appendChild(svgEl('line', { x1: m.l, y1: y, x2: m.l + plotW, y2: y, stroke: C.grid, 'stroke-width': 1 }));
+    const lbl = svgEl('text', { x: m.l - 8, y: y + 3, 'text-anchor': 'end', 'font-size': 10, fill: C.dim });
+    lbl.textContent = fmt((max * i) / n);
+    svg.appendChild(lbl);
+  }
+}
+function monthTicks(svg, months, m, slot, plotH, C) {
+  months.forEach((mo, i) => {
+    const lbl = svgEl('text', { x: m.l + slot * i + slot / 2, y: m.t + plotH + 16, 'text-anchor': 'middle', 'font-size': 10, fill: C.dim });
+    lbl.textContent = monthLabel(mo.key);
+    svg.appendChild(lbl);
+  });
+}
+function hoverSlots(svg, months, m, slot, plotH, onHover) {
+  months.forEach((mo, i) => {
+    const hit = svgEl('rect', { x: m.l + slot * i, y: m.t, width: slot, height: plotH, fill: 'transparent' });
+    hit.addEventListener('pointermove', e => onHover(e, mo, i));
+    hit.addEventListener('pointerleave', tipHide);
+    svg.appendChild(hit);
+  });
+}
+
+function renderRevenueChart() {
+  const box = document.getElementById('chart-revenue');
+  const C = chartColors();
+  const months = statsData.months;
+  const W = Math.max(320, box.clientWidth || 640), H = 250;
+  const m = { t: 14, r: 46, b: 26, l: 48 };
+  const plotW = W - m.l - m.r, plotH = H - m.t - m.b;
+  const slot = plotW / months.length;
+  const max = niceMax(Math.max(...months.map(x => x.gross), 100));
+  const yFor = v => m.t + plotH - (v / max) * plotH;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  axisAndGrid(svg, m, plotW, plotH, max, v => moneyCompact(v), C);
+
+  const GAP = 2, R = 4;
+  const barGroups = [];
+  months.forEach((mo, i) => {
+    const g = svgEl('g', {});
+    const barW = Math.min(24, slot * 0.55);
+    const x = m.l + slot * i + (slot - barW) / 2;
+    const base = m.t + plotH;
+    const subsH = (mo.sub_revenue / max) * plotH;
+    const otherH = (mo.other / max) * plotH;
+    if (subsH >= 0.5 && otherH >= 0.5) {
+      g.appendChild(svgEl('rect', { x, y: base - subsH, width: barW, height: subsH, fill: C.subs }));
+      g.appendChild(svgEl('path', { d: roundedTopRect(x, base - subsH - GAP - otherH, barW, otherH, R), fill: C.onetime }));
+    } else if (subsH >= 0.5) {
+      g.appendChild(svgEl('path', { d: roundedTopRect(x, base - subsH, barW, subsH, R), fill: C.subs }));
+    } else if (otherH >= 0.5) {
+      g.appendChild(svgEl('path', { d: roundedTopRect(x, base - otherH, barW, otherH, R), fill: C.onetime }));
+    }
+    svg.appendChild(g);
+    barGroups.push(g);
+  });
+
+  const pts = months.map((mo, i) => `${m.l + slot * i + slot / 2},${yFor(mo.net)}`).join(' ');
+  svg.appendChild(svgEl('polyline', { points: pts, fill: 'none', stroke: C.net, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  const last = months[months.length - 1];
+  const lx = m.l + slot * (months.length - 1) + slot / 2, ly = yFor(last.net);
+  svg.appendChild(svgEl('circle', { cx: lx, cy: ly, r: 4, fill: C.net, stroke: C.card, 'stroke-width': 2 }));
+  const endLbl = svgEl('text', { x: lx + 8, y: ly + 3, 'font-size': 10, fill: C.text, 'font-weight': 600 });
+  endLbl.textContent = moneyCompact(last.net);
+  svg.appendChild(endLbl);
+
+  monthTicks(svg, months, m, slot, plotH, C);
+  hoverSlots(svg, months, m, slot, plotH, (e, mo, i) => {
+    barGroups.forEach((g, j) => { g.style.opacity = j === i ? '1' : '0.55'; });
+    tipShow(e, monthLabel(mo.key) + ' ' + mo.key.slice(0, 4), [
+      [C.subs, money(mo.sub_revenue), 'Subscriptions'],
+      [C.onetime, money(mo.other), 'One-time'],
+      ['transparent', money(mo.gross), 'Gross'],
+      [C.churn, '−' + money(mo.fees + mo.refunds), 'Fees + refunds'],
+      [C.net, money(mo.net), 'Net'],
+    ]);
+  });
+  svg.addEventListener('pointerleave', () => { barGroups.forEach(g => { g.style.opacity = '1'; }); tipHide(); });
+
+  box.textContent = '';
+  box.appendChild(svg);
+}
+
+function renderGrowthChart() {
+  const box = document.getElementById('chart-growth');
+  const C = chartColors();
+  const months = statsData.months;
+  const W = Math.max(280, box.clientWidth || 480), H = 200;
+  const m = { t: 12, r: 10, b: 26, l: 30 };
+  const plotW = W - m.l - m.r, plotH = H - m.t - m.b;
+  const slot = plotW / months.length;
+  const rawMax = Math.max(...months.map(x => Math.max(x.new_subs, x.churned_subs)), 1);
+  const max = niceMax(rawMax);
+  const intervals = max <= 4 ? max : 4;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  axisAndGrid(svg, m, plotW, plotH, max, v => Math.round(v), C, intervals);
+
+  const GAP = 2, R = 3;
+  const barGroups = [];
+  months.forEach((mo, i) => {
+    const g = svgEl('g', {});
+    const barW = Math.min(10, slot * 0.28);
+    const cx = m.l + slot * i + slot / 2;
+    const base = m.t + plotH;
+    const newH = (mo.new_subs / max) * plotH;
+    const chH = (mo.churned_subs / max) * plotH;
+    // New always left, canceled always right (position is the CVD-safe channel)
+    if (newH >= 0.5) g.appendChild(svgEl('path', { d: roundedTopRect(cx - barW - GAP / 2, base - newH, barW, newH, R), fill: C.neu }));
+    if (chH >= 0.5) g.appendChild(svgEl('path', { d: roundedTopRect(cx + GAP / 2, base - chH, barW, chH, R), fill: C.churn }));
+    svg.appendChild(g);
+    barGroups.push(g);
+  });
+
+  monthTicks(svg, months, m, slot, plotH, C);
+  hoverSlots(svg, months, m, slot, plotH, (e, mo, i) => {
+    barGroups.forEach((g, j) => { g.style.opacity = j === i ? '1' : '0.55'; });
+    tipShow(e, monthLabel(mo.key) + ' ' + mo.key.slice(0, 4), [
+      [C.neu, String(mo.new_subs), 'New'],
+      [C.churn, String(mo.churned_subs), 'Canceled'],
+      ['transparent', (mo.new_subs - mo.churned_subs > 0 ? '+' : '') + (mo.new_subs - mo.churned_subs), 'Net change'],
+    ]);
+  });
+  svg.addEventListener('pointerleave', () => { barGroups.forEach(g => { g.style.opacity = '1'; }); tipHide(); });
+
+  box.textContent = '';
+  box.appendChild(svg);
+}
+
+function renderChurnChart() {
+  const box = document.getElementById('chart-churn');
+  const C = chartColors();
+  const months = statsData.months;
+  const W = Math.max(280, box.clientWidth || 480), H = 200;
+  const m = { t: 12, r: 40, b: 26, l: 44 };
+  const plotW = W - m.l - m.r, plotH = H - m.t - m.b;
+  const slot = plotW / months.length;
+  const max = niceMax(Math.max(...months.map(x => x.churn_rate), 1));
+  const yFor = v => m.t + plotH - (v / max) * plotH;
+
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  axisAndGrid(svg, m, plotW, plotH, max, v => v % 1 === 0 ? v + '%' : v.toFixed(1) + '%', C);
+
+  const pts = months.map((mo, i) => `${m.l + slot * i + slot / 2},${yFor(mo.churn_rate)}`).join(' ');
+  svg.appendChild(svgEl('polyline', { points: pts, fill: 'none', stroke: C.churn, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  months.forEach((mo, i) => {
+    svg.appendChild(svgEl('circle', { cx: m.l + slot * i + slot / 2, cy: yFor(mo.churn_rate), r: 3.5, fill: C.churn, stroke: C.card, 'stroke-width': 2 }));
+  });
+  const last = months[months.length - 1];
+  const lx = m.l + slot * (months.length - 1) + slot / 2;
+  const endLbl = svgEl('text', { x: lx + 8, y: yFor(last.churn_rate) + 3, 'font-size': 10, fill: C.text, 'font-weight': 600 });
+  endLbl.textContent = last.churn_rate.toFixed(1) + '%';
+  svg.appendChild(endLbl);
+
+  monthTicks(svg, months, m, slot, plotH, C);
+  hoverSlots(svg, months, m, slot, plotH, (e, mo) => {
+    tipShow(e, monthLabel(mo.key) + ' ' + mo.key.slice(0, 4), [
+      [C.churn, mo.churn_rate.toFixed(1) + '%', 'Churn rate'],
+      ['transparent', String(mo.churned_subs), 'Canceled'],
+    ]);
+  });
+
+  box.textContent = '';
+  box.appendChild(svg);
+}
+
+function renderEconGrid() {
+  const k = statsData.kpi;
+  const C = chartColors();
+  const grid = document.getElementById('econ-grid');
+  grid.textContent = '';
+
+  const card = (label, value, sub, opts = {}) => {
+    const el = document.createElement('div');
+    el.className = 'summary-card';
+    const l = document.createElement('div');
+    l.className = 'summary-label';
+    l.textContent = label;
+    const v = document.createElement('div');
+    v.className = 'summary-value' + (opts.valueClass ? ' ' + opts.valueClass : '');
+    v.textContent = value;
+    if (opts.delta) {
+      const d = document.createElement('span');
+      d.className = opts.delta.cls;
+      d.style.cssText = 'font-size:13px;font-weight:600;margin-left:8px';
+      d.textContent = opts.delta.text;
+      v.appendChild(d);
+    }
+    const s = document.createElement('div');
+    s.className = 'summary-sub';
+    s.textContent = sub;
+    el.append(l, v, s);
+    if (opts.spark) el.appendChild(opts.spark);
+    return el;
+  };
+
+  // MRR sparkline: de-emphasis line, current period accented
+  const mrrSeries = statsData.months.map(x => x.mrr);
+  const sw = 110, sh = 26, smax = Math.max(...mrrSeries, 1);
+  const spark = svgEl('svg', { viewBox: `0 0 ${sw} ${sh}`, width: sw, height: sh, style: 'margin-top:8px' });
+  const spts = mrrSeries.map((v, i) => `${2 + (i * (sw - 8)) / (mrrSeries.length - 1)},${sh - 3 - (v / smax) * (sh - 6)}`).join(' ');
+  spark.appendChild(svgEl('polyline', { points: spts, fill: 'none', stroke: C.dim, 'stroke-width': 1.5, 'stroke-linejoin': 'round' }));
+  const [slx, sly] = spts.split(' ').pop().split(',');
+  spark.appendChild(svgEl('circle', { cx: slx, cy: sly, r: 3, fill: C.subs }));
+
+  const growth = k.mrr_growth_pct;
+  grid.appendChild(card('MRR', money(k.mrr), 'Monthly recurring revenue', {
+    delta: growth === null ? null : {
+      text: (growth >= 0 ? '+' : '') + growth + '%',
+      cls: growth >= 0 ? 'delta-pos' : 'delta-neg',
+    },
+    spark,
+  }));
+  grid.appendChild(card('ARPU', money(k.arpu), 'Avg revenue per active subscriber'));
+  grid.appendChild(card('Est. LTV', k.ltv === null ? '—' : money(k.ltv),
+    k.ltv === null ? 'No churn in last 3 months' : 'ARPU ÷ avg churn (3-mo)'));
+  grid.appendChild(card('Churn (3-mo avg)', k.churn_rate_3mo + '%', 'Avg monthly churn rate',
+    { valueClass: k.churn_rate_3mo > 5 ? 'value-warning' : '' }));
+  grid.appendChild(card('Avg sub age', k.avg_age_months + ' mo', 'Active subscriptions'));
+  grid.appendChild(card('Stripe balance', money(k.balance_available), '+ ' + money(k.balance_pending) + ' pending', { valueClass: 'value-success' }));
+  const feesDelta = k.fees_prev > 0 ? Math.round(((k.fees_mtd - k.fees_prev) / k.fees_prev) * 100) : null;
+  grid.appendChild(card('Fees & refunds MTD', money(k.fees_mtd + k.refunds_mtd),
+    money(k.fees_mtd) + ' fees · ' + money(k.refunds_mtd) + ' refunds', {
+      delta: feesDelta === null ? null : {
+        text: (feesDelta >= 0 ? '+' : '') + feesDelta + '%',
+        cls: feesDelta > 0 ? 'delta-neg' : 'delta-pos',
+      },
+    }));
+  grid.appendChild(card('Open payments', String(k.open_invoices_count),
+    money(k.open_invoices_amount) + ' unpaid · ' + k.past_due_count + ' past due',
+    { valueClass: (k.open_invoices_count > 0 || k.past_due_count > 0) ? 'value-warning' : '' }));
+}
+
+function buildTable(el, headers, rows) {
+  el.textContent = '';
+  const table = document.createElement('table');
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  headers.forEach(h => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
+  thead.appendChild(hr);
+  const tbody = document.createElement('tbody');
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    r.forEach(c => { const td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+    tbody.appendChild(tr);
+  });
+  table.append(thead, tbody);
+  el.appendChild(table);
+}
+
+function toggleTable(which) {
+  if (which === 'revenue') {
+    const t = document.getElementById('table-revenue');
+    t.hidden = !t.hidden;
+    if (!t.hidden && statsData) {
+      buildTable(t, ['Month', 'Subscriptions', 'One-time', 'Gross', 'Fees', 'Refunds', 'Net'],
+        statsData.months.map(m => [monthLabel(m.key) + ' ' + m.key.slice(0, 4),
+          money(m.sub_revenue), money(m.other), money(m.gross), money(m.fees), money(m.refunds), money(m.net)]));
+    }
+  } else if (which === 'growth') {
+    const c = document.getElementById('growth-table-card');
+    c.hidden = !c.hidden;
+    if (!c.hidden && statsData) {
+      buildTable(document.getElementById('table-growth'), ['Month', 'New', 'Canceled', 'Net change', 'Churn rate', 'MRR'],
+        statsData.months.map(m => [monthLabel(m.key) + ' ' + m.key.slice(0, 4),
+          m.new_subs, m.churned_subs, (m.new_subs - m.churned_subs > 0 ? '+' : '') + (m.new_subs - m.churned_subs),
+          m.churn_rate.toFixed(1) + '%', money(m.mrr)]));
+    }
+  }
+}
+
+function renderStats() {
+  if (!statsData) return;
+  document.getElementById('stats-area').style.display = '';
+  renderRevenueChart();
+  renderGrowthChart();
+  renderChurnChart();
+  renderEconGrid();
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch('/finance/stats', { credentials: 'include' });
+    if (!r.ok) return; // 503 = Stripe not configured; the banner above covers it
+    statsData = await r.json();
+    CURRENCY = (statsData.currency || 'usd').toLowerCase();
+    renderStats();
+  } catch {}
+}
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderStats, 150);
+});
+new MutationObserver(renderStats).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 async function loadSubscriptions() {
   const container = document.getElementById('subs-container');

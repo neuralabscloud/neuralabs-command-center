@@ -7067,7 +7067,8 @@ app.get("/finance/subscriptions", async (_req, res) => {
     }
     const items = subs.data.map(normalizeSubscription);
     items.sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""));
-    const active = items.filter(s => s.status === "active" || s.status === "trialing");
+    // Trials pay nothing yet — MRR counts paying subs only.
+    const active = items.filter(s => s.status === "active");
     const mrrCents = active.reduce((s, x) => s + x.mrr_cents, 0);
     const currency = active[0]?.currency || items[0]?.currency || "usd";
     res.json({
@@ -7084,6 +7085,154 @@ app.get("/finance/subscriptions", async (_req, res) => {
     });
   } catch (err) {
     console.error("[FINANCE]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── FINANCE: extended stats (12-month trends, unit economics) ─────
+let financeStatsCache = { data: null, ts: 0 };
+
+// Normalize a subscription item price to a monthly amount in cents.
+function monthlyCentsForSub(sub) {
+  let cents = 0;
+  for (const item of (sub.items?.data || [])) {
+    const price = item.price || {};
+    let amt = price.unit_amount || 0;
+    const interval = price.recurring?.interval;
+    if (interval === "year") amt = Math.round(amt / 12);
+    else if (interval === "week") amt = amt * 4;
+    else if (interval === "day") amt = amt * 30;
+    cents += amt * (item.quantity || 1);
+  }
+  return cents;
+}
+
+app.get("/finance/stats", async (_req, res) => {
+  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
+  if (financeStatsCache.data && Date.now() - financeStatsCache.ts < 15 * 60 * 1000) {
+    return res.json(financeStatsCache.data);
+  }
+  try {
+    const now = new Date();
+    // 12 calendar months, oldest first
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      months.push({
+        key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
+        start: Math.floor(start / 1000),
+        end: Math.floor(end / 1000),
+        gross: 0, fees: 0, refunds: 0, sub_revenue: 0,
+        new_subs: 0, churned_subs: 0, active_start: 0, mrr: 0,
+      });
+    }
+    const ts12 = months[0].start;
+    const bucketFor = ts => months.find(m => ts >= m.start && ts < m.end);
+
+    const [balance, txns, invoices, allSubs] = await Promise.all([
+      stripe.balance.retrieve(),
+      stripeListAll(stripe.balanceTransactions, { created: { gte: ts12 } }),
+      stripeListAll(stripe.invoices, { created: { gte: ts12 } }),
+      stripeListAll(stripe.subscriptions, { status: "all" }),
+    ]);
+
+    // -- Money per month from balance transactions + paid invoices --
+    const revenueTypes = new Set(["charge", "payment"]);
+    const refundTypes = new Set(["refund", "payment_refund", "payment_failure_refund"]);
+    for (const t of txns) {
+      const b = bucketFor(t.created);
+      if (!b) continue;
+      if (revenueTypes.has(t.type)) { b.gross += t.amount; b.fees += t.fee; }
+      else if (refundTypes.has(t.type)) b.refunds += Math.abs(t.amount);
+    }
+    for (const inv of invoices) {
+      if (inv.status !== "paid") continue;
+      const b = bucketFor(inv.created);
+      if (b) b.sub_revenue += inv.amount_paid;
+    }
+
+    // -- Subscriber movement per month (created / canceled dates) --
+    // Historical status isn't queryable, so this approximates from lifecycle
+    // dates; incomplete signups never became customers and are excluded.
+    const subs = allSubs.filter(s => s.status !== "incomplete" && s.status !== "incomplete_expired");
+    for (const sub of subs) {
+      const created = sub.start_date || sub.created;
+      // Actual end of service. A scheduled cancel (cancel_at_period_end) sets
+      // canceled_at at request time but the sub runs until ended_at — only
+      // treat truly-ended subs as churned.
+      const ended = sub.ended_at || (sub.status === "canceled" ? sub.canceled_at : null);
+      // Trials pay nothing: MRR starts at trial_end, not at signup.
+      const payingFrom = sub.trial_end && sub.trial_end > created ? sub.trial_end : created;
+      const monthly = monthlyCentsForSub(sub);
+      for (const m of months) {
+        const aliveAtStart = created < m.start && (!ended || ended >= m.start);
+        const payingAtEnd = payingFrom < m.end && (!ended || ended >= m.end);
+        if (aliveAtStart) m.active_start++;
+        if (payingAtEnd) m.mrr += monthly;
+        if (created >= m.start && created < m.end) m.new_subs++;
+        if (ended && ended >= m.start && ended < m.end) m.churned_subs++;
+      }
+    }
+
+    const series = months.map(m => ({
+      key: m.key,
+      gross: m.gross,
+      fees: m.fees,
+      refunds: m.refunds,
+      net: m.gross - m.fees - m.refunds,
+      sub_revenue: Math.min(m.sub_revenue, m.gross),
+      other: Math.max(0, m.gross - m.sub_revenue),
+      new_subs: m.new_subs,
+      churned_subs: m.churned_subs,
+      churn_rate: m.active_start > 0 ? +((m.churned_subs / m.active_start) * 100).toFixed(2) : 0,
+      mrr: m.mrr,
+    }));
+
+    // -- Unit economics from live subscription state --
+    const activeSubs = subs.filter(s => s.status === "active");
+    const mrrNow = activeSubs.reduce((s, x) => s + monthlyCentsForSub(x), 0);
+    const arpu = activeSubs.length > 0 ? Math.round(mrrNow / activeSubs.length) : 0;
+    const mrrPrev = series[series.length - 2]?.mrr || 0;
+    const mrrGrowth = mrrPrev > 0 ? +(((series[series.length - 1].mrr - mrrPrev) / mrrPrev) * 100).toFixed(1) : null;
+    const last3 = series.slice(-3);
+    const churn3mo = +(last3.reduce((s, m) => s + m.churn_rate, 0) / last3.length).toFixed(2);
+    const ltv = churn3mo > 0 ? Math.round(arpu / (churn3mo / 100)) : null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const avgAgeMonths = activeSubs.length > 0
+      ? +((activeSubs.reduce((s, x) => s + (nowSec - (x.start_date || x.created)), 0) / activeSubs.length) / (30.44 * 86400)).toFixed(1)
+      : 0;
+
+    const openInvoices = invoices.filter(i => i.status === "open");
+    const cur = series[series.length - 1];
+    const prev = series[series.length - 2] || { fees: 0, refunds: 0 };
+    const currency = activeSubs[0]?.items?.data?.[0]?.price?.currency || invoices[0]?.currency || txns[0]?.currency || "usd";
+
+    const result = {
+      months: series,
+      kpi: {
+        mrr: mrrNow,
+        mrr_growth_pct: mrrGrowth,
+        arpu,
+        ltv,
+        churn_rate_3mo: churn3mo,
+        avg_age_months: avgAgeMonths,
+        active_count: activeSubs.length,
+        balance_available: balance.available.reduce((s, b) => s + b.amount, 0),
+        balance_pending: balance.pending.reduce((s, b) => s + b.amount, 0),
+        fees_mtd: cur.fees, fees_prev: prev.fees,
+        refunds_mtd: cur.refunds, refunds_prev: prev.refunds,
+        open_invoices_count: openInvoices.length,
+        open_invoices_amount: openInvoices.reduce((s, i) => s + (i.amount_due || 0), 0),
+        past_due_count: subs.filter(s => s.status === "past_due").length,
+      },
+      currency,
+      fetched_at: new Date().toISOString(),
+    };
+    financeStatsCache = { data: result, ts: Date.now() };
+    res.json(result);
+  } catch (err) {
+    console.error("[FINANCE STATS]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
