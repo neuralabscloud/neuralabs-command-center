@@ -887,7 +887,6 @@ body::after {
   :root { --sidebar-w: 0px; }
   .main { margin-right: 0; margin-left: 0; }
   .briefing { grid-template-columns: repeat(2, 1fr); }
-  #stripe-grid { grid-template-columns: repeat(3, 1fr) !important; }
   .social-grid { grid-template-columns: repeat(2, 1fr); }
   .agents-grid { grid-template-columns: repeat(2, 1fr); }
   .fade-up.delay-6 { grid-template-columns: 1fr !important; }
@@ -950,7 +949,6 @@ body::after {
   #menu-btn { display: none; }
   .briefing { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
   .briefing-item-value { font-size: 13px; }
-  #stripe-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
   .social-grid { grid-template-columns: 1fr; }
   .agents-grid { grid-template-columns: 1fr; }
   .kanban { grid-template-columns: 1fr; overflow-x: auto; }
@@ -969,7 +967,6 @@ body::after {
   .main { padding: 12px; gap: 16px; }
   .header-title { font-size: 14px; }
   .briefing { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
-  #stripe-grid { grid-template-columns: 1fr !important; }
   .brand-card { border-radius: 10px; }
   .agent-card { border-radius: 10px; }
   .sidebar-nav { gap: 0; padding: 0 2px; }
@@ -1011,12 +1008,6 @@ body::after {
         </div>
       </div>
     </div>
-
-    <!-- STRIPE / REVENUE -->
-    <section class="fade-up delay-2" id="stripe-section" style="display:none;">
-      <div class="section-header">Business Revenue <button id="blur-toggle" onclick="toggleBlur()" style="font-family:var(--font-data);font-size:10px;background:none;border:1px solid var(--border);color:var(--text-dim);padding:3px 10px;border-radius:6px;cursor:pointer;margin-left:8px;transition:all 0.2s;">Hide</button></div>
-      <div id="stripe-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;transition:filter 0.3s;"></div>
-    </section>
 
     <!-- ISOMETRIC OFFICE -->
     <section class="fade-up delay-3 office-section">
@@ -1396,80 +1387,6 @@ async function refreshAllData(forceAll) {
     console.log('[NL] All caches fresh (< 24h) — skipping fetch');
   }
 })();
-
-// ── REVENUE BLUR TOGGLE ───────────────────────
-function toggleBlur() {
-  const grid = document.getElementById('stripe-grid');
-  const btn = document.getElementById('blur-toggle');
-  const blurred = grid.style.filter === 'blur(10px)';
-  grid.style.filter = blurred ? 'none' : 'blur(10px)';
-  grid.style.userSelect = blurred ? '' : 'none';
-  btn.textContent = blurred ? 'Hide' : 'Show';
-  localStorage.setItem('ctrl_revenue_blurred', blurred ? '' : '1');
-}
-// Restore blur state
-if (localStorage.getItem('ctrl_revenue_blurred')) {
-  requestAnimationFrame(() => {
-    const grid = document.getElementById('stripe-grid');
-    const btn = document.getElementById('blur-toggle');
-    if (grid) { grid.style.filter = 'blur(10px)'; grid.style.userSelect = 'none'; }
-    if (btn) btn.textContent = 'Show';
-  });
-}
-
-// ── STRIPE REVENUE (live from Stripe API) ──
-function fmtEur(n) {
-  return '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-function renderStripeCard(label, value, sub, color) {
-  return `<div style="background:linear-gradient(180deg,hsla(0 0% 6%/1) 0%,hsla(0 0% 3%/1) 100%);border:1px solid var(--border);border-radius:14px;padding:16px 18px;transition:all 0.3s;">
-    <div style="font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">${label}</div>
-    <div style="font-family:var(--font-data);font-size:22px;font-weight:700;color:${color};margin-bottom:4px;">${value}</div>
-    <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">${sub}</div>
-  </div>`;
-}
-async function renderStripe() {
-  const section = document.getElementById('stripe-section');
-  const grid = document.getElementById('stripe-grid');
-  try {
-    const brandRes = await fetch('/brand', { credentials: 'include' });
-    if (!brandRes.ok) throw new Error('brand fetch failed');
-    const brand = await brandRes.json();
-    if (!brand.features || !brand.features.stripe) {
-      if (section) section.style.display = 'none';
-      return;
-    }
-    if (section) section.style.display = '';
-  } catch (e) {
-    if (section) section.style.display = 'none';
-    return;
-  }
-  grid.innerHTML = renderStripeCard('MRR', '—', 'Loading...', 'var(--text-dim)')
-    + renderStripeCard('Revenue (MTD)', '—', 'Loading...', 'var(--text-dim)')
-    + renderStripeCard('Active Subs', '—', 'Loading...', 'var(--text-dim)')
-    + renderStripeCard('Churn Rate', '—', 'Loading...', 'var(--text-dim)')
-    + renderStripeCard('Balance', '—', 'Loading...', 'var(--text-dim)');
-  try {
-    const res = await fetch('/stripe/revenue', { credentials: 'include' });
-    if (!res.ok) throw new Error('API error');
-    const d = await res.json();
-    const c = v => fmtEur(v / 100); // cents to EUR
-    const grossGrowth = d.gross.prev > 0 ? Math.round(((d.gross.mtd - d.gross.prev) / d.gross.prev) * 100) : 0;
-    const growthSign = grossGrowth >= 0 ? '+' : '';
-    const cards = [
-      renderStripeCard('Bruto Volume', c(d.gross.mtd), growthSign + grossGrowth + '% vs vorige maand · fees: ' + c(d.gross.fees_mtd), grossGrowth >= 0 ? 'var(--success)' : 'var(--danger)'),
-      renderStripeCard('MRR', c(d.mrr.value), 'Subs: ' + c(d.mrr.subs_only || 0) + ' · Plug&Pay: ' + c(d.mrr.plugpay || 0), 'var(--primary)'),
-      renderStripeCard('Subscriptions MTD', c(d.subscriptions?.mtd || 0), 'vorige maand: ' + c(d.subscriptions?.prev || 0), 'var(--success)'),
-      renderStripeCard('Plug&Pay MTD', c(d.other?.mtd || 0), 'vorige maand: ' + c(d.other?.prev || 0), 'var(--success)'),
-      renderStripeCard('Balance', c((d.balance?.available || 0) + (d.balance?.pending || 0)), c(d.balance?.pending || 0) + ' pending', 'var(--warning)'),
-    ];
-    grid.innerHTML = cards.join('');
-  } catch (e) {
-    console.error('[STRIPE]', e);
-  }
-}
-renderStripe();
-setInterval(renderStripe, 5 * 60 * 1000); // refresh elke 5 min
 
 // ── SYSTEM HEALTH ────────────────────────────
 function sysLineChart(values, color, { height = 54, max = null, fill = true } = {}) {
