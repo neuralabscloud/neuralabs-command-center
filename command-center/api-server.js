@@ -7004,6 +7004,7 @@ function formatMoney(amountCents, currency) {
 function normalizeSubscription(sub) {
   const items = sub.items?.data || [];
   let mrrCents = 0;
+  let totalCents = 0;
   const planLines = [];
   for (const item of items) {
     const price = item.price || {};
@@ -7015,6 +7016,7 @@ function normalizeSubscription(sub) {
     else if (interval === "week") monthly = unit * 4;
     else if (interval === "day") monthly = unit * 30;
     mrrCents += monthly * qty;
+    totalCents += unit * qty;
     const product = price.product && typeof price.product === "object" ? price.product : null;
     const productName = product?.name || price.nickname || "Plan";
     planLines.push(`${productName} — ${formatMoney(unit * qty, price.currency)}/${interval || "mo"}`);
@@ -7028,7 +7030,7 @@ function normalizeSubscription(sub) {
     plan: planLines.join(", ") || "—",
     currency: items[0]?.price?.currency || "usd",
     mrr_cents: mrrCents,
-    amount_display: items.length ? formatMoney(mrrCents, items[0].price.currency) : "—",
+    amount_display: items.length ? formatMoney(totalCents, items[0].price.currency) : "—",
     interval: items[0]?.price?.recurring?.interval || "month",
     start_date: sub.start_date ? new Date(sub.start_date * 1000).toISOString() : null,
     current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
@@ -7260,6 +7262,7 @@ app.post("/finance/config", (req, res) => {
 // Build a Telegram message for a subscription event.
 function formatSubscriptionMessage(sub, eventType) {
   const norm = normalizeSubscription(sub);
+  const mrrDisplay = formatMoney(norm.mrr_cents, norm.currency);
   const who = norm.customer_name
     ? `${norm.customer_name} (${norm.customer_email || "no email"})`
     : (norm.customer_email || "Unknown customer");
@@ -7268,7 +7271,7 @@ function formatSubscriptionMessage(sub, eventType) {
       `<b>New subscription</b>`,
       `Customer: ${who}`,
       `Plan: ${norm.plan}`,
-      `MRR: ${norm.amount_display}/mo`,
+      `MRR: ${mrrDisplay}/mo`,
       `Status: ${norm.status}`,
     ].join("\n");
   }
@@ -7277,7 +7280,7 @@ function formatSubscriptionMessage(sub, eventType) {
       `<b>Subscription canceled</b>`,
       `Customer: ${who}`,
       `Plan: ${norm.plan}`,
-      `Was MRR: ${norm.amount_display}/mo`,
+      `Was MRR: ${mrrDisplay}/mo`,
       norm.canceled_at ? `Canceled: ${new Date(norm.canceled_at).toLocaleString()}` : "",
     ].filter(Boolean).join("\n");
   }
@@ -7286,7 +7289,7 @@ function formatSubscriptionMessage(sub, eventType) {
       `<b>Payment past due</b>`,
       `Customer: ${who}`,
       `Plan: ${norm.plan}`,
-      `MRR at risk: ${norm.amount_display}/mo`,
+      `MRR at risk: ${mrrDisplay}/mo`,
       `Status: ${norm.status}`,
     ].join("\n");
   }
@@ -7295,7 +7298,7 @@ function formatSubscriptionMessage(sub, eventType) {
       `<b>Payment recovered</b>`,
       `Customer: ${who}`,
       `Plan: ${norm.plan}`,
-      `MRR: ${norm.amount_display}/mo`,
+      `MRR: ${mrrDisplay}/mo`,
       `Status: past_due → ${norm.status}`,
     ].join("\n");
   }
