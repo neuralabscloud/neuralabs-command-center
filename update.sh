@@ -145,6 +145,11 @@ if ! command -v infsh &>/dev/null; then
   else
     warn "Inference.sh CLI install failed — Designer (Nano Banana) will not work until installed: curl -fsSL https://cli.inference.sh | sh"
   fi
+else
+  # An outdated CLI silently breaks against the current inference.sh API
+  # ("Failed to get app: request failed" in the Designer), so always update.
+  info "Updating Inference.sh CLI..."
+  timeout 90 infsh update 2>&1 && ok "Inference.sh CLI updated" || warn "Inference.sh CLI update failed — if the Designer shows 'Failed to get app', run: infsh update"
 fi
 
 # ── IMAGEMAGICK (backfill for older installs) ──
