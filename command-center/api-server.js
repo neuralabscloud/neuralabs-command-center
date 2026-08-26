@@ -1815,13 +1815,13 @@ app.delete("/research/tasks/:id", (req, res) => {
 });
 
 // Daily auto-research: trigger manually or via cron
-app.post("/research/daily", (_req, res) => {
+app.post("/research/daily", (req, res) => {
   const tasks = readTaskFile("research-tasks.json");
   const today = new Date().toISOString().slice(0, 10);
 
-  // Check if already ran today
+  // Check if already ran today (pass {"force": true} to run anyway)
   const alreadyRan = tasks.some(t => t.type === "daily" && t.created_at?.startsWith(today));
-  if (alreadyRan) return res.json({ ok: false, message: "Daily research already ran today" });
+  if (alreadyRan && !req.body?.force) return res.json({ ok: false, message: "Daily research already ran today" });
 
   const task = {
     id: genId(), status: "pending",

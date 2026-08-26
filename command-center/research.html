@@ -952,8 +952,16 @@ async function runDailyResearch() {
   btn.disabled = true;
   btn.textContent = 'Running...';
   try {
-    const res = await fetch('/research/daily', { method: 'POST' });
-    const data = await res.json();
+    let res = await fetch('/research/daily', { method: 'POST' });
+    let data = await res.json();
+    if (data.ok === false && confirm('Daily research already ran today. Run again anyway?')) {
+      res = await fetch('/research/daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      data = await res.json();
+    }
     if (data.ok === false) {
       btn.textContent = data.message || 'Already ran today';
     } else {
