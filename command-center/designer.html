@@ -167,7 +167,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   <main class="main">
     <div class="fade-up delay-1">
       <div class="header-title">DESIGNER AGENT</div>
-      <div class="header-sub">Canva-powered design generation</div>
+      <div class="header-sub">AI design generation</div>
     </div>
 
     <!-- NEW TASK FORM -->
@@ -193,51 +193,64 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Brand</label>
-            <select class="form-select" id="design-brand"></select>
-          </div>
-          <div class="form-field">
-            <label class="form-label">Brand Kit</label>
-            <select class="form-select" id="design-brandkit">
-              <option value="">None</option>
-            </select>
-          </div>
-          <div class="form-field">
             <label class="form-label">Engine</label>
             <select class="form-select" id="design-engine">
               <option value="nanobanana">Nano Banana (Gemini)</option>
+              <option value="higgsfield">Higgsfield (Soul)</option>
               <option value="playwright">Playwright (instant)</option>
               <option value="claude">Claude AI (Canva MCP)</option>
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Layout Template</label>
-            <select class="form-select" id="design-template">
-              <option value="default">Default</option>
-              <option value="bold-impact">Bold Impact</option>
-              <option value="clean-minimal">Clean Minimal</option>
-              <option value="data-dense">Data Dense</option>
+            <label class="form-label">Style</label>
+            <select class="form-select" id="design-style">
+              <option value="">Auto (let the model decide)</option>
+              <option value="photographic">Photographic</option>
+              <option value="cinematic">Cinematic</option>
+              <option value="render3d">3D Render</option>
+              <option value="illustration">Illustration</option>
+              <option value="minimal">Minimal</option>
+              <option value="typographic">Typographic</option>
+              <option value="gradient">Gradient</option>
+              <option value="collage">Collage</option>
+              <option value="retro">Retro</option>
+              <option value="handdrawn">Hand-drawn</option>
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Logo Position</label>
-            <select class="form-select" id="design-logo-position">
-              <option value="SouthEast">Bottom Right</option>
-              <option value="South">Bottom Center</option>
-              <option value="SouthWest">Bottom Left</option>
-              <option value="NorthEast">Top Right</option>
-              <option value="North">Top Center</option>
-              <option value="NorthWest">Top Left</option>
-              <option value="Center">Center</option>
-              <option value="none">No logo</option>
+            <label class="form-label">Color Scheme</label>
+            <select class="form-select" id="design-colors">
+              <option value="">Auto</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="monochrome">Monochrome</option>
+              <option value="vibrant">Vibrant</option>
+              <option value="pastel">Pastel</option>
+              <option value="earth">Earth tones</option>
+              <option value="corporate">Corporate</option>
             </select>
           </div>
           <div class="form-field">
-            <label class="form-label">Logo Size</label>
-            <select class="form-select" id="design-logo-size">
-              <option value="small">Small</option>
-              <option value="medium" selected>Medium</option>
-              <option value="large">Large</option>
+            <label class="form-label">Specific Colors <span style="font-weight:400;color:var(--text-dim)">(optional)</span></label>
+            <input type="text" class="form-input" id="design-custom-colors" placeholder="#0F172A, warm orange">
+          </div>
+          <div class="form-field">
+            <label class="form-label">Text On Image</label>
+            <select class="form-select" id="design-text-mode">
+              <option value="auto">Auto</option>
+              <option value="text">Render the text</option>
+              <option value="no-text">No text at all</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Aspect Ratio</label>
+            <select class="form-select" id="design-aspect">
+              <option value="">Auto (by design type)</option>
+              <option value="1:1">1:1 Square</option>
+              <option value="4:5">4:5 Portrait</option>
+              <option value="9:16">9:16 Story / Reels</option>
+              <option value="16:9">16:9 Landscape</option>
+              <option value="1.91:1">1.91:1 Wide / Link</option>
             </select>
           </div>
           <div class="form-field" id="slide-count-field" style="display:none">
@@ -259,14 +272,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <textarea class="form-textarea" id="design-desc" placeholder=""></textarea>
           </div>
           <div class="form-field" style="grid-column: 1 / -1">
-            <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — select one or more, used by Nano Banana as style/content reference)</span></label>
+            <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana as style/content reference; ignored by the other engines)</span></label>
             <input type="file" id="design-ref-image" accept="image/*" multiple style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
           </div>
-          <div style="grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 2px; align-items: center" id="style-hints">
-            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">Loading tags...</span>
-          </div>
-          <div style="grid-column: 1 / -1; margin-top: -6px; text-align: right">
-            <button type="button" id="edit-style-tags-btn" style="background:transparent;border:none;color:var(--text-dim);font-family:var(--font-data);font-size:10px;letter-spacing:0.05em;cursor:pointer;text-decoration:underline">Edit tags</button>
+          <div class="form-field" style="grid-column: 1 / -1">
+            <label class="form-label">Avoid <span style="font-weight:400;color:var(--text-dim)">(optional — what the design must not contain)</span></label>
+            <input type="text" class="form-input" id="design-negative" placeholder="text, people, clutter">
           </div>
         </div>
         <div class="form-actions">
@@ -333,12 +344,12 @@ function renderTasks(tasks) {
         }
       </div>
       <div class="task-body">
-        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : ''} &middot; ${t.brand}</div>
+        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : ''}${t.engine ? ' &middot; ' + t.engine : ''}</div>
         <div class="task-desc">${t.description}</div>
         <div class="task-footer">
           <span class="task-status-badge ${t.status}">${t.status}</span>
           <span class="task-time">${time}</span>
-          ${t.result_url ? `<a class="task-link" href="${t.result_url}" target="_blank" ${t.result_url.startsWith('/generated') ? 'download' : ''}>${t.engine === 'playwright' || t.engine === 'nanobanana' ? 'Download' : t.engine === 'claude' ? 'Open Design' : 'Open in Canva'}</a>` : ''}
+          ${t.result_url ? `<a class="task-link" href="${t.result_url}" target="_blank" ${t.result_url.startsWith('/generated') ? 'download' : ''}>${['playwright','nanobanana','higgsfield'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open Design' : 'Open in Canva'}</a>` : ''}
           <button class="task-delete" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
         </div>
         ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${t.error}</div>` : ''}
@@ -349,8 +360,11 @@ function renderTasks(tasks) {
 
 // Show/hide slide count and aspect ratio fields based on design type
 document.getElementById('design-type').addEventListener('change', function() {
+  const isAd = this.value === 'ad_creative';
   document.getElementById('slide-count-field').style.display = this.value === 'instagram_carousel' ? '' : 'none';
-  document.getElementById('aspect-ratio-field').style.display = this.value === 'ad_creative' ? '' : 'none';
+  document.getElementById('aspect-ratio-field').style.display = isAd ? '' : 'none';
+  // Ad creatives use the multi-select chips below instead of the single dropdown.
+  document.getElementById('design-aspect').closest('.form-field').style.display = isAd ? 'none' : '';
 });
 
 // Aspect-ratio chip toggles (multi-select, always keep at least one active)
@@ -376,6 +390,14 @@ async function submitTask() {
   const aspectRatios = designType === 'ad_creative'
     ? [...document.querySelectorAll('#aspect-chips .style-tag.active')].map(el => el.dataset.aspect)
     : null;
+  const singleAspect = designType === 'ad_creative' ? '' : document.getElementById('design-aspect').value;
+  const look = {
+    style: document.getElementById('design-style').value,
+    color_scheme: document.getElementById('design-colors').value,
+    custom_colors: document.getElementById('design-custom-colors').value.trim(),
+    text_mode: document.getElementById('design-text-mode').value,
+    negative_prompt: document.getElementById('design-negative').value.trim(),
+  };
 
   try {
     const refImageInput = document.getElementById('design-ref-image');
@@ -394,12 +416,9 @@ async function submitTask() {
     if (hasRefImage) {
       const fd = new FormData();
       fd.append('design_type', designType);
-      fd.append('brand', document.getElementById('design-brand').value);
-      fd.append('brand_kit_id', document.getElementById('design-brandkit').value || '');
       fd.append('engine', document.getElementById('design-engine').value);
-      fd.append('template', document.getElementById('design-template').value);
-      fd.append('logo_position', document.getElementById('design-logo-position').value);
-      fd.append('logo_size', document.getElementById('design-logo-size').value);
+      for (const [k, v] of Object.entries(look)) if (v) fd.append(k, v);
+      if (singleAspect) fd.append('aspect_ratio', singleAspect);
       if (slideCount) fd.append('slide_count', slideCount);
       if (aspectRatios && aspectRatios.length) {
         for (const ar of aspectRatios) fd.append('aspect_ratios', ar);
@@ -415,14 +434,11 @@ async function submitTask() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           design_type: designType,
-          brand: document.getElementById('design-brand').value,
-          brand_kit_id: document.getElementById('design-brandkit').value || null,
           engine: document.getElementById('design-engine').value,
-          template: document.getElementById('design-template').value,
-          logo_position: document.getElementById('design-logo-position').value,
-          logo_size: document.getElementById('design-logo-size').value,
+          ...look,
           slide_count: slideCount,
           aspect_ratios: aspectRatios,
+          aspect_ratio: singleAspect || null,
           description: desc,
         }),
       });
@@ -448,310 +464,6 @@ async function deleteTask(id) {
   await fetch(API + '/' + id, { method: 'DELETE' });
   loadTasks();
 }
-
-// ── STYLE TAGS (loaded from /style-tags, customer-editable) ──
-const STYLE_PREFIX_RE = /^style\s*:\s*([^\n]*)/i;
-let styleTagsCache = { categories: [] };
-
-async function loadStyleTags() {
-  const container = document.getElementById('style-hints');
-  try {
-    const res = await fetch('/style-tags');
-    if (!res.ok) throw new Error(res.status);
-    styleTagsCache = await res.json();
-  } catch {
-    styleTagsCache = { categories: [] };
-  }
-  renderStyleTags();
-}
-
-function renderStyleTags() {
-  const container = document.getElementById('style-hints');
-  const cats = (styleTagsCache.categories || []).filter(c => c.tags && c.tags.length);
-  if (!cats.length) {
-    container.innerHTML = '<span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">No style tags yet. Click "Edit tags" to add some.</span>';
-    return;
-  }
-  const labelStyle = 'font-family:var(--font-data);font-size:9px;color:var(--text-dim);letter-spacing:0.05em;margin-right:4px;align-self:center';
-  const sepStyle = 'font-family:var(--font-data);font-size:9px;color:var(--text-dim);margin:0 2px;align-self:center';
-  const parts = [];
-  cats.forEach((cat, i) => {
-    if (i > 0) parts.push(`<span style="${sepStyle}">|</span>`);
-    parts.push(`<span style="${labelStyle}">${escapeHtml(cat.label.toUpperCase())}</span>`);
-    cat.tags.forEach(tag => {
-      parts.push(`<span class="style-tag" data-kw="${escapeAttr(tag.kw)}">${escapeHtml(tag.name)}</span>`);
-    });
-  });
-  container.innerHTML = parts.join('');
-  attachStyleTagHandlers();
-  syncStyleTags();
-}
-
-function attachStyleTagHandlers() {
-  document.querySelectorAll('#style-hints .style-tag').forEach(tag => {
-    tag.addEventListener('click', () => {
-      const kw = tag.dataset.kw;
-      const ta = document.getElementById('design-desc');
-      const match = ta.value.match(STYLE_PREFIX_RE);
-      if (match) {
-        const keywords = match[1].trim().split(/\s+/).filter(Boolean);
-        const idx = keywords.indexOf(kw);
-        if (idx >= 0) keywords.splice(idx, 1); else keywords.push(kw);
-        if (keywords.length === 0) {
-          ta.value = ta.value.replace(STYLE_PREFIX_RE, '').replace(/^\n+/, '');
-        } else {
-          ta.value = ta.value.replace(STYLE_PREFIX_RE, 'style: ' + keywords.join(' '));
-        }
-      } else {
-        ta.value = 'style: ' + kw + (ta.value ? '\n' + ta.value : '');
-      }
-      syncStyleTags();
-    });
-  });
-}
-
-function syncStyleTags() {
-  const ta = document.getElementById('design-desc');
-  const match = ta.value.match(STYLE_PREFIX_RE);
-  const active = match ? match[1].trim().split(/\s+/).filter(Boolean) : [];
-  document.querySelectorAll('#style-hints .style-tag').forEach(t => {
-    t.classList.toggle('active', active.includes(t.dataset.kw));
-  });
-}
-document.getElementById('design-desc').addEventListener('input', syncStyleTags);
-
-function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escapeAttr(s) { return escapeHtml(s); }
-
-// ── STYLE TAG EDITOR MODAL (structured per-category editor) ──
-let editorState = null;
-let editorModal = null;
-
-function openStyleTagEditor() {
-  // Deep-clone the current cache so cancel doesn't affect anything
-  editorState = {
-    categories: (styleTagsCache.categories || []).map(c => ({
-      label: c.label,
-      tags: (c.tags || []).map(t => ({ name: t.name, kw: t.kw })),
-    })),
-  };
-  if (editorModal) editorModal.remove();
-  editorModal = document.createElement('div');
-  editorModal.id = 'style-tag-modal';
-  editorModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  editorModal.innerHTML = `
-    <div style="background:hsl(0,0%,5%);border:1px solid hsl(217,32%,20%);border-radius:12px;padding:24px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;gap:14px;font-family:Inter,sans-serif;color:hsl(210,40%,98%)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div style="font-size:16px;font-weight:600">Manage Style Tags</div>
-        <button type="button" id="style-tag-close" style="background:transparent;border:none;color:hsl(215,20%,65%);font-size:20px;cursor:pointer;line-height:1;padding:0 4px" aria-label="Close">×</button>
-      </div>
-      <div style="font-size:12px;color:hsl(215,20%,65%);line-height:1.5">
-        Click a tag's name to rename it. The keyword is what gets injected into the prompt (defaults to the name when empty).
-      </div>
-      <div id="style-tag-editor-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding-top:6px;border-top:1px solid hsl(217,32%,20%)">
-        <button type="button" id="style-tag-add-cat" style="background:transparent;border:1px dashed hsl(217,32%,30%);color:hsl(210,40%,90%);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px">+ Add category</button>
-        <div style="display:flex;gap:8px">
-          <button type="button" id="style-tag-reset" style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Reset to defaults</button>
-          <button type="button" id="style-tag-cancel" style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px">Cancel</button>
-          <button type="button" id="style-tag-save" style="background:hsl(264,65%,49%);border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500">Save</button>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(editorModal);
-
-  editorModal.querySelector('#style-tag-close').onclick = closeEditor;
-  editorModal.querySelector('#style-tag-cancel').onclick = closeEditor;
-  editorModal.onclick = (e) => { if (e.target === editorModal) closeEditor(); };
-  editorModal.querySelector('#style-tag-add-cat').onclick = () => {
-    editorState.categories.push({ label: 'New Category', tags: [] });
-    renderEditor();
-    // Focus the new category label input
-    setTimeout(() => {
-      const inputs = editorModal.querySelectorAll('input.cat-label');
-      const last = inputs[inputs.length - 1];
-      if (last) { last.focus(); last.select(); }
-    }, 10);
-  };
-  editorModal.querySelector('#style-tag-reset').onclick = async () => {
-    if (!confirm('Reset all tags to the default set? Your custom tags will be lost.')) return;
-    const res = await fetch('/style-tags', {
-      method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ categories: [] }),
-    });
-    if (!res.ok) { alert('Reset failed'); return; }
-    closeEditor();
-    await loadStyleTags();
-  };
-  editorModal.querySelector('#style-tag-save').onclick = async () => {
-    const cleaned = {
-      categories: editorState.categories
-        .map(c => ({
-          label: (c.label || '').trim() || 'Tags',
-          tags: c.tags
-            .map(t => ({ name: (t.name || '').trim(), kw: (t.kw || '').trim() || (t.name || '').trim() }))
-            .filter(t => t.name),
-        }))
-        .filter(c => c.tags.length > 0),
-    };
-    const res = await fetch('/style-tags', {
-      method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(cleaned),
-    });
-    if (!res.ok) { alert('Save failed'); return; }
-    closeEditor();
-    await loadStyleTags();
-  };
-
-  renderEditor();
-}
-
-function closeEditor() {
-  if (editorModal) { editorModal.remove(); editorModal = null; }
-  editorState = null;
-}
-
-function renderEditor() {
-  const body = editorModal.querySelector('#style-tag-editor-body');
-  if (!editorState.categories.length) {
-    body.innerHTML = '<div style="color:hsl(215,20%,65%);font-size:13px;text-align:center;padding:20px">No categories yet. Click "+ Add category" to start.</div>';
-    return;
-  }
-  body.innerHTML = editorState.categories.map((cat, ci) => `
-    <div style="border:1px solid hsl(217,32%,20%);border-radius:10px;padding:14px;background:hsl(0,0%,3%)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <input type="text" class="cat-label" data-ci="${ci}" value="${escapeAttr(cat.label)}" placeholder="Category name"
-          style="flex:1;background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:7px 10px;color:hsl(210,40%,98%);font-size:13px;font-weight:500;font-family:Inter,sans-serif">
-        <button type="button" class="cat-up" data-ci="${ci}" ${ci === 0 ? 'disabled' : ''}
-          style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:5px 9px;border-radius:6px;cursor:${ci === 0 ? 'not-allowed' : 'pointer'};font-size:11px;opacity:${ci === 0 ? '0.4' : '1'}">↑</button>
-        <button type="button" class="cat-down" data-ci="${ci}" ${ci === editorState.categories.length - 1 ? 'disabled' : ''}
-          style="background:transparent;border:1px solid hsl(217,32%,20%);color:hsl(215,20%,65%);padding:5px 9px;border-radius:6px;cursor:${ci === editorState.categories.length - 1 ? 'not-allowed' : 'pointer'};font-size:11px;opacity:${ci === editorState.categories.length - 1 ? '0.4' : '1'}">↓</button>
-        <button type="button" class="cat-del" data-ci="${ci}"
-          style="background:transparent;border:1px solid hsl(0,72%,30%);color:hsl(0,72%,65%);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px">Delete</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;font-size:10px;color:hsl(215,20%,55%);letter-spacing:0.05em;padding:0 2px;text-transform:uppercase">
-          <div>Name</div><div>Keyword (sent to AI)</div><div></div>
-        </div>
-        ${cat.tags.map((tag, ti) => `
-          <div style="display:grid;grid-template-columns:1fr 1fr 32px;gap:6px;align-items:center">
-            <input type="text" class="tag-name" data-ci="${ci}" data-ti="${ti}" value="${escapeAttr(tag.name)}" placeholder="display name"
-              style="background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:6px 9px;color:hsl(210,40%,98%);font-size:12px;font-family:Inter,sans-serif">
-            <input type="text" class="tag-kw" data-ci="${ci}" data-ti="${ti}" value="${escapeAttr(tag.kw)}" placeholder="(same as name)"
-              style="background:hsl(217,32%,15%);border:1px solid hsl(217,32%,20%);border-radius:6px;padding:6px 9px;color:hsl(210,40%,98%);font-size:12px;font-family:Inter,sans-serif">
-            <button type="button" class="tag-del" data-ci="${ci}" data-ti="${ti}"
-              style="background:transparent;border:1px solid hsl(0,72%,30%);color:hsl(0,72%,65%);padding:5px 0;border-radius:6px;cursor:pointer;font-size:14px;line-height:1" title="Delete tag">×</button>
-          </div>
-        `).join('')}
-        <button type="button" class="tag-add" data-ci="${ci}"
-          style="margin-top:4px;align-self:flex-start;background:transparent;border:1px dashed hsl(217,32%,25%);color:hsl(210,40%,90%);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px">+ Add tag</button>
-      </div>
-    </div>
-  `).join('');
-
-  // Attach handlers
-  body.querySelectorAll('input.cat-label').forEach(el => {
-    el.addEventListener('input', e => {
-      editorState.categories[+e.target.dataset.ci].label = e.target.value;
-    });
-  });
-  body.querySelectorAll('input.tag-name').forEach(el => {
-    el.addEventListener('input', e => {
-      editorState.categories[+e.target.dataset.ci].tags[+e.target.dataset.ti].name = e.target.value;
-    });
-  });
-  body.querySelectorAll('input.tag-kw').forEach(el => {
-    el.addEventListener('input', e => {
-      editorState.categories[+e.target.dataset.ci].tags[+e.target.dataset.ti].kw = e.target.value;
-    });
-  });
-  body.querySelectorAll('.cat-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.ci;
-      const cat = editorState.categories[ci];
-      if (cat.tags.length && !confirm(`Delete category "${cat.label}" and its ${cat.tags.length} tag(s)?`)) return;
-      editorState.categories.splice(ci, 1);
-      renderEditor();
-    });
-  });
-  body.querySelectorAll('.cat-up').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.ci;
-      if (ci > 0) {
-        const cats = editorState.categories;
-        [cats[ci - 1], cats[ci]] = [cats[ci], cats[ci - 1]];
-        renderEditor();
-      }
-    });
-  });
-  body.querySelectorAll('.cat-down').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.ci;
-      const cats = editorState.categories;
-      if (ci < cats.length - 1) {
-        [cats[ci + 1], cats[ci]] = [cats[ci], cats[ci + 1]];
-        renderEditor();
-      }
-    });
-  });
-  body.querySelectorAll('.tag-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.ci;
-      const ti = +btn.dataset.ti;
-      editorState.categories[ci].tags.splice(ti, 1);
-      renderEditor();
-    });
-  });
-  body.querySelectorAll('.tag-add').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ci = +btn.dataset.ci;
-      editorState.categories[ci].tags.push({ name: '', kw: '' });
-      renderEditor();
-      // Focus the newly added tag's name input
-      setTimeout(() => {
-        const inputs = body.querySelectorAll(`input.tag-name[data-ci="${ci}"]`);
-        const last = inputs[inputs.length - 1];
-        if (last) last.focus();
-      }, 10);
-    });
-  });
-}
-
-document.getElementById('edit-style-tags-btn').addEventListener('click', openStyleTagEditor);
-loadStyleTags();
-
-// Populate brand dropdown from /brands
-async function loadBrandOptions() {
-  try {
-    const res = await fetch('/brands');
-    if (!res.ok) return;
-    const data = await res.json();
-    const names = Object.keys(data).sort();
-    const sel = document.getElementById('design-brand');
-    const current = sel.value;
-    sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
-    if (current && names.includes(current)) sel.value = current;
-  } catch {}
-}
-loadBrandOptions();
-
-// Populate brand kit dropdown from connected Canva (empty if not connected).
-// Names are suffixed with "(canva)" so users know the data origin.
-async function loadBrandKitOptions() {
-  try {
-    const res = await fetch('/canva/brand-kits');
-    if (!res.ok) return;
-    const data = await res.json();
-    const kits = Array.isArray(data.kits) ? data.kits : [];
-    const sel = document.getElementById('design-brandkit');
-    const current = sel.value;
-    sel.innerHTML = '<option value="">None</option>' +
-      kits.map(k => `<option value="${k.id}">${(k.name || k.id)} (canva)</option>`).join('');
-    if (current && kits.some(k => k.id === current)) sel.value = current;
-  } catch {}
-}
-loadBrandKitOptions();
 
 // Load tasks and poll every 10 seconds
 loadTasks();

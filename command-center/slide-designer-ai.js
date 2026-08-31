@@ -5,7 +5,7 @@ const anthropic = new Anthropic();
  * Analyze slide content with Claude and return design instructions per slide.
  * One API call for the entire carousel.
  */
-async function designSlides(slides, globalStyle, brand, designType, brandContext) {
+async function designSlides(slides, globalStyle, designType, styleText) {
   const slideList = slides.map((s, i) =>
     `Slide ${s.num || i + 1}: ${s.title ? `[${s.title}] ` : ""}${s.body || s.text || ""}`
   ).join("\n");
@@ -21,17 +21,10 @@ async function designSlides(slides, globalStyle, brand, designType, brandContext
     fontHint = "\n**USER WANTS MEDIUM TEXT** — use the middle of font size ranges.";
   }
 
-  const bc = brandContext || {};
-  const brandLines = [];
-  if ((bc.colors || []).length) brandLines.push(`Colors: ${bc.colors.map(c => `${c.hex}${c.label ? ' (' + c.label + ')' : ''}`).join(', ')}`);
-  if ((bc.fonts || []).length) brandLines.push(`Fonts: ${bc.fonts.map(f => `${f.family} (${f.role})`).join(', ')}`);
-
   const prompt = `You are an expert social media designer. Analyze the following carousel content and return design instructions as JSON.
 
-## Brand: ${brand || "Generic"}
-${brandLines.length ? '## Brand assets:\n' + brandLines.join('\n') : ''}
 ## Design type: ${designType || "instagram_post"}
-## User style request: ${globalStyle || "default dark purple style"}${fontHint}
+## Requested visual style: ${styleText || globalStyle || "clean, modern, professional"}${fontHint}
 
 ## Slide content:
 ${slideList}
@@ -50,7 +43,7 @@ For each slide, determine the optimal visual layout and styling. Return a JSON a
   "textAlign": "left" | "center",
   "verticalAlign": "center" | "top" | "bottom",
   "bodyFontSize": 32-72 (base font size in px — this is for a 1080px wide canvas, so text needs to be BIG to be readable on mobile. Short text = 56-72px, medium = 40-52px, long/bullets = 32-40px),
-  "theme": "blockchain" | "cyberpunk" | "neon" | "finance" | "minimal" | "clean" | "default",
+  "theme": "clean" | "minimal" | "default" | "blockchain" | "cyberpunk" | "neon" | "finance" (pick "clean" or "minimal" unless the requested style clearly asks for something else),
   "intensity": "subtle" | "normal" | "bold" | "intense",
   "accentGlow": "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center" | "spread",
   "colorOverride": null or a hex color string (only if the content suggests a specific color, e.g. red for danger/warning, green for growth),
@@ -82,7 +75,7 @@ For each slide, determine the optimal visual layout and styling. Return a JSON a
 - Keep the theme consistent across slides unless the mood shifts dramatically
 - Use "highlight" style sparingly — only for key words/phrases that should pop in the accent color
 - The bodyParts array should contain the EXACT text from the input, split into logical visual lines. Do NOT rewrite the text.
-- If the user specified style keywords (cyberpunk, neon, etc.), respect those as the base theme
+- Follow the requested visual style above; do not impose a house style of your own
 
 Return ONLY the JSON array, no markdown, no explanation.`;
 

@@ -792,19 +792,19 @@ const PAYLOAD_FIELDS = {
   designer: `
     <div class="sched-form-row">
       <div><label class="sched-label">Engine</label>
-        <select class="sched-select" id="sp-engine"><option value="nanobanana">Nano Banana</option><option value="playwright">Playwright</option><option value="claude">Claude AI</option></select></div>
-      <div><label class="sched-label">Brand</label>
-        <select class="sched-select" id="sp-brand"></select></div>
-    </div>
-    <div class="sched-form-row">
+        <select class="sched-select" id="sp-engine"><option value="nanobanana">Nano Banana</option><option value="higgsfield">Higgsfield</option><option value="playwright">Playwright</option><option value="claude">Claude AI</option></select></div>
       <div><label class="sched-label">Design Type</label>
         <select class="sched-select" id="sp-design_type"><option value="instagram_post">Instagram Post</option><option value="instagram_carousel">Carousel</option><option value="your_story">Story</option><option value="youtube_thumbnail">YT Thumbnail</option></select></div>
-      <div><label class="sched-label">Logo Position</label>
-        <select class="sched-select" id="sp-logo_position"><option value="SouthEast">Rechtsonder</option><option value="SouthWest">Linksonder</option><option value="NorthEast">Rechtsboven</option><option value="NorthWest">Linksboven</option><option value="none">Geen</option></select></div>
     </div>
     <div class="sched-form-row">
-      <div><label class="sched-label">Template</label>
-        <select class="sched-select" id="sp-template"><option value="default">Standaard</option><option value="bold-impact">Bold Impact</option><option value="clean-minimal">Clean Minimal</option><option value="data-dense">Data Dense</option></select></div>
+      <div><label class="sched-label">Style</label>
+        <select class="sched-select" id="sp-style"><option value="">Auto</option><option value="photographic">Photographic</option><option value="cinematic">Cinematic</option><option value="render3d">3D Render</option><option value="illustration">Illustration</option><option value="minimal">Minimal</option><option value="typographic">Typographic</option><option value="gradient">Gradient</option><option value="collage">Collage</option><option value="retro">Retro</option><option value="handdrawn">Hand-drawn</option></select></div>
+      <div><label class="sched-label">Colors</label>
+        <select class="sched-select" id="sp-color_scheme"><option value="">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="monochrome">Monochrome</option><option value="vibrant">Vibrant</option><option value="pastel">Pastel</option><option value="earth">Earth tones</option><option value="corporate">Corporate</option></select></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Text on image</label>
+        <select class="sched-select" id="sp-text_mode"><option value="auto">Auto</option><option value="text">Yes</option><option value="no-text">No text</option></select></div>
       <div><label class="sched-label">Language</label>
         <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
     </div>
@@ -915,29 +915,9 @@ function updatePayloadFields() {
   const agent = document.getElementById('sched-agent').value;
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
   document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
-  if (agent === 'designer') populateBrandSelect();
   // Load channels for community_manager
   if (agent === 'community_manager') {
     populateCommunityChannelSelect();
-  }
-}
-
-async function populateBrandSelect() {
-  const sel = document.getElementById('sp-brand');
-  if (!sel) return;
-  try {
-    const [brandsRes, currentRes] = await Promise.all([
-      fetch('/brands', { credentials: 'include' }),
-      fetch('/brand', { credentials: 'include' }),
-    ]);
-    const brands = brandsRes.ok ? await brandsRes.json() : {};
-    const current = currentRes.ok ? await currentRes.json() : {};
-    const keys = Object.keys(brands);
-    const fallback = current && current.company_name ? String(current.company_name).toUpperCase() : '';
-    const opts = (keys.length ? keys : (fallback ? [fallback] : []));
-    sel.innerHTML = opts.map(k => `<option value="${k}">${k}</option>`).join('');
-  } catch (e) {
-    sel.innerHTML = '';
   }
 }
 

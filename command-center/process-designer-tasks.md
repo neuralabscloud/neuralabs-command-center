@@ -8,7 +8,7 @@ When asked to "process designer tasks" or "run designer agent", follow these ste
    b. Use the Canva `generate-design` tool with:
       - `design_type`: from the task
       - `query`: the task description
-      - `brand_kit_id`: from the task (if set)
+      - `style`, `color_scheme`, `custom_colors`, `text_mode`, `negative_prompt`: from the task's `design_style` (if set)
    c. Pick the best candidate and use `create-design-from-candidate`
    d. Get the design info with `get-design`
    e. Export as PNG with `export-design`

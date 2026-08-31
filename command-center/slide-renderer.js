@@ -71,6 +71,9 @@ function getDimensions(designType) {
 }
 
 // ── THEME PRESETS ──
+// Neutral default accent — the Designer is generic, no brand color is baked in.
+const DEFAULT_ACCENT = "#3B82F6";
+
 const THEMES = {
   blockchain: {
     elements: ["hexgrid", "nodes", "connections"],
@@ -344,9 +347,11 @@ function buildSlideHTML(slide) {
   const mult = INTENSITIES[keywords.intensity] || 1.0;
   const glowMult = themeConf.glowStrength * mult;
 
-  const primary = keywords.primaryOverride || style.primary || "#7C3AED";
+  const primary = keywords.primaryOverride || style.primary || DEFAULT_ACCENT;
   const primaryGlow = style.primaryGlow || lightenColor(primary, 30);
-  const textColor = style.textColor || "#F8FAFC";
+  const isLight = style.light === true;
+  const bgColor = style.bgColor || (isLight ? "#FFFFFF" : "#050508");
+  const textColor = style.textColor || (isLight ? "#0F172A" : "#F8FAFC");
   const textDimColor = textColor + "bb";
   const brandName = style.brand || "";
   const brandLogo = getBrandLogo(brandName);
@@ -413,7 +418,7 @@ function buildSlideHTML(slide) {
 
   body {
     width: ${dim.width}px; height: ${dim.height}px;
-    background: #050508;
+    background: ${bgColor};
     font-family: 'Inter', -apple-system, sans-serif;
     color: ${textColor};
     overflow: hidden;
@@ -426,8 +431,9 @@ function buildSlideHTML(slide) {
       radial-gradient(ellipse 80% 60% at 18% 12%, ${primary}${hex(0.19 * glowMult)} 0%, transparent 55%),
       radial-gradient(ellipse 60% 50% at 82% 88%, ${primary}${hex(0.13 * glowMult)} 0%, transparent 50%),
       radial-gradient(ellipse 45% 40% at 50% 50%, ${primary}${hex(0.08 * glowMult)} 0%, transparent 40%),
+      radial-gradient(ellipse 45% 40% at 50% 50%, ${primary}${hex(0.02 * glowMult)} 0%, transparent 40%)${isLight ? "" : `,
       radial-gradient(circle at 10% 90%, #0a0a1a 0%, transparent 40%),
-      radial-gradient(circle at 90% 10%, #0a0a18 0%, transparent 40%);
+      radial-gradient(circle at 90% 10%, #0a0a18 0%, transparent 40%)`};
   }
 
   .bg-network { position: absolute; inset: 0; z-index: 1; }
@@ -457,7 +463,7 @@ function buildSlideHTML(slide) {
 
   .bg-vignette {
     position: absolute; inset: 0; z-index: 4;
-    background: radial-gradient(ellipse 75% 75% at 50% 50%, transparent 50%, rgba(0,0,0,${(0.5 + 0.1 * mult).toFixed(2)}) 100%);
+    background: radial-gradient(ellipse 75% 75% at 50% 50%, transparent 50%, rgba(0,0,0,${isLight ? "0" : (0.5 + 0.1 * mult).toFixed(2)}) 100%);
   }
 
   .glow-orb { position: absolute; z-index: 1; border-radius: 50%; }
@@ -590,13 +596,13 @@ function buildSlideHTML(slide) {
   <div class="corner corner-br"><svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M0 12V0h12" stroke="${primary}" stroke-width="1.2" opacity="0.4"/><path d="M0 8V0h8" stroke="${primary}" stroke-width="0.6" opacity="0.2"/></svg></div>
 
   <div class="container">
-    <div class="top-bar">
-      <span class="slide-num">${slideNumber && totalSlides ? `${String(slideNumber).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}` : ""}</span>
+    ${slideNumber && totalSlides || brandLogo || brandName ? `<div class="top-bar">
+      ${slideNumber && totalSlides ? `<span class="slide-num">${String(slideNumber).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}</span>` : "<span></span>"}
       ${brandLogo
         ? `<img class="brand-logo" src="${brandLogo}" alt="${escapeHtml(brandName)}" />`
-        : `<span class="brand-tag">${escapeHtml(brandName)}</span>`
+        : brandName ? `<span class="brand-tag">${escapeHtml(brandName)}</span>` : ""
       }
-    </div>
+    </div>` : ""}
     ${title ? `<div class="slide-title">${escapeHtml(title)}</div>` : ""}
     ${bodyHTML}
   </div>
@@ -630,9 +636,11 @@ function buildAISlideHTML(slide, aiDesign) {
   const brandFonts = style.brandFonts || [];
   const primaryBrandColor = brandColors.find(c => /primary|hoofd/i.test(c.label));
   const accentBrandColor = brandColors.find(c => /accent|secondary|secundair/i.test(c.label));
-  const primary = d.colorOverride || (primaryBrandColor ? primaryBrandColor.hex : null) || style.primary || "#7C3AED";
+  const primary = d.colorOverride || (primaryBrandColor ? primaryBrandColor.hex : null) || style.primary || DEFAULT_ACCENT;
   const primaryGlow = lightenColor(primary, 30);
-  const textColor = style.textColor || "#F8FAFC";
+  const isLight = style.light === true;
+  const bgColor = style.bgColor || (isLight ? "#FFFFFF" : "#050508");
+  const textColor = style.textColor || (isLight ? "#0F172A" : "#F8FAFC");
   const brandName = style.brand || "";
   const brandLogo = getBrandLogo(brandName);
   const brandWatermark = getBrandWatermark(brandName);
@@ -701,7 +709,7 @@ function buildAISlideHTML(slide, aiDesign) {
 
   body {
     width: ${dim.width}px; height: ${dim.height}px;
-    background: #050508;
+    background: ${bgColor};
     font-family: '${bodyFont ? bodyFont.family : 'Inter'}', 'Inter', -apple-system, sans-serif;
     color: ${textColor};
     overflow: hidden;
@@ -727,7 +735,7 @@ function buildAISlideHTML(slide, aiDesign) {
   }` : ""}
   ${themeConf.scanlines ? `.bg-scanlines { position: absolute; inset: 0; z-index: 3; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px); pointer-events: none; }` : ""}
   .bg-noise { position: absolute; inset: 0; z-index: 3; opacity: ${(0.03 * mult).toFixed(3)}; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); background-size: 256px 256px; }
-  .bg-vignette { position: absolute; inset: 0; z-index: 4; background: radial-gradient(ellipse 75% 75% at 50% 50%, transparent 50%, rgba(0,0,0,${(0.5 + 0.1 * mult).toFixed(2)}) 100%); }
+  .bg-vignette { position: absolute; inset: 0; z-index: 4; background: radial-gradient(ellipse 75% 75% at 50% 50%, transparent 50%, rgba(0,0,0,${isLight ? "0" : (0.5 + 0.1 * mult).toFixed(2)}) 100%); }
 
   .glow-main {
     position: absolute; z-index: 1; width: 420px; height: 420px;
@@ -877,13 +885,13 @@ function buildAISlideHTML(slide, aiDesign) {
   <div class="corner corner-br"><svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path d="M0 12V0h12" stroke="${primary}" stroke-width="1.2" opacity="0.4"/></svg></div>
 
   <div class="container">
-    <div class="top-bar">
-      <span class="slide-num">${slideNumber && totalSlides ? `${String(slideNumber).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}` : ""}</span>
+    ${slideNumber && totalSlides || brandLogo || brandName ? `<div class="top-bar">
+      ${slideNumber && totalSlides ? `<span class="slide-num">${String(slideNumber).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}</span>` : "<span></span>"}
       ${brandLogo
         ? `<img class="brand-logo" src="${brandLogo}" alt="${escapeHtml(brandName)}" />`
-        : `<span class="brand-tag">${escapeHtml(brandName)}</span>`
+        : brandName ? `<span class="brand-tag">${escapeHtml(brandName)}</span>` : ""
       }
-    </div>
+    </div>` : ""}
     ${d.title ? `<div class="ai-title">${escapeHtml(d.title)}</div>` : ""}
     ${hasDivider ? '<div class="ai-divider"></div>' : ""}
     ${bodyHTML}

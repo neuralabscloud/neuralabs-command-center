@@ -539,86 +539,79 @@ function migrateSocialToCommunity() {
 }
 migrateSocialToCommunity();
 
-// ── DESIGNER STYLE TAGS (customer-editable) ──
-const STYLE_TAGS_FILE = path.join(__dirname, "data", "style-tags.json");
-const DEFAULT_STYLE_TAGS = {
-  categories: [
-    {
-      label: "Style",
-      tags: [
-        { name: "photorealistic", kw: "photorealistic" },
-        { name: "cinematic", kw: "cinematic" },
-        { name: "3D render", kw: "3D render" },
-        { name: "digital art", kw: "digital art" },
-        { name: "illustration", kw: "illustration" },
-      ],
-    },
-    {
-      label: "Mood",
-      tags: [
-        { name: "vibrant", kw: "vibrant" },
-        { name: "dark moody", kw: "dark moody" },
-        { name: "futuristic", kw: "futuristic" },
-        { name: "minimal clean", kw: "minimal clean" },
-        { name: "retro", kw: "retro vintage" },
-      ],
-    },
-    {
-      label: "Theme",
-      tags: [
-        { name: "abstract", kw: "abstract geometric" },
-        { name: "nature", kw: "nature organic" },
-        { name: "urban", kw: "urban city" },
-        { name: "technology", kw: "technology tech" },
-        { name: "lifestyle", kw: "lifestyle people" },
-      ],
-    },
-    {
-      label: "Lighting",
-      tags: [
-        { name: "dramatic", kw: "dramatic lighting" },
-        { name: "golden hour", kw: "golden hour" },
-        { name: "studio", kw: "studio lighting" },
-        { name: "natural", kw: "natural light" },
-        { name: "neon", kw: "neon glow" },
-      ],
-    },
-  ],
+// ── DESIGN STYLE PRESETS (Designer) ──────────────────────────────────
+// The Designer is deliberately generic: nothing brand-specific is baked into a
+// prompt. The look of a design comes from what the user picks in the form.
+const STYLE_PRESETS = {
+  photographic: "photographic, realistic photography, natural depth of field",
+  cinematic: "cinematic still, dramatic lighting, subtle film grain",
+  render3d: "polished 3D render, soft studio lighting, clean materials",
+  illustration: "flat vector illustration, clean shapes, simple composition",
+  minimal: "minimalist design, lots of negative space, simple geometry",
+  typographic: "bold typographic poster design, typography as the main visual",
+  gradient: "smooth gradient background with soft abstract shapes",
+  collage: "editorial collage, mixed media, cut-out elements",
+  retro: "retro vintage print style, halftone texture, muted print colors",
+  handdrawn: "hand-drawn sketch style, ink lines, organic strokes",
+};
+const COLOR_SCHEMES = {
+  light: "light and bright color scheme on a white or off-white background",
+  dark: "dark color scheme on a near-black background",
+  monochrome: "monochrome black and white",
+  vibrant: "vibrant saturated colors, high contrast",
+  pastel: "soft pastel colors",
+  earth: "warm earth tones, natural materials",
+  corporate: "restrained corporate palette, blues and neutral grays",
 };
 
-function readStyleTags() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(STYLE_TAGS_FILE, "utf8"));
-    if (raw && Array.isArray(raw.categories)) return raw;
-  } catch {}
-  return DEFAULT_STYLE_TAGS;
-}
-
-function writeStyleTags(data) {
-  fs.writeFileSync(STYLE_TAGS_FILE, JSON.stringify(data, null, 2));
-}
-
-app.get("/style-tags", (_req, res) => res.json(readStyleTags()));
-
-app.put("/style-tags", (req, res) => {
-  const body = req.body || {};
-  if (!Array.isArray(body.categories)) {
-    return res.status(400).json({ error: "Body must contain a 'categories' array" });
-  }
-  const cleaned = {
-    categories: body.categories.map(cat => ({
-      label: String(cat.label || "").trim().slice(0, 40) || "Tags",
-      tags: Array.isArray(cat.tags)
-        ? cat.tags.map(t => ({
-            name: String(t.name || "").trim().slice(0, 40),
-            kw: String(t.kw || t.name || "").trim().slice(0, 80),
-          })).filter(t => t.name && t.kw)
-        : [],
-    })).filter(c => c.tags.length > 0),
+// Normalize the design settings coming from the form / API into one object that
+// travels with the task, so every engine renders from the same instructions.
+function readDesignStyle(body) {
+  const b = body || {};
+  return {
+    style: STYLE_PRESETS[b.style] ? b.style : "",
+    color_scheme: COLOR_SCHEMES[b.color_scheme] ? b.color_scheme : "",
+    custom_colors: String(b.custom_colors || "").trim().slice(0, 200),
+    text_mode: ["auto", "text", "no-text"].includes(b.text_mode) ? b.text_mode : "auto",
+    negative_prompt: String(b.negative_prompt || "").trim().slice(0, 300),
   };
-  writeStyleTags(cleaned);
-  res.json(cleaned);
-});
+}
+
+// Describe the requested look in plain words for an image model.
+function styleSentence(s) {
+  const look = [];
+  if (STYLE_PRESETS[s.style]) look.push(STYLE_PRESETS[s.style]);
+  if (COLOR_SCHEMES[s.color_scheme]) look.push(COLOR_SCHEMES[s.color_scheme]);
+  if (s.custom_colors) look.push("use these colors: " + s.custom_colors);
+  return look.length ? look.join(", ") : "clean, modern, professional";
+}
+
+// Map the generic design settings onto the Playwright renderer's style options.
+function rendererStyle(s) {
+  const out = {};
+  const hex = (s.custom_colors || "").match(/#[0-9a-fA-F]{3,8}/);
+  if (hex) out.primary = hex[0];
+  if (s.color_scheme === "light" || s.color_scheme === "pastel") out.light = true;
+  if (s.color_scheme === "monochrome" && !out.primary) out.primary = "#94A3B8";
+  return out;
+}
+
+// Full prompt for an image engine (Nano Banana / Higgsfield).
+// `structured` = the content itself contains copy that belongs on the image.
+function buildImagePrompt(content, s, opts) {
+  const o = opts || {};
+  const parts = [];
+  if (o.slideInstruction) parts.push(o.slideInstruction);
+  parts.push(String(content || "").trim());
+  parts.push("Style: " + styleSentence(s));
+  const wantsText = s.text_mode === "text" || (s.text_mode !== "no-text" && o.structured);
+  parts.push(wantsText
+    ? "Render the text/titles/headlines described above clearly and legibly on the image as part of the design. Do NOT add watermarks, logos, or brand names."
+    : "Do NOT add any text, titles, watermarks, logos, or brand names to the image.");
+  if (s.negative_prompt) parts.push("Avoid: " + s.negative_prompt);
+  // Strip trailing punctuation per part so the join never produces ".." sequences.
+  return parts.filter(Boolean).map((p) => p.trim().replace(/[.\s]+$/, "")).join(". ") + ".";
+}
 
 // ── DESIGNER TASKS ────────────────────────────
 app.get("/designer/tasks", (_req, res) => res.json(readTaskFile("designer-tasks.json")));
@@ -675,12 +668,10 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const refImagePaths = Array.isArray(req.files) ? req.files.map(f => f.path) : [];
   const refImagePath = refImagePaths[0] || null; // backwards-compat for engines that only use one
   const designType = req.body.design_type || "instagram_post";
-  const brand = req.body.brand || (loadBrand().company_name || "DEFAULT").toUpperCase();
-  const brandKitId = req.body.brand_kit_id || null;
-  const engine = req.body.engine || "playwright"; // "playwright", "canva", or "claude"
-  const logoPosition = req.body.logo_position || "SouthEast"; // ImageMagick gravity
-  const logoSize = ["small", "medium", "large"].includes(req.body.logo_size) ? req.body.logo_size : "medium";
-  const templateName = req.body.template || "default"; // slide layout template
+  // Label only — the designer no longer styles anything from the brand config.
+  const brand = (loadBrand().company_name || "DEFAULT").toUpperCase();
+  const engine = req.body.engine || "nanobanana"; // nanobanana | higgsfield | playwright | claude | canva
+  const designStyle = readDesignStyle(req.body);
   const requestedSlideCount = req.body.slide_count || null;
   // Accept aspect_ratios as array, single string, or comma-separated. Fall back to legacy aspect_ratio.
   const rawAspects = req.body.aspect_ratios ?? req.body.aspect_ratio ?? null;
@@ -688,8 +679,6 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     : (typeof rawAspects === "string" && rawAspects ? rawAspects.split(",") : []))
     .map(s => String(s).trim()).filter(Boolean);
   const customAspectRatio = customAspectRatios[0] || null;
-
-  const brandContext = loadBrandContext(brand);
 
   // Detect carousel / multi-slide: split numbered slides
   // Supports: **1 — title** — body  OR  1 — title — body  OR  1. title — body
@@ -739,6 +728,71 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const firstSlideIdx = desc.search(/\*\*\d{1,2}/);
   const globalStyle = firstSlideIdx > 0 ? desc.substring(0, firstSlideIdx).trim() : (slides.length > 0 && designType === "instagram_carousel" ? desc : "");
 
+  // ── Shared image-engine plan (Nano Banana / Higgsfield) ────────────
+  const aspectMap = {
+    instagram_post: "4:5", instagram_carousel: "4:5", your_story: "9:16",
+    youtube_thumbnail: "16:9", youtube_banner: "16:9", twitter_post: "16:9",
+    facebook_post: "1:1", ad_creative: "1:1", infographic: "9:16", poster: "3:4",
+    presentation: "16:9", logo: "1:1",
+  };
+  const defaultAspect = aspectMap[designType] || "1:1";
+  // For ad_creative + multiple aspect ratios: one task per ratio.
+  // For other types: keep slide/carousel semantics and use a single aspect (custom or mapped).
+  const isAdVariantMode = designType === "ad_creative" && customAspectRatios.length > 1;
+  const taskAspects = isAdVariantMode ? customAspectRatios : null;
+  const aspect = customAspectRatio || defaultAspect; // used when not in variant mode
+  const numImages = isAdVariantMode ? taskAspects.length
+    : slides.length > 1 ? slides.length
+    : (designType === "instagram_carousel" && requestedSlideCount) ? requestedSlideCount : 1;
+
+  const buildImageTasks = (engineName) => {
+    const created = [];
+    const carouselParentId = !isAdVariantMode && numImages > 1 ? genId() : null;
+    const variantParentId = isAdVariantMode ? genId() : null;
+    for (let i = 0; i < numImages; i++) {
+      const thisAspect = isAdVariantMode ? taskAspects[i] : aspect;
+      created.push({
+        id: genId(), status: "processing",
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        design_type: designType, brand, engine: engineName, design_style: designStyle,
+        aspect_ratio: thisAspect,
+        carousel_parent: carouselParentId,
+        carousel_slide: !isAdVariantMode && numImages > 1 ? i + 1 : null,
+        carousel_total: !isAdVariantMode && numImages > 1 ? numImages : null,
+        variant_parent: variantParentId,
+        variant_index: isAdVariantMode ? i + 1 : null,
+        variant_total: isAdVariantMode ? numImages : null,
+        description: isAdVariantMode ? `${desc} (${thisAspect})`
+          : (numImages > 1 && slides[i] ? `Slide ${i+1}/${numImages}: ${slides[i].title}` : desc),
+        result_url: null, result_thumbnail: null, result_design_id: null, error: null,
+      });
+    }
+    return created;
+  };
+
+  // The content that goes into one image: a parsed slide, or the whole description.
+  const slideContentFor = (slideIdx) => {
+    const slide = slides.length > 1 ? slides[slideIdx] : null;
+    let slideDesc;
+    if (slide && slide.title !== slide.body) slideDesc = `${slide.title}: ${slide.body}`;
+    else if (slide) slideDesc = slide.body;
+    else slideDesc = desc;
+    // For carousels: extract only this slide's content so the model doesn't
+    // render every slide onto one image.
+    if (numImages > 1 && slide && slide.body === desc) {
+      const slideNum = slideIdx + 1;
+      const slideExtract = desc.match(new RegExp(`[Ss]lide\\s*${slideNum}\\s*[:–—-]\\s*"?([^"\\n]+)"?`));
+      if (slideExtract) {
+        slideDesc = slideExtract[1].trim();
+      } else {
+        const topicMatch = desc.match(/^([^.\n]+)/);
+        const topic = topicMatch ? topicMatch[1].trim() : desc.substring(0, 100);
+        slideDesc = `${topic} — content for slide ${slideNum} of ${numImages}`;
+      }
+    }
+    return { slide, slideDesc };
+  };
+
   if (engine === "playwright" && slides.length > 1) {
     // Playwright carousel: Claude designs, then Playwright renders
     const parentId = genId();
@@ -746,7 +800,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     try {
       // Step 1: Ask Claude to design the slides
       console.log(`[DESIGNER] Requesting AI design for ${totalSlides} slides...`);
-      const aiDesigns = await designSlides(slides, globalStyle, brand, designType, brandContext);
+      const aiDesigns = await designSlides(slides, globalStyle, designType, styleSentence(designStyle));
       if (aiDesigns) {
         console.log(`[DESIGNER] AI returned ${aiDesigns.length} designs`);
       }
@@ -757,8 +811,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         slideNumber: parseInt(s.num) || (i + 1),
         totalSlides,
         designType,
-        template: templateName,
-        style: { brand, mood: globalStyle, brandColors: brandContext.colors, brandFonts: brandContext.fonts },
+        style: { mood: [globalStyle, styleSentence(designStyle)].filter(Boolean).join(" | "), ...rendererStyle(designStyle) },
       }));
 
       // Step 2: Render with AI designs (falls back to template if AI failed)
@@ -766,7 +819,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
       const createdTasks = slides.map((s, i) => ({
         id: genId(), status: "completed",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        design_type: designType, brand, brand_kit_id: brandKitId, engine: "playwright",
+        design_type: designType, brand, engine: "playwright", design_style: designStyle,
         carousel_parent: parentId,
         carousel_slide: parseInt(s.num) || (i + 1),
         carousel_total: totalSlides,
@@ -791,7 +844,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     const cleanDesc = desc.replace(stylePrefix, "").trim();
     try {
       // Ask Claude for design
-      const aiDesigns = await designSlides([{ num: "1", title: "", body: cleanDesc }], globalStyle || desc.match(stylePrefix)?.[0] || "", brand, designType, brandContext);
+      const aiDesigns = await designSlides([{ num: "1", title: "", body: cleanDesc }], globalStyle || desc.match(stylePrefix)?.[0] || "", designType, styleSentence(designStyle));
       const aiDesign = aiDesigns?.[0] || null;
 
       const result = await renderSlide({
@@ -800,13 +853,12 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         slideNumber: "",
         totalSlides: "",
         designType,
-        template: templateName,
-        style: { brand, mood: desc, brandColors: brandContext.colors, brandFonts: brandContext.fonts },
+        style: { mood: [desc, styleSentence(designStyle)].filter(Boolean).join(" | "), ...rendererStyle(designStyle) },
       }, aiDesign);
       const task = {
         id: genId(), status: "completed",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        design_type: designType, brand, brand_kit_id: brandKitId, engine: "playwright",
+        design_type: designType, brand, engine: "playwright", design_style: designStyle,
         description: desc,
         result_url: result.url, result_thumbnail: result.url,
         result_design_id: null, error: null,
@@ -821,48 +873,9 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     }
   }
 
-  // Claude AI engine: invoke Claude Code CLI with /designer skill
   if (engine === "nanobanana") {
     // Nano Banana engine: generate image via Gemini 3.1 Flash through infsh CLI
-    const aspectMap = {
-      instagram_post: "4:5", instagram_carousel: "4:5", your_story: "9:16",
-      youtube_thumbnail: "16:9", youtube_banner: "16:9", twitter_post: "16:9",
-      facebook_post: "1:1", ad_creative: "1:1", infographic: "9:16", poster: "3:4",
-      presentation: "16:9", logo: "1:1",
-    };
-    const defaultAspect = aspectMap[designType] || "1:1";
-    // For ad_creative + multiple aspect ratios: one task per ratio.
-    // For other types: keep slide/carousel semantics and use a single aspect (custom or mapped).
-    const isAdVariantMode = designType === "ad_creative" && customAspectRatios.length > 1;
-    const taskAspects = isAdVariantMode ? customAspectRatios : null;
-    const aspect = customAspectRatio || defaultAspect; // used when not in variant mode
-    const numImages = isAdVariantMode ? taskAspects.length
-      : slides.length > 1 ? slides.length
-      : (designType === "instagram_carousel" && requestedSlideCount) ? requestedSlideCount : 1;
-
-    const createdTasks = [];
-    const carouselParentId = !isAdVariantMode && numImages > 1 ? genId() : null;
-    const variantParentId = isAdVariantMode ? genId() : null;
-    for (let i = 0; i < numImages; i++) {
-      const thisAspect = isAdVariantMode ? taskAspects[i] : aspect;
-      createdTasks.push({
-        id: genId(), status: "processing",
-        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        design_type: designType, brand, brand_kit_id: brandKitId, engine: "nanobanana",
-        aspect_ratio: thisAspect,
-        logo_position: logoPosition,
-        logo_size: logoSize,
-        carousel_parent: carouselParentId,
-        carousel_slide: !isAdVariantMode && numImages > 1 ? i + 1 : null,
-        carousel_total: !isAdVariantMode && numImages > 1 ? numImages : null,
-        variant_parent: variantParentId,
-        variant_index: isAdVariantMode ? i + 1 : null,
-        variant_total: isAdVariantMode ? numImages : null,
-        description: isAdVariantMode ? `${desc} (${thisAspect})`
-          : (numImages > 1 && slides[i] ? `Slide ${i+1}/${numImages}: ${slides[i].title}` : desc),
-        result_url: null, result_thumbnail: null, result_design_id: null, error: null,
-      });
-    }
+    const createdTasks = buildImageTasks("nanobanana");
     tasks.unshift(...createdTasks);
     writeTaskFile("designer-tasks.json", tasks);
     res.status(201).json(createdTasks);
@@ -873,59 +886,19 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
       for (let _qi = 0; _qi < createdTasks.length; _qi += NB_CONCURRENCY) {
         const batch = createdTasks.slice(_qi, _qi + NB_CONCURRENCY);
         await Promise.all(batch.map((task) => new Promise((resolveBatch) => {
-      const slideIdx = createdTasks.indexOf(task);
-      const slide = slides.length > 1 ? slides[slideIdx] : null;
-      let slideDesc;
-      if (slide && slide.title !== slide.body) {
-        slideDesc = `${slide.title}: ${slide.body}`;
-      } else if (slide) {
-        slideDesc = slide.body;
-      } else {
-        slideDesc = desc;
-      }
-      // For carousel: try to extract only this slide's content from the full description
-      // to prevent Gemini from rendering all slides on one image
-      if (numImages > 1 && slide && slide.body === desc) {
-        // Body is the full description — try to extract just this slide's portion
-        const slideNum = slideIdx + 1;
-        const slideExtract = desc.match(new RegExp(`[Ss]lide\\s*${slideNum}\\s*[:–—-]\\s*"?([^"\\n]+)"?`));
-        if (slideExtract) {
-          slideDesc = slideExtract[1].trim();
-        } else {
-          // Can't extract — give Gemini the topic with a clear single-slide instruction
-          const topicMatch = desc.match(/^([^.\n]+)/);
-          const topic = topicMatch ? topicMatch[1].trim() : desc.substring(0, 100);
-          slideDesc = `${topic} — content for slide ${slideNum} of ${numImages}`;
-        }
-      }
+      const { slide, slideDesc } = slideContentFor(createdTasks.indexOf(task));
 
-      // Build brand-aware prompt — avoid putting brand name or design_type as text
-      // (Gemini renders those as visible text on the image)
+      // Build the prompt from the design settings only — nothing brand-specific
+      // is injected (Gemini renders brand names as visible text on the image).
       const isCarouselSlide = numImages > 1 && task.carousel_slide;
       const slideInstruction = isCarouselSlide
         ? `This is slide ${task.carousel_slide} of ${task.carousel_total} in an Instagram carousel. Generate ONLY this single slide image — do NOT combine multiple slides into one image.`
         : "";
-      const brandParts = [slideInstruction, `${slideDesc}`, `Style: professional, modern`].filter(Boolean);
-      if (brandContext.colors.length) {
-        brandParts.push("Use these colors: " + brandContext.colors.map(c => `${c.hex}`).join(", "));
-      }
-      if (brandContext.fonts.length) {
-        brandParts.push("Font style: " + brandContext.fonts.map(f => f.family).join(", "));
-      }
-      // If this is a parsed slide or contains structured content, render text on the image
-      const hasStructuredContent = slide || /\*\*\d|slide|titel|headline/i.test(slideDesc);
-      if (hasStructuredContent) {
-        brandParts.push("Render the text/titles/headlines described above clearly and legibly on the image as part of the design. Do NOT add watermarks, logos, or brand names.");
-      } else {
-        brandParts.push("Do NOT add any text, titles, watermarks, logos, or brand names to the image unless explicitly described in the prompt above.");
-      }
-      const prompt = brandParts.join(". ");
+      const prompt = buildImagePrompt(slideDesc, designStyle, {
+        slideInstruction,
+        structured: !!slide || /\*\*\d|slide|headline/i.test(slideDesc),
+      });
 
-      // Logo files for ImageMagick composite AFTER generation (not sent to Gemini)
-      const logoFiles = brandContext.logos
-        .filter(l => l.name.startsWith("logo") || l.name.startsWith("icon"))
-        .map(l => path.join(BRAND_ASSETS_DIR, brand.toUpperCase(), l.name))
-        .filter(f => fs.existsSync(f));
       const inputObj = { prompt, aspect_ratio: task.aspect_ratio || aspect, resolution: "2K", num_images: 1 };
       const validRefPaths = refImagePaths.filter(p => p && fs.existsSync(p));
       if (validRefPaths.length > 0) inputObj.images = validRefPaths;
@@ -1014,47 +987,18 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
             if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
             const outFile = path.join(imgDir, `nanobanana-${task.id}.png`);
 
-            // Find the brand logo to overlay
-            const logoFile = logoFiles.find(f => f.includes("logo"));
-            const taskLogoPos = task.logo_position || "SouthEast";
-            const SIZE_MAP = { small: "8%", medium: "12%", large: "18%" };
-            const logoResize = SIZE_MAP[task.logo_size] || SIZE_MAP.medium;
-            if (logoFile && taskLogoPos !== "none") {
-              // Download generated image, composite logo
-              execFile("curl", ["-s", "-o", outFile, imgUrl], { timeout: 30000 }, (dlErr) => {
-                if (dlErr) {
-                  // Fallback: use remote URL without logo overlay
-                  allTasks[idx].status = "completed";
-                  allTasks[idx].result_url = imgUrl;
-                  allTasks[idx].result_thumbnail = imgUrl;
-                  allTasks[idx].updated_at = new Date().toISOString();
-                  writeTaskFile("designer-tasks.json", allTasks);
-                  resolveBatch(); return;
-                }
-                // Composite logo at chosen position with size-mapped resize and 40px padding
-                execFile("convert", [
-                  outFile,
-                  "(", logoFile, "-resize", logoResize, ")",
-                  "-gravity", taskLogoPos, "-geometry", "+40+40",
-                  "-composite", outFile
-                ], { timeout: 15000 }, (compErr) => {
-                  if (compErr) console.error("[DESIGNER] Logo composite failed:", compErr.message);
-                  allTasks[idx].status = "completed";
-                  allTasks[idx].result_url = `/generated-images/nanobanana-${task.id}.png`;
-                  allTasks[idx].result_thumbnail = `/generated-images/nanobanana-${task.id}.png`;
-                  allTasks[idx].updated_at = new Date().toISOString();
-                  writeTaskFile("designer-tasks.json", allTasks);
-                  console.log(`[DESIGNER] Nano Banana task ${task.id} completed (with logo overlay)`);
-                  resolveBatch();
-                });
-              });
-              return;
-            }
-
-            // No logo — just use remote URL
-            allTasks[idx].status = "completed";
-            allTasks[idx].result_url = imgUrl;
-            allTasks[idx].result_thumbnail = imgUrl;
+            // Store the image locally — the generator URL expires after a while.
+            execFile("curl", ["-s", "-o", outFile, imgUrl], { timeout: 30000 }, (dlErr) => {
+              allTasks[idx].status = "completed";
+              const local = !dlErr && fs.existsSync(outFile);
+              allTasks[idx].result_url = local ? `/generated-images/nanobanana-${task.id}.png` : imgUrl;
+              allTasks[idx].result_thumbnail = allTasks[idx].result_url;
+              allTasks[idx].updated_at = new Date().toISOString();
+              writeTaskFile("designer-tasks.json", allTasks);
+              console.log(`[DESIGNER] Nano Banana task ${task.id} completed`);
+              resolveBatch();
+            });
+            return;
           } else {
             allTasks[idx].status = "failed";
             allTasks[idx].error = result?.output?.description || result?.error || "No images returned after all retries (Gemini FinishReason.STOP — model returned text instead of image)";
@@ -1076,27 +1020,76 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     return;
   }
 
+  if (engine === "higgsfield") {
+    // Higgsfield Soul (text-to-image). Jobs are async: submit here, results are
+    // collected by pollDesignerHiggsfield().
+    if (!(process.env.HIGGSFIELD_API_KEY || "").includes(":")) {
+      return res.status(400).json({ error: "Higgsfield is not configured — add the Key ID and App Secret in Settings." });
+    }
+    const createdTasks = buildImageTasks("higgsfield");
+    tasks.unshift(...createdTasks);
+    writeTaskFile("designer-tasks.json", tasks);
+    res.status(201).json(createdTasks);
+
+    (async () => {
+      for (let i = 0; i < createdTasks.length; i++) {
+        const task = createdTasks[i];
+        const { slide, slideDesc } = slideContentFor(i);
+        const slideInstruction = numImages > 1 && task.carousel_slide
+          ? `This is slide ${task.carousel_slide} of ${task.carousel_total} in a carousel. Generate ONLY this single slide image.`
+          : "";
+        const prompt = buildImagePrompt(slideDesc, designStyle, {
+          slideInstruction,
+          structured: !!slide || /\*\*\d|slide|headline/i.test(slideDesc),
+        });
+        let jobId = "", failure = "";
+        try {
+          const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+            method: "POST", headers: higgsfieldHeaders(),
+            body: JSON.stringify({ params: {
+              prompt: prompt.slice(0, 2000),
+              width_and_height: higgsfieldSize(task.aspect_ratio),
+              quality: "1080p",
+              enhance_prompt: true,
+            } }),
+          });
+          const d = await r.json().catch(() => ({}));
+          jobId = d.id || d.job_set_id || (d.job_set && d.job_set.id) || "";
+          if (!r.ok || !jobId) {
+            failure = "Higgsfield: " + (d && d.detail ? JSON.stringify(d.detail) : JSON.stringify(d)).slice(0, 300);
+          }
+        } catch (e) {
+          failure = "Higgsfield: " + e.message;
+        }
+        const all = readTaskFile("designer-tasks.json");
+        const idx = all.findIndex(t => t.id === task.id);
+        if (idx === -1) continue;
+        if (failure) {
+          all[idx].status = "failed";
+          all[idx].error = failure.slice(0, 400);
+          console.error("[DESIGNER] Higgsfield submit failed:", failure.slice(0, 200));
+        } else {
+          all[idx].hf_request_id = jobId;
+          console.log(`[DESIGNER] Higgsfield task ${task.id} submitted (job-set ${jobId})`);
+        }
+        all[idx].updated_at = new Date().toISOString();
+        writeTaskFile("designer-tasks.json", all);
+      }
+      // Reference images are not supported by Soul — clean them up.
+      for (const rp of refImagePaths) { try { fs.unlinkSync(rp); } catch {} }
+    })();
+    return;
+  }
+
   if (engine === "claude") {
     // Determine how many slides are needed
     const isCarousel = designType === "instagram_carousel" || slides.length > 1;
     const slideCount = slides.length > 1 ? slides.length : (requestedSlideCount || (isCarousel ? 3 : 1));
 
-    // Build brand guidelines block
-    const brandLines = [];
-    if (brandContext.colors.length) {
-      brandLines.push("BRAND COLORS — apply these as the design's color palette:");
-      brandContext.colors.forEach(c => brandLines.push(`  ${c.label || 'Color'}: ${c.hex}`));
-    }
-    if (brandContext.fonts.length) {
-      brandLines.push("BRAND FONTS — use these exact Google Fonts in the design:");
-      brandContext.fonts.forEach(f => brandLines.push(`  ${f.role}: ${f.family}`));
-    }
-    if (brandContext.logos.length) {
-      brandLines.push("BRAND LOGOS — you MUST add the logo to every design. Call upload-asset-from-url with these public URLs, then place the logo in the design:");
-      const brandAssetBase = process.env.BRAND_ASSET_URL || "";
-      brandContext.logos.forEach(l => brandLines.push(`  ${l.name}: ${brandAssetBase}/${brand.toUpperCase()}/${l.name}`));
-    }
-    const brandBlock = brandLines.length ? brandLines.join("\n") : "";
+    // Style block from the design settings (no brand data is injected)
+    const styleLines = ["Visual style: " + styleSentence(designStyle)];
+    if (designStyle.negative_prompt) styleLines.push("Avoid: " + designStyle.negative_prompt);
+    const styleBlock = styleLines.join("\n");
 
     // Build the prompt
     let prompt;
@@ -1104,7 +1097,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
       const slideDescs = slides.length > 1
         ? slides.map(s => `Slide ${s.num}: ${s.title ? s.title + " — " : ""}${s.body}`).join("\n")
         : "";
-      prompt = `Create ${slideCount} Instagram carousel slides as SEPARATE Canva designs for brand "${brand}".
+      prompt = `Create ${slideCount} Instagram carousel slides as SEPARATE Canva designs.
 
 You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
 - NEVER call request-outline-review
@@ -1112,35 +1105,33 @@ You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
 - ALWAYS pick the first candidate yourself and call create-design-from-candidate immediately
 - Complete ALL ${slideCount} slides before stopping
 
-${brandBlock ? "## Brand Guidelines\n" + brandBlock + "\n" : ""}
+## Style\n${styleBlock}\n
 ## Slide Content
 ${slideDescs || desc}
 
 ## For EACH slide, do these 3 steps:
-Step 1: Call generate-design with design_type "instagram_post" and a detailed query describing colors, style, and text content for that slide.
+Step 1: Call generate-design with design_type "instagram_post" and a detailed query describing the visual style above and the text content for that slide.
 Step 2: Immediately call create-design-from-candidate with the FIRST candidate. Do NOT present options. Do NOT ask the user.
 Step 3: Edit text — call start-editing-transaction, then get-design-content, then perform-editing-operations to set the correct text, then commit-editing-transaction.
-Step 4: If brand logos are listed above, call upload-asset-from-url with the logo URL, then add it to the design via perform-editing-operations (place it top-left or top-right, small size).
 
 After ALL ${slideCount} slides are done, output each design URL on its own line like:
 DESIGN_URL: https://...`;
     } else {
-      prompt = `Create a ${designType} design in Canva for brand "${brand}".
+      prompt = `Create a ${designType} design in Canva.
 
 You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
 - NEVER call request-outline-review
 - NEVER ask the user to choose or approve anything
 - ALWAYS pick the first candidate yourself and call create-design-from-candidate immediately
 
-${brandBlock ? "## Brand Guidelines\n" + brandBlock + "\n" : ""}
+## Style\n${styleBlock}\n
 ## Content
 ${desc}
 
 ## Steps:
-Step 1: Call generate-design with design_type "${designType}" and a detailed query describing colors, style, and text content.
+Step 1: Call generate-design with design_type "${designType}" and a detailed query describing the visual style above and the text content.
 Step 2: Immediately call create-design-from-candidate with the FIRST candidate. Do NOT present options.
 Step 3: Edit text — call start-editing-transaction, then get-design-content, then perform-editing-operations to set the correct text, then commit-editing-transaction.
-Step 4: If brand logos are listed above, call upload-asset-from-url with the logo URL, then add it to the design via perform-editing-operations (place it top-left or top-right, small size).
 
 Output the final design URL like:
 DESIGN_URL: https://...`;
@@ -1153,7 +1144,7 @@ DESIGN_URL: https://...`;
       createdTasks.push({
         id: genId(), status: "processing",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        design_type: designType, brand, brand_kit_id: brandKitId, engine: "claude",
+        design_type: designType, brand, engine: "claude", design_style: designStyle,
         carousel_parent: parentId,
         carousel_slide: isCarousel ? i + 1 : null,
         carousel_total: isCarousel ? slideCount : null,
@@ -1252,8 +1243,7 @@ DESIGN_URL: https://...`;
     const createdTasks = slides.map((s, i) => ({
       id: genId(), status: "pending",
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      design_type: designType, brand, brand_kit_id: brandKitId, engine: "canva",
-      brand_context: brandContext,
+      design_type: designType, brand, engine: "canva", design_style: designStyle,
       carousel_parent: parentId,
       carousel_slide: parseInt(s.num) || (i + 1),
       carousel_total: slides.length,
@@ -1268,8 +1258,7 @@ DESIGN_URL: https://...`;
   const task = {
     id: genId(), status: "pending",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    design_type: designType, brand, brand_kit_id: brandKitId, engine: "canva",
-    brand_context: brandContext,
+    design_type: designType, brand, engine: "canva", design_style: designStyle,
     description: desc,
     result_url: null, result_thumbnail: null, result_design_id: null, error: null,
   };
@@ -3669,7 +3658,7 @@ You can:
 4. Propose content ideas
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
-   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
+   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana. Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: edit a video via Remotion (Video Editor)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
@@ -3767,7 +3756,7 @@ Je kunt:
 5. Content ideeën voorstellen
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
-   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana.
+   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana. Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
@@ -3854,14 +3843,15 @@ app.post("/ctrl/chat", async (req, res) => {
           properties: {
             description: { type: "string", description: "Beschrijving van het gewenste design" },
             design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "ad_creative", "infographic", "poster", "presentation", "logo"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides. Gebruik ad_creative voor advertentie creatives (combineer met aspect_ratio)." },
-            brand: { type: "string", description: "Brand naam. Wordt geladen uit brand configuratie." },
-            engine: { type: "string", enum: ["nanobanana", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image generation (Gemini), Playwright = instant HTML-to-image, Claude = Canva MCP" },
+            engine: { type: "string", enum: ["nanobanana", "higgsfield", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image (Gemini), Higgsfield = AI image (Soul), Playwright = instant HTML-to-image, Claude = Canva MCP" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
             aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override (single). Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven). Gebruik aspect_ratios voor meerdere varianten." },
             aspect_ratios: { type: "array", items: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"] }, description: "Meerdere aspect ratios voor ad_creative — er wordt 1 creative per ratio gegenereerd." },
-            logo_position: { type: "string", enum: ["SouthEast", "South", "SouthWest", "NorthEast", "North", "NorthWest", "Center", "none"], description: "Logo positie. Standaard: SouthEast" },
-            logo_size: { type: "string", enum: ["small", "medium", "large"], description: "Logo grootte. Standaard: medium" },
-            template: { type: "string", enum: ["default", "bold-impact", "clean-minimal", "data-dense"], description: "Layout template. Standaard: default" },
+            style: { type: "string", enum: ["photographic", "cinematic", "render3d", "illustration", "minimal", "typographic", "gradient", "collage", "retro", "handdrawn"], description: "Visuele stijl. Leeg = neutraal/modern." },
+            color_scheme: { type: "string", enum: ["light", "dark", "monochrome", "vibrant", "pastel", "earth", "corporate"], description: "Kleurschema. Leeg = vrije keuze van het model." },
+            custom_colors: { type: "string", description: "Specifieke kleuren, bv. '#0F172A, warm oranje'." },
+            text_mode: { type: "string", enum: ["auto", "text", "no-text"], description: "Tekst op de afbeelding renderen. Standaard: auto." },
+            negative_prompt: { type: "string", description: "Wat het design NIET moet bevatten." },
           },
           required: ["description"],
         },
@@ -4090,14 +4080,15 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
         body: {
           description: input.description,
           design_type: input.design_type || "instagram_post",
-          brand: input.brand || (loadBrand().company_name || "DEFAULT").toUpperCase(),
           engine: input.engine || "nanobanana",
           slide_count: input.slide_count || null,
           aspect_ratio: input.aspect_ratio || null,
           aspect_ratios: Array.isArray(input.aspect_ratios) ? input.aspect_ratios : null,
-          logo_position: input.logo_position || "SouthEast",
-          logo_size: input.logo_size || "medium",
-          template: input.template || "default",
+          style: input.style || "",
+          color_scheme: input.color_scheme || "",
+          custom_colors: input.custom_colors || "",
+          text_mode: input.text_mode || "auto",
+          negative_prompt: input.negative_prompt || "",
         },
       }),
       create_video_edit: (input) => ({
@@ -5331,6 +5322,16 @@ const HIGGSFIELD = {
   speakModels: ["higgsfield", "kling"], // talking-avatar models (/v1/speak/{model})
   avatarSize: "1152x2048",              // 9:16 portrait for generated avatars
 };
+// Aspect ratio → the closest size Higgsfield's image models accept.
+const HIGGSFIELD_SIZES = {
+  "1:1": "2048x2048", "4:5": "1536x2048", "9:16": "1152x2048", "16:9": "2048x1152",
+  "1.91:1": "2048x1152", "3:4": "1536x2048", "4:3": "2048x1536", "2:3": "1344x2016",
+  "3:2": "2016x1344",
+};
+function higgsfieldSize(aspect) {
+  return HIGGSFIELD_SIZES[aspect] || "2048x2048";
+}
+
 function higgsfieldHeaders() {
   const creds = (process.env.HIGGSFIELD_API_KEY || "").trim();
   return { "Authorization": `Key ${creds}`, "Content-Type": "application/json" };
@@ -5466,6 +5467,50 @@ async function processUgcTasks() {
 }
 
 // ── UGC WORKER — poll processing tasks ──────────────────────────────
+// ── DESIGNER: collect finished Higgsfield Soul images ───────────────
+async function pollDesignerHiggsfield() {
+  const tasks = readTaskFile("designer-tasks.json");
+  const pending = tasks.filter(t => t.engine === "higgsfield" && t.status === "processing" && t.hf_request_id);
+  if (!pending.length) return;
+  let changed = false;
+  for (const t of pending) {
+    try {
+      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.hf_request_id), { headers: higgsfieldHeaders() });
+      const data = await r.json().catch(() => ({}));
+      const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
+      const status = String(job.status || data.status || "").toLowerCase();
+      const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
+        || job.result_url || (job.image && job.image.url) || (job.result && job.result.url) || "";
+      if ((status === "completed" || status === "success") && url) {
+        // Store it locally — the Higgsfield URL is temporary.
+        let local = null;
+        try {
+          const imgDir = path.join(__dirname, "data", "generated-images");
+          fs.mkdirSync(imgDir, { recursive: true });
+          const outFile = path.join(imgDir, `higgsfield-${t.id}.png`);
+          const img = await fetch(url);
+          if (img.ok) {
+            fs.writeFileSync(outFile, Buffer.from(await img.arrayBuffer()));
+            local = `/generated-images/higgsfield-${t.id}.png`;
+          }
+        } catch {}
+        t.status = "completed";
+        t.result_url = local || url;
+        t.result_thumbnail = t.result_url;
+        t.updated_at = new Date().toISOString();
+        changed = true;
+        console.log(`[DESIGNER] Higgsfield task ${t.id} completed`);
+      } else if (status === "failed" || status === "nsfw" || status === "error") {
+        t.status = "failed";
+        t.error = "Higgsfield job " + status;
+        t.updated_at = new Date().toISOString();
+        changed = true;
+      }
+    } catch { /* transient — retry next tick */ }
+  }
+  if (changed) writeTaskFile("designer-tasks.json", tasks);
+}
+
 async function pollUgcStatus() {
   const tasks = readTaskFile("ugc-tasks.json");
   let changed = false;
@@ -5645,49 +5690,29 @@ async function processDesignerTasks() {
       writeTaskFile("designer-tasks.json", tasks);
 
       const designType = task.design_type || "instagram_post";
-      const brandKitLine = task.brand_kit_id ? `Use brand kit ID: ${task.brand_kit_id}` : "";
       const isCarouselSlide = task.carousel_parent ? `\nThis is slide ${task.carousel_slide} of ${task.carousel_total} in a carousel set. Keep the visual style consistent: same color scheme, same layout structure, same typography.` : "";
 
-      // Build brand style from brand_context if available, otherwise use defaults
-      const bc = task.brand_context || { colors: [], fonts: [], logos: [] };
-      const bcColors = bc.colors || [];
-      const bcFonts = bc.fonts || [];
-      const primaryColor = (bcColors.find(c => /primary|hoofd/i.test(c.label)) || {}).hex || "#7C3AED";
-      const accentColor = (bcColors.find(c => /accent|secondary|secundair/i.test(c.label)) || {}).hex || "#A78BFA";
-      const colorLines = bcColors.length
-        ? bcColors.map(c => `- ${c.label || 'Color'}: ${c.hex}`).join("\n")
-        : `- Primary color: ${primaryColor}\n- Accent/glow: ${accentColor}`;
-      const fontLines = bcFonts.length
-        ? bcFonts.map(f => `- ${f.role}: ${f.family}`).join("\n")
-        : "- Typography: large bold headlines, clean sans-serif";
-
-      // Build logo upload instructions for Canva worker
-      const bcLogos = (bc.logos || []);
-      const logoInstructions = bcLogos.length
-        ? `\n5. Upload the brand logo using upload-asset-from-url with URL: ${process.env.BRAND_ASSET_URL || ""}/${(task.brand || "").toUpperCase()}/${bcLogos[0].name} — then add it to the design (top-left or top-right, small).`
-        : "";
+      // Style comes from the design settings the user picked — nothing is baked in.
+      const ds = task.design_style || { text_mode: "auto" };
+      const styleLines = ["- Visual style: " + styleSentence(ds)];
+      if (ds.negative_prompt) styleLines.push("- Avoid: " + ds.negative_prompt);
 
       const prompt = `You are a world-class social media designer. Create ONE ${designType} design in Canva.
 
-## Brand Style
-- Background: pure black or very dark (#000000 – #111111)
-${colorLines}
-- Text: white (#FFFFFF) or light gray (#F8FAFC)
-- Aesthetic: dark, premium, bold, high-contrast
-${fontLines}
-${brandKitLine}${isCarouselSlide}
+## Style
+${styleLines.join("\n")}${isCarouselSlide}
 
 ## Content for this design
 ${task.description}
 
 ## Steps
-1. Call generate-design with design_type "${designType}" and a detailed query. The query must describe the VISUAL design: "dark black background, bold white text, accent elements in the brand colors above, modern style" + include the actual text content.
+1. Call generate-design with design_type "${designType}" and a detailed query. The query must describe the VISUAL design in the style above + include the actual text content.
 2. Pick the best candidate. Call create-design-from-candidate with that candidate_id.
 3. Customize the text:
    a. Call start-editing-transaction with the design ID
    b. Call get-design-content to see current elements
    c. Call perform-editing-operations to update text elements with the EXACT text from the content above
-   d. Call commit-editing-transaction to save${logoInstructions}
+   d. Call commit-editing-transaction to save
 
 Return the final design URL when done.`;
 
@@ -6136,6 +6161,7 @@ setInterval(() => {
 
 // Poll Higgsfield status every 30 seconds
 setInterval(pollUgcStatus, 30_000);
+setInterval(() => pollDesignerHiggsfield().catch(() => {}), 15_000);
 setInterval(pollAvatarCreator, 30_000);
 
 // Run once on startup
@@ -6887,10 +6913,12 @@ async function executeDesignerSchedule(schedule, today) {
       body: JSON.stringify({
         description,
         design_type: p.design_type || "instagram_post",
-        brand: p.brand || (loadBrand().company_name || "DEFAULT").toUpperCase(),
         engine: p.engine || "nanobanana",
-        logo_position: p.logo_position || "SouthEast",
-        template: p.template || "default",
+        style: p.style || "",
+        color_scheme: p.color_scheme || "",
+        custom_colors: p.custom_colors || "",
+        text_mode: p.text_mode || "auto",
+        negative_prompt: p.negative_prompt || "",
       }),
     });
     const result = await resp.json().catch(() => ({}));
