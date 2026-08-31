@@ -3646,10 +3646,6 @@ app.get("/brand", (_req, res) => {
   res.json(brand);
 });
 
-app.get("/youtube-key", (_req, res) => {
-  res.json({ key: process.env.YOUTUBE_API_KEY || null });
-});
-
 function buildSystemPrompt() {
   const brand = loadBrand();
   if (!IS_NL) {
@@ -5550,6 +5546,90 @@ async function pollAvatarCreator() {
 }
 
 // ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
+// ── OPUSCLIP WORKER ──
+const opusclip = require("./opusclip-agent");
+
+async function processOpusclipTasks() {
+  const tasks = readTaskFile("opusclip-tasks.json");
+  let changed = false;
+
+  // 1) Submit pending tasks → OpusClip API, transition to "processing"
+  for (const task of tasks) {
+    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
+    if (!process.env.OPUSCLIP_API_KEY) continue;
+    processingTasks.add(task.id);
+    try {
+      console.log(`[WORKER] OpusClip submitting ${task.video_url}`);
+      const proj = await opusclip.createProject({
+        videoUrl: task.video_url,
+        minDuration: task.min_duration,
+        maxDuration: task.max_duration,
+        sourceLang: task.source_lang,
+        topicKeywords: task.topic_keywords,
+      });
+      task.project_id = proj.projectId || proj.id;
+      task.stage = proj.stage || "QUEUED";
+      task.status = "processing";
+      task.updated_at = new Date().toISOString();
+      changed = true;
+    } catch (e) {
+      console.error(`[WORKER] OpusClip submit failed for ${task.id}:`, e.message);
+      task.status = "failed";
+      task.error = e.message;
+      task.updated_at = new Date().toISOString();
+      changed = true;
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+
+  // 2) Poll processing tasks → update stage, fetch clips on COMPLETE
+  for (const task of tasks) {
+    if (task.status !== "processing" || !task.project_id) continue;
+    if (processingTasks.has(task.id)) continue;
+    processingTasks.add(task.id);
+    try {
+      const proj = await opusclip.getProject(task.project_id);
+      const stage = String(proj.stage || "").toUpperCase();
+      if (stage && stage !== task.stage) {
+        task.stage = stage;
+        task.updated_at = new Date().toISOString();
+        changed = true;
+      }
+      if (opusclip.isTerminal(stage)) {
+        if (stage === "COMPLETE") {
+          const clips = await opusclip.listClips(task.project_id);
+          task.clips = (clips || []).map(c => ({
+            id: c.id,
+            title: c.title || "",
+            description: c.description || "",
+            duration_ms: c.durationMs || 0,
+            download_url: c.uriForExport || "",
+            preview_url: c.uriForPreview || "",
+            thumbnail_url: c.uriForThumbnail || "",
+            keywords: c.keywords || c.clipKeywords || [],
+            hashtags: c.hashtags || "",
+          }));
+          task.status = "completed";
+        } else {
+          task.status = "failed";
+          task.error = `OpusClip ended in stage ${stage}`;
+        }
+        task.updated_at = new Date().toISOString();
+        changed = true;
+        console.log(`[WORKER] OpusClip task ${task.id} ${task.status} (${task.clips?.length || 0} clips)`);
+      }
+    } catch (e) {
+      console.error(`[WORKER] OpusClip poll failed for ${task.id}:`, e.message);
+      // Transient errors: don't fail the task, just leave it for next cycle
+    } finally {
+      processingTasks.delete(task.id);
+    }
+  }
+
+  if (changed) writeTaskFile("opusclip-tasks.json", tasks);
+}
+
 async function processDesignerTasks() {
   const canvaToken = await getCanvaAccessToken();
   if (!canvaToken) return; // Skip if Canva not connected
