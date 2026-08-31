@@ -1,6 +1,6 @@
 // Browser tools (Playwright-backed)
 // Provides browser automation tools for the /ctrl/chat agent and a one-shot
-// `browsePage` helper for the Researcher. Uses playwright directly; no MCP
+// `browsePage` helper for the chat agent. Uses playwright directly; no MCP
 // protocol bridging, since the Anthropic tool_use API already covers the
 // surface we need.
 
@@ -263,7 +263,7 @@ const BROWSER_TOOLS = [
   },
 ];
 
-// ─── One-shot page fetch (for Researcher agent) ─────────────────
+// ─── One-shot page fetch (for the chat agent) ─────────────────
 // Simpler than the chat flow: open a URL, extract main text, close browser.
 async function browsePage(url, { maxChars = 8000, waitMs = 1500 } = {}) {
   const browser = await chromium.launch({

@@ -328,13 +328,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <label class="sched-label">Agent</label>
             <select class="sched-select" id="sched-agent" onchange="updatePayloadFields()">
               <option value="designer">Designer</option>
-              <option value="researcher">Researcher</option>
-              <option value="scriptwriter">Script Writer</option>
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
               <option value="ads_optimizer">Ads Optimizer</option>
               <option value="community_manager">Community Manager</option>
-              <option value="seo">SEO Audit</option>
               <option value="opusclip">OpusClip Clipper</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
@@ -386,22 +383,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
 <script>
 const AI_TEAM = [
-  { name: 'RESEARCHER', emoji: '\u{1F50D}', role: 'Trend Analysis & Web Research', color: 'var(--accent)', hsl: '264 65% 49%', taskApi: '/research/tasks', type: 'RESEARCH' },
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'Higgsfield UGC & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/ugc/tasks', '/opusclip/tasks'], type: 'CONTENT' },
-  { name: 'SCRIPT WRITER', emoji: '\u270D\uFE0F', role: 'Video & Content Scripts', color: 'hsl(30 90% 55%)', hsl: '30 90% 55%', taskApi: '/scriptwriter/tasks', type: 'SCRIPT' },
-  { name: 'SEO', emoji: '\u{1F50E}', role: 'Site Audit & Optimization', color: 'hsl(160 70% 45%)', hsl: '160 70% 45%', taskApi: '/seo/tasks', type: 'SEO' },
   { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
   { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
-  { name: 'FINANCE', emoji: '\u{1F4B0}', role: 'Stripe Subscriptions', color: 'hsl(142 76% 36%)', hsl: '142 76% 36%', isFinance: true },
 ];
 
 const AGENT_COLORS = {
-  RESEARCH: 'var(--accent)', DESIGN: 'var(--warning)',
-  VIDEO: 'var(--danger)', CONTENT: 'hsl(180 70% 45%)', SCRIPT: 'hsl(30 90% 55%)',
-  COMMUNITY: 'hsl(200 90% 55%)', SEO: 'hsl(160 70% 45%)',
+  DESIGN: 'var(--warning)', VIDEO: 'var(--danger)',
+  CONTENT: 'hsl(180 70% 45%)', COMMUNITY: 'hsl(200 90% 55%)',
 };
 
 let currentFilter = 'all';
@@ -463,40 +455,6 @@ async function loadAiTeam() {
         <div class="agent-card-footer">
           <span class="agent-footer-label">engine <span>Composio</span></span>
           <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
-        </div>
-      </div>`);
-      continue;
-    }
-
-    if (agent.isFinance) {
-      let kpi = null, configured = false;
-      try {
-        const fr = await fetch('/finance/subscriptions');
-        if (fr.ok) { const fd = await fr.json(); kpi = fd && fd.kpi ? fd.kpi : null; configured = true; }
-      } catch {}
-      const k = kpi || { mrr_display: '—', active_count: 0, trialing_count: 0, past_due_count: 0 };
-      const status = configured ? (k.active_count > 0 ? 'running' : 'idle') : 'idle';
-      const statusLabel = configured ? (k.active_count > 0 ? 'connected' : 'no subs') : 'not configured';
-      const taskLine = configured
-        ? `${k.mrr_display || '—'} MRR · ${k.active_count} active`
-        : 'Add your Stripe key in Settings to track subscriptions';
-      cards.push(`<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-          <span class="agent-status ${status}">${statusLabel}</span>
-        </div>
-        <div class="agent-card-body">
-          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
-            <span style="color:var(--success)">${k.active_count} active</span>
-            <span style="color:var(--warning)">${k.trialing_count} trial</span>
-            ${k.past_due_count ? '<span style="color:var(--danger)">'+k.past_due_count+' past due</span>' : ''}
-          </div>
-          <div class="agent-task">${esc(taskLine)}</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">MRR <span>${k.mrr_display || '—'}</span></span>
-          <a href="finance.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
         </div>
       </div>`);
       continue;
@@ -595,12 +553,9 @@ async function loadAiTeam() {
 async function loadAllTasks() {
   const sources = [
     { api: '/ugc/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'UGC' },
-    { api: '/scriptwriter/tasks', agent: 'SCRIPT WRITER', type: 'SCRIPT' },
     { api: '/designer/tasks', agent: 'DESIGNER', type: 'DESIGN' },
     { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
-    { api: '/research/tasks', agent: 'RESEARCHER', type: 'RESEARCH' },
-    { api: '/seo/tasks', agent: 'SEO', type: 'SEO' },
     { api: '/opusclip/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Clipper' },
     { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
   ];
@@ -741,27 +696,21 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', researcher: 'RESEARCHER', scriptwriter: 'SCRIPT WRITER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', seo: 'SEO', opusclip: 'OPUSCLIP' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', opusclip: 'OPUSCLIP' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
-  researcher: 'color:hsl(264 65% 49%)',
-  scriptwriter: 'color:hsl(30 90% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
   assistant: 'color:hsl(210 90% 55%)',
   ads_optimizer: 'color:hsl(142 76% 36%)',
   community_manager: 'color:hsl(200 90% 55%)',
-  seo: 'color:hsl(160 70% 45%)',
   opusclip: 'color:hsl(0 72% 51%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
-  researcher: 'Scans social platforms (X, Reddit, TikTok) for trending topics, competitor activity, and content ideas in your niche.',
-  scriptwriter: 'Writes video scripts, social posts, or thread copy based on a topic and tone you specify.',
   marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
-  seo: 'Crawls your website (up to 100 pages), runs technical + on-page + content SEO checks, fetches Google PageSpeed Insights, and produces a prioritised improvement report.',
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
 };
 
@@ -772,19 +721,11 @@ function buildScheduleSummary(s) {
   switch (s.agent) {
     case 'designer': {
       const parts = [];
-      if (p.auto_from_research) parts.push('Picks trending topic from latest research');
-      else if (p.description) parts.push(`"${p.description.substring(0, 60)}${p.description.length > 60 ? '...' : ''}"`);
+      if (p.description) parts.push(`"${p.description.substring(0, 60)}${p.description.length > 60 ? '...' : ''}"`);
       parts.push(`${(p.design_type || 'instagram_post').replace(/_/g, ' ')} via ${p.engine || 'nanobanana'}`);
       if (p.brand) parts.push(`brand: ${p.brand}`);
       return parts.join(' · ');
     }
-    case 'researcher': {
-      const lang = p.language === 'EN' ? 'English' : 'Dutch';
-      const platforms = Array.isArray(p.platforms) ? p.platforms.join(', ') : (p.platforms || 'x, reddit, tiktok');
-      return `${lang} ${(p.type || 'daily_full').replace(/_/g, ' ')} scan · niche: ${p.niche || 'crypto'} · platforms: ${platforms}`;
-    }
-    case 'scriptwriter':
-      return `${p.language || 'NL'} · type: ${p.type || 'script'}${p.prompt ? ' · "' + p.prompt.substring(0, 50) + '"' : ''}`;
     case 'marketeer':
       return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Marketing strategy task';
     case 'assistant':
@@ -795,10 +736,6 @@ function buildScheduleSummary(s) {
       const n = parseInt(p.post_count);
       const count = Number.isFinite(n) && n > 0 ? `${n}` : 'auto';
       return `Generates ${count} ${p.language || 'NL'} drafts for channel ${escHtml(p.channel_id || '?')} · spread across next 7 days`;
-    }
-    case 'seo': {
-      const maxPages = parseInt(p.max_pages) || 25;
-      return `${escHtml(p.url || '?')} · up to ${maxPages} pages · ${p.language || 'EN'}`;
     }
     case 'opusclip': {
       const minD = parseInt(p.min_duration) || 30;
@@ -871,37 +808,10 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Language</label>
         <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
     </div>
-    <div style="margin-top:8px">
-      <label style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);cursor:pointer;display:flex;align-items:center;gap:6px">
-        <input type="checkbox" id="sp-auto_from_research" checked> Auto content from latest research report
-      </label>
-    </div>
-    <div id="sp-desc-row" style="margin-top:8px;display:none">
-      <label class="sched-label">Description (manual)</label>
+    <div id="sp-desc-row" style="margin-top:8px">
+      <label class="sched-label">Description</label>
       <input class="sched-input" id="sp-description" placeholder="Custom prompt for image generation">
     </div>`,
-  researcher: `
-    <div class="sched-form-row">
-      <div><label class="sched-label">Language</label>
-        <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
-      <div><label class="sched-label">Type</label>
-        <select class="sched-select" id="sp-type"><option value="daily_full">Daily Full Scan</option><option value="trending">Trending Only</option></select></div>
-    </div>
-    <div class="sched-form-row">
-      <div><label class="sched-label">Niche</label>
-        <input class="sched-input" id="sp-niche" value="crypto trading"></div>
-      <div><label class="sched-label">Platforms</label>
-        <input class="sched-input" id="sp-platforms" value="x, reddit, tiktok, youtube, instagram"></div>
-    </div>`,
-  scriptwriter: `
-    <div class="sched-form-row">
-      <div><label class="sched-label">Language</label>
-        <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
-      <div><label class="sched-label">Type</label>
-        <input class="sched-input" id="sp-type" value="script"></div>
-    </div>
-    <div><label class="sched-label">Prompt</label>
-      <input class="sched-input" id="sp-prompt" placeholder="What to write about"></div>`,
   marketeer: `
     <div><label class="sched-label">What should the marketeer do?</label>
       <input class="sched-input" id="sp-query" placeholder="e.g. 'Create a weekly social media plan' or 'Analyze our content performance and suggest improvements'"></div>
@@ -923,7 +833,6 @@ const PAYLOAD_FIELDS = {
       <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
       <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
         <li>Loads the selected channel's archetype set</li>
-        <li>Pulls the latest research report as context</li>
         <li>Asks Claude to generate <b>N</b> draft posts spread across the next 7 days, following the archetype schedule</li>
         <li>Skips archetypes marked as manual-only</li>
         <li>Drafts land as <b style="color:hsl(200 90% 55%)">status: draft</b> in the Community queue, ready for the Sunday review cron</li>
@@ -963,17 +872,6 @@ const PAYLOAD_FIELDS = {
           <option value="last_14d">Last 14 days</option>
           <option value="last_30d">Last 30 days</option>
         </select></div>
-    </div>`,
-  seo: `
-    <div class="sched-form-row">
-      <div style="grid-column:1/-1"><label class="sched-label">Website URL</label>
-        <input class="sched-input" id="sp-url" type="url" placeholder="https://example.com" style="width:100%"></div>
-    </div>
-    <div class="sched-form-row">
-      <div><label class="sched-label">Max pages</label>
-        <input class="sched-input" id="sp-max_pages" type="number" min="1" max="100" value="25"></div>
-      <div><label class="sched-label">Language</label>
-        <select class="sched-select" id="sp-language"><option value="EN">EN</option><option value="NL">NL</option></select></div>
     </div>`,
   opusclip: `
     <div style="background:hsla(0 72% 51%/0.06);border:1px solid hsla(0 72% 51%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
@@ -1017,13 +915,7 @@ function updatePayloadFields() {
   const agent = document.getElementById('sched-agent').value;
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
   document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
-  // Toggle desc visibility for designer
-  if (agent === 'designer') {
-    const cb = document.getElementById('sp-auto_from_research');
-    const descRow = document.getElementById('sp-desc-row');
-    cb?.addEventListener('change', () => { descRow.style.display = cb.checked ? 'none' : 'block'; });
-    populateBrandSelect();
-  }
+  if (agent === 'designer') populateBrandSelect();
   // Load channels for community_manager
   if (agent === 'community_manager') {
     populateCommunityChannelSelect();
@@ -1093,10 +985,6 @@ function openScheduleModal(data) {
         else if (Array.isArray(v)) el.value = v.join(', ');
         else el.value = v;
       }
-      // Show/hide desc row for designer
-      const cb = document.getElementById('sp-auto_from_research');
-      const descRow = document.getElementById('sp-desc-row');
-      if (cb && descRow) descRow.style.display = cb.checked ? 'none' : 'block';
       // Re-populate community channel select with the saved selection (it's async)
       if (data?.agent === 'community_manager' && data?.payload?.channel_id) {
         populateCommunityChannelSelect(data.payload.channel_id);

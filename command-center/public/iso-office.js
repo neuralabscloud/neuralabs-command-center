@@ -4,34 +4,26 @@
 (function () {
   let BRAND_NAME = "HQ";
   const OFFICE = [
-    { key:'researcher',   name:'RESEARCHER', role:'TREND RESEARCH',    emoji:'\u{1F50D}', hsl:'264 65% 49%', pos:[0,0], href:'research.html',        taskApi:'/research/tasks' },
-    { key:'content',      name:'CONTENT',    role:'HIGGSFIELD UGC',    emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[1,0], href:'content-creator.html', taskApis:['/ugc/tasks'] },
-    { key:'scriptwriter', name:'WRITER',     role:'VIDEO SCRIPTS',     emoji:'\u270D\uFE0F', hsl:'30 90% 55%',  pos:[2,0], href:'scriptwriter.html',    taskApi:'/scriptwriter/tasks' },
-    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',     emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[0,1], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
-    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',            emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[1,1], href:'ads.html' },
-    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',      emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[2,1], href:'designer.html',        taskApi:'/designer/tasks' },
-    { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',          emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,2], href:'chat.html' },
-    { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[1,2], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
-    { key:'seo',          name:'SEO',        role:'SITE AUDIT',         emoji:'\u{1F50E}', hsl:'160 70% 45%', pos:[2,2], href:'seo.html',             taskApi:'/seo/tasks' },
-    { key:'finance',      name:'FINANCE',    role:'STRIPE REVENUE',     emoji:'\u{1F4B0}', hsl:'142 76% 36%', pos:[3,1], href:'finance.html',         alwaysOn:true },
+    { key:'content',      name:'CONTENT',    role:'HIGGSFIELD UGC',     emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[0,0], href:'content-creator.html', taskApis:['/ugc/tasks'] },
+    { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',      emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[1,0], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
+    { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',       emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[2,0], href:'designer.html',        taskApi:'/designer/tasks' },
+    { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',           emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,1], href:'chat.html' },
+    { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',             emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[1,1], href:'ads.html' },
+    { key:'community',    name:'COMMUNITY',  role:'TELEGRAM / DISCORD', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[2,1], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
   ];
 
+
   const CONNECTIONS = [
-    ['researcher', 'scriptwriter',4.2],
-    ['scriptwriter','content',    3.8],
-    ['scriptwriter','video',      4.6],
-    ['content',    'video',       3.2],
-    ['video',      'designer',    3.6],
-    ['designer',   'marketeer',   3.4],
-    ['marketeer',  'assistant',   3.0],
-    ['scriptwriter','community',  4.4],
-    ['designer',   'community',   3.8],
-    ['assistant',  'community',   3.2],
-    ['researcher', 'seo',         4.0],
-    ['seo',        'marketeer',   3.6],
-    ['marketeer',  'finance',     3.4],
-    ['finance',    'assistant',   3.8],
+    ['content',   'video',     3.2],
+    ['content',   'designer',  4.0],
+    ['video',     'designer',  3.6],
+    ['designer',  'marketeer', 3.4],
+    ['designer',  'community', 3.8],
+    ['marketeer', 'assistant', 3.0],
+    ['marketeer', 'community', 3.6],
+    ['assistant', 'community', 3.2],
   ];
+
 
   const ISO_TW = 310, ISO_TH = 155, ISO_OX = 600, ISO_OY = 258;
 
@@ -127,7 +119,7 @@
   function renderFloor() {
     const halfW = ISO_TW / 2, halfH = ISO_TH / 2;
     let tiles = '';
-    const c00 = isoGridPos(0, 0), c30 = isoGridPos(3, 0), c02 = isoGridPos(0, 2), c32 = isoGridPos(3, 2);
+    const c00 = isoGridPos(0, 0), c30 = isoGridPos(2, 0), c02 = isoGridPos(0, 1), c32 = isoGridPos(2, 1);
     const outer = [
       { x: c00.x, y: c00.y - halfH },
       { x: c30.x + halfW, y: c30.y },
@@ -135,8 +127,8 @@
       { x: c02.x - halfW, y: c02.y },
     ];
     tiles += `<polygon class="floor-accent" points="${outer.map(p=>p.x+','+p.y).join(' ')}"/>`;
-    for (let gy = 0; gy <= 2; gy++) {
-      for (let gx = 0; gx <= 3; gx++) {
+    for (let gy = 0; gy <= 1; gy++) {
+      for (let gx = 0; gx <= 2; gx++) {
         const p = isoGridPos(gx, gy);
         const cls = (gx === 1 && gy === 1) ? 'floor-tile hero' : 'floor-tile';
         tiles += `<polygon class="${cls}" points="${p.x-halfW},${p.y} ${p.x},${p.y-halfH} ${p.x+halfW},${p.y} ${p.x},${p.y+halfH}"/>`;
@@ -310,7 +302,7 @@
           <div class="iso-topbar-left">${BRAND_NAME} · <b>Floor 01</b> · Live</div>
           <div class="iso-topbar-right"><span class="live-dot"></span><span class="iso-clock">--:--</span></div>
         </div>
-        <svg class="iso-scene" viewBox="115 10 1115 720" preserveAspectRatio="xMidYMid meet"></svg>
+        <svg class="iso-scene" viewBox="265 10 825 585" preserveAspectRatio="xMidYMid meet"></svg>
       </div>
     `;
     const svg = container.querySelector('svg.iso-scene');

@@ -120,7 +120,6 @@ INFERENCE_API_KEY=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 HEYGEN_API_KEY=""
-STRIPE_SECRET_KEY=""
 COMPOSIO_API_KEY=""
 TWITTER_API_KEY=""
 TWITTER_API_SECRET=""
@@ -173,7 +172,7 @@ if ! command -v redis-server &>/dev/null; then
 fi
 ok "Redis installed"
 
-# Cron (daily research/analyst scheduler needs crontab)
+# Cron (scheduled tasks need crontab)
 if ! command -v crontab &>/dev/null; then
   info "Installing cron..."
   apt-get install -y -q cron || { error "Failed to install cron"; exit 1; }
@@ -218,23 +217,6 @@ else
   ok "Inference.sh CLI already installed"
 fi
 
-info "Setting up Python virtualenv for research-agent.py..."
-# Use a venv at $INSTALL_DIR/venv so we sidestep PEP 668 (externally-managed-environment)
-# on Ubuntu 24.04+ and avoid touching system Python packages.
-mkdir -p "$INSTALL_DIR"
-if python3 -m venv "$INSTALL_DIR/venv"; then
-  "$INSTALL_DIR/venv/bin/pip" install -q --upgrade pip || true
-  if "$INSTALL_DIR/venv/bin/pip" install -q python-dotenv anthropic requests; then
-    ok "Python deps installed in $INSTALL_DIR/venv"
-  else
-    warn "Failed to install Python deps — research-agent.py will not work until you run:"
-    warn "  $INSTALL_DIR/venv/bin/pip install python-dotenv anthropic requests"
-  fi
-else
-  warn "Failed to create venv at $INSTALL_DIR/venv — research-agent.py will not work."
-  warn "Make sure python3-venv is installed: apt-get install -y python3-venv"
-fi
-
 # ── COPY FILES ────────────────────────────────────────────
 info "Installing to ${INSTALL_DIR}..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -276,7 +258,6 @@ INFERENCE_API_KEY=$(env_quote "$INFERENCE_API_KEY")
 TELEGRAM_BOT_TOKEN=$(env_quote "$TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID=$(env_quote "$TELEGRAM_CHAT_ID")
 HEYGEN_API_KEY=$(env_quote "$HEYGEN_API_KEY")
-STRIPE_SECRET_KEY=$(env_quote "$STRIPE_SECRET_KEY")
 COMPOSIO_API_KEY=$(env_quote "$COMPOSIO_API_KEY")
 COMPOSIO_ACCOUNT_ID=''
 BRAND_ASSET_URL=''
@@ -392,7 +373,7 @@ echo -e "  The wizard will help you configure:"
 echo "    - Branding (name, colors, tagline)"
 echo "    - Anthropic API key (AI features)"
 echo "    - Telegram notifications"
-echo "    - Integrations (HeyGen, Stripe, Composio)"
+echo "    - Integrations (HeyGen, Composio)"
 echo ""
 echo -e "  ${YELLOW}Manage services:${NC}"
 echo "    systemctl status command-center"

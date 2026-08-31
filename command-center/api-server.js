@@ -38,27 +38,18 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const cookieParser = require("cookie-parser");
-const Stripe = require("stripe");
 
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const { renderSlide, renderCarousel } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
 const { execFile, spawn } = require("child_process");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 const {
   BROWSER_TOOLS,
-  BROWSE_PAGE_TOOL,
   handleBrowserTool,
   browsePage,
 } = require("./browser-tools");
 
 const app = express();
-
-// Stripe webhook must receive the RAW body for signature verification,
-// so register it BEFORE express.json(). The handler itself is defined later
-// in the file (handleStripeWebhook); function-scoped hoisting keeps it
-// available at request time even though we reference it here.
-app.post("/stripe/webhook", express.raw({ type: "application/json" }), (req, res) => handleStripeWebhook(req, res));
 
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
@@ -174,9 +165,6 @@ app.get("/ugc-media/:file", (req, res) => {
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
-  // Stripe webhook authenticates via signature, not cookie — it was already
-  // handled by the raw-body route above, but allow as a safety net.
-  if (req.path === "/stripe/webhook") return next();
   if (
     (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") &&
     req.headers["x-internal-secret"] === INTERNAL_SECRET
@@ -251,7 +239,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "ELEVENLABS_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "ELEVENLABS_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -339,7 +327,6 @@ app.get("/api/settings", (req, res) => {
       anthropic: { has_key: !!env.ANTHROPIC_API_KEY, masked: maskKey(env.ANTHROPIC_API_KEY) },
       telegram: { has_key: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID), token_masked: maskKey(env.TELEGRAM_BOT_TOKEN), chat_id: env.TELEGRAM_CHAT_ID || "" },
       higgsfield: { has_key: (env.HIGGSFIELD_API_KEY || "").includes(":") && (env.HIGGSFIELD_API_KEY || "").split(":").every(Boolean), has_id: !!((env.HIGGSFIELD_API_KEY || "").split(":")[0]), has_secret: !!((env.HIGGSFIELD_API_KEY || "").split(":").slice(1).join(":")), masked: maskKey(env.HIGGSFIELD_API_KEY) },
-      stripe: { has_key: !!env.STRIPE_SECRET_KEY, masked: maskKey(env.STRIPE_SECRET_KEY), has_webhook_secret: !!env.STRIPE_WEBHOOK_SECRET, webhook_url: pub.origin ? `${pub.origin}/stripe/webhook` : "" },
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
@@ -369,8 +356,6 @@ app.post("/api/settings", (req, res) => {
       anthropic_key: "ANTHROPIC_API_KEY",
       telegram_token: "TELEGRAM_BOT_TOKEN",
       telegram_chat_id: "TELEGRAM_CHAT_ID",
-      stripe_key: "STRIPE_SECRET_KEY",
-      stripe_webhook_secret: "STRIPE_WEBHOOK_SECRET",
       composio_key: "COMPOSIO_API_KEY",
       inference_key: "INFERENCE_API_KEY",
       meta_app_id: "META_APP_ID",
@@ -1483,43 +1468,6 @@ app.delete("/video/ai-generate/:id", (req, res) => {
 
 
 
-// ── SCRIPTWRITER TASKS ────────────────────────
-app.get("/scriptwriter/tasks", (_req, res) => res.json(readTaskFile("scriptwriter-tasks.json")));
-
-app.post("/scriptwriter/tasks", (req, res) => {
-  const tasks = readTaskFile("scriptwriter-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: req.body.type || "video_script",
-    topic: req.body.topic || "",
-    format: req.body.format || "short-form",
-    tone: req.body.tone || "educational",
-    description: req.body.description || "",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    result: null, error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("scriptwriter-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/scriptwriter/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("scriptwriter-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("scriptwriter-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/scriptwriter/tasks/:id", (req, res) => {
-  writeTaskFile("scriptwriter-tasks.json", readTaskFile("scriptwriter-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
 // ── COMMUNITY MANAGER: CHANNELS ───────────────
 app.get("/community/channels", (_req, res) => res.json(readChannels()));
 
@@ -1777,139 +1725,6 @@ app.post("/community/send-review", async (req, res) => {
 
 const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
 
-// ── RESEARCH TASKS ────────────────────────────
-app.get("/research/tasks", (_req, res) => res.json(readTaskFile("research-tasks.json")));
-
-app.post("/research/tasks", (req, res) => {
-  const tasks = readTaskFile("research-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: req.body.type || "trending",
-    query: req.body.query || "",
-    platforms: req.body.platforms || ["tiktok", "x", "reddit"],
-    niche: req.body.niche || "crypto trading",
-    language: req.body.language || "NL",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("research-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/research/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("research-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("research-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/research/tasks/:id", (req, res) => {
-  writeTaskFile("research-tasks.json", readTaskFile("research-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
-// Daily auto-research: trigger manually or via cron
-app.post("/research/daily", (req, res) => {
-  const tasks = readTaskFile("research-tasks.json");
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Check if already ran today (pass {"force": true} to run anyway)
-  const alreadyRan = tasks.some(t => t.type === "daily" && t.created_at?.startsWith(today));
-  if (alreadyRan && !req.body?.force) return res.json({ ok: false, message: "Daily research already ran today" });
-
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: "daily",
-    query: `Daily crypto & trading research — ${today}. Onderzoek de belangrijkste crypto ontwikkelingen, marktbewegingen, trending topics op X/Reddit/TikTok, en genereer concrete content suggesties voor Instagram en Twitter.`,
-    platforms: ["x", "reddit", "tiktok", "coingecko", "coinmarketcap"],
-    niche: "crypto trading",
-    language: "NL",
-    error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("research-tasks.json", tasks);
-  console.log(`[RESEARCH] Daily research triggered for ${today}`);
-  res.status(201).json(task);
-});
-
-// Research reports (results)
-app.get("/research/reports", (_req, res) => res.json(readTaskFile("research-reports.json")));
-
-app.post("/research/reports", (req, res) => {
-  const reports = readTaskFile("research-reports.json");
-  const report = {
-    id: genId(),
-    task_id: req.body.task_id || null,
-    created_at: new Date().toISOString(),
-    type: req.body.type || "daily",
-    title: req.body.title || "",
-    sections: req.body.sections || [],
-  };
-  reports.unshift(report);
-  if (reports.length > 30) reports.length = 30; // keep last 30
-  writeTaskFile("research-reports.json", reports);
-  res.status(201).json(report);
-});
-
-app.delete("/research/reports/:id", (req, res) => {
-  writeTaskFile("research-reports.json", readTaskFile("research-reports.json").filter((r) => r.id !== req.params.id));
-  res.json({ ok: true });
-});
-
-// ── SEO AUDIT ─────────────────────────────────
-app.get("/seo/tasks", (_req, res) => res.json(readTaskFile("seo-tasks.json")));
-
-app.post("/seo/tasks", (req, res) => {
-  const rawUrl = (req.body.url || "").trim();
-  if (!rawUrl) return res.status(400).json({ error: "url is required" });
-  let normalised;
-  try {
-    normalised = new URL(rawUrl.match(/^https?:\/\//i) ? rawUrl : `https://${rawUrl}`).toString();
-  } catch { return res.status(400).json({ error: "Invalid URL" }); }
-
-  const tasks = readTaskFile("seo-tasks.json");
-  const task = {
-    id: genId(),
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    url: normalised,
-    max_pages: Math.min(Math.max(parseInt(req.body.max_pages, 10) || 25, 1), 100),
-    language: req.body.language || process.env.LANGUAGE || "EN",
-    error: null,
-  };
-  tasks.unshift(task);
-  if (tasks.length > 50) tasks.length = 50;
-  writeTaskFile("seo-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.delete("/seo/tasks/:id", (req, res) => {
-  writeTaskFile("seo-tasks.json", readTaskFile("seo-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
-app.get("/seo/reports", (_req, res) => res.json(readTaskFile("seo-reports.json")));
-
-app.get("/seo/reports/:id", (req, res) => {
-  const reports = readTaskFile("seo-reports.json");
-  const report = reports.find((r) => r.id === req.params.id);
-  if (!report) return res.status(404).json({ error: "Not found" });
-  res.json(report);
-});
-
-app.delete("/seo/reports/:id", (req, res) => {
-  writeTaskFile("seo-reports.json", readTaskFile("seo-reports.json").filter((r) => r.id !== req.params.id));
-  res.json({ ok: true });
-});
-
 // ── OPUSCLIP TASKS ────────────────────────────
 app.get("/opusclip/tasks", (_req, res) => res.json(readTaskFile("opusclip-tasks.json")));
 
@@ -2112,18 +1927,7 @@ app.get("/settings/integrations", (_req, res) => {
     details: [
       { label: "API Key", value: anthropicKey, secret: true },
       { label: "Model", value: "claude-sonnet-4-6" },
-      { label: "Used by", value: "AI Chat, Research, Analyst, Designer (Claude engine)" },
-    ],
-  });
-
-  // 3. Stripe
-  const stripeKey = process.env.STRIPE_SECRET_KEY || "";
-  integrations.push({
-    id: "stripe", status: stripeKey ? "connected" : "not-configured",
-    details: [
-      { label: "Secret Key", value: stripeKey, secret: true },
-      { label: "Mode", value: stripeKey.startsWith("sk_live") ? "LIVE" : stripeKey.startsWith("sk_test") ? "TEST" : "—" },
-      { label: "Used by", value: "Performance page — revenue & subscriptions" },
+      { label: "Used by", value: "AI Chat, Analyst, Designer (Claude engine)" },
     ],
   });
 
@@ -2231,10 +2035,6 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       const client = new Anthropic();
       const msg = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
       res.json({ ok: true, message: `Model responded (${msg.usage.input_tokens + msg.usage.output_tokens} tokens)` });
-    } else if (id === "stripe") {
-      const bal = await stripe.balance.retrieve();
-      const amount = (bal.available?.[0]?.amount || 0) / 100;
-      res.json({ ok: true, message: `Balance: €${amount.toFixed(2)}` });
     } else if (id === "canva") {
       if (!process.env.CANVA_CLIENT_ID || !process.env.CANVA_CLIENT_SECRET) {
         return res.json({ ok: false, message: "Client ID/Secret not configured" });
@@ -2435,7 +2235,7 @@ app.get("/social/ig/stats", async (req, res) => {
     const r = await fetch(`https://graph.facebook.com/v21.0/${conn.ig_user_id}?fields=${encodeURIComponent(fields)}&access_token=${conn.page_access_token}`);
     const d = await r.json();
     if (d.error) throw new Error(d.error.message);
-    // Normaliseren naar bestaande performance.html format
+    // Normaliseren naar het social-stats formaat van de UI
     const posts = (d.media?.data || []).map((m) => {
       const insights = (m.insights?.data || []).reduce((a, x) => ({ ...a, [x.name]: x.values?.[0]?.value || 0 }), {});
       return {
@@ -3279,7 +3079,9 @@ async function handleTgMessage(msg) {
   // Handle /start command
   if (text === "/start") {
     const brand = loadBrand();
-    tgSend(chatId, `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- 8 agents aansturen (designer, video, researcher, scriptwriter, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/ads — Meta Ads overview & beheer\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`);
+    tgSend(chatId, IS_NL
+      ? `Hey! Ik ben *${brand.assistant_name}*, je ${brand.company_name} AI assistant.\n\nIk heb toegang tot alles in het Command Center:\n- Agents aansturen (designer, video, content creator, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Google Calendar beheren\n- Web search voor actueel nieuws & marktdata\n\nCommando's:\n/ads — Meta Ads overview & beheer\n/clear — Chat history wissen\n\nOf stuur gewoon een bericht om te beginnen.`
+      : `Hey! I'm *${brand.assistant_name}*, your ${brand.company_name} AI assistant.\n\nI have access to everything in the Command Center:\n- Running the agents (designer, video, content creator, marketeer, calendar, etc.)\n- 49 skills (marketing, SEO, CRO, design, development)\n- Managing Google Calendar\n- Web search for current news & market data\n\nCommands:\n/ads — Meta Ads overview & management\n/clear — Clear chat history\n\nOr just send a message to get started.`);
     return;
   }
 
@@ -3733,8 +3535,6 @@ app.delete("/notifications/:id", (req, res) => {
 const WATCHED_TASKS = {
   Designer: "designer-tasks.json",
   "Video Editor": "video-tasks.json",
-  Researcher: "research-tasks.json",
-  "Script Writer": "scriptwriter-tasks.json",
   "UGC Video": "ugc-tasks.json",
 };
 
@@ -3840,7 +3640,6 @@ app.get("/brand", (_req, res) => {
   brand.features = {
     telegram: !!TG_TOKEN,
     higgsfield: !!process.env.HIGGSFIELD_API_KEY,
-    stripe: !!process.env.STRIPE_SECRET_KEY,
     composio: !!process.env.COMPOSIO_API_KEY,
     youtube: !!process.env.YOUTUBE_API_KEY,
   };
@@ -3863,8 +3662,6 @@ COMMAND CENTER AGENTS:
 - Video Editor — video editing via Remotion
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Analyst — performance analyses, risk reports, daily reports
-- Researcher — trending content, competitor analysis, market research, keyword research
-- Script Writer — video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
 - Calendar — Google Calendar management (events, free slots, planning)
 - Every agent has a task list (pending/processing/completed)
@@ -3873,13 +3670,11 @@ You can:
 1. Explain what agents do and how they perform
 2. Analyze tasks and make suggestions
 3. Answer questions about performance and results
-4. Propose content ideas and scripts
+4. Propose content ideas
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
-   - create_script: write a script (Script Writer)
    - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana.
    - create_video_edit: edit a video via Remotion (Video Editor)
-   - create_research: run research (Researcher)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
    - ads_query: read LIVE Meta Ads data from the connected ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Use this for any question about campaign status, performance, spend or results.
@@ -3904,8 +3699,6 @@ COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
 - Video Editor — Video editing via Remotion (React-based video)
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
-- Researcher — Trending content, competitor analysis, marktonderzoek, keyword research
-- Script Writer — Video scripts, social posts, threads, newsletters
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
 - Calendar — Google Calendar beheer (events, vrije slots, planning)
 - Alle agents hebben een takenlijst (pending/processing/completed)
@@ -3975,13 +3768,11 @@ Je kunt:
 2. Adviseren over bot configuratie en strategie
 3. Taken analyseren en suggesties doen
 4. Vragen beantwoorden over trades, PnL, en performance
-5. Content ideeën en scripts voorstellen
+5. Content ideeën voorstellen
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
-   - create_script: Script laten schrijven (Script Writer)
    - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
-   - create_research: Onderzoek laten doen (Researcher)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
    - ads_query: LIVE Meta Ads data ophalen uit de gekoppelde ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Gebruik dit voor elke vraag over campagne-status, performance, spend of resultaten.
@@ -4060,22 +3851,6 @@ app.post("/ctrl/chat", async (req, res) => {
       ...BROWSER_TOOLS.map(t => ({ type: "custom", ...t })),
       {
         type: "custom",
-        name: "create_script",
-        description: "Maak een scriptwriter task aan bij de Script Writer agent.",
-        input_schema: {
-          type: "object",
-          properties: {
-            topic: { type: "string", description: "Onderwerp van het script" },
-            description: { type: "string", description: "Extra context en instructies voor het script" },
-            format: { type: "string", enum: ["short-form", "long-form", "hook", "thread"], description: "Formaat. Standaard: short-form" },
-            tone: { type: "string", enum: ["educational", "casual", "professional", "hype", "storytelling"], description: "Toon. Standaard: educational" },
-            type: { type: "string", enum: ["video_script", "social_post", "thread", "newsletter"], description: "Type. Standaard: video_script" },
-          },
-          required: ["topic", "description"],
-        },
-      },
-      {
-        type: "custom",
         name: "create_design",
         description: "Maak een design task aan bij de Designer agent. Ondersteunt meerdere engines en carousel slides.",
         input_schema: {
@@ -4107,21 +3882,6 @@ app.post("/ctrl/chat", async (req, res) => {
             aspect_ratio: { type: "string", enum: ["9:16", "16:9", "1:1"], description: "Aspect ratio. Standaard: 9:16" },
           },
           required: ["description"],
-        },
-      },
-      {
-        type: "custom",
-        name: "create_research",
-        description: "Maak een research task aan bij de Researcher agent.",
-        input_schema: {
-          type: "object",
-          properties: {
-            query: { type: "string", description: "De onderzoeksvraag of zoekopdracht" },
-            type: { type: "string", enum: ["trending", "competitor", "market", "content_ideas", "keywords"], description: "Type onderzoek. Standaard: trending" },
-            platforms: { type: "array", items: { type: "string" }, description: "Platformen om te onderzoeken. Standaard: [tiktok, x, reddit]" },
-            niche: { type: "string", description: "Niche/markt. Standaard: crypto trading" },
-          },
-          required: ["query"],
         },
       },
       {
@@ -4254,31 +4014,6 @@ app.post("/ctrl/chat", async (req, res) => {
       },
       {
         type: "custom",
-        name: "seo_analyze",
-        description: "Start een SEO-analyse voor een website. Crawlt tot ~25 pagina's, checkt on-page/technical SEO, en (indien PSI_API_KEY ingesteld) Core Web Vitals. Levert een task_id op; gebruik daarna seo_query om het rapport op te halen zodra status='completed'. Duurt ~1-3 minuten.",
-        input_schema: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Volledige URL van de site die geanalyseerd moet worden, bijv. https://example.com" },
-            max_pages: { type: "integer", description: "Max aantal te crawlen pagina's (1-100). Default 25." },
-          },
-          required: ["url"],
-        },
-      },
-      {
-        type: "custom",
-        name: "seo_query",
-        description: "Haal SEO-rapporten op. Zonder report_id: lijst van alle rapporten. Met report_id: het volledige rapport (findings per categorie, score, PSI scores, strategische review).",
-        input_schema: {
-          type: "object",
-          properties: {
-            report_id: { type: "string", description: "Optioneel: ID van een specifiek rapport. Zonder ID krijg je de lijst." },
-            category: { type: "string", enum: ["technical", "onPage", "content", "structuredData", "mobile", "links", "international"], description: "Optioneel: filter een rapport op één categorie." },
-          },
-        },
-      },
-      {
-        type: "custom",
         name: "opusclip_create",
         description: "Submit een long-form video (YouTube/Vimeo/directe URL) naar OpusClip om er korte virale clips van te maken. Geeft een task_id terug. Verwerking duurt enkele minuten — gebruik opusclip_status om voortgang en clips op te halen.",
         input_schema: {
@@ -4354,16 +4089,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
 
     // Map tool names to internal API endpoints and body builders
     const TOOL_ACTIONS = {
-      create_script: (input) => ({
-        url: "http://localhost:3004/scriptwriter/tasks",
-        body: {
-          topic: input.topic,
-          description: input.description,
-          format: input.format || "short-form",
-          tone: input.tone || "educational",
-          type: input.type || "video_script",
-        },
-      }),
       create_design: (input) => ({
         url: "http://localhost:3004/designer/tasks",
         body: {
@@ -4385,15 +4110,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           description: input.description,
           template: input.template || "social-clip",
           aspect_ratio: input.aspect_ratio || "9:16",
-        },
-      }),
-      create_research: (input) => ({
-        url: "http://localhost:3004/research/tasks",
-        body: {
-          query: input.query,
-          type: input.type || "trending",
-          platforms: input.platforms || ["tiktok", "x", "reddit"],
-          niche: input.niche || "crypto trading",
         },
       }),
       calendar_query: (input) => ({
@@ -4572,19 +4288,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           url: `http://localhost:3004/ads/${seg}/${input.object_id}/status`,
           body: { status: input.action === "pause" ? "PAUSED" : "ACTIVE", account_id: input.account_id },
         };
-      },
-      seo_analyze: (input) => ({
-        url: "http://localhost:3004/seo/tasks",
-        body: {
-          url: input.url,
-          max_pages: input.max_pages || 25,
-        },
-      }),
-      seo_query: (input) => {
-        if (input.report_id) {
-          return { url: `http://localhost:3004/seo/reports/${input.report_id}`, method: "GET", isSeo: true, seoCategory: input.category || null };
-        }
-        return { url: "http://localhost:3004/seo/reports", method: "GET", isSeo: true };
       },
       opusclip_create: (input) => ({
         url: "http://localhost:3004/opusclip/tasks",
@@ -4837,30 +4540,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               resultContent = JSON.stringify({ success: true, data: task });
             } else if (action.isCalendar) {
               resultContent = JSON.stringify({ success: true, calendar_response: task.reply || task.error || "Geen antwoord" });
-            } else if (action.isSeo) {
-              // List view: trim heavy fields. Single-report view: optionally filter to one category.
-              let payload = task;
-              if (Array.isArray(task)) {
-                payload = task.slice(0, 20).map(r => ({
-                  id: r.id, created_at: r.created_at, url: r.url, score: r.score,
-                  pagesCrawled: r.pagesCrawled, counts: r.counts,
-                }));
-              } else if (action.seoCategory && task?.findings) {
-                payload = {
-                  id: task.id, url: task.url, score: task.score,
-                  category: action.seoCategory,
-                  findings: task.findings[action.seoCategory] || [],
-                  strategic: task.strategic,
-                };
-              } else if (task?.findings) {
-                payload = {
-                  id: task.id, url: task.url, score: task.score, counts: task.counts,
-                  pagesCrawled: task.pagesCrawled, findings: task.findings,
-                  psi: task.psi ? { mobile: task.psi.mobile?.scores, desktop: task.psi.desktop?.scores } : null,
-                  strategic: task.strategic,
-                };
-              }
-              resultContent = JSON.stringify({ success: true, data: payload });
             } else if (action.isOpusclip) {
               let payload;
               if (action.opusclipTaskId) {
@@ -5246,7 +4925,7 @@ ${skillList}
 
 TOOLS:
 - load_marketing_skill: Load a specific marketing skill for detailed frameworks and methodologies. Always load 1-3 relevant skills before advising. Use the skill slug as parameter.
-- create_marketing_task: Create a task for another agent to execute (designer, scriptwriter, researcher).
+- create_marketing_task: Create a task for another agent to execute (designer).
 
 RULES:
 - Reply in the user's language. Be strategic but practical — give concrete action items, not vague advice.
@@ -5264,7 +4943,7 @@ ${skillList}
 
 TOOLS:
 - load_marketing_skill: Laad een specifieke marketing skill voor gedetailleerde frameworks en methodologieën. Laad ALTIJD 1-3 relevante skills voordat je advies geeft. Gebruik de skill slug als parameter.
-- create_marketing_task: Maak een taak aan die door andere agents uitgevoerd kan worden (designer, scriptwriter, researcher).
+- create_marketing_task: Maak een taak aan die door andere agents uitgevoerd kan worden (designer).
 
 REGELS:
 - Spreek Nederlands tenzij de gebruiker Engels praat.
@@ -5289,11 +4968,11 @@ const MARKETEER_TOOLS = [
   },
   {
     name: "create_marketing_task",
-    description: "Create a task for another agent to execute: designer (visual assets), scriptwriter (scripts/copy), researcher (market research).",
+    description: "Create a task for another agent to execute: designer (visual assets).",
     input_schema: {
       type: "object",
       properties: {
-        agent: { type: "string", enum: ["designer", "scriptwriter", "researcher"], description: "Which agent should execute this task" },
+        agent: { type: "string", enum: ["designer"], description: "Which agent should execute this task" },
         description: { type: "string", description: "What the task should produce" },
       },
       required: ["agent", "description"],
@@ -5303,8 +4982,6 @@ const MARKETEER_TOOLS = [
 
 const MARKETEER_TASK_APIS = {
   designer: "/designer/tasks",
-  scriptwriter: "/scriptwriter/tasks",
-  researcher: "/research/tasks",
 };
 
 app.get("/marketeer/status", (_req, res) => {
@@ -5383,13 +5060,10 @@ app.post("/marketeer/chat", async (req, res) => {
               toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: "Unknown agent: " + tu.input.agent, is_error: true });
               continue;
             }
-            const taskBody = tu.input.agent === "researcher"
-              ? { query: tu.input.description, type: "trending", platforms: ["x", "reddit", "tiktok"], niche: "crypto trading" }
-              : { description: tu.input.description };
             const taskRes = await fetch(`http://localhost:3004${apiPath}`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "x-internal": "telegram", "x-internal-secret": INTERNAL_SECRET },
-              body: JSON.stringify(taskBody),
+              body: JSON.stringify({ description: tu.input.description }),
             });
             const task = await taskRes.json();
             console.log(`[MARKETEER] Created ${tu.input.agent} task: ${task.id}`);
@@ -5873,477 +5547,6 @@ async function pollAvatarCreator() {
     } catch (e) { /* transient — retry next tick */ }
   }
   if (changed) writeTaskFile("ugc-avatars.json", avatars);
-}
-
-// ── SCRIPT WRITER WORKER (Claude) ──
-async function processScriptwriterTasks() {
-  const tasks = readTaskFile("scriptwriter-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing scriptwriter task ${task.id}`);
-
-    try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("scriptwriter-tasks.json", tasks);
-
-      const _brand = loadBrand();
-      const _niche = process.env.DEFAULT_NICHE || "content platform";
-      const prompt = IS_NL
-        ? `Je bent een professionele scriptwriter voor ${_brand.company_name} — een ${_niche}.
-
-Schrijf een ${task.format || "short-form"} ${task.type || "video_script"} over: ${task.topic}
-
-Extra context: ${task.description}
-
-Toon: ${task.tone || "educational"}
-Stijl: Professioneel maar toegankelijk. Geen hype. Data-driven.
-
-${task.type === "video_script" ? "Formaat het als een spreekscript met duidelijke pauzes en secties. Voeg [SCENE] markers toe voor visuele overgangen." : ""}
-${task.format === "short-form" ? "Houd het kort: max 60 seconden spreektijd (~150 woorden)." : ""}
-${task.format === "hook" ? "Schrijf 5 verschillende hooks/openers die direct de aandacht pakken." : ""}`
-        : `You are a professional scriptwriter for ${_brand.company_name} — a ${_niche}.
-
-Write a ${task.format || "short-form"} ${task.type || "video_script"} about: ${task.topic}
-
-Additional context: ${task.description}
-
-Tone: ${task.tone || "educational"}
-Style: Professional but accessible. No hype. Data-driven.
-
-${task.type === "video_script" ? "Format as a spoken script with clear pauses and sections. Add [SCENE] markers for visual transitions." : ""}
-${task.format === "short-form" ? "Keep it short: max 60 seconds of spoken time (~150 words)." : ""}
-${task.format === "hook" ? "Write 5 different hooks/openers that grab attention immediately." : ""}`;
-
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2048,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const result = response.content[0]?.text || "";
-      task.status = "completed";
-      task.result = result;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("scriptwriter-tasks.json", tasks);
-      processingTasks.delete(task.id);
-      console.log(`[WORKER] Scriptwriter task ${task.id} completed`);
-    } catch (e) {
-      console.error(`[WORKER] Scriptwriter task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("scriptwriter-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
-  }
-}
-
-// ── MARKET ANALYSIS PUBLISH (optioneel, extern kanaal) ──
-// Publiceert het marktanalyse-gedeelte van een daily research naar een extern
-// content-kanaal (bijv. een membership-/academy-platform) zodra beide env-vars
-// zijn ingesteld. Generiek en opt-in: zonder MARKET_ANALYSIS_WEBHOOK_URL gebeurt
-// er niets, zodat dit white-label blijft.
-async function publishMarketAnalysis(report) {
-  const url = process.env.MARKET_ANALYSIS_WEBHOOK_URL;
-  const key = process.env.MARKET_ANALYSIS_WEBHOOK_KEY || "";
-  if (!url) return;
-
-  // Alleen de marktanalyse-secties (geen social-media contentsuggesties).
-  const norm = (s) => (s || "").replace(/[^\p{L}\p{N} ]/gu, "").trim().toLowerCase();
-  const WANTED = [
-    ["marktoverzicht", "market overview"],
-    ["belangrijkste trends", "key trends"],
-    ["nieuws ontwikkelingen", "news developments", "nieuws", "news"],
-  ];
-  const picked = [];
-  for (const group of WANTED) {
-    const sec = (report.sections || []).find(
-      (s) => group.some((g) => norm(s.title).startsWith(g)) && !picked.includes(s),
-    );
-    if (sec) picked.push(sec);
-  }
-  if (picked.length === 0) {
-    console.log("[MARKET] geen marktanalyse-secties gevonden — niets gepubliceerd");
-    return;
-  }
-
-  const body = picked.map((s) => `## ${s.title.trim()}\n\n${s.content.trim()}`).join("\n\n");
-  const isNL = (report.language || process.env.LANGUAGE || "NL").toUpperCase() === "NL";
-  const dateLabel = new Date().toLocaleDateString(isNL ? "nl-NL" : "en-GB", {
-    weekday: "long", day: "numeric", month: "long",
-    timeZone: process.env.TIMEZONE || "Europe/Amsterdam",
-  });
-  const title = isNL ? `Marktanalyse — ${dateLabel}` : `Market analysis — ${dateLabel}`;
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-ingest-key": key },
-      body: JSON.stringify({ title, body }),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.error(`[MARKET] publiceren mislukt (${res.status}):`, data.error || "");
-      return;
-    }
-    console.log(`[MARKET] marktanalyse ${data.updated ? "bijgewerkt" : "gepubliceerd"} → ${data.url || url}`);
-    // Telegram-notificatie zodat het team achteraf kan nalezen/bijsturen.
-    if (TG_TOKEN && TG_CHAT) {
-      const preview = body.replace(/[#*_>`]/g, "").replace(/\s+/g, " ").slice(0, 320);
-      const verb = isNL
-        ? (data.updated ? "bijgewerkt" : "gepubliceerd")
-        : (data.updated ? "updated" : "published");
-      const line = isNL
-        ? `📊 *${title}* is ${verb} in het marktanalyse-kanaal.`
-        : `📊 *${title}* was ${verb} to the market-analysis channel.`;
-      tgSend(TG_CHAT, `${line}\n\n${preview}…\n\n${data.url || url}`);
-    }
-  } catch (e) {
-    console.error("[MARKET] publiceren mislukt:", e.message);
-  }
-}
-
-// ── RESEARCHER WORKER (Claude + Web Search) ──
-async function processResearchTasks() {
-  const tasks = readTaskFile("research-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing research task ${task.id}`);
-
-    try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("research-tasks.json", tasks);
-
-      const lang = task.language || "NL";
-      const isNL = lang === "NL";
-
-      const brand = loadBrand();
-      const defaultNiche = process.env.DEFAULT_NICHE || "content platform";
-      const prompt = `${isNL ? "Je bent een researcher en content strategist" : "You are a researcher and content strategist"} voor ${brand.company_name} — een ${defaultNiche}.
-
-${isNL ? "BELANGRIJK: Schrijf het VOLLEDIGE rapport in het Nederlands. Alle secties, analyses, suggesties, captions, tweets en beschrijvingen moeten in het Nederlands zijn. Alleen merknamen, platformnamen en technische termen mogen in het Engels blijven." : "IMPORTANT: Write the FULL report in English."}
-
-## ${isNL ? "Research opdracht" : "Research assignment"}
-${isNL ? "Onderwerp" : "Topic"}: ${task.query}
-${isNL ? "Type" : "Type"}: ${task.type || "trending"}
-${isNL ? "Platformen" : "Platforms"}: ${(task.platforms || ["tiktok", "x", "reddit"]).join(", ")}
-Niche: ${task.niche || defaultNiche}
-
-## ${isNL ? "Instructies" : "Instructions"}
-${isNL
-  ? "Je hebt twee tools: `web_search` (snelle zoekopdracht, geeft snippets) en `browse_page` (opent een URL in een echte headless browser en leest de volledige main-content — ook van JS-heavy sites). Strategie: gebruik web_search om kandidaat-URLs te vinden, en browse_page om die artikelen/pagina's echt uit te lezen voor diepere context. Gebruik browse_page vooral voor kwaliteitsbronnen (CoinDesk, The Block, Messari research, project blogs, exchange dashboards zonder API) waar snippets tekort schieten."
-  : "You have two tools: `web_search` (fast query, returns snippets) and `browse_page` (opens a URL in a real headless browser and reads the full main content — including JS-heavy sites). Strategy: use web_search to find candidate URLs, then browse_page to actually read those articles for deeper context. Prefer browse_page for high-quality sources (CoinDesk, The Block, Messari research, project blogs, exchange dashboards without an API) where snippets are insufficient."}
-
-${isNL ? "Geef een gestructureerd rapport met deze secties" : "Provide a structured report with these sections"}:
-
-## ${isNL ? "Marktoverzicht" : "Market Overview"}
-${isNL ? "Samenvatting van de huidige stand van zaken, belangrijkste prijsbewegingen, sentimentindicatoren." : "Summary of current state of affairs, key price movements, sentiment indicators."}
-
-## ${isNL ? "Belangrijkste Trends" : "Key Trends"}
-${isNL ? "Top 3-5 trends die nu spelen. Per trend: wat, waarom het relevant is, en de potentiële impact." : "Top 3-5 current trends. Per trend: what, why it's relevant, and potential impact."}
-
-## ${isNL ? "Nieuws & Ontwikkelingen" : "News & Developments"}
-${isNL ? "Belangrijkste nieuwsberichten van de afgelopen 24-48 uur met bronnen." : "Key news stories from the past 24-48 hours with sources."}
-
-## ${isNL ? "Voorgestelde Instagram Posts" : "Suggested Instagram Posts"}
-${isNL
-  ? `Geef 3-5 VOLLEDIGE, KANT-EN-KLARE Instagram posts. Geen losse titels — schrijf de complete caption zoals die gepost zou worden.
-
-Per post, gebruik exact dit format:
-
-### Post [nummer]: [onderwerp]
-**Caption:**
-[Schrijf hier de volledige Instagram caption: hook + body + CTA. Minimaal 4-6 zinnen. Gebruik line breaks, emoji's waar passend, en een duidelijke CTA aan het einde.]
-
-**Image prompt:** [Beschrijf in detail de afbeelding die bij deze post hoort. Schrijf dit als een Engelse AI image generation prompt die direct bruikbaar is voor Nano Banana / Gemini. Wees specifiek over compositie, kleuren, stijl, tekst-overlays en sfeer. Bijv: "Dark futuristic trading dashboard with neon purple glow, Bitcoin chart going up, bold text overlay 'BTC $100K', cyberpunk style, 1080x1080"]
-**Hashtags:** #tag1 #tag2 #tag3 #tag4 #tag5
-**Format:** carousel / single image / reel
-**Stijl tip:** [welke stijl-keywords voor de designer, bijv. 'cyberpunk bold', 'neon intense']`
-  : `Provide 3-5 COMPLETE, READY-TO-POST Instagram posts. No loose titles — write the full caption as it would be posted.
-
-Per post, use exactly this format:
-
-### Post [number]: [topic]
-**Caption:**
-[Write the full Instagram caption here: hook + body + CTA. Minimum 4-6 sentences. Use line breaks, emojis where appropriate, and a clear CTA at the end.]
-
-**Image prompt:** [Describe in detail the image for this post. Write this as an English AI image generation prompt ready to use with Nano Banana / Gemini. Be specific about composition, colors, style, text overlays and mood. E.g: "Dark futuristic trading dashboard with neon purple glow, Bitcoin chart going up, bold text overlay 'BTC $100K', cyberpunk style, 1080x1080"]
-**Hashtags:** #tag1 #tag2 #tag3 #tag4 #tag5
-**Format:** carousel / single image / reel
-**Style tip:** [which style keywords for the designer, e.g. 'cyberpunk bold', 'neon intense']`}
-
-## ${isNL ? "Voorgestelde Twitter/X Posts" : "Suggested Twitter/X Posts"}
-${isNL
-  ? `Geef 3-5 VOLLEDIGE, KANT-EN-KLARE tweets. Schrijf de exacte tweet tekst zoals die geplaatst zou worden.
-
-Per tweet, gebruik exact dit format:
-
-### Tweet [nummer]
-**Tweet:**
-[Schrijf hier de VOLLEDIGE tweet tekst, max 280 tekens. Klaar om te copy-pasten en te posten.]
-
-**Type:** hot take / thread opener / data-driven / opinion / news reaction
-**Engagement tip:** [hoe engagement te maximaliseren met deze tweet]`
-  : `Provide 3-5 COMPLETE, READY-TO-POST tweets. Write the exact tweet text as it would be posted.
-
-Per tweet, use exactly this format:
-
-### Tweet [number]
-**Tweet:**
-[Write the FULL tweet text here, max 280 characters. Ready to copy-paste and post.]
-
-**Type:** hot take / thread opener / data-driven / opinion / news reaction
-**Engagement tip:** [how to maximize engagement with this tweet]`}
-
-## ${isNL ? "Carousel Voorstel" : "Carousel Proposal"}
-${isNL
-  ? `Kies het sterkste onderwerp uit dit rapport en maak een kant-en-klare Instagram carousel (5-8 slides). Geef per slide:
-- **Slide 1 (Cover)**: Pakkende hook / titel die aandacht trekt
-- **Slide 2-6 (Content)**: Één kernpunt per slide, max 2-3 zinnen, educatief en to-the-point
-- **Laatste slide (CTA)**: Call-to-action (volg, bewaar, deel)
-
-Gebruik het exacte format:
-**1 — [titel]** — [tekst]
-**2 — [titel]** — [tekst]
-etc.
-
-Dit format is belangrijk zodat het direct in de designer als carousel gerenderd kan worden.`
-  : `Pick the strongest topic from this report and create a ready-to-use Instagram carousel (5-8 slides). Per slide:
-- **Slide 1 (Cover)**: Attention-grabbing hook / title
-- **Slide 2-6 (Content)**: One key point per slide, max 2-3 sentences, educational and to-the-point
-- **Last slide (CTA)**: Call-to-action (follow, save, share)
-
-Use the exact format:
-**1 — [title]** — [text]
-**2 — [title]** — [text]
-etc.
-
-This format is important so it can be directly rendered as a carousel in the designer.`}
-
-## ${isNL ? "Content Kalender Suggestie" : "Content Calendar Suggestion"}
-${isNL ? "Wat zou er de komende 3 dagen gepost moeten worden? Geef een mini-planning." : "What should be posted in the next 3 days? Provide a mini-plan."}
-
-${isNL ? "Schrijf in het Nederlands." : "Write in English."} ${isNL ? "Wees concreet, geen vage suggesties. Geef kant-en-klare teksten." : "Be concrete, no vague suggestions. Provide ready-to-use copy."}`;
-
-      const researchTools = [
-        { type: "web_search_20250305", name: "web_search", max_uses: 5 },
-        { type: "custom", ...BROWSE_PAGE_TOOL },
-      ];
-      const researchMessages = [{ role: "user", content: prompt }];
-      const researchParams = {
-        model: "claude-sonnet-4-6",
-        max_tokens: 4096,
-        messages: researchMessages,
-        tools: researchTools,
-      };
-
-      let response = await anthropic.messages.create(researchParams);
-
-      // Tool-use loop — web_search is resolved by Anthropic internally, browse_page is
-      // a custom tool we handle here. We accumulate message history properly so chained
-      // reads work.
-      let loops = 0;
-      while (response.stop_reason === "tool_use" && loops < 10) {
-        loops++;
-        researchMessages.push({ role: "assistant", content: response.content });
-
-        const toolResults = [];
-        for (const block of response.content) {
-          if (block.type === "tool_use" && block.name === "browse_page") {
-            try {
-              console.log(`[RESEARCH] browse_page: ${block.input.url}`);
-              const r = await browsePage(block.input.url, { maxChars: block.input.max_chars || 8000 });
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify(r).slice(0, 12000),
-              });
-            } catch (e) {
-              console.error(`[RESEARCH] browse_page error:`, e.message);
-              toolResults.push({
-                type: "tool_result",
-                tool_use_id: block.id,
-                content: JSON.stringify({ error: e.message }),
-                is_error: true,
-              });
-            }
-          }
-          // server_tool_use / web_search_tool_result: handled by Anthropic, do not emit tool_results
-        }
-
-        if (toolResults.length === 0) break; // no custom tool_uses; nothing to advance with
-
-        researchMessages.push({ role: "user", content: toolResults });
-        response = await anthropic.messages.create(researchParams);
-      }
-
-      const textBlocks = response.content.filter(b => b.type === "text");
-      const result = textBlocks.map(b => b.text).join("\n");
-
-      // Save as research report
-      const reports = readTaskFile("research-reports.json");
-      const sections = result.split(/\n##\s+/).filter(Boolean).map((s, i) => {
-        const lines = s.trim().split("\n");
-        return { title: lines[0].replace(/^#+\s*/, ""), content: lines.slice(1).join("\n").trim() };
-      });
-      reports.unshift({
-        id: genId(), task_id: task.id, created_at: new Date().toISOString(),
-        type: task.type || "trending", title: task.query,
-        language: task.language || "NL",
-        sections: sections.length ? sections : [{ title: task.query, content: result }],
-      });
-      if (reports.length > 30) reports.length = 30;
-      writeTaskFile("research-reports.json", reports);
-
-      task.status = "completed";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("research-tasks.json", tasks);
-      processingTasks.delete(task.id);
-      console.log(`[WORKER] Research task ${task.id} completed`);
-
-      // Dagelijkse marktanalyse doorzetten naar een extern kanaal (opt-in via env).
-      if (task.type === "daily") {
-        publishMarketAnalysis(reports[0]).catch((e) => console.error("[MARKET]", e.message));
-      }
-    } catch (e) {
-      console.error(`[WORKER] Research task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("research-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
-  }
-}
-
-// ── SEO WORKER ──
-const { runSeoAnalysis } = require("./seo-agent");
-const opusclip = require("./opusclip-agent");
-
-async function processOpusclipTasks() {
-  const tasks = readTaskFile("opusclip-tasks.json");
-  let changed = false;
-
-  // 1) Submit pending tasks → OpusClip API, transition to "processing"
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    if (!process.env.OPUSCLIP_API_KEY) continue;
-    processingTasks.add(task.id);
-    try {
-      console.log(`[WORKER] OpusClip submitting ${task.video_url}`);
-      const proj = await opusclip.createProject({
-        videoUrl: task.video_url,
-        minDuration: task.min_duration,
-        maxDuration: task.max_duration,
-        sourceLang: task.source_lang,
-        topicKeywords: task.topic_keywords,
-      });
-      task.project_id = proj.projectId || proj.id;
-      task.stage = proj.stage || "QUEUED";
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      changed = true;
-    } catch (e) {
-      console.error(`[WORKER] OpusClip submit failed for ${task.id}:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      changed = true;
-    } finally {
-      processingTasks.delete(task.id);
-    }
-  }
-
-  // 2) Poll processing tasks → update stage, fetch clips on COMPLETE
-  for (const task of tasks) {
-    if (task.status !== "processing" || !task.project_id) continue;
-    if (processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    try {
-      const proj = await opusclip.getProject(task.project_id);
-      const stage = String(proj.stage || "").toUpperCase();
-      if (stage && stage !== task.stage) {
-        task.stage = stage;
-        task.updated_at = new Date().toISOString();
-        changed = true;
-      }
-      if (opusclip.isTerminal(stage)) {
-        if (stage === "COMPLETE") {
-          const clips = await opusclip.listClips(task.project_id);
-          task.clips = (clips || []).map(c => ({
-            id: c.id,
-            title: c.title || "",
-            description: c.description || "",
-            duration_ms: c.durationMs || 0,
-            download_url: c.uriForExport || "",
-            preview_url: c.uriForPreview || "",
-            thumbnail_url: c.uriForThumbnail || "",
-            keywords: c.keywords || c.clipKeywords || [],
-            hashtags: c.hashtags || "",
-          }));
-          task.status = "completed";
-        } else {
-          task.status = "failed";
-          task.error = `OpusClip ended in stage ${stage}`;
-        }
-        task.updated_at = new Date().toISOString();
-        changed = true;
-        console.log(`[WORKER] OpusClip task ${task.id} ${task.status} (${task.clips?.length || 0} clips)`);
-      }
-    } catch (e) {
-      console.error(`[WORKER] OpusClip poll failed for ${task.id}:`, e.message);
-      // Transient errors: don't fail the task, just leave it for next cycle
-    } finally {
-      processingTasks.delete(task.id);
-    }
-  }
-
-  if (changed) writeTaskFile("opusclip-tasks.json", tasks);
-}
-
-async function processSeoTasks() {
-  const tasks = readTaskFile("seo-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] SEO analysing ${task.url}`);
-    try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("seo-tasks.json", tasks);
-
-      const result = await runSeoAnalysis(task, { anthropic, loadBrand });
-
-      const reports = readTaskFile("seo-reports.json");
-      reports.unshift({
-        id: genId(),
-        task_id: task.id,
-        created_at: new Date().toISOString(),
-        language: task.language,
-        ...result,
-      });
-      if (reports.length > 30) reports.length = 30;
-      writeTaskFile("seo-reports.json", reports);
-
-      task.status = "completed";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("seo-tasks.json", tasks);
-      console.log(`[WORKER] SEO task ${task.id} completed (${result.pagesCrawled} pages, score ${result.score})`);
-    } catch (e) {
-      console.error(`[WORKER] SEO task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("seo-tasks.json", tasks);
-    } finally {
-      processingTasks.delete(task.id);
-    }
-  }
 }
 
 // ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
@@ -6845,9 +6048,6 @@ async function processCommunityTasks() {
 
 // Run workers every 15 seconds
 setInterval(() => {
-  processScriptwriterTasks().catch(e => console.error("[WORKER] Scriptwriter error:", e.message));
-  processResearchTasks().catch(e => console.error("[WORKER] Research error:", e.message));
-  processSeoTasks().catch(e => console.error("[WORKER] SEO error:", e.message));
   processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
   processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
@@ -6860,9 +6060,6 @@ setInterval(pollAvatarCreator, 30_000);
 
 // Run once on startup
 setTimeout(() => {
-  processScriptwriterTasks().catch(() => {});
-  processResearchTasks().catch(() => {});
-  processSeoTasks().catch(() => {});
   processOpusclipTasks().catch(() => {});
   processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
@@ -6870,504 +6067,6 @@ setTimeout(() => {
   pollUgcStatus().catch(() => {});
   pollAvatarCreator().catch(() => {});
 }, 3000);
-
-// ── STRIPE REVENUE ───────────────────────────
-let stripeCache = { data: null, ts: 0 };
-
-// Paginate through all Stripe list results
-async function stripeListAll(resource, params) {
-  const items = [];
-  let hasMore = true;
-  let startingAfter;
-  while (hasMore) {
-    const opts = { ...params, limit: 100 };
-    if (startingAfter) opts.starting_after = startingAfter;
-    const page = await resource.list(opts);
-    items.push(...page.data);
-    hasMore = page.has_more;
-    if (page.data.length) startingAfter = page.data[page.data.length - 1].id;
-  }
-  return items;
-}
-
-app.get("/stripe/revenue", async (_req, res) => {
-  if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-
-  // Cache for 5 minutes
-  if (stripeCache.data && Date.now() - stripeCache.ts < 5 * 60 * 1000) {
-    return res.json(stripeCache.data);
-  }
-
-  try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    const tsMonth = Math.floor(startOfMonth / 1000);
-    const tsPrevStart = Math.floor(startOfPrevMonth / 1000);
-    const tsPrevEnd = Math.floor(endOfPrevMonth / 1000);
-
-    // Parallel fetch all Stripe data
-    const [balance, activeSubs, canceledSubs, txnsMTD, txnsPrev, invoicesMTD, invoicesPrev] = await Promise.all([
-      stripe.balance.retrieve(),
-      stripe.subscriptions.list({ status: "active", limit: 100 }),
-      stripe.subscriptions.list({ status: "canceled", created: { gte: tsMonth }, limit: 100 }),
-      // Balance transactions = source of truth for gross volume
-      stripeListAll(stripe.balanceTransactions, { created: { gte: tsMonth } }),
-      stripeListAll(stripe.balanceTransactions, { created: { gte: tsPrevStart, lte: tsPrevEnd } }),
-      // Invoices = subscription revenue
-      stripeListAll(stripe.invoices, { created: { gte: tsMonth } }),
-      stripeListAll(stripe.invoices, { created: { gte: tsPrevStart, lte: tsPrevEnd } }),
-    ]);
-
-    // -- Gross volume from balance transactions (charge + payment types) --
-    const revenueTypes = new Set(["charge", "payment"]);
-    const grossMTD = txnsMTD.filter(t => revenueTypes.has(t.type)).reduce((s, t) => s + t.amount, 0);
-    const feesMTD = txnsMTD.filter(t => revenueTypes.has(t.type)).reduce((s, t) => s + t.fee, 0);
-    const grossPrev = txnsPrev.filter(t => revenueTypes.has(t.type)).reduce((s, t) => s + t.amount, 0);
-    const feesPrev = txnsPrev.filter(t => revenueTypes.has(t.type)).reduce((s, t) => s + t.fee, 0);
-
-    // -- Refunds --
-    const refundsMTD = txnsMTD.filter(t => t.type === "payment_failure_refund" || t.type === "refund").reduce((s, t) => s + Math.abs(t.amount), 0);
-
-    // -- MRR from active subscriptions --
-    let mrr = 0;
-    for (const sub of activeSubs.data) {
-      for (const item of sub.items.data) {
-        let amt = item.price.unit_amount || 0;
-        if (item.price.recurring?.interval === "year") amt = Math.round(amt / 12);
-        mrr += amt * (item.quantity || 1);
-      }
-    }
-
-    // -- Subscription revenue (invoices) --
-    const subRevenueMTD = invoicesMTD.filter(i => i.status === "paid").reduce((s, i) => s + i.amount_paid, 0);
-    const subRevenuePrev = invoicesPrev.filter(i => i.status === "paid").reduce((s, i) => s + i.amount_paid, 0);
-
-    // -- Other revenue = gross volume minus subs --
-    const otherMTD = grossMTD - subRevenueMTD;
-    const otherPrev = grossPrev - subRevenuePrev;
-
-    // -- Subs --
-    const activeSubCount = activeSubs.data.length;
-    const churnCount = canceledSubs.data.length;
-    const churnRate = activeSubCount + churnCount > 0
-      ? ((churnCount / (activeSubCount + churnCount)) * 100).toFixed(1)
-      : "0.0";
-
-    // -- Balance --
-    const balanceAvailable = balance.available.reduce((s, b) => s + b.amount, 0);
-    const balancePending = balance.pending.reduce((s, b) => s + b.amount, 0);
-
-    // MRR = subscription MRR + Plug&Pay monthly revenue (other revenue = Plug&Pay)
-    const totalMRR = mrr + otherMTD;
-
-    const result = {
-      mrr: { value: totalMRR, subs_only: mrr, plugpay: otherMTD },
-      subscriptions: { mtd: subRevenueMTD, prev: subRevenuePrev, subs: activeSubCount },
-      other: { mtd: otherMTD, prev: otherPrev },
-      gross: { mtd: grossMTD, prev: grossPrev, fees_mtd: feesMTD, fees_prev: feesPrev, refunds_mtd: refundsMTD },
-      active_subs: { value: activeSubCount, churned: churnCount },
-      churn_rate: { value: parseFloat(churnRate) },
-      balance: { available: balanceAvailable, pending: balancePending },
-      fetched_at: new Date().toISOString(),
-    };
-
-    stripeCache = { data: result, ts: Date.now() };
-    res.json(result);
-  } catch (err) {
-    console.error("[STRIPE]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── FINANCE: subscriptions, config, webhook ─────
-const FINANCE_CONFIG_PATH = path.join(__dirname, "data", "finance-config.json");
-const FINANCE_DEFAULTS = { notify_new: true, notify_canceled: true, notify_past_due: true, notify_recovered: true };
-
-function loadFinanceConfig() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(FINANCE_CONFIG_PATH, "utf8"));
-    return { ...FINANCE_DEFAULTS, ...raw };
-  } catch { return { ...FINANCE_DEFAULTS }; }
-}
-function saveFinanceConfig(cfg) {
-  fs.writeFileSync(FINANCE_CONFIG_PATH, JSON.stringify(cfg, null, 2));
-}
-
-function formatMoney(amountCents, currency) {
-  const symbol = { usd: "$", eur: "€", gbp: "£" }[(currency || "usd").toLowerCase()] || ((currency || "usd").toUpperCase() + " ");
-  return symbol + (amountCents / 100).toFixed(2);
-}
-
-// Normalize a Stripe Subscription into the shape the UI needs.
-function normalizeSubscription(sub) {
-  const items = sub.items?.data || [];
-  let mrrCents = 0;
-  let totalCents = 0;
-  const planLines = [];
-  for (const item of items) {
-    const price = item.price || {};
-    const unit = price.unit_amount || 0;
-    const qty = item.quantity || 1;
-    const interval = price.recurring?.interval;
-    let monthly = unit;
-    if (interval === "year") monthly = Math.round(unit / 12);
-    else if (interval === "week") monthly = unit * 4;
-    else if (interval === "day") monthly = unit * 30;
-    mrrCents += monthly * qty;
-    totalCents += unit * qty;
-    const product = price.product && typeof price.product === "object" ? price.product : null;
-    const productName = product?.name || price.nickname || "Plan";
-    planLines.push(`${productName} — ${formatMoney(unit * qty, price.currency)}/${interval || "mo"}`);
-  }
-  const customer = sub.customer && typeof sub.customer === "object" ? sub.customer : null;
-  return {
-    id: sub.id,
-    status: sub.status,
-    customer_email: customer?.email || "",
-    customer_name: customer?.name || "",
-    plan: planLines.join(", ") || "—",
-    currency: items[0]?.price?.currency || "usd",
-    mrr_cents: mrrCents,
-    amount_display: items.length ? formatMoney(totalCents, items[0].price.currency) : "—",
-    interval: items[0]?.price?.recurring?.interval || "month",
-    start_date: sub.start_date ? new Date(sub.start_date * 1000).toISOString() : null,
-    current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
-    canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
-    cancel_at_period_end: !!sub.cancel_at_period_end,
-  };
-}
-
-app.get("/finance/subscriptions", async (_req, res) => {
-  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
-  try {
-    // Stripe caps expand depth at 4 levels, so we resolve product names in
-    // a second pass and inline them onto each price before normalizing.
-    const subs = await stripe.subscriptions.list({
-      status: "all",
-      limit: 100,
-      expand: ["data.customer"],
-    });
-    const productIds = new Set();
-    for (const sub of subs.data) {
-      for (const item of (sub.items?.data || [])) {
-        const pid = item.price?.product;
-        if (typeof pid === "string") productIds.add(pid);
-      }
-    }
-    const productMap = {};
-    await Promise.all([...productIds].map(async pid => {
-      try { productMap[pid] = await stripe.products.retrieve(pid); }
-      catch { productMap[pid] = null; }
-    }));
-    for (const sub of subs.data) {
-      for (const item of (sub.items?.data || [])) {
-        const pid = item.price?.product;
-        if (typeof pid === "string" && productMap[pid]) item.price.product = productMap[pid];
-      }
-    }
-    const items = subs.data.map(normalizeSubscription);
-    items.sort((a, b) => (b.start_date || "").localeCompare(a.start_date || ""));
-    // Trials pay nothing yet — MRR counts paying subs only.
-    const active = items.filter(s => s.status === "active");
-    const mrrCents = active.reduce((s, x) => s + x.mrr_cents, 0);
-    const currency = active[0]?.currency || items[0]?.currency || "usd";
-    res.json({
-      subscriptions: items,
-      kpi: {
-        mrr_cents: mrrCents,
-        mrr_display: formatMoney(mrrCents, currency),
-        active_count: items.filter(s => s.status === "active").length,
-        trialing_count: items.filter(s => s.status === "trialing").length,
-        past_due_count: items.filter(s => s.status === "past_due").length,
-        canceled_count: items.filter(s => s.status === "canceled").length,
-      },
-      currency,
-    });
-  } catch (err) {
-    console.error("[FINANCE]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── FINANCE: extended stats (12-month trends, unit economics) ─────
-let financeStatsCache = { data: null, ts: 0 };
-
-// Normalize a subscription item price to a monthly amount in cents.
-function monthlyCentsForSub(sub) {
-  let cents = 0;
-  for (const item of (sub.items?.data || [])) {
-    const price = item.price || {};
-    let amt = price.unit_amount || 0;
-    const interval = price.recurring?.interval;
-    if (interval === "year") amt = Math.round(amt / 12);
-    else if (interval === "week") amt = amt * 4;
-    else if (interval === "day") amt = amt * 30;
-    cents += amt * (item.quantity || 1);
-  }
-  return cents;
-}
-
-app.get("/finance/stats", async (_req, res) => {
-  if (!stripe) return res.status(503).json({ error: "Stripe not configured" });
-  if (financeStatsCache.data && Date.now() - financeStatsCache.ts < 15 * 60 * 1000) {
-    return res.json(financeStatsCache.data);
-  }
-  try {
-    const now = new Date();
-    // 12 calendar months, oldest first
-    const months = [];
-    for (let i = 11; i >= 0; i--) {
-      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      months.push({
-        key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
-        start: Math.floor(start / 1000),
-        end: Math.floor(end / 1000),
-        gross: 0, fees: 0, refunds: 0, sub_revenue: 0,
-        new_subs: 0, churned_subs: 0, active_start: 0, mrr: 0,
-      });
-    }
-    const ts12 = months[0].start;
-    const bucketFor = ts => months.find(m => ts >= m.start && ts < m.end);
-
-    const [balance, txns, invoices, allSubs] = await Promise.all([
-      stripe.balance.retrieve(),
-      stripeListAll(stripe.balanceTransactions, { created: { gte: ts12 } }),
-      stripeListAll(stripe.invoices, { created: { gte: ts12 } }),
-      stripeListAll(stripe.subscriptions, { status: "all" }),
-    ]);
-
-    // -- Money per month from balance transactions + paid invoices --
-    const revenueTypes = new Set(["charge", "payment"]);
-    const refundTypes = new Set(["refund", "payment_refund", "payment_failure_refund"]);
-    for (const t of txns) {
-      const b = bucketFor(t.created);
-      if (!b) continue;
-      if (revenueTypes.has(t.type)) { b.gross += t.amount; b.fees += t.fee; }
-      else if (refundTypes.has(t.type)) b.refunds += Math.abs(t.amount);
-    }
-    for (const inv of invoices) {
-      if (inv.status !== "paid") continue;
-      const b = bucketFor(inv.created);
-      if (b) b.sub_revenue += inv.amount_paid;
-    }
-
-    // -- Subscriber movement per month (created / canceled dates) --
-    // Historical status isn't queryable, so this approximates from lifecycle
-    // dates; incomplete signups never became customers and are excluded.
-    const subs = allSubs.filter(s => s.status !== "incomplete" && s.status !== "incomplete_expired");
-    for (const sub of subs) {
-      const created = sub.start_date || sub.created;
-      // Actual end of service. A scheduled cancel (cancel_at_period_end) sets
-      // canceled_at at request time but the sub runs until ended_at — only
-      // treat truly-ended subs as churned.
-      const ended = sub.ended_at || (sub.status === "canceled" ? sub.canceled_at : null);
-      // Trials pay nothing: MRR starts at trial_end, not at signup.
-      const payingFrom = sub.trial_end && sub.trial_end > created ? sub.trial_end : created;
-      const monthly = monthlyCentsForSub(sub);
-      for (const m of months) {
-        const aliveAtStart = created < m.start && (!ended || ended >= m.start);
-        const payingAtEnd = payingFrom < m.end && (!ended || ended >= m.end);
-        if (aliveAtStart) m.active_start++;
-        if (payingAtEnd) m.mrr += monthly;
-        if (created >= m.start && created < m.end) m.new_subs++;
-        if (ended && ended >= m.start && ended < m.end) m.churned_subs++;
-      }
-    }
-
-    const series = months.map(m => ({
-      key: m.key,
-      gross: m.gross,
-      fees: m.fees,
-      refunds: m.refunds,
-      net: m.gross - m.fees - m.refunds,
-      sub_revenue: Math.min(m.sub_revenue, m.gross),
-      other: Math.max(0, m.gross - m.sub_revenue),
-      new_subs: m.new_subs,
-      churned_subs: m.churned_subs,
-      churn_rate: m.active_start > 0 ? +((m.churned_subs / m.active_start) * 100).toFixed(2) : 0,
-      mrr: m.mrr,
-    }));
-
-    // -- Unit economics from live subscription state --
-    const activeSubs = subs.filter(s => s.status === "active");
-    const mrrNow = activeSubs.reduce((s, x) => s + monthlyCentsForSub(x), 0);
-    const arpu = activeSubs.length > 0 ? Math.round(mrrNow / activeSubs.length) : 0;
-    const mrrPrev = series[series.length - 2]?.mrr || 0;
-    const mrrGrowth = mrrPrev > 0 ? +(((series[series.length - 1].mrr - mrrPrev) / mrrPrev) * 100).toFixed(1) : null;
-    const last3 = series.slice(-3);
-    const churn3mo = +(last3.reduce((s, m) => s + m.churn_rate, 0) / last3.length).toFixed(2);
-    const ltv = churn3mo > 0 ? Math.round(arpu / (churn3mo / 100)) : null;
-    const nowSec = Math.floor(Date.now() / 1000);
-    const avgAgeMonths = activeSubs.length > 0
-      ? +((activeSubs.reduce((s, x) => s + (nowSec - (x.start_date || x.created)), 0) / activeSubs.length) / (30.44 * 86400)).toFixed(1)
-      : 0;
-
-    const openInvoices = invoices.filter(i => i.status === "open");
-    const cur = series[series.length - 1];
-    const prev = series[series.length - 2] || { fees: 0, refunds: 0 };
-    const currency = activeSubs[0]?.items?.data?.[0]?.price?.currency || invoices[0]?.currency || txns[0]?.currency || "usd";
-
-    const result = {
-      months: series,
-      kpi: {
-        mrr: mrrNow,
-        mrr_growth_pct: mrrGrowth,
-        arpu,
-        ltv,
-        churn_rate_3mo: churn3mo,
-        avg_age_months: avgAgeMonths,
-        active_count: activeSubs.length,
-        balance_available: balance.available.reduce((s, b) => s + b.amount, 0),
-        balance_pending: balance.pending.reduce((s, b) => s + b.amount, 0),
-        fees_mtd: cur.fees, fees_prev: prev.fees,
-        refunds_mtd: cur.refunds, refunds_prev: prev.refunds,
-        open_invoices_count: openInvoices.length,
-        open_invoices_amount: openInvoices.reduce((s, i) => s + (i.amount_due || 0), 0),
-        past_due_count: subs.filter(s => s.status === "past_due").length,
-      },
-      currency,
-      fetched_at: new Date().toISOString(),
-    };
-    financeStatsCache = { data: result, ts: Date.now() };
-    res.json(result);
-  } catch (err) {
-    console.error("[FINANCE STATS]", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/finance/config", (_req, res) => {
-  const cfg = loadFinanceConfig();
-  res.json({
-    ...cfg,
-    stripe_connected: !!stripe,
-    webhook_secret_set: !!process.env.STRIPE_WEBHOOK_SECRET,
-  });
-});
-
-app.post("/finance/config", (req, res) => {
-  const cfg = loadFinanceConfig();
-  const next = { ...cfg };
-  if (typeof req.body.notify_new === "boolean") next.notify_new = req.body.notify_new;
-  if (typeof req.body.notify_canceled === "boolean") next.notify_canceled = req.body.notify_canceled;
-  if (typeof req.body.notify_past_due === "boolean") next.notify_past_due = req.body.notify_past_due;
-  if (typeof req.body.notify_recovered === "boolean") next.notify_recovered = req.body.notify_recovered;
-  saveFinanceConfig(next);
-  res.json(next);
-});
-
-// Build a Telegram message for a subscription event.
-function formatSubscriptionMessage(sub, eventType) {
-  const norm = normalizeSubscription(sub);
-  const mrrDisplay = formatMoney(norm.mrr_cents, norm.currency);
-  const who = norm.customer_name
-    ? `${norm.customer_name} (${norm.customer_email || "no email"})`
-    : (norm.customer_email || "Unknown customer");
-  if (eventType === "customer.subscription.created") {
-    return [
-      `<b>New subscription</b>`,
-      `Customer: ${who}`,
-      `Plan: ${norm.plan}`,
-      `MRR: ${mrrDisplay}/mo`,
-      `Status: ${norm.status}`,
-    ].join("\n");
-  }
-  if (eventType === "customer.subscription.deleted") {
-    return [
-      `<b>Subscription canceled</b>`,
-      `Customer: ${who}`,
-      `Plan: ${norm.plan}`,
-      `Was MRR: ${mrrDisplay}/mo`,
-      norm.canceled_at ? `Canceled: ${new Date(norm.canceled_at).toLocaleString()}` : "",
-    ].filter(Boolean).join("\n");
-  }
-  if (eventType === "past_due") {
-    return [
-      `<b>Payment past due</b>`,
-      `Customer: ${who}`,
-      `Plan: ${norm.plan}`,
-      `MRR at risk: ${mrrDisplay}/mo`,
-      `Status: ${norm.status}`,
-    ].join("\n");
-  }
-  if (eventType === "recovered") {
-    return [
-      `<b>Payment recovered</b>`,
-      `Customer: ${who}`,
-      `Plan: ${norm.plan}`,
-      `MRR: ${mrrDisplay}/mo`,
-      `Status: past_due → ${norm.status}`,
-    ].join("\n");
-  }
-  return null;
-}
-
-// Retrieve a subscription with customer + product names expanded, for notification messages.
-async function retrieveSubscriptionForMessage(id) {
-  const sub = await stripe.subscriptions.retrieve(id, { expand: ["customer"] });
-  // Inline product names (expand-depth workaround, see /finance/subscriptions).
-  for (const item of (sub.items?.data || [])) {
-    const pid = item.price?.product;
-    if (typeof pid === "string") {
-      try { item.price.product = await stripe.products.retrieve(pid); } catch {}
-    }
-  }
-  return sub;
-}
-
-async function handleStripeWebhook(req, res) {
-  if (!stripe) return res.status(503).send("Stripe not configured");
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return res.status(503).send("Webhook secret not configured");
-
-  const sig = req.headers["stripe-signature"];
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, secret);
-  } catch (err) {
-    console.error("[STRIPE-WH] Signature verification failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  // Invalidate the revenue cache so the UI shows fresh numbers.
-  stripeCache = { data: null, ts: 0 };
-
-  const cfg = loadFinanceConfig();
-  try {
-    if (event.type === "customer.subscription.created" && cfg.notify_new) {
-      // Re-fetch with expansions so the message has customer + plan names.
-      const sub = await retrieveSubscriptionForMessage(event.data.object.id);
-      const msg = formatSubscriptionMessage(sub, event.type);
-      if (msg) sendTelegram("New subscription", msg, "success");
-    } else if (event.type === "customer.subscription.deleted" && cfg.notify_canceled) {
-      const sub = await retrieveSubscriptionForMessage(event.data.object.id);
-      const msg = formatSubscriptionMessage(sub, event.type);
-      if (msg) sendTelegram("Subscription canceled", msg, "warning");
-    } else if (event.type === "customer.subscription.updated") {
-      // Status transitions: previous_attributes.status is only present when the status changed.
-      const newStatus = event.data.object.status;
-      const prevStatus = event.data.previous_attributes?.status;
-      if (prevStatus && prevStatus !== newStatus) {
-        if (newStatus === "past_due" && cfg.notify_past_due) {
-          const sub = await retrieveSubscriptionForMessage(event.data.object.id);
-          const msg = formatSubscriptionMessage(sub, "past_due");
-          if (msg) sendTelegram("Payment past due", msg, "danger");
-        } else if (prevStatus === "past_due" && (newStatus === "active" || newStatus === "trialing") && cfg.notify_recovered) {
-          const sub = await retrieveSubscriptionForMessage(event.data.object.id);
-          const msg = formatSubscriptionMessage(sub, "recovered");
-          if (msg) sendTelegram("Payment recovered", msg, "success");
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[STRIPE-WH] handler error:", err.message);
-  }
-
-  res.json({ received: true });
-}
 
 // ── REMOTION VIDEO PROJECTS ──
 const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
@@ -8031,7 +6730,7 @@ app.post("/scheduled-tasks", (req, res) => {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     name: req.body.name || "Unnamed schedule",
-    agent: req.body.agent || "designer",       // designer, researcher, scriptwriter
+    agent: req.body.agent || "designer",
     hour: parseInt(req.body.hour) || 9,         // UTC hour
     minute: parseInt(req.body.minute) || 0,     // UTC minute
     days: req.body.days || ["mon","tue","wed","thu","fri","sat","sun"], // which days
@@ -8079,10 +6778,6 @@ async function executeSchedule(schedule) {
   try {
     if (schedule.agent === "designer") {
       await executeDesignerSchedule(schedule, today);
-    } else if (schedule.agent === "researcher") {
-      await executeResearcherSchedule(schedule, today);
-    } else if (schedule.agent === "scriptwriter") {
-      await executeScriptwriterSchedule(schedule, today);
     } else if (schedule.agent === "marketeer") {
       await executeMarketeerSchedule(schedule, today);
     } else if (schedule.agent === "assistant") {
@@ -8091,8 +6786,6 @@ async function executeSchedule(schedule) {
       await executeAdsOptimizerSchedule(schedule, today);
     } else if (schedule.agent === "community_manager") {
       await executeCommunityManagerSchedule(schedule, today);
-    } else if (schedule.agent === "seo") {
-      await executeSeoSchedule(schedule, today);
     } else if (schedule.agent === "opusclip") {
       await executeOpusclipSchedule(schedule, today);
     }
@@ -8104,67 +6797,7 @@ async function executeSchedule(schedule) {
 async function executeDesignerSchedule(schedule, today) {
   const p = schedule.payload;
 
-  // If auto_from_research is enabled, use AI to pick the most interesting content
-  let description = p.description || "";
-  if (p.auto_from_research) {
-    const reports = readTaskFile("research-reports.json");
-    const lang = p.language || "NL";
-    const report = reports.find(r => (r.language || "NL") === lang);
-    if (report && report.sections?.length) {
-      const allContent = report.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n");
-      const designType = p.design_type || "instagram_post";
-      const aiPrompt = `You are a social media content strategist for a crypto/trading brand.
-
-Below is today's research report. Pick the SINGLE most engaging, visually interesting topic for a ${designType.replace(/_/g, " ")} design.
-
-RESEARCH REPORT:
-${allContent.substring(0, 4000)}
-
-INSTRUCTIONS:
-- Pick the topic with the most visual potential and audience engagement
-- Write a concise, specific image generation prompt (max 300 chars) describing the visual design
-- The prompt should describe the SCENE/VISUAL, not just text — think backgrounds, elements, mood, composition
-- Include the key headline/text that should appear ON the image (max 15 words)
-- Language: ${lang}
-- Output ONLY a JSON object, nothing else:
-{"headline": "short punchy headline for ON the image", "visual_prompt": "detailed scene description for image generation", "topic": "which topic you picked and why (1 sentence)"}`;
-
-      try {
-        const aiResult = await new Promise((resolve, reject) => {
-          execFile("/root/.local/bin/claude", ["-p", aiPrompt, "--output-format", "json", "--max-turns", "1"], {
-            timeout: 60000, maxBuffer: 1024 * 1024,
-            env: { ...process.env, HOME: "/root" },
-          }, (err, stdout) => {
-            if (err) return reject(err);
-            try {
-              const parsed = JSON.parse(stdout);
-              const text = parsed.result || parsed.content || stdout;
-              const jsonMatch = text.match(/\{[\s\S]*"headline"[\s\S]*"visual_prompt"[\s\S]*\}/);
-              if (jsonMatch) resolve(JSON.parse(jsonMatch[0]));
-              else reject(new Error("No JSON in AI response"));
-            } catch (e) {
-              // Try extracting JSON directly from stdout
-              const jsonMatch = stdout.match(/\{[\s\S]*"headline"[\s\S]*"visual_prompt"[\s\S]*\}/);
-              if (jsonMatch) resolve(JSON.parse(jsonMatch[0]));
-              else reject(e);
-            }
-          });
-        });
-        description = `${aiResult.visual_prompt}. Headline text on image: "${aiResult.headline}"`;
-        console.log(`[SCHEDULER] AI picked topic: ${aiResult.topic}`);
-        console.log(`[SCHEDULER] Design prompt: ${description}`);
-      } catch (e) {
-        console.error(`[SCHEDULER] AI content picker failed: ${e.message}, falling back to first section`);
-        // Fallback: use first substantial section
-        const fallback = report.sections.find(s => s.content.length > 200);
-        if (fallback) description = fallback.content.substring(0, 2000);
-      }
-    }
-    if (!description) {
-      console.log(`[SCHEDULER] No research content found, skipping designer task`);
-      return;
-    }
-  }
+  const description = p.description || "";
 
   // Trigger the designer task via the POST endpoint (creates task + processes it)
   try {
@@ -8195,37 +6828,6 @@ INSTRUCTIONS:
   } catch (e) {
     console.error(`[SCHEDULER] Designer task failed:`, e.message);
   }
-}
-
-async function executeSeoSchedule(schedule, today) {
-  const p = schedule.payload || {};
-  if (!p.url) {
-    console.log(`[SCHEDULER] SEO skipped: no url configured`);
-    return;
-  }
-  const tasks = readTaskFile("seo-tasks.json");
-  const taskId = genId();
-  tasks.unshift({
-    id: taskId,
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    url: p.url,
-    max_pages: Math.min(Math.max(parseInt(p.max_pages, 10) || 25, 1), 100),
-    language: p.language || process.env.LANGUAGE || "EN",
-    error: null,
-  });
-  if (tasks.length > 50) tasks.length = 50;
-  writeTaskFile("seo-tasks.json", tasks);
-
-  const schedules = readTaskFile("scheduled-tasks.json");
-  const idx = schedules.findIndex(s => s.id === schedule.id);
-  if (idx >= 0) {
-    schedules[idx].last_run = new Date().toISOString();
-    schedules[idx].last_task_id = taskId;
-    writeTaskFile("scheduled-tasks.json", schedules);
-  }
-  console.log(`[SCHEDULER] SEO task created: ${taskId} (${p.url})`);
 }
 
 // ── OpusClip: watch a YouTube channel, clip the newest unprocessed video ──
@@ -8368,60 +6970,6 @@ async function executeOpusclipSchedule(schedule, today) {
     writeTaskFile("scheduled-tasks.json", schedules);
   }
   console.log(`[SCHEDULER] OpusClip task created: ${task.id} (channel ${channelId} → ${next.video_id})`);
-}
-
-async function executeResearcherSchedule(schedule, today) {
-  const p = schedule.payload;
-  const lang = p.language || "NL";
-  const isNL = lang === "NL";
-  const tasks = readTaskFile("research-tasks.json");
-  const taskId = genId();
-  tasks.unshift({
-    id: taskId, status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: p.type || "daily_full",
-    query: p.query || (isNL
-      ? `Daily crypto & trading research — ${today}. Onderzoek de belangrijkste crypto ontwikkelingen, marktbewegingen, trending topics op X/Reddit/TikTok, en genereer concrete content suggesties voor Instagram en Twitter.`
-      : `Daily crypto & trading research — ${today}. Research the latest crypto developments, market movements, trending topics on X/Reddit/TikTok, and generate concrete content suggestions for Instagram and Twitter.`),
-    platforms: p.platforms || ["x", "reddit", "tiktok"],
-    niche: p.niche || "crypto trading",
-    language: lang,
-    error: null,
-  });
-  writeTaskFile("research-tasks.json", tasks);
-
-  const schedules = readTaskFile("scheduled-tasks.json");
-  const idx = schedules.findIndex(s => s.id === schedule.id);
-  if (idx >= 0) {
-    schedules[idx].last_run = new Date().toISOString();
-    schedules[idx].last_task_id = taskId;
-    writeTaskFile("scheduled-tasks.json", schedules);
-  }
-  console.log(`[SCHEDULER] Research task created: ${taskId} (${lang})`);
-}
-
-async function executeScriptwriterSchedule(schedule, today) {
-  const p = schedule.payload;
-  const tasks = readTaskFile("scriptwriter-tasks.json");
-  const taskId = genId();
-  tasks.unshift({
-    id: taskId, status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    type: p.type || "script",
-    prompt: p.prompt || "",
-    language: p.language || "NL",
-    error: null,
-  });
-  writeTaskFile("scriptwriter-tasks.json", tasks);
-
-  const schedules = readTaskFile("scheduled-tasks.json");
-  const idx = schedules.findIndex(s => s.id === schedule.id);
-  if (idx >= 0) {
-    schedules[idx].last_run = new Date().toISOString();
-    schedules[idx].last_task_id = taskId;
-    writeTaskFile("scheduled-tasks.json", schedules);
-  }
-  console.log(`[SCHEDULER] Scriptwriter task created: ${taskId}`);
 }
 
 async function executeMarketeerSchedule(schedule, today) {
@@ -8600,16 +7148,6 @@ async function executeCommunityManagerSchedule(schedule, today) {
     return;
   }
 
-  // Research context (fail-soft)
-  let researchContext = "";
-  try {
-    const reports = readTaskFile("research-reports.json");
-    const report = reports.find(r => (r.language || "NL") === language);
-    if (report && Array.isArray(report.sections) && report.sections.length) {
-      researchContext = report.sections.map(s => `## ${s.title}\n${s.content}`).join("\n\n").substring(0, 6000);
-    }
-  } catch {}
-
   // Build prompt
   const tz = process.env.TIMEZONE || "Europe/Amsterdam";
   const now = new Date();
@@ -8633,7 +7171,7 @@ ARCHETYPES & WEEK SCHEDULE (source of truth):
 ${archetypeMd}
 ---
 
-${researchContext ? `LATEST RESEARCH CONTEXT (for hooks and angles):\n---\n${researchContext}\n---\n\n` : ""}RULES:${platformRules}
+RULES:${platformRules}
 - ${autoCount
     ? "Generate exactly as many drafts as the week schedule in the archetype doc prescribes. Count every non-manual slot in the schedule table; one post per slot. Do not skip, add, or duplicate slots."
     : `Generate exactly ${postCount} draft posts, spread across the next 7 days using the week schedule in the archetype doc. If the schedule has more slots than ${postCount}, pick the highest-cadence archetypes first.`}

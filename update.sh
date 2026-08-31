@@ -101,13 +101,10 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/brand-assets/' \
         --exclude='data/avatars.json' \
         --exclude='data/ugc-avatars.json' \
-        --exclude='data/finance-config.json' \
-        --exclude='data/seo-reports.json' \
         --exclude='data/style-tags.json' \
         --exclude='data/social-connections.json' \
         --exclude='data/notifications.json' \
         --exclude='data/*-tasks.json' \
-        --exclude='data/research-reports.json' \
         --exclude='data/canva-oauth.json' \
         --exclude='data/ads-rules.json' \
         --exclude='data/twitter-usage.json' \
@@ -173,6 +170,16 @@ if command -v crontab &>/dev/null; then
     ok "Obsolete cron entries removed"
   fi
 fi
+
+# ── PRUNE REMOVED MODULES (older installs) ──
+# Researcher, Script Writer, SEO Audit, Performance and Finance were removed from
+# the Command Center. Their pages are deleted by the rsync above; their task files
+# survive the data/*-tasks.json exclude, so remove them here.
+OBSOLETE_DATA="research-tasks.json scriptwriter-tasks.json seo-tasks.json"
+for f in $OBSOLETE_DATA; do
+  rm -f "$INSTALL_DIR/command-center/data/$f"
+done
+rm -rf "$INSTALL_DIR/venv"
 
 # ── REGENERATE CONFIGS ──────────────────────────
 if [ -x "$INSTALL_DIR/config/generate-configs.sh" ]; then

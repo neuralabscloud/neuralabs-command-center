@@ -35,7 +35,6 @@
 - Anthropic API key (for AI features) — https://console.anthropic.com
 - Telegram bot token (for notifications)
 - HeyGen API key (for AI avatar videos)
-- Stripe account (for revenue tracking)
 - Composio API key (for Google Calendar integration)
 - Meta Developer App (for Instagram performance tracking via Graph API — connect via Settings → Social Connections)
 - Canva account (for design generation via the Designer agent)
@@ -212,7 +211,7 @@ The **Setup Wizard** appears automatically and guides you through 4 steps:
 
 ### Step 2: AI (Anthropic API) — optional
 
-- **Anthropic API Key** — Required for all AI features (research, design, analysis)
+- **Anthropic API Key** — Required for all AI features (chat, agents, design, analysis)
 
 If you don't have this yet, click **Skip**. You can set it later via Settings.
 
@@ -262,7 +261,6 @@ Click **Skip** if you want to set this up later. You can always add it via Setti
 ### Step 4: Integrations — optional
 
 - **HeyGen API Key** — For AI avatar video generation. Retrieve your key at [app.heygen.com/settings](https://app.heygen.com/settings)
-- **Stripe Secret Key** — For revenue & subscription tracking. Find your key in your [Stripe Dashboard](https://dashboard.stripe.com/apikeys) (starts with `sk_live_` or `sk_test_`)
 - **Inference.sh API Key** — For AI image generation (Nano Banana / Google Gemini). Used by the Designer agent. Retrieve your key at [inference.sh](https://inference.sh) (starts with `1nfsh-`)
 - **Composio API Key** — For Google Calendar integration. Create one at [app.composio.dev](https://app.composio.dev)
 
@@ -294,13 +292,11 @@ After the setup wizard you arrive at the Command Center dashboard. In the sideba
 | Page | What you'll find |
 |------|----------------|
 | **Overview** | Dashboard with an overview of all agents, recent tasks, and quick actions |
-| **Research** | Market research, trend analysis, competitor analysis, daily reports |
-| **Performance** | KPIs, revenue (Stripe), social media analytics (Instagram Graph API, YouTube Data API), growth metrics |
 | **Agents** | Overview and management of all AI agents and their tasks |
 | **Video Editor** | Edit, cut, merge, and export videos via Remotion |
 | **Designer** | Create social media content: carousels, thumbnails, banners, infographics. Uses Claude AI, Canva, and Nano Banana (Inference.sh) |
 | **Content Creator** | Generate AI avatar videos via HeyGen |
-| **Script Writer** | Write scripts for videos, social media posts, and content |
+| **Community Manager** | Plan and publish community posts (Telegram / Discord) |
 | **Marketeer** | Marketing strategy, campaign planning, and content calendar |
 | **Calendar** | Google Calendar management via Composio integration |
 | **Settings** | Branding, API keys, integrations, and system configuration |
@@ -312,10 +308,8 @@ Each agent is a specialized AI that performs tasks independently:
 | Agent | What it does | Requires |
 |-------|-------------|---------|
 | **Designer** | Creates social media content: carousels, thumbnails, banners | Anthropic API key |
-| **Researcher** | Market research, trend analysis, competitor analysis | Anthropic API key |
 | **Video Editor** | Create and edit videos via Remotion (React-based video framework) | — (built-in) |
 | **Content Creator** | Create AI avatar videos | HeyGen API key |
-| **Script Writer** | Scripts for videos and content | Anthropic API key |
 | **Marketeer** | Marketing strategy and campaign planning | Anthropic API key |
 | **Calendar** | Google Calendar management | Composio API key |
 
@@ -340,28 +334,12 @@ Provide a description of what you want (e.g. "5-slide carousel about AI trends i
 - **Nano Banana** — Generates images via Google Gemini (requires Inference.sh key)
 - **Canva** — Creates designs in Canva (requires Canva connection)
 
-**Researcher — Market Research**
-
-Go to the Research page and create a new research task. Examples:
-- "Analyze the top 5 competitors in the AI SaaS market"
-- "What are the trending topics on social media this week?"
-- "Create a report on market developments in your niche"
-
-The Researcher uses Claude AI to gather, analyze, and generate a report.
-
 **Content Creator — AI Videos**
 
 Go to Content Creator to create AI avatar videos via HeyGen:
 - Choose an avatar and voice
 - Write or generate a script
 - The video is generated automatically
-
-**Script Writer — Scripts and copy**
-
-Let the Script Writer create content:
-- Video scripts for YouTube, TikTok, Instagram Reels
-- Social media captions and copy
-- Blog posts and articles
 
 **Marketeer — Strategy**
 
@@ -384,7 +362,7 @@ You can schedule tasks that are executed automatically at fixed times. Go to the
 | Field | Explanation |
 |-------|------------|
 | **Name** | Name of the schedule (e.g. "Daily Instagram post") |
-| **Agent** | Which agent performs the task (designer, researcher, scriptwriter, content_creator) |
+| **Agent** | Which agent performs the task (designer, content_creator, community_manager) |
 | **Hour / Minute** | Time in UTC at which the task is executed |
 | **Days** | On which days (Mon-Sun) |
 | **Payload** | What the agent should do (description, type, etc.) |
@@ -392,9 +370,8 @@ You can schedule tasks that are executed automatically at fixed times. Go to the
 **Examples of automated tasks:**
 
 - Generate an Instagram carousel every weekday at 09:00
-- Generate a market research report every Monday at 08:00
-- Write a video script daily at 10:00
-- Run a weekly overview research every Friday at 16:00
+- Generate an AI avatar video every Tuesday at 10:00
+- Post a community update every Friday at 16:00
 
 Tasks are executed automatically and the result appears in the dashboard. If Telegram is configured, you will receive a notification when the task is complete.
 
@@ -424,8 +401,6 @@ Examples:
 | What you ask | What Claude does |
 |-------------|-----------------|
 | *"Create a carousel post about AI trends"* | Sends a design task to the Designer agent |
-| *"What are the trending topics today?"* | Does market research via the Researcher |
-| *"Show my revenue this month"* | Retrieves Stripe data and creates a report |
 | *"Schedule a meeting tomorrow at 10am"* | Manages your Google Calendar via Composio |
 | *"Change the branding color to blue"* | Updates the configuration |
 | *"Show the Command Center logs"* | Opens and analyzes the log files |
@@ -446,7 +421,7 @@ Examples:
 **API Keys & Integrations** — adjust:
 - Anthropic API Key
 - Telegram Bot Token + Chat ID
-- HeyGen, Stripe, Composio keys
+- HeyGen, Composio keys
 - Meta App ID/Secret (for Instagram Graph API), YouTube Data API key
 
 3. Click **Save Changes**
@@ -720,7 +695,7 @@ redis-cli ping
 
 **Do I need trading bots?**
 
-No. The Command Center works fully standalone for content creation, research, marketing, and analysis. Trading bots are an optional addon that you can install later.
+No. The Command Center works fully standalone for content creation, marketing, and analysis. Trading bots are an optional addon that you can install later.
 
 **Can I add multiple users?**
 
@@ -728,7 +703,7 @@ Currently the Command Center uses a shared password. Everyone with the password 
 
 **Which AI features are available without API keys?**
 
-Without an Anthropic API key, the AI agents do not work (Designer, Researcher, Analyst, etc.). The UI and Settings page do work. You can add an API key at any time via Settings.
+Without an Anthropic API key, the AI agents do not work (Designer, Content Creator, Analyst, etc.). The UI and Settings page do work. You can add an API key at any time via Settings.
 
 **Can I use a custom domain?**
 

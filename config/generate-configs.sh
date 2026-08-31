@@ -48,10 +48,9 @@ else
 fi
 
 # ── 2. Empty task files for command center ──
-for task_file in research-tasks analyst-tasks designer-tasks video-tasks avatar-tasks ai-video-tasks video-agent-tasks scriptwriter-tasks scheduled-tasks notifications; do
+for task_file in analyst-tasks designer-tasks video-tasks avatar-tasks ai-video-tasks video-agent-tasks scheduled-tasks notifications; do
   [ -f "$ROOT_DIR/command-center/data/${task_file}.json" ] || echo "[]" > "$ROOT_DIR/command-center/data/${task_file}.json"
 done
-[ -f "$ROOT_DIR/command-center/data/research-reports.json" ] || echo "[]" > "$ROOT_DIR/command-center/data/research-reports.json"
 [ -f "$ROOT_DIR/command-center/data/social-connections.json" ] || echo "[]" > "$ROOT_DIR/command-center/data/social-connections.json"
 [ -f "$ROOT_DIR/command-center/data/brand-configs.json" ] || echo "{}" > "$ROOT_DIR/command-center/data/brand-configs.json"
 mkdir -p "$ROOT_DIR/command-center/data/brand-assets"
