@@ -263,6 +263,7 @@ Click **Skip** if you want to set this up later. You can always add it via Setti
 - **HeyGen API Key** — For AI avatar video generation. Retrieve your key at [app.heygen.com/settings](https://app.heygen.com/settings)
 - **Inference.sh API Key** — For AI image generation (Nano Banana / Google Gemini). Used by the Designer agent. Retrieve your key at [inference.sh](https://inference.sh) (starts with `1nfsh-`)
 - **Composio API Key** — For Google Calendar integration. Create one at [app.composio.dev](https://app.composio.dev)
+- **OpusClip API Key** — For the Clipper (long-form video → short clips), AI social copy and posting/scheduling to the social accounts connected in your OpusClip dashboard. Find the key in the OpusClip dashboard under API access. Optional: if your Command Center is publicly reachable, set `PUBLIC_BASE_URL=https://your-domain` in the `.env` — OpusClip then notifies your server via webhook the moment a clipping job finishes (without it, the built-in polling picks results up automatically)
 
 All fields are optional. Click **Finish** or **Skip** to continue.
 

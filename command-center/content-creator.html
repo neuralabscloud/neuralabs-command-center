@@ -450,6 +450,34 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="form-select cc-brand-select"></select>
           </div>
         </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;margin-top:16px;">
+          <div>
+            <div class="form-label">AI model</div>
+            <select class="form-select" id="cl-model" onchange="syncClipperModel()">
+              <option value="" selected>ClipBasic (talking-head)</option>
+              <option value="ClipAnything">ClipAnything (any footage, prompt-steerable)</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label">Aspect ratio</div>
+            <select class="form-select" id="cl-aspect">
+              <option value="" selected>Auto</option>
+              <option value="portrait">Portrait (9:16)</option>
+              <option value="square">Square (1:1)</option>
+              <option value="landscape">Landscape (16:9)</option>
+            </select>
+          </div>
+          <div>
+            <div class="form-label">Brand template</div>
+            <select class="form-select" id="cl-brandtpl">
+              <option value="" selected>None</option>
+            </select>
+          </div>
+        </div>
+        <div id="cl-prompt-wrap" style="display:none;margin-top:16px;">
+          <div class="form-label">Clip prompt (ClipAnything)</div>
+          <textarea class="form-input" id="cl-prompt" rows="2" placeholder="e.g. every moment where the guest talks about pricing"></textarea>
+        </div>
         <div style="margin-top:16px;">
           <div class="form-label">Topic keywords (optional, comma-separated)</div>
           <input class="form-input" id="cl-keywords" placeholder="e.g. tutorial, hook, key takeaway" />
@@ -609,33 +637,219 @@ async function deleteAvatar(id) {
 
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+const _clipperTaskById = {};
+
 function renderClipperCard(t) {
+  _clipperTaskById[t.id] = t;
   const clips = Array.isArray(t.clips) ? t.clips : [];
   const projectUrl = t.project_id ? `https://clip.opus.pro/project/${esc(t.project_id)}` : '';
   const projectLink = projectUrl ? `<div style="margin:8px 0;font-size:12px;"><a href="${projectUrl}" target="_blank" rel="noopener" style="color:var(--accent,#7c4dff);">Open project on OpusClip ↗</a></div>` : '';
-  const clipsHtml = clips.length ? `<div class="clips-grid">` + clips.map(c => {
+  const clipsHtml = clips.length ? `<div class="clips-grid">` + clips.map((c, i) => {
     const title = c.title || c.name || c.clipTitle || 'Clip';
     const durMs = c.duration_ms || (c.durationMs || 0);
     const dur = durMs ? Math.round(durMs / 1000) + 's' : (c.duration ? Math.round(c.duration) + 's' : '');
-    const score = c.viralityScore != null ? 'Score ' + Math.round(c.viralityScore) : '';
-    const poster = c.thumbnail_url || c.uriForThumbnail || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
-    const preview = c.preview_url || c.previewUrl || c.uriForPreview || '';
-    const download = c.download_url || c.exportUrl || c.downloadUrl || c.uriForExport || c.videoUrl || c.url || '';
+    const scoreVal = c.virality_score != null ? c.virality_score : c.viralityScore;
+    const score = scoreVal != null ? 'Score ' + Math.round(scoreVal) : '';
+    const poster = c.local_thumb || c.thumbnail_url || c.uriForThumbnail || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
+    const preview = c.local_path || c.preview_url || c.previewUrl || c.uriForPreview || '';
+    const download = c.local_path || c.download_url || c.exportUrl || c.downloadUrl || c.uriForExport || c.videoUrl || c.url || '';
     const opusUrl = c.shareUrl || c.editorUrl || '';
+    const savedBadge = c.local_path ? '<span style="color:hsl(142 76% 50%);">saved</span>' : '';
     const media = preview
       ? `<video src="${esc(preview)}" ${poster ? `poster="${esc(poster)}"` : ''} controls preload="none" playsinline style="width:100%;aspect-ratio:9/16;border-radius:6px;background:#000;object-fit:cover;"></video>`
       : (poster ? `<img src="${esc(poster)}" loading="lazy" />` : '<div style="aspect-ratio:9/16;background:var(--bg-deep);border-radius:6px;"></div>');
     return `<div class="clip-card">
       ${media}
       <div class="clip-title">${esc(title)}</div>
-      <div class="clip-meta">${dur ? '<span>' + dur + '</span>' : ''}${score ? '<span>' + score + '</span>' : ''}</div>
+      <div class="clip-meta">${dur ? '<span>' + dur + '</span>' : ''}${score ? '<span>' + score + '</span>' : ''}${savedBadge}</div>
       <div class="clip-actions">
         ${download ? `<a href="${esc(download)}" target="_blank" rel="noopener" download>Download</a>` : ''}
         ${opusUrl ? `<a href="${esc(opusUrl)}" target="_blank" rel="noopener">Edit</a>` : ''}
+        <a href="#" onclick="openPostModal('${esc(t.id)}',${i});return false;">Post ▸</a>
+        ${c.local_path ? `<a href="#" onclick="clipToCommunity('${esc(t.id)}',${i});return false;" title="Create a draft post in the Community manager">→ Community</a>` : ''}
       </div>
     </div>`;
   }).join('') + `</div>` : '';
-  return projectLink + clipsHtml;
+  return projectLink + clipsHtml + renderClipperPosts(t);
+}
+
+function renderClipperPosts(t) {
+  const posts = Array.isArray(t.posts) ? t.posts : [];
+  if (!posts.length) return '';
+  return `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">` +
+    `<div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:4px;">SOCIAL POSTS</div>` +
+    posts.map(p => {
+      const when = p.publish_at ? new Date(p.publish_at).toLocaleString('en-GB', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : 'posted';
+      const pending = p.schedule_id && p.publish_at && new Date(p.publish_at) > new Date();
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;font-family:var(--font-data);color:var(--text-dim);padding:2px 0;">
+        <span style="color:var(--text);">${esc(p.platform || 'social')}</span>
+        <span>${esc(p.account_name || p.account_id || '')}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title || '')}</span>
+        <span>${pending ? '⏱ ' + when : '✓ ' + when}</span>
+        ${pending ? `<a href="#" onclick="cancelClipperSchedule('${esc(p.schedule_id)}');return false;" style="color:var(--danger);">cancel</a>` : ''}
+      </div>`;
+    }).join('') + `</div>`;
+}
+
+// ── Clipper: post / schedule to OpusClip-connected social accounts ──
+let _opusAccounts = null;
+async function loadOpusAccounts() {
+  if (_opusAccounts) return _opusAccounts;
+  const res = await fetch('/opusclip/social-accounts');
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Could not load social accounts'); }
+  _opusAccounts = await res.json();
+  return _opusAccounts;
+}
+
+let _postModalCtx = null;
+async function openPostModal(taskId, clipIdx) {
+  const task = _clipperTaskById[taskId];
+  const clip = task && task.clips && task.clips[clipIdx];
+  if (!clip) return;
+  _postModalCtx = { taskId, clip };
+  let modal = document.getElementById('op-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'op-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `<div style="background:var(--bg-surface,#0d0d12);border:1px solid var(--border);border-radius:12px;max-width:440px;width:100%;padding:20px;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="section-header" style="margin:0;">Post clip</div>
+        <button onclick="closePostModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#x2715;</button>
+      </div>
+      <div id="op-clip-title" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;"></div>
+      <div class="form-label">Account</div>
+      <select class="form-select" id="op-account" style="width:100%;"></select>
+      <div class="form-label" style="margin-top:12px;">Title</div>
+      <input class="form-input" id="op-title" style="width:100%;" />
+      <div class="form-label" style="margin-top:12px;">Description</div>
+      <textarea class="form-input" id="op-desc" rows="4" style="width:100%;"></textarea>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <div style="flex:1;">
+          <div class="form-label">Privacy</div>
+          <select class="form-select" id="op-privacy" style="width:100%;">
+            <option value="public" selected>Public</option>
+            <option value="unlisted">Unlisted</option>
+            <option value="private">Private</option>
+          </select>
+        </div>
+        <div style="flex:1;">
+          <div class="form-label">Schedule (optional)</div>
+          <input class="form-input" id="op-when" type="datetime-local" style="width:100%;" />
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-submit" onclick="generateClipCopy()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--text);">✨ AI copy</button>
+        <button class="btn-submit" id="op-send" onclick="submitClipPost()">Post</button>
+        <span id="op-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+      </div>
+    </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) closePostModal(); });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  document.getElementById('op-clip-title').textContent = clip.title || 'Clip';
+  document.getElementById('op-title').value = clip.title || '';
+  document.getElementById('op-desc').value = [clip.description, clip.hashtags].filter(Boolean).join('\n\n');
+  document.getElementById('op-when').value = '';
+  const st = document.getElementById('op-status');
+  st.textContent = 'Loading accounts…';
+  try {
+    const accounts = await loadOpusAccounts();
+    const sel = document.getElementById('op-account');
+    sel.innerHTML = accounts.length
+      ? accounts.map((a, i) => `<option value="${i}">${esc(a.platform.replace(/_/g, ' '))} — ${esc(a.name)}</option>`).join('')
+      : '<option value="">No accounts connected in OpusClip</option>';
+    st.textContent = accounts.length ? '' : 'Connect accounts at clip.opus.pro first';
+  } catch (e) { st.textContent = String(e.message).slice(0, 90); }
+}
+
+function closePostModal() {
+  const m = document.getElementById('op-modal');
+  if (m) m.style.display = 'none';
+  _postModalCtx = null;
+}
+
+function selectedOpusAccount() {
+  const idx = document.getElementById('op-account').value;
+  return (_opusAccounts || [])[Number(idx)] || null;
+}
+
+async function generateClipCopy() {
+  const ctx = _postModalCtx;
+  const account = selectedOpusAccount();
+  const st = document.getElementById('op-status');
+  if (!ctx || !account) { st.textContent = 'Pick an account first'; return; }
+  st.textContent = 'Generating copy…';
+  try {
+    const res = await fetch(`/opusclip/tasks/${encodeURIComponent(ctx.taskId)}/clips/${encodeURIComponent(ctx.clip.id)}/social-copy`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_id: account.post_account_id, sub_account_id: account.sub_account_id }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    if (d.title) document.getElementById('op-title').value = d.title;
+    document.getElementById('op-desc').value = [d.description, d.hashtags].filter(Boolean).join('\n\n');
+    st.textContent = 'Copy generated';
+  } catch (e) { st.textContent = 'Copy failed: ' + String(e.message).slice(0, 80); }
+}
+
+async function submitClipPost() {
+  const ctx = _postModalCtx;
+  const account = selectedOpusAccount();
+  const st = document.getElementById('op-status');
+  if (!ctx || !account) { st.textContent = 'Pick an account first'; return; }
+  const whenRaw = document.getElementById('op-when').value;
+  const publishAt = whenRaw ? new Date(whenRaw) : null;
+  if (publishAt && publishAt.getTime() < Date.now() + 60000) { st.textContent = 'Schedule time must be in the future'; return; }
+  const btn = document.getElementById('op-send');
+  btn.disabled = true;
+  st.textContent = publishAt ? 'Scheduling…' : 'Posting…';
+  try {
+    const res = await fetch(`/opusclip/tasks/${encodeURIComponent(ctx.taskId)}/clips/${encodeURIComponent(ctx.clip.id)}/publish`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: account.post_account_id,
+        sub_account_id: account.sub_account_id,
+        platform: account.platform,
+        account_name: account.name,
+        title: document.getElementById('op-title').value.trim(),
+        description: document.getElementById('op-desc').value.trim(),
+        privacy: document.getElementById('op-privacy').value,
+        publish_at: publishAt ? publishAt.toISOString() : undefined,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    st.textContent = publishAt ? 'Scheduled ✓' : 'Posted ✓';
+    loadTasks();
+    setTimeout(closePostModal, 1200);
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 90); }
+  finally { btn.disabled = false; }
+}
+
+async function cancelClipperSchedule(scheduleId) {
+  if (!confirm('Cancel this scheduled post?')) return;
+  try {
+    const res = await fetch('/opusclip/schedules/' + encodeURIComponent(scheduleId), { method: 'DELETE' });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'HTTP ' + res.status); }
+  } catch (e) { alert('Cancel failed: ' + e.message); }
+  loadTasks();
+}
+
+async function clipToCommunity(taskId, clipIdx) {
+  const task = _clipperTaskById[taskId];
+  const clip = task && task.clips && task.clips[clipIdx];
+  if (!clip) return;
+  if (!confirm('Create a draft post in the Community manager with this clip?')) return;
+  try {
+    const res = await fetch(`/opusclip/tasks/${encodeURIComponent(taskId)}/clips/${encodeURIComponent(clip.id)}/to-community`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    alert('Draft created in the Community manager — review it there.');
+  } catch (e) { alert('Failed: ' + e.message); }
 }
 
 async function loadTasks() {
@@ -715,6 +929,10 @@ async function submitClipperTask() {
         topic_keywords: keywords,
         description: document.getElementById('cl-desc').value.trim(),
         brand: getSelectedBrand(),
+        model: document.getElementById('cl-model').value || undefined,
+        custom_prompt: document.getElementById('cl-prompt').value.trim() || undefined,
+        aspect_ratio: document.getElementById('cl-aspect').value || undefined,
+        brand_template_id: document.getElementById('cl-brandtpl').value || undefined,
       }),
     });
     if (!res.ok) {
@@ -757,6 +975,26 @@ async function loadBrandOptions() {
   } catch {}
 }
 loadBrandOptions();
+
+function syncClipperModel() {
+  const isAnything = document.getElementById('cl-model').value === 'ClipAnything';
+  document.getElementById('cl-prompt-wrap').style.display = isAnything ? '' : 'none';
+}
+
+async function loadClipperBrandTemplates() {
+  const sel = document.getElementById('cl-brandtpl');
+  if (!sel) return;
+  try {
+    const res = await fetch('/opusclip/brand-templates');
+    if (!res.ok) return; // key missing or API error — keep "None"
+    const templates = await res.json();
+    if (Array.isArray(templates) && templates.length) {
+      sel.innerHTML = '<option value="" selected>None</option>' +
+        templates.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+    }
+  } catch {}
+}
+loadClipperBrandTemplates();
 
 async function loadUgcMotions() {
   const sel = document.getElementById('ugc-motion');

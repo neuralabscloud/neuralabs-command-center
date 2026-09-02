@@ -51,7 +51,9 @@ const {
 
 const app = express();
 
-app.use(express.json({ limit: "10mb" }));
+// Keep the raw body around for HMAC verification of incoming webhooks
+// (OpusClip signs the exact bytes it sends).
+app.use(express.json({ limit: "10mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(cookieParser());
 app.use("/generated-images", express.static(path.join(__dirname, "data", "generated-images")));
 app.use("/ugc-avatars", express.static(path.join(__dirname, "data", "ugc-avatars")));
@@ -153,6 +155,38 @@ app.use("/login.html", express.static(path.join(__dirname, "login.html")));
 app.use("/setup.html", express.static(path.join(__dirname, "setup.html")));
 app.use("/theme.css", express.static(path.join(__dirname, "public", "theme.css")));
 app.use("/brand-loader.js", express.static(path.join(__dirname, "public", "brand-loader.js")));
+// OpusClip completion webhook — registered as a WEBHOOK conclusionAction on
+// project creation when PUBLIC_BASE_URL is set. No session cookie: OpusClip
+// authenticates itself with X-Opus-Signature = HMAC-SHA256(api key, raw body
+// + salt). Replay protection: timestamp freshness window + one-time salts.
+// On a valid call we simply run the OpusClip worker immediately; it is
+// idempotent and fetches stage + clips itself (polling stays as fallback).
+const opusWebhookSalts = new Map(); // salt → first-seen ms
+app.post("/opusclip/webhook", (req, res) => {
+  const key = process.env.OPUSCLIP_API_KEY;
+  const sig = String(req.get("x-opus-signature") || "").toLowerCase();
+  const salt = String(req.get("x-opus-salt") || "");
+  const ts = Number(req.get("x-opus-timestamp") || 0);
+  if (!key || !sig || !salt || !req.rawBody) return res.status(401).json({ error: "Unauthorized" });
+  const expected = crypto.createHmac("sha256", key)
+    .update(Buffer.concat([Buffer.from(req.rawBody), Buffer.from(salt)]))
+    .digest("hex");
+  let valid = false;
+  try { valid = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig)); } catch { /* length mismatch */ }
+  if (!valid) return res.status(401).json({ error: "Bad signature" });
+  const now = Date.now();
+  const tsMs = ts > 1e12 ? ts : ts * 1000; // seconds or ms epoch
+  if (!tsMs || Math.abs(now - tsMs) > 10 * 60 * 1000) return res.status(401).json({ error: "Stale timestamp" });
+  if (opusWebhookSalts.has(salt)) return res.status(401).json({ error: "Replay" });
+  opusWebhookSalts.set(salt, now);
+  if (opusWebhookSalts.size > 500) {
+    for (const [s, t] of opusWebhookSalts) if (now - t > 15 * 60 * 1000) opusWebhookSalts.delete(s);
+  }
+  console.log(`[OPUSCLIP] Webhook received (${(req.body && (req.body.stage || req.body.event || req.body.type)) || "event"})`);
+  res.json({ ok: true });
+  setImmediate(() => processOpusclipTasks().catch(e => console.error("[OPUSCLIP] Webhook-triggered run failed:", e.message)));
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -2054,9 +2088,14 @@ app.post("/opusclip/tasks", (req, res) => {
     source_lang: req.body.source_lang || "auto",
     topic_keywords: Array.isArray(req.body.topic_keywords) ? req.body.topic_keywords : [],
     description: (req.body.description || "").toString().slice(0, 200),
+    model: ["ClipBasic", "ClipAnything"].includes(req.body.model) ? req.body.model : null,
+    custom_prompt: (req.body.custom_prompt || "").toString().slice(0, 2000) || null,
+    brand_template_id: (req.body.brand_template_id || "").toString().slice(0, 100) || null,
+    aspect_ratio: ["portrait", "square", "landscape"].includes(req.body.aspect_ratio) ? req.body.aspect_ratio : null,
     project_id: null,
     stage: null,
     clips: [],
+    posts: [],
     error: null,
   };
   tasks.unshift(task);
@@ -2068,6 +2107,167 @@ app.post("/opusclip/tasks", (req, res) => {
 app.delete("/opusclip/tasks/:id", (req, res) => {
   writeTaskFile("opusclip-tasks.json", readTaskFile("opusclip-tasks.json").filter(t => t.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// Brand templates + connected social accounts, proxied so the browser never
+// touches the OpusClip key.
+app.get("/opusclip/brand-templates", async (_req, res) => {
+  try {
+    const list = await opusclip.listBrandTemplates();
+    res.json(list.map(t => ({ id: t.id || t.brandTemplateId, name: t.name || t.title || t.id || "Template" })));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.get("/opusclip/social-accounts", async (_req, res) => {
+  try {
+    const list = await opusclip.getSocialAccounts();
+    res.json(list.map(a => ({
+      post_account_id: a.postAccountId,
+      sub_account_id: a.subAccountId || null,
+      platform: a.platform || "",
+      name: a.extUserName || a.extUserId || "Account",
+    })));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+function findOpusclipClip(taskId, clipId, res) {
+  const tasks = readTaskFile("opusclip-tasks.json");
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) { res.status(404).json({ error: "Task not found" }); return null; }
+  if (!task.project_id) { res.status(409).json({ error: "Task has no OpusClip project yet" }); return null; }
+  const clip = (task.clips || []).find(c => String(c.id) === String(clipId));
+  if (!clip) { res.status(404).json({ error: "Clip not found on this task" }); return null; }
+  return { tasks, task, clip };
+}
+
+// AI social copy for one clip: create the job and poll it to completion
+// (copy jobs finish in seconds; cap the wait at ~30s).
+app.post("/opusclip/tasks/:id/clips/:clipId/social-copy", async (req, res) => {
+  const found = findOpusclipClip(req.params.id, req.params.clipId, res);
+  if (!found) return;
+  try {
+    const { jobId } = await opusclip.createSocialCopyJob({
+      projectId: found.task.project_id,
+      clipId: found.clip.id,
+      postAccountId: req.body.account_id,
+      subAccountId: req.body.sub_account_id || undefined,
+      prompt: (req.body.prompt || "").toString().slice(0, 500) || undefined,
+    });
+    let job = { status: "RUNNING" };
+    for (let i = 0; i < 20 && job.status === "RUNNING"; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      job = await opusclip.getSocialCopyJob(jobId);
+    }
+    if (job.status !== "COMPLETED") {
+      return res.status(502).json({ error: `Copy job ended as ${job.status || "RUNNING"}` });
+    }
+    res.json({ title: job.title || "", description: job.description || "", hashtags: job.hashtags || "" });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Publish a clip to a connected account — immediately, or scheduled when
+// publish_at (ISO, future) is given. The post/schedule is recorded on the
+// task so the UI can show it and cancel schedules.
+app.post("/opusclip/tasks/:id/clips/:clipId/publish", async (req, res) => {
+  const found = findOpusclipClip(req.params.id, req.params.clipId, res);
+  if (!found) return;
+  const { tasks, task, clip } = found;
+  if (!req.body.account_id) return res.status(400).json({ error: "account_id is required" });
+  const opts = {
+    projectId: task.project_id,
+    clipId: clip.id,
+    postAccountId: req.body.account_id,
+    subAccountId: req.body.sub_account_id || undefined,
+    title: (req.body.title || clip.title || "Clip").toString(),
+    description: (req.body.description || "").toString(),
+    privacy: req.body.privacy,
+  };
+  const publishAt = req.body.publish_at ? new Date(req.body.publish_at) : null;
+  if (publishAt && (isNaN(publishAt) || publishAt.getTime() < Date.now() + 60_000)) {
+    return res.status(400).json({ error: "publish_at must be a valid time at least 1 minute in the future" });
+  }
+  try {
+    const entry = {
+      id: genId(),
+      clip_id: clip.id,
+      account_id: req.body.account_id,
+      platform: (req.body.platform || "").toString().slice(0, 40),
+      account_name: (req.body.account_name || "").toString().slice(0, 100),
+      title: opts.title.slice(0, 200),
+      post_id: null,
+      schedule_id: null,
+      publish_at: publishAt ? publishAt.toISOString() : null,
+      created_at: new Date().toISOString(),
+    };
+    if (publishAt) {
+      const { scheduleId } = await opusclip.schedulePost({ ...opts, publishAt });
+      entry.schedule_id = scheduleId || null;
+    } else {
+      const { postId } = await opusclip.publishPost(opts);
+      entry.post_id = postId || null;
+    }
+    task.posts = Array.isArray(task.posts) ? task.posts : [];
+    task.posts.push(entry);
+    task.updated_at = new Date().toISOString();
+    writeTaskFile("opusclip-tasks.json", tasks);
+    res.status(201).json(entry);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.delete("/opusclip/schedules/:scheduleId", async (req, res) => {
+  try {
+    await opusclip.cancelScheduledPost(req.params.scheduleId);
+  } catch (e) { return res.status(502).json({ error: e.message }); }
+  const tasks = readTaskFile("opusclip-tasks.json");
+  let changed = false;
+  for (const t of tasks) {
+    const before = (t.posts || []).length;
+    t.posts = (t.posts || []).filter(p => p.schedule_id !== req.params.scheduleId);
+    if (t.posts.length !== before) { t.updated_at = new Date().toISOString(); changed = true; }
+  }
+  if (changed) writeTaskFile("opusclip-tasks.json", tasks);
+  res.json({ ok: true });
+});
+
+// Hand a locally saved clip to the Community manager as a draft post, so it
+// flows through the normal review/schedule pipeline (Telegram/X channels).
+app.post("/opusclip/tasks/:id/clips/:clipId/to-community", (req, res) => {
+  const found = findOpusclipClip(req.params.id, req.params.clipId, res);
+  if (!found) return;
+  const { clip } = found;
+  if (!clip.local_path) {
+    return res.status(409).json({ error: "Clip is not saved locally (yet) — cannot attach it to a community post" });
+  }
+  const channels = readChannels();
+  const channel_id = req.body.channel_id || (channels[0] && channels[0].id) || null;
+  if (!channel_id || !channels.some(c => c.id === channel_id)) {
+    return res.status(400).json({ error: "No valid community channel configured" });
+  }
+  // Social text style rule: no em/en dashes in post copy.
+  const defaultText = [clip.title, clip.hashtags].filter(Boolean).join("\n\n");
+  const text = ((req.body.text || defaultText || "").toString()).replace(/[—–]/g, "-").slice(0, 4000);
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const draft = {
+    id: genId(),
+    channel_id,
+    status: "draft",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    scheduled_at: req.body.scheduled_at || new Date().toISOString(),
+    scheduled_local: null,
+    archetype: null,
+    trigger_word: null,
+    media_path: clip.local_path,
+    media_paths: [clip.local_path],
+    text,
+    published_at: null,
+    message_id: null,
+    attempts: 0,
+    error: null,
+  };
+  tasks.push(draft);
+  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  res.status(201).json(draft);
 });
 
 // ── UGC TASKS (Higgsfield) ───────────────────────────────────────────
@@ -2402,7 +2602,7 @@ app.get("/settings/integrations", (_req, res) => {
     details: [
       { label: "API Key", value: opusclipKey, secret: true },
       { label: "Endpoint", value: "https://api.opus.pro" },
-      { label: "Used by", value: "Content Creator — Clipper tab (long-form → short-form clips)" },
+      { label: "Used by", value: "Content Creator — Clipper tab (clips, AI copy, social posting & scheduling)" },
     ],
   });
 
@@ -4415,6 +4615,9 @@ app.post("/ctrl/chat", async (req, res) => {
             source_lang: { type: "string", description: "Bron-taalcode (bijv. 'en', 'nl', 'es') of 'auto'. Default: 'auto'." },
             topic_keywords: { type: "array", items: { type: "string" }, description: "Optionele onderwerpen om op te focussen, bijv. ['hook', 'key takeaway']." },
             description: { type: "string", description: "Korte interne omschrijving (max 200 tekens)." },
+            model: { type: "string", enum: ["ClipBasic", "ClipAnything"], description: "ClipBasic = talking-head video's (default). ClipAnything = elk genre, stuurbaar met custom_prompt." },
+            custom_prompt: { type: "string", description: "Alleen bij ClipAnything: vrije instructie welke momenten geclipt moeten worden, bijv. 'elke keer dat de gast over prijzen praat'." },
+            aspect_ratio: { type: "string", enum: ["portrait", "square", "landscape"], description: "Beeldverhouding van de clips. Default: auto (portrait)." },
           },
           required: ["video_url"],
         },
@@ -4689,6 +4892,9 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           source_lang: input.source_lang,
           topic_keywords: Array.isArray(input.topic_keywords) ? input.topic_keywords : [],
           description: input.description || "",
+          model: input.model,
+          custom_prompt: input.custom_prompt,
+          aspect_ratio: input.aspect_ratio,
         },
       }),
       opusclip_status: (input) => ({
@@ -6110,6 +6316,38 @@ async function pollAvatarCreator() {
 // ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
 // ── OPUSCLIP WORKER ──
 const opusclip = require("./opusclip-agent");
+const OPUSCLIP_MEDIA_DIR = path.join(__dirname, "public", "media", "opusclip");
+
+// OpusClip projects (and their signed download URLs) expire after a while;
+// save finished clips + thumbnails into public/media/opusclip/<taskId>/ so
+// they stay usable (community posts, downloads) after expiry. Failures are
+// per-clip and non-fatal — the remote URL keeps working until it expires.
+async function saveOpusclipClipsLocally(task) {
+  const { pipeline } = require("stream/promises");
+  const { Readable } = require("stream");
+  const dir = path.join(OPUSCLIP_MEDIA_DIR, task.id);
+  for (const clip of task.clips || []) {
+    const targets = [
+      { url: clip.download_url, ext: ".mp4", field: "local_path" },
+      { url: clip.thumbnail_url, ext: ".jpg", field: "local_thumb" },
+    ];
+    for (const t of targets) {
+      if (!t.url || clip[t.field]) continue;
+      const name = String(clip.id || "clip").replace(/[^a-zA-Z0-9_-]/g, "") + t.ext;
+      const dest = path.join(dir, name);
+      try {
+        const resp = await fetch(t.url);
+        if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+        fs.mkdirSync(dir, { recursive: true });
+        await pipeline(Readable.fromWeb(resp.body), fs.createWriteStream(dest));
+        clip[t.field] = `/media/opusclip/${task.id}/${name}`;
+      } catch (e) {
+        try { fs.unlinkSync(dest); } catch {}
+        console.error(`[WORKER] OpusClip local save failed (${task.id}/${name}):`, e.message);
+      }
+    }
+  }
+}
 
 async function processOpusclipTasks() {
   const tasks = readTaskFile("opusclip-tasks.json");
@@ -6122,12 +6360,18 @@ async function processOpusclipTasks() {
     processingTasks.add(task.id);
     try {
       console.log(`[WORKER] OpusClip submitting ${task.video_url}`);
+      const publicBase = (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
       const proj = await opusclip.createProject({
         videoUrl: task.video_url,
         minDuration: task.min_duration,
         maxDuration: task.max_duration,
         sourceLang: task.source_lang,
         topicKeywords: task.topic_keywords,
+        model: task.model || undefined,
+        customPrompt: task.model === "ClipAnything" ? (task.custom_prompt || undefined) : undefined,
+        brandTemplateId: task.brand_template_id || undefined,
+        aspectRatio: task.aspect_ratio || undefined,
+        webhookUrl: publicBase ? `${publicBase}/opusclip/webhook` : undefined,
       });
       task.project_id = proj.projectId || proj.id;
       task.stage = proj.stage || "QUEUED";
@@ -6171,7 +6415,9 @@ async function processOpusclipTasks() {
             thumbnail_url: c.uriForThumbnail || "",
             keywords: c.keywords || c.clipKeywords || [],
             hashtags: c.hashtags || "",
+            virality_score: c.viralityScore ?? null,
           }));
+          await saveOpusclipClipsLocally(task);
           task.status = "completed";
         } else {
           task.status = "failed";
