@@ -55,6 +55,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 app.use("/generated-images", express.static(path.join(__dirname, "data", "generated-images")));
 app.use("/ugc-avatars", express.static(path.join(__dirname, "data", "ugc-avatars")));
+app.use("/voiceovers", express.static(path.join(__dirname, "data", "voiceovers")));
 app.use((_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
@@ -158,6 +159,16 @@ app.use("/brand-loader.js", express.static(path.join(__dirname, "public", "brand
 app.get("/ugc-media/:file", (req, res) => {
   const file = String(req.params.file).replace(/[^a-zA-Z0-9._-]/g, "");
   const p = path.join(__dirname, "data", "ugc-audio", file);
+  if (!file || !fs.existsSync(p)) return res.status(404).end();
+  res.sendFile(p);
+});
+
+// Public, unauthenticated reference images: Higgsfield's servers fetch input
+// images by URL (no session cookie). Random file names, served read-only from
+// data/ref-images. Files are removed once the job that needed them is done.
+app.get("/ref-media/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^a-zA-Z0-9._-]/g, "");
+  const p = path.join(__dirname, "data", "ref-images", file);
   if (!file || !fs.existsSync(p)) return res.status(404).end();
   res.sendFile(p);
 });
@@ -662,6 +673,88 @@ function loadBrandContext(brandName) {
   };
 }
 
+// ── SHARED MEDIA HELPERS (Inference.sh apps + public reference images) ──
+// Run any inference.sh app and hand back the parsed JSON result. The CLI prints
+// a version banner (and, on failure, a plain-text error) before the JSON, so the
+// output is stripped of ANSI codes and cut at the first "{".
+function runInfshApp(appId, inputObj, opts) {
+  const o = opts || {};
+  return new Promise((resolve, reject) => {
+    const tmpInput = path.join(__dirname, "data", `infsh-input-${genId()}.json`);
+    try { fs.writeFileSync(tmpInput, JSON.stringify(inputObj)); }
+    catch (e) { return reject(e); }
+    execFile("infsh", ["app", "run", appId, "--input", tmpInput, "--json"], {
+      timeout: o.timeout || 300000,
+      maxBuffer: 1024 * 1024 * 50,
+      env: { ...process.env, HOME: process.env.HOME || "/root" },
+    }, (err, stdout, stderr) => {
+      try { fs.unlinkSync(tmpInput); } catch {}
+      const clean = (t) => String(t || "").replace(/\x1b\[[0-9;]*m/g, "").trim();
+      if (err) return reject(new Error(clean(stderr) || err.message));
+      const stripped = clean(stdout);
+      const jsonStart = stripped.indexOf("{");
+      if (jsonStart < 0) return reject(new Error(stripped.replace(/^inference\.sh\s+v[\d.]+\s*/i, "").slice(0, 300) || "no JSON in output"));
+      try { resolve(JSON.parse(stripped.slice(jsonStart))); }
+      catch (e) { reject(new Error("could not parse output: " + e.message)); }
+    });
+  });
+}
+
+// First file URL in an inference.sh app result, whatever the output field is called.
+function infshOutputUrl(result, keys) {
+  const out = (result && result.output) || result || {};
+  for (const k of keys || []) {
+    const v = out[k];
+    if (typeof v === "string" && v) return v;
+    if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+    if (v && typeof v === "object" && typeof v.url === "string") return v.url;
+  }
+  for (const v of Object.values(out)) {
+    if (typeof v === "string" && /^https?:\/\//.test(v)) return v;
+    if (Array.isArray(v) && typeof v[0] === "string" && /^https?:\/\//.test(v[0])) return v[0];
+  }
+  return "";
+}
+
+// Download a remote file to disk (generator URLs expire).
+async function downloadTo(url, outFile) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("download failed: HTTP " + r.status);
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+  return outFile;
+}
+
+// Copy a local image into the publicly served ref-images dir and return the URL
+// Higgsfield can fetch. Returns "" when the server has no public origin.
+const REF_IMAGES_DIR = path.join(__dirname, "data", "ref-images");
+function publishRefImage(localPath, origin) {
+  if (!localPath || !fs.existsSync(localPath) || !origin) return { url: "", file: "" };
+  fs.mkdirSync(REF_IMAGES_DIR, { recursive: true });
+  const ext = (path.extname(localPath) || ".png").toLowerCase().replace(/[^.a-z0-9]/g, "");
+  const name = `${genId()}${ext || ".png"}`;
+  fs.copyFileSync(localPath, path.join(REF_IMAGES_DIR, name));
+  return { url: origin.replace(/\/$/, "") + "/ref-media/" + name, file: name };
+}
+function removeRefImage(file) {
+  if (!file) return;
+  try { fs.unlinkSync(path.join(REF_IMAGES_DIR, String(file).replace(/[^a-zA-Z0-9._-]/g, ""))); } catch {}
+}
+
+// Map a "/generated-images/x.png" style result URL back to a file on disk so an
+// existing design can be used as the input of an edit or enhance run.
+function localFileForResultUrl(url) {
+  const m = String(url || "").match(/^\/(generated-images|media|voiceovers)\/([\w.-]+)$/);
+  if (!m) return "";
+  const roots = {
+    "generated-images": path.join(__dirname, "data", "generated-images"),
+    "media": path.join(__dirname, "public", "media"),
+    "voiceovers": path.join(__dirname, "data", "voiceovers"),
+  };
+  const p = path.join(roots[m[1]], m[2]);
+  return fs.existsSync(p) ? p : "";
+}
+
 app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const tasks = readTaskFile("designer-tasks.json");
   const desc = req.body.description || "";
@@ -673,6 +766,21 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const engine = req.body.engine || "nanobanana"; // nanobanana | higgsfield | playwright | claude | canva
   const designStyle = readDesignStyle(req.body);
   const requestedSlideCount = req.body.slide_count || null;
+  // Edit mode reworks an existing image instead of generating a new one. The
+  // source is either an upload or an image that is already in the gallery.
+  const mode = req.body.mode === "edit" ? "edit" : "generate";
+  const sourceUrl = (req.body.source_url || "").trim();
+  // Either a file on disk or a public URL the generators can fetch themselves.
+  const sourceFile = sourceUrl ? (localFileForResultUrl(sourceUrl) || (/^https?:\/\//i.test(sourceUrl) ? sourceUrl : "")) : "";
+  const editSources = [...refImagePaths.filter(p => p && fs.existsSync(p))];
+  // eslint-disable-next-line no-unused-vars
+  if (sourceFile) editSources.unshift(sourceFile);
+  // How a reference image is used: as the subject (same character/product) or
+  // as a style/composition reference. Higgsfield Soul only.
+  const referenceMode = req.body.reference_mode === "style" ? "style" : "subject";
+  // Higgsfield Soul can return 4 variants from a single call.
+  const variants = String(req.body.variants) === "4" ? 4 : 1;
+  const publicOrigin = detectPublicOrigin(req).origin || (process.env.PUBLIC_ORIGIN || "").trim();
   // Accept aspect_ratios as array, single string, or comma-separated. Fall back to legacy aspect_ratio.
   const rawAspects = req.body.aspect_ratios ?? req.body.aspect_ratio ?? null;
   const customAspectRatios = (Array.isArray(rawAspects) ? rawAspects
@@ -793,6 +901,15 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     return { slide, slideDesc };
   };
 
+  if (mode === "edit") {
+    if (!editSources.length) {
+      return res.status(400).json({ error: "Edit mode needs a source image — upload one or use Edit on an existing design." });
+    }
+    if (engine !== "nanobanana" && engine !== "higgsfield") {
+      return res.status(400).json({ error: "Edit mode works with the Nano Banana and Higgsfield engines." });
+    }
+  }
+
   if (engine === "playwright" && slides.length > 1) {
     // Playwright carousel: Claude designs, then Playwright renders
     const parentId = genId();
@@ -900,7 +1017,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
       });
 
       const inputObj = { prompt, aspect_ratio: task.aspect_ratio || aspect, resolution: "2K", num_images: 1 };
-      const validRefPaths = refImagePaths.filter(p => p && fs.existsSync(p));
+      const validRefPaths = mode === "edit" ? editSources : refImagePaths.filter(p => p && fs.existsSync(p));
       if (validRefPaths.length > 0) inputObj.images = validRefPaths;
       const input = JSON.stringify(inputObj);
 
@@ -1021,17 +1138,31 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   }
 
   if (engine === "higgsfield") {
-    // Higgsfield Soul (text-to-image). Jobs are async: submit here, results are
-    // collected by pollDesignerHiggsfield().
+    // Higgsfield: Soul for new images, nano-banana for edits. Jobs are async:
+    // submit here, results are collected by pollDesignerHiggsfield().
     if (!(process.env.HIGGSFIELD_API_KEY || "").includes(":")) {
       return res.status(400).json({ error: "Higgsfield is not configured — add the Key ID and App Secret in Settings." });
     }
+    if (mode === "edit" && !publicOrigin && !editSources.every(sp => /^https?:\/\//i.test(sp))) {
+      return res.status(400).json({ error: "Editing with Higgsfield needs a public server URL — set PUBLIC_ORIGIN or use the Nano Banana engine." });
+    }
     const createdTasks = buildImageTasks("higgsfield");
+    if (mode !== "edit" && variants > 1) for (const t of createdTasks) t.hf_variants = variants;
     tasks.unshift(...createdTasks);
     writeTaskFile("designer-tasks.json", tasks);
     res.status(201).json(createdTasks);
 
     (async () => {
+      // Higgsfield fetches reference images over HTTP, so they have to be
+      // published under /ref-media first.
+      const published = [];
+      const sources = mode === "edit" ? editSources : refImagePaths.filter(p => p && fs.existsSync(p));
+      for (const sp of sources.slice(0, 4)) {
+        // Remote images are already reachable; local uploads need publishing.
+        if (/^https?:\/\//i.test(sp)) { published.push({ url: sp, file: "" }); continue; }
+        const pub = publishRefImage(sp, publicOrigin);
+        if (pub.url) published.push(pub);
+      }
       for (let i = 0; i < createdTasks.length; i++) {
         const task = createdTasks[i];
         const { slide, slideDesc } = slideContentFor(i);
@@ -1042,16 +1173,39 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
           slideInstruction,
           structured: !!slide || /\*\*\d|slide|headline/i.test(slideDesc),
         });
+        let endpoint = HIGGSFIELD.endpoints.text2image;
+        let params;
+        if (mode === "edit") {
+          endpoint = HIGGSFIELD.endpoints.imageEdit;
+          params = {
+            prompt: prompt.slice(0, 2000),
+            input_images: published.map(pu => ({ type: "image_url", image_url: pu.url })),
+            aspect_ratio: higgsfieldAspect(task.aspect_ratio),
+          };
+        } else {
+          params = {
+            prompt: prompt.slice(0, 2000),
+            width_and_height: higgsfieldSize(task.aspect_ratio),
+            quality: "1080p",
+            enhance_prompt: true,
+          };
+          if (variants > 1) params.batch_size = variants;
+          if (published.length) {
+            // custom_reference keeps the same subject (face/product);
+            // image_reference copies the style and composition.
+            if (referenceMode === "style") {
+              params.image_reference = { type: "image_url", image_url: published[0].url };
+            } else {
+              params.custom_reference = { type: "image_url", image_url: published[0].url };
+              params.custom_reference_strength = 0.8;
+            }
+          }
+        }
         let jobId = "", failure = "";
         try {
-          const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+          const r = await fetch(HIGGSFIELD.base + endpoint, {
             method: "POST", headers: higgsfieldHeaders(),
-            body: JSON.stringify({ params: {
-              prompt: prompt.slice(0, 2000),
-              width_and_height: higgsfieldSize(task.aspect_ratio),
-              quality: "1080p",
-              enhance_prompt: true,
-            } }),
+            body: JSON.stringify({ params }),
           });
           const d = await r.json().catch(() => ({}));
           jobId = d.id || d.job_set_id || (d.job_set && d.job_set.id) || "";
@@ -1075,8 +1229,10 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         all[idx].updated_at = new Date().toISOString();
         writeTaskFile("designer-tasks.json", all);
       }
-      // Reference images are not supported by Soul — clean them up.
+      // Uploads are temporary; the published copies stay reachable until the
+      // jobs have had time to fetch them.
       for (const rp of refImagePaths) { try { fs.unlinkSync(rp); } catch {} }
+      if (published.length) setTimeout(() => published.forEach(pu => removeRefImage(pu.file)), 30 * 60 * 1000).unref?.();
     })();
     return;
   }
@@ -1276,6 +1432,59 @@ app.patch("/designer/tasks/:id", (req, res) => {
   res.json(tasks[idx]);
 });
 
+// Post-processing on a finished design: cut out the background or upscale it.
+// Both run through inference.sh and land in the gallery as a new entry.
+const DESIGN_ENHANCERS = {
+  rmbg:    { app: "bria/rmbg", label: "background removed", input: (f) => ({ image: f, preserve_alpha: true }) },
+  upscale: { app: "bria/increase-resolution", label: "upscaled", input: (f) => ({ image: f, desired_increase: 2, preserve_alpha: true }) },
+};
+app.post("/designer/tasks/:id/enhance", async (req, res) => {
+  const action = String(req.body.action || "");
+  const cfg = DESIGN_ENHANCERS[action];
+  if (!cfg) return res.status(400).json({ error: "Unknown action" });
+  const tasks = readTaskFile("designer-tasks.json");
+  const src = tasks.find((t) => t.id === req.params.id);
+  if (!src) return res.status(404).json({ error: "Not found" });
+  const srcFile = localFileForResultUrl(src.result_url) || (/^https?:\/\//i.test(src.result_url || "") ? src.result_url : "");
+  if (!srcFile) return res.status(400).json({ error: "This design has no image to work on." });
+
+  const task = {
+    id: genId(), status: "processing",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    design_type: src.design_type, engine: "enhance", enhance_action: action, variant_of: src.id,
+    aspect_ratio: src.aspect_ratio || null,
+    description: `${src.description || "Design"} (${cfg.label})`,
+    result_url: null, result_thumbnail: null, result_design_id: null, error: null,
+  };
+  tasks.unshift(task);
+  writeTaskFile("designer-tasks.json", tasks);
+  res.status(201).json(task);
+
+  (async () => {
+    let update;
+    try {
+      const result = await runInfshApp(cfg.app, cfg.input(srcFile), { timeout: 300000 });
+      const url = infshOutputUrl(result, ["image", "images", "output_image", "result"]);
+      if (!url) throw new Error(result?.output?.description || result?.error || "no image returned");
+      const ext = action === "rmbg" ? ".png" : (path.extname(url.split("?")[0]) || ".png");
+      const outFile = path.join(__dirname, "data", "generated-images", `enhance-${task.id}${ext}`);
+      if (/^https?:/i.test(url)) await downloadTo(url, outFile);
+      else fs.copyFileSync(url, outFile);
+      update = { status: "completed", result_url: `/generated-images/enhance-${task.id}${ext}` };
+      update.result_thumbnail = update.result_url;
+      console.log(`[DESIGNER] Enhance (${action}) task ${task.id} completed`);
+    } catch (e) {
+      update = { status: "failed", error: String(e.message).slice(0, 400) };
+      console.error(`[DESIGNER] Enhance (${action}) failed:`, String(e.message).slice(0, 200));
+    }
+    const all = readTaskFile("designer-tasks.json");
+    const idx = all.findIndex((t) => t.id === task.id);
+    if (idx === -1) return;
+    Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+    writeTaskFile("designer-tasks.json", all);
+  })();
+});
+
 app.delete("/designer/tasks/:id", (req, res) => {
   writeTaskFile("designer-tasks.json", readTaskFile("designer-tasks.json").filter((t) => t.id !== req.params.id));
   res.json({ ok: true });
@@ -1448,6 +1657,109 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
     allTasks[idx].updated_at = new Date().toISOString();
     writeTaskFile("ai-video-tasks.json", allTasks);
   });
+});
+
+// ── AI VIDEO TOOLS (translate / lipsync / upscale) ────
+// Work on an existing clip instead of generating one: dub it into another
+// language with a cloned voice, re-sync the lips to a new voiceover, or
+// upscale it. Results land in the same list as the generated videos.
+const VIDEO_OUTPUT_DIR = path.join(__dirname, "data", "video-outputs");
+fs.mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true });
+app.use("/video-outputs", express.static(VIDEO_OUTPUT_DIR));
+const VIDEO_TOOLS = {
+  translate: {
+    app: "heygen/video-translate", label: "Translation",
+    build: (b, files) => ({
+      video: files.video,
+      output_language: String(b.output_language || "").trim(),
+      mode: b.mode === "precision" ? "precision" : "speed",
+      enable_caption: b.enable_caption === "true" || b.enable_caption === true,
+      ...(b.input_language ? { input_language: b.input_language } : {}),
+    }),
+    validate: (input) => input.output_language ? "" : "Choose a target language.",
+  },
+  lipsync: {
+    app: "heygen/lipsync", label: "Lipsync",
+    build: (b, files) => ({
+      video: files.video, audio: files.audio,
+      mode: b.mode === "precision" ? "precision" : "speed",
+    }),
+    validate: (input) => input.audio ? "" : "An audio file or a voiceover is required.",
+  },
+  upscale: {
+    app: "topaz/video-upscale", label: "Upscale",
+    build: (b, files) => ({
+      video: files.video,
+      scale: Math.min(4, Math.max(1, Number(b.scale) || 2)),
+      model: b.model || "prob-4",
+    }),
+    validate: () => "",
+  },
+};
+
+app.post("/video/tools", aiVideoUpload.fields([{ name: "video", maxCount: 1 }, { name: "audio", maxCount: 1 }]), (req, res) => {
+  const b = req.body || {};
+  const cfg = VIDEO_TOOLS[b.tool];
+  if (!cfg) return res.status(400).json({ error: "Unknown tool" });
+  const up = req.files || {};
+  const cleanup = [];
+  const pick = (field, urlValue) => {
+    if (up[field] && up[field][0]) { cleanup.push(up[field][0].path); return up[field][0].path; }
+    const local = localFileForResultUrl(urlValue);
+    if (local) return local;
+    return /^https?:\/\//i.test(urlValue || "") ? urlValue : "";
+  };
+  const files = {
+    video: pick("video", b.video_url),
+    audio: pick("audio", b.audio_url || (b.voiceover_id ? `/voiceovers/${String(b.voiceover_id).replace(/[^\w.-]/g, "")}.mp3` : "")),
+  };
+  if (!files.video) {
+    for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
+    return res.status(400).json({ error: "A source video is required." });
+  }
+  const input = cfg.build(b, files);
+  const problem = cfg.validate(input);
+  if (problem) {
+    for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
+    return res.status(400).json({ error: problem });
+  }
+
+  const tasks = readTaskFile("ai-video-tasks.json");
+  const task = {
+    id: genId(), status: "processing",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    model: cfg.app, tool: b.tool,
+    prompt: `${cfg.label}${b.output_language ? ": " + b.output_language : ""}`,
+    aspect_ratio: null, duration: null,
+    result_url: null, error: null,
+  };
+  tasks.unshift(task);
+  writeTaskFile("ai-video-tasks.json", tasks);
+  res.status(201).json(task);
+
+  (async () => {
+    let update;
+    try {
+      const result = await runInfshApp(cfg.app, input, { timeout: 1800000 });
+      const url = infshOutputUrl(result, ["video", "output_video", "result"]);
+      if (!url) throw new Error(result?.output?.description || result?.error || result?.status_text || "no video returned");
+      const ext = (path.extname(String(url).split("?")[0]) || ".mp4").slice(0, 5);
+      const outFile = path.join(VIDEO_OUTPUT_DIR, task.id + ext);
+      if (/^https?:/i.test(url)) await downloadTo(url, outFile);
+      else { fs.mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true }); fs.copyFileSync(url, outFile); }
+      update = { status: "completed", result_url: `/video-outputs/${task.id}${ext}` };
+      console.log(`[AI-VIDEO] ${cfg.label} task ${task.id} completed`);
+    } catch (e) {
+      update = { status: "failed", error: String(e.message).slice(0, 400) };
+      console.error(`[AI-VIDEO] ${cfg.label} failed:`, String(e.message).slice(0, 200));
+    }
+    for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
+    const all = readTaskFile("ai-video-tasks.json");
+    const idx = all.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+    writeTaskFile("ai-video-tasks.json", all);
+  })();
 });
 
 app.delete("/video/ai-generate/:id", (req, res) => {
@@ -1775,7 +2087,13 @@ app.post("/ugc/tasks", (req, res) => {
     model: b.model || "dop-lite",
     motion_id: b.motion_id || "",
     voice_id: b.voice_id || "",
+    voice_provider: b.voice_provider || "",
+    voice_emotion: b.voice_emotion || "",
+    voice_speed: b.voice_speed || 1,
     speak_model: b.speak_model || "higgsfield",
+    video_engine: b.video_engine || "dop",
+    duration: b.duration || "",
+    resolution: b.resolution || "",
     avatar_prompt: b.avatar_prompt || "",
     avatar_request_id: "",
     audio_url: b.audio_url || "",
@@ -1821,15 +2139,101 @@ app.get("/ugc/motions", async (_req, res) => {
 });
 
 // ── UGC VOICES (ElevenLabs) — for the Talking-Avatar voice dropdown ──
-app.get("/ugc/voices", async (_req, res) => {
+app.get("/ugc/voices", async (req, res) => {
+  // Two providers: ElevenLabs (needs a key) and MiniMax through inference.sh,
+  // which works out of the box and is the default when no key is set.
+  const provider = ttsProvider(req.query.provider);
+  if (provider === "inference") {
+    return res.json(INFERENCE_VOICES.map(v => ({ id: v, name: v.replace(/_/g, " "), provider: "inference" })));
+  }
   try {
     const key = (process.env.ELEVENLABS_API_KEY || "").trim();
     if (!key) return res.json([]);
     const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
     const data = await r.json();
-    const list = Array.isArray(data.voices) ? data.voices.map(v => ({ id: v.voice_id, name: v.name })) : [];
+    const list = Array.isArray(data.voices) ? data.voices.map(v => ({ id: v.voice_id, name: v.name, provider: "elevenlabs" })) : [];
     res.json(list);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Which TTS providers this install can use, for the UI to offer.
+app.get("/ugc/voice-providers", (_req, res) => {
+  res.json({
+    default: ttsProvider(),
+    emotions: INFERENCE_EMOTIONS,
+    providers: [
+      { id: "inference", label: "MiniMax (inference.sh)", available: true },
+      { id: "elevenlabs", label: "ElevenLabs", available: !!(process.env.ELEVENLABS_API_KEY || "").trim() },
+    ],
+  });
+});
+
+// Video engines available for the clip mode, with their options.
+app.get("/ugc/video-engines", (_req, res) => {
+  res.json(Object.entries(HIGGSFIELD_VIDEO).map(([id, c]) => ({
+    id, label: c.label, models: c.models || [], durations: c.durations || [],
+    resolutions: c.resolutions || [], motions: !!c.motions,
+  })));
+});
+
+// ── VOICEOVER STUDIO (standalone text-to-speech) ────────────────────
+// Same TTS engines as the talking avatar, but the audio file itself is the
+// deliverable: voiceovers for videos, ads and social clips.
+const VOICEOVER_DIR = path.join(__dirname, "data", "voiceovers");
+fs.mkdirSync(VOICEOVER_DIR, { recursive: true });
+app.get("/audio/voiceovers", (_req, res) => res.json(readTaskFile("voiceover-tasks.json")));
+
+app.post("/audio/voiceovers", (req, res) => {
+  const b = req.body || {};
+  const text = String(b.text || "").trim();
+  if (!text) return res.status(400).json({ error: "Text is required" });
+  const provider = ttsProvider(b.provider);
+  if (provider === "elevenlabs" && !(process.env.ELEVENLABS_API_KEY || "").trim()) {
+    return res.status(400).json({ error: "ElevenLabs is not configured — add the API key in Settings or use the MiniMax voice." });
+  }
+  const tasks = readTaskFile("voiceover-tasks.json");
+  const task = {
+    id: genId(), status: "processing",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    provider, voice_id: b.voice_id || "", emotion: b.emotion || "", speed: Number(b.speed) || 1,
+    text: text.slice(0, 10000), title: (b.title || text.slice(0, 60)).trim(),
+    result_url: null, duration: null, error: null,
+  };
+  tasks.unshift(task);
+  if (tasks.length > 100) tasks.length = 100;
+  writeTaskFile("voiceover-tasks.json", tasks);
+  res.status(201).json(task);
+
+  (async () => {
+    let update;
+    try {
+      const outFile = path.join(VOICEOVER_DIR, task.id + ".mp3");
+      await synthesizeSpeech({
+        text: task.text, outFile,
+        provider: task.provider, voice_id: task.voice_id, emotion: task.emotion, speed: task.speed,
+      });
+      update = { status: "completed", result_url: `/voiceovers/${task.id}.mp3` };
+      // Rough length so the UI can show it — 1 second per ~15 characters.
+      update.duration = Math.round(task.text.length / 15);
+      console.log(`[VOICEOVER] ${task.id} generated (${task.provider})`);
+    } catch (e) {
+      update = { status: "failed", error: String(e.message).slice(0, 400) };
+      console.error("[VOICEOVER] failed:", String(e.message).slice(0, 200));
+    }
+    const all = readTaskFile("voiceover-tasks.json");
+    const idx = all.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+    writeTaskFile("voiceover-tasks.json", all);
+  })();
+});
+
+app.delete("/audio/voiceovers/:id", (req, res) => {
+  const tasks = readTaskFile("voiceover-tasks.json");
+  const t = tasks.find(x => x.id === req.params.id);
+  if (t) { try { fs.unlinkSync(path.join(VOICEOVER_DIR, t.id + ".mp3")); } catch {} }
+  writeTaskFile("voiceover-tasks.json", tasks.filter(x => x.id !== req.params.id));
+  res.json({ ok: true });
 });
 
 // ── UGC AVATAR LIBRARY (Higgsfield Soul portraits) ──────────────────
@@ -4035,7 +4439,7 @@ app.post("/ctrl/chat", async (req, res) => {
           properties: {
             mode: { type: "string", enum: ["clip", "speak"] },
             image_url: { type: "string", description: "URL of the source/product/avatar image" },
-            prompt: { type: "string", description: "Clip mode: animation prompt" },
+            prompt: { type: "string", description: "Clip mode: animation prompt. Speak mode: optional scene direction (pose, hands, background, camera) — omit for a neutral talking head" },
             script: { type: "string", description: "Speak mode: the script the avatar speaks" },
             motion_preset: { type: "string", description: "Clip mode preset, e.g. ugc, unboxing, product-review" },
             aspect_ratio: { type: "string", enum: ["9:16", "1:1", "16:9"] },
@@ -5315,6 +5719,7 @@ const HIGGSFIELD = {
     clip:      "/v1/image2video/dop",   // image-to-video
     speak:     "/v1/speak/higgsfield",  // talking avatar (requires input_audio)
     text2image:"/v1/text2image/soul",   // generate an avatar portrait from a prompt
+    imageEdit: "/v1/text2image/nano-banana", // edit an existing image with a prompt
     motions:   "/v1/motions",           // list of motions { id, name, description }
     jobSet:    (id) => `/v1/job-sets/${id}`,
   },
@@ -5322,6 +5727,40 @@ const HIGGSFIELD = {
   speakModels: ["higgsfield", "kling"], // talking-avatar models (/v1/speak/{model})
   avatarSize: "1152x2048",              // 9:16 portrait for generated avatars
 };
+// Image-to-video engines. Each one has its own endpoint and its own parameter
+// set; `build` returns the extra params on top of prompt + input_image.
+// `build` returns the engine-specific params on top of prompt + input image.
+const HIGGSFIELD_VIDEO = {
+  dop: {
+    endpoint: "/v1/image2video/dop", label: "DoP", motions: true,
+    models: ["dop-lite", "dop-preview", "dop-turbo"],
+    build: (t) => ({ model: pickOption(t.model, ["dop-lite", "dop-preview", "dop-turbo"]), ...(t.motion_id ? { motion_id: t.motion_id } : {}) }),
+  },
+  kling: {
+    endpoint: "/v1/image2video/kling", label: "Kling",
+    models: ["kling-v2-1", "kling-v2-1-master"], durations: [5, 10],
+    build: (t) => ({ model: pickOption(t.model, ["kling-v2-1", "kling-v2-1-master"]), duration: pickOption(Number(t.duration), [5, 10]) }),
+  },
+  minimax: {
+    endpoint: "/v1/image2video/minimax", label: "MiniMax",
+    durations: [6, 10], resolutions: ["512", "768", "1080"],
+    build: (t) => ({ duration: pickOption(Number(t.duration), [6, 10]), resolution: pickOption(String(t.resolution), ["768", "512", "1080"]) }),
+  },
+  seedance: {
+    endpoint: "/v1/image2video/seedance", label: "Seedance",
+    models: ["seedance_pro", "seedance_lite"], durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12], resolutions: ["480", "720", "1080"],
+    promptKey: "prompts", // seedance takes a list of prompts, the others a single string
+    build: (t) => ({
+      model: pickOption(t.model, ["seedance_lite", "seedance_pro"]),
+      duration: pickOption(Number(t.duration), [5, 3, 4, 6, 7, 8, 9, 10, 11, 12]),
+      resolution: pickOption(String(t.resolution), ["720", "480", "1080"]),
+    }),
+  },
+};
+// First allowed value wins as the default.
+function pickOption(value, allowed) {
+  return allowed.includes(value) ? value : allowed[0];
+}
 // Aspect ratio → the closest size Higgsfield's image models accept.
 const HIGGSFIELD_SIZES = {
   "1:1": "2048x2048", "4:5": "1536x2048", "9:16": "1152x2048", "16:9": "2048x1152",
@@ -5330,6 +5769,13 @@ const HIGGSFIELD_SIZES = {
 };
 function higgsfieldSize(aspect) {
   return HIGGSFIELD_SIZES[aspect] || "2048x2048";
+}
+// The edit models take an aspect ratio from a fixed enum instead of a size.
+const HIGGSFIELD_ASPECTS = ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"];
+function higgsfieldAspect(aspect) {
+  if (HIGGSFIELD_ASPECTS.includes(aspect)) return aspect;
+  if (aspect === "1.91:1") return "16:9";
+  return "auto";
 }
 
 function higgsfieldHeaders() {
@@ -5349,25 +5795,73 @@ function resolveHiggsfieldImageUrl(url, origin) {
 // has no TTS, so we generate the voice from the script via ElevenLabs, save it to
 // data/ugc-audio and serve it at <public_origin>/ugc-media/<id>.mp3 for Higgsfield.
 const ELEVENLABS_DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"; // Rachel
-async function generateUgcAudio(task) {
+// MiniMax (via inference.sh) ships fixed system voices — no API key needed
+// beyond the inference.sh login, which is why it is the default when no
+// ElevenLabs key is configured.
+const INFERENCE_TTS_APP = "minimax/speech-2-8-turbo";
+const INFERENCE_VOICES = [
+  "Wise_Woman", "Friendly_Person", "Inspirational_girl", "Deep_Voice_Man",
+  "Calm_Woman", "Casual_Guy", "Lively_Girl", "Patient_Man", "Young_Knight",
+  "Determined_Man", "Lovely_Girl", "Decent_Boy", "Imposing_Manner",
+  "Elegant_Man", "Abbess", "Sweet_Girl_2", "Exuberant_Girl",
+];
+const INFERENCE_EMOTIONS = ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "calm", "fluent", "whisper"];
+
+// Which TTS provider to use: an explicit choice, else whatever is configured.
+function ttsProvider(requested) {
+  if (requested === "elevenlabs" || requested === "inference") return requested;
+  return (process.env.ELEVENLABS_API_KEY || "").trim() ? "elevenlabs" : "inference";
+}
+
+// Generate speech and return the raw audio file on disk (mp3).
+async function synthesizeSpeech(opts) {
+  const text = String(opts.text || "").trim();
+  if (!text) throw new Error("no text to speak");
+  const outFile = opts.outFile;
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  if (ttsProvider(opts.provider) === "inference") {
+    const input = {
+      text: text.slice(0, 10000),
+      voice_id: opts.voice_id && INFERENCE_VOICES.includes(opts.voice_id) ? opts.voice_id : (opts.voice_id || INFERENCE_VOICES[0]),
+      speed: Math.min(2, Math.max(0.5, Number(opts.speed) || 1)),
+      format: "mp3",
+    };
+    if (INFERENCE_EMOTIONS.includes(opts.emotion)) input.emotion = opts.emotion;
+    if (opts.language_boost) input.language_boost = opts.language_boost;
+    const result = await runInfshApp(INFERENCE_TTS_APP, input, { timeout: 300000 });
+    const url = infshOutputUrl(result, ["audio", "output_audio", "result"]);
+    if (!url) throw new Error(result?.output?.description || result?.error || "no audio returned");
+    if (/^https?:/i.test(url)) await downloadTo(url, outFile);
+    else fs.copyFileSync(url, outFile);
+    return outFile;
+  }
   const key = (process.env.ELEVENLABS_API_KEY || "").trim();
   if (!key) throw new Error("ELEVENLABS_API_KEY not set");
-  if (!task.public_origin) throw new Error("no public_origin — server must be reachable for Higgsfield to fetch the audio");
-  const text = (task.script || task.prompt || "").trim();
-  if (!text) throw new Error("no script for the avatar to speak");
-  const voiceId = task.voice_id || ELEVENLABS_DEFAULT_VOICE;
+  const voiceId = opts.voice_id || ELEVENLABS_DEFAULT_VOICE;
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",
     headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg" },
     body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
   });
   if (!r.ok) throw new Error("ElevenLabs TTS " + r.status + ": " + (await r.text()).slice(0, 200));
-  const buf = Buffer.from(await r.arrayBuffer());
+  fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+  return outFile;
+}
+
+// Talking-avatar voice: Higgsfield's speak endpoint needs a public audio URL and
+// has no TTS of its own, so we generate the voice from the script, save it to
+// data/ugc-audio and serve it at <public_origin>/ugc-media/<id>.wav.
+async function generateUgcAudio(task) {
+  if (!task.public_origin) throw new Error("no public_origin — server must be reachable for Higgsfield to fetch the audio");
+  const text = (task.script || task.prompt || "").trim();
+  if (!text) throw new Error("no script for the avatar to speak");
   const dir = path.join(__dirname, "data", "ugc-audio");
-  fs.mkdirSync(dir, { recursive: true });
   const mp3Path = path.join(dir, task.id + ".mp3");
   const wavPath = path.join(dir, task.id + ".wav");
-  fs.writeFileSync(mp3Path, buf);
+  await synthesizeSpeech({
+    text, outFile: mp3Path,
+    provider: task.voice_provider, voice_id: task.voice_id, emotion: task.voice_emotion, speed: task.voice_speed,
+  });
   // Higgsfield's speak endpoint rejects mp3 ("invalid_audio_format") — convert
   // to 16-bit PCM WAV (mono, 44.1 kHz) with ffmpeg, which it accepts.
   await new Promise((resolve, reject) => {
@@ -5423,14 +5917,19 @@ async function processUgcTasks() {
         }
       }
       const speakModel = HIGGSFIELD.speakModels.includes(t.speak_model) ? t.speak_model : "higgsfield";
-      const ep = isSpeak ? ("/v1/speak/" + speakModel) : HIGGSFIELD.endpoints.clip;
+      const videoEngine = HIGGSFIELD_VIDEO[t.video_engine] ? t.video_engine : "dop";
+      const ep = isSpeak ? ("/v1/speak/" + speakModel) : HIGGSFIELD_VIDEO[videoEngine].endpoint;
       const inputImageUrl = resolveHiggsfieldImageUrl(t.image_url, t.public_origin);
       let params;
       if (isSpeak) {
+        // Scene prompt only if the user gave one — the description ("what is
+        // this video for?", e.g. "product ad") used to leak in here as the
+        // scene direction and made the avatar hold products.
+        const scenePrompt = (t.prompt || "").trim();
         params = {
           input_image: { type: "image_url", image_url: inputImageUrl },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
-          prompt: t.prompt || t.description || "",
+          ...(scenePrompt ? { prompt: scenePrompt } : {}),
         };
         if (speakModel === "higgsfield") {
           // WAN caps at 5/10/15s — pick the smallest that fits the voice.
@@ -5439,12 +5938,15 @@ async function processUgcTasks() {
           params.quality = "high";
         }
       } else {
+        const cfg = HIGGSFIELD_VIDEO[videoEngine];
+        const image = { type: "image_url", image_url: inputImageUrl };
+        const promptText = (t.prompt || t.description || "").trim() || "subtle natural motion, cinematic";
         params = {
-          model: HIGGSFIELD.models.includes(t.model) ? t.model : "dop-lite",
-          prompt: t.prompt || t.description || "",
-          input_images: [{ type: "image_url", image_url: inputImageUrl }],
+          ...(cfg.promptKey === "prompts" ? { prompts: [promptText] } : { prompt: promptText }),
+          // DoP takes a list, the other engines take a single image.
+          ...(videoEngine === "dop" ? { input_images: [image] } : { input_image: image }),
+          ...cfg.build(t),
         };
-        if (t.motion_id) params.motion_id = t.motion_id;
       }
       const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ params }) });
       const data = await r.json().catch(() => ({}));
@@ -5472,43 +5974,58 @@ async function pollDesignerHiggsfield() {
   const tasks = readTaskFile("designer-tasks.json");
   const pending = tasks.filter(t => t.engine === "higgsfield" && t.status === "processing" && t.hf_request_id);
   if (!pending.length) return;
+  const extraTasks = [];
   let changed = false;
   for (const t of pending) {
     try {
       const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.hf_request_id), { headers: higgsfieldHeaders() });
       const data = await r.json().catch(() => ({}));
-      const job = (Array.isArray(data.jobs) && data.jobs[0]) || data;
-      const status = String(job.status || data.status || "").toLowerCase();
-      const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
-        || job.result_url || (job.image && job.image.url) || (job.result && job.result.url) || "";
-      if ((status === "completed" || status === "success") && url) {
-        // Store it locally — the Higgsfield URL is temporary.
-        let local = null;
-        try {
-          const imgDir = path.join(__dirname, "data", "generated-images");
-          fs.mkdirSync(imgDir, { recursive: true });
-          const outFile = path.join(imgDir, `higgsfield-${t.id}.png`);
-          const img = await fetch(url);
-          if (img.ok) {
-            fs.writeFileSync(outFile, Buffer.from(await img.arrayBuffer()));
-            local = `/generated-images/higgsfield-${t.id}.png`;
-          }
-        } catch {}
-        t.status = "completed";
-        t.result_url = local || url;
-        t.result_thumbnail = t.result_url;
-        t.updated_at = new Date().toISOString();
+      const jobs = Array.isArray(data.jobs) && data.jobs.length ? data.jobs : [data];
+      const statuses = jobs.map(j => String(j.status || data.status || "").toLowerCase());
+      const done = (st) => st === "completed" || st === "success";
+      const bad = (st) => st === "failed" || st === "nsfw" || st === "error" || st === "canceled";
+      // A batch job-set returns one job (or one result) per variant.
+      const urls = [];
+      for (const j of jobs) {
+        const res = j.results || {};
+        for (const cand of [res.raw, res.min, ...(Array.isArray(res.images) ? res.images : [])]) {
+          const u = cand && (typeof cand === "string" ? cand : cand.url);
+          if (u) { urls.push(u); break; }
+        }
+        const single = j.result_url || (j.image && j.image.url) || (j.result && j.result.url) || "";
+        if (single && !urls.length) urls.push(single);
+      }
+      if (statuses.every(done) && urls.length) {
+        for (let i = 0; i < urls.length; i++) {
+          const target = i === 0 ? t : { ...t, id: genId(), hf_request_id: null, hf_variants: null, created_at: new Date().toISOString(), variant_of: t.id };
+          let local = null;
+          try {
+            const imgDir = path.join(__dirname, "data", "generated-images");
+            fs.mkdirSync(imgDir, { recursive: true });
+            const outFile = path.join(imgDir, `higgsfield-${target.id}.png`);
+            const img = await fetch(urls[i]);
+            if (img.ok) {
+              fs.writeFileSync(outFile, Buffer.from(await img.arrayBuffer()));
+              local = `/generated-images/higgsfield-${target.id}.png`;
+            }
+          } catch {}
+          target.status = "completed";
+          target.result_url = local || urls[i];
+          target.result_thumbnail = target.result_url;
+          target.updated_at = new Date().toISOString();
+          if (i > 0) extraTasks.push(target);
+        }
         changed = true;
-        console.log(`[DESIGNER] Higgsfield task ${t.id} completed`);
-      } else if (status === "failed" || status === "nsfw" || status === "error") {
+        console.log(`[DESIGNER] Higgsfield task ${t.id} completed${urls.length > 1 ? ` (${urls.length} variants)` : ""}`);
+      } else if (statuses.some(bad)) {
         t.status = "failed";
-        t.error = "Higgsfield job " + status;
+        t.error = "Higgsfield job " + (statuses.find(bad) || "failed");
         t.updated_at = new Date().toISOString();
         changed = true;
       }
     } catch { /* transient — retry next tick */ }
   }
-  if (changed) writeTaskFile("designer-tasks.json", tasks);
+  if (changed) writeTaskFile("designer-tasks.json", extraTasks.length ? [...extraTasks, ...tasks] : tasks);
 }
 
 async function pollUgcStatus() {

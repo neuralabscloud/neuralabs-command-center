@@ -102,11 +102,44 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .task-status-badge.completed { color: var(--success); background: hsla(142 76% 36% / 0.08); }
 .task-status-badge.failed { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
 .task-status-badge.processing::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: pulse-glow 2s infinite; }
-.task-time { font-family: var(--font-data); font-size: 10px; color: var(--text-muted); }
-.task-link { font-family: var(--font-data); font-size: 10px; color: var(--primary); text-decoration: none; }
-.task-link:hover { text-decoration: underline; }
-.task-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px; transition: color 0.2s; }
-.task-delete:hover { color: var(--danger); }
+.task-time { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); }
+.task-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.task-btn {
+  font-family: var(--font-data); font-size: 10px; font-weight: 500; letter-spacing: 0.02em;
+  color: var(--text-dim); background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 11px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 5px; line-height: 1; transition: all 0.2s;
+}
+.task-btn:hover { color: var(--text); border-color: var(--border-glow); background: hsla(264 65% 49% / 0.08); }
+.task-btn.primary { color: var(--primary); border-color: hsla(264 65% 49% / 0.35); }
+.task-btn.primary:hover { color: var(--text); background: hsla(264 65% 49% / 0.14); }
+.task-btn.danger { margin-left: auto; padding: 6px 9px; }
+.task-btn.danger:hover { color: var(--danger); border-color: hsla(0 72% 51% / 0.4); background: hsla(0 72% 51% / 0.08); }
+.task-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+.task-thumb img { cursor: zoom-in; }
+
+/* ── LIGHTBOX ───────────────────────────────── */
+.lightbox {
+  position: fixed; inset: 0; z-index: 200; display: none;
+  align-items: center; justify-content: center; padding: 40px 24px;
+  background: hsla(0 0% 0% / 0.92); backdrop-filter: blur(6px);
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  border-radius: 10px; border: 1px solid var(--border); box-shadow: 0 20px 80px hsla(0 0% 0% / 0.7);
+}
+.lightbox-close {
+  position: absolute; top: 18px; right: 22px; width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-dim); font-size: 15px; cursor: pointer; transition: all 0.2s;
+}
+.lightbox-close:hover { color: var(--text); border-color: var(--border-glow); }
+.lightbox-bar {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px;
+}
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-dim); font-size: 13px; }
 
 @keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -193,6 +226,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </select>
           </div>
           <div class="form-field">
+            <label class="form-label">Mode</label>
+            <select class="form-select" id="design-mode">
+              <option value="generate">Generate a new design</option>
+              <option value="edit">Edit an existing image</option>
+            </select>
+          </div>
+          <div class="form-field">
             <label class="form-label">Engine</label>
             <select class="form-select" id="design-engine">
               <option value="nanobanana">Nano Banana (Gemini)</option>
@@ -253,6 +293,20 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="1.91:1">1.91:1 Wide / Link</option>
             </select>
           </div>
+          <div class="form-field" id="reference-mode-field" style="display:none">
+            <label class="form-label">Reference Use <span style="font-weight:400;color:var(--text-dim)">(Higgsfield)</span></label>
+            <select class="form-select" id="design-reference-mode">
+              <option value="subject">Keep the subject (same face / product)</option>
+              <option value="style">Copy the style and composition</option>
+            </select>
+          </div>
+          <div class="form-field" id="variants-field" style="display:none">
+            <label class="form-label">Variants <span style="font-weight:400;color:var(--text-dim)">(Higgsfield)</span></label>
+            <select class="form-select" id="design-variants">
+              <option value="1">1 image</option>
+              <option value="4">4 variants in one run</option>
+            </select>
+          </div>
           <div class="form-field" id="slide-count-field" style="display:none">
             <label class="form-label">Slides</label>
             <input type="number" class="form-input" id="design-slides" min="2" max="10" value="3" />
@@ -272,8 +326,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <textarea class="form-textarea" id="design-desc" placeholder=""></textarea>
           </div>
           <div class="form-field" style="grid-column: 1 / -1">
-            <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana as style/content reference; ignored by the other engines)</span></label>
+            <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana and Higgsfield; ignored by the other engines. In edit mode this is the image to rework.)</span></label>
             <input type="file" id="design-ref-image" accept="image/*" multiple style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
+            <div id="edit-source-note" style="display:none;margin-top:6px;font-size:11px;color:var(--text-dim);font-family:var(--font-data)">
+              Editing: <span id="edit-source-label"></span>
+              <button type="button" onclick="clearEditSource()" style="margin-left:6px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px">clear</button>
+            </div>
           </div>
           <div class="form-field" style="grid-column: 1 / -1">
             <label class="form-label">Avoid <span style="font-weight:400;color:var(--text-dim)">(optional — what the design must not contain)</span></label>
@@ -297,14 +355,24 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   </main>
 </div>
 
+<div class="lightbox" id="lightbox" onclick="closePreview(event)">
+  <button class="lightbox-close" onclick="closePreview()" title="Close">&#x2715;</button>
+  <img id="lightbox-img" src="" alt="Design preview" />
+  <div class="lightbox-bar">
+    <a class="task-btn primary" id="lightbox-open" href="#" target="_blank">Open full size</a>
+  </div>
+</div>
+
 <script>
 const API = '/designer/tasks';
+let allTasks = [];
 
 async function loadTasks() {
   try {
     const res = await fetch(API);
     if (!res.ok) throw new Error(res.status);
     const tasks = await res.json();
+    allTasks = tasks;
     renderTasks(tasks);
   } catch(e) {
     document.getElementById('tasks-grid').innerHTML = '<div class="empty-state">Could not connect to Designer API (port 3004)</div>';
@@ -328,7 +396,7 @@ function renderTasks(tasks) {
     return `<div class="task-card">
       <div class="task-thumb">
         ${t.result_thumbnail && !t.result_thumbnail.includes('canva.com/d/')
-          ? `<img src="${t.result_thumbnail}" alt="Design preview" />`
+          ? `<img src="${t.result_thumbnail}" alt="Design preview" onclick="openPreview('${t.result_url && !t.result_url.includes('canva.com') ? t.result_url : t.result_thumbnail}')" />`
           : t.result_url && t.result_url.includes('canva.com')
             ? `<a href="${t.result_url}" target="_blank" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;text-decoration:none;flex-direction:column;gap:6px">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M15 9.5a3.5 3.5 0 11-5.2 3.8"/><circle cx="12" cy="12" r="1.5" fill="var(--primary)"/></svg>
@@ -349,13 +417,74 @@ function renderTasks(tasks) {
         <div class="task-footer">
           <span class="task-status-badge ${t.status}">${t.status}</span>
           <span class="task-time">${time}</span>
-          ${t.result_url ? `<a class="task-link" href="${t.result_url}" target="_blank" ${t.result_url.startsWith('/generated') ? 'download' : ''}>${['playwright','nanobanana','higgsfield'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open Design' : 'Open in Canva'}</a>` : ''}
-          <button class="task-delete" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
+        </div>
+        <div class="task-actions">
+          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${t.result_url.startsWith('/generated') ? 'download' : ''}>${['playwright','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open design' : 'Open in Canva'}</a>` : ''}
+          ${t.result_url && !t.result_url.includes('canva.com') && ['nanobanana','higgsfield','enhance'].includes(t.engine) ? `
+            <button class="task-btn" onclick="useAsEditSource('${t.id}')" title="Rework this image with a prompt">Edit</button>
+            <button class="task-btn" onclick="enhanceTask('${t.id}', 'rmbg')" title="Cut out the background">Cut out</button>
+            <button class="task-btn" onclick="enhanceTask('${t.id}', 'upscale')" title="Upscale 2x">Upscale</button>` : ''}
+          <button class="task-btn danger" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
         </div>
         ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${t.error}</div>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+// Higgsfield-only options, and the edit-mode source picker.
+let editSource = null; // { id, description }
+
+function syncFormFields() {
+  const engine = document.getElementById('design-engine').value;
+  const mode = document.getElementById('design-mode').value;
+  document.getElementById('reference-mode-field').style.display = engine === 'higgsfield' && mode === 'generate' ? '' : 'none';
+  document.getElementById('variants-field').style.display = engine === 'higgsfield' && mode === 'generate' ? '' : 'none';
+  document.getElementById('edit-source-note').style.display = mode === 'edit' && editSource ? '' : 'none';
+  document.getElementById('submit-btn').textContent = mode === 'edit' ? 'Edit Image' : 'Submit Design Task';
+}
+document.getElementById('design-engine').addEventListener('change', syncFormFields);
+document.getElementById('design-mode').addEventListener('change', syncFormFields);
+
+function useAsEditSource(id) {
+  const card = allTasks.find(t => t.id === id);
+  if (!card) return;
+  editSource = { id, description: card.description || id };
+  document.getElementById('design-mode').value = 'edit';
+  const engine = document.getElementById('design-engine').value;
+  if (engine !== 'higgsfield' && engine !== 'nanobanana') document.getElementById('design-engine').value = 'nanobanana';
+  document.getElementById('edit-source-label').textContent = editSource.description.slice(0, 80);
+  syncFormFields();
+  document.getElementById('design-desc').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function clearEditSource() {
+  editSource = null;
+  document.getElementById('design-mode').value = 'generate';
+  syncFormFields();
+}
+
+async function enhanceTask(id, action) {
+  const status = document.getElementById('form-status');
+  status.textContent = action === 'rmbg' ? 'Cutting out the background...' : 'Upscaling...';
+  try {
+    const res = await fetch(API + '/' + id + '/enhance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      let msg = `Request failed (${res.status})`;
+      try { const err = await res.json(); if (err && err.error) msg = err.error; } catch {}
+      throw new Error(msg);
+    }
+    status.textContent = 'Started — the result appears in the gallery.';
+    loadTasks();
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+  setTimeout(() => { status.textContent = ''; }, 4000);
 }
 
 // Show/hide slide count and aspect ratio fields based on design type
@@ -391,6 +520,17 @@ async function submitTask() {
     ? [...document.querySelectorAll('#aspect-chips .style-tag.active')].map(el => el.dataset.aspect)
     : null;
   const singleAspect = designType === 'ad_creative' ? '' : document.getElementById('design-aspect').value;
+  const mode = document.getElementById('design-mode').value;
+  const engine = document.getElementById('design-engine').value;
+  const extra = {
+    mode,
+    reference_mode: document.getElementById('design-reference-mode').value,
+    variants: document.getElementById('design-variants').value,
+  };
+  if (mode === 'edit' && editSource) {
+    const src = allTasks.find(t => t.id === editSource.id);
+    if (src && src.result_url) extra.source_url = src.result_url;
+  }
   const look = {
     style: document.getElementById('design-style').value,
     color_scheme: document.getElementById('design-colors').value,
@@ -418,6 +558,7 @@ async function submitTask() {
       fd.append('design_type', designType);
       fd.append('engine', document.getElementById('design-engine').value);
       for (const [k, v] of Object.entries(look)) if (v) fd.append(k, v);
+      for (const [k, v] of Object.entries(extra)) if (v) fd.append(k, v);
       if (singleAspect) fd.append('aspect_ratio', singleAspect);
       if (slideCount) fd.append('slide_count', slideCount);
       if (aspectRatios && aspectRatios.length) {
@@ -434,8 +575,9 @@ async function submitTask() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           design_type: designType,
-          engine: document.getElementById('design-engine').value,
+          engine,
           ...look,
+          ...extra,
           slide_count: slideCount,
           aspect_ratios: aspectRatios,
           aspect_ratio: singleAspect || null,
@@ -450,7 +592,8 @@ async function submitTask() {
     }
     document.getElementById('design-desc').value = '';
     document.getElementById('design-ref-image').value = '';
-    status.textContent = 'Task submitted!';
+    status.textContent = mode === 'edit' ? 'Edit submitted!' : 'Task submitted!';
+    if (mode === 'edit') clearEditSource();
     loadTasks();
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
@@ -465,7 +608,28 @@ async function deleteTask(id) {
   loadTasks();
 }
 
+// Fullscreen preview of a rendered image
+function openPreview(url) {
+  if (!url) return;
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox-open').href = url;
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closePreview(e) {
+  // clicking the image itself should not close the lightbox
+  if (e && e.target && e.target.id === 'lightbox-img') return;
+  if (e && e.target && e.target.closest && e.target.closest('.lightbox-bar')) return;
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lightbox-img').src = '';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
+
 // Load tasks and poll every 10 seconds
+syncFormFields();
 loadTasks();
 setInterval(loadTasks, 10000);
 </script>
