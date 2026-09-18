@@ -752,6 +752,15 @@ function loadBrandContext(brandName) {
   };
 }
 
+// The inference.sh CLI updates itself in place every so often: it prints the
+// update notice (plus its bounty banner), skips the run and exits non-zero.
+// Nothing ran and nothing was charged, so a single retry gets the job done.
+const INFSH_NOISE = /updating v[\d.]+\s*->|belt feedback|bounty:/i;
+function infshNeverRan(stdout, stderr) {
+  const out = String(stdout || "");
+  return !/[{[]/.test(out) && INFSH_NOISE.test(out + String(stderr || ""));
+}
+
 // ── SHARED MEDIA HELPERS (Inference.sh apps + public reference images) ──
 // Run any inference.sh app and hand back the parsed JSON result. The CLI prints
 // a version banner (and, on failure, a plain-text error) before the JSON, so the
@@ -762,11 +771,15 @@ function runInfshApp(appId, inputObj, opts) {
     const tmpInput = path.join(__dirname, "data", `infsh-input-${genId()}.json`);
     try { fs.writeFileSync(tmpInput, JSON.stringify(inputObj)); }
     catch (e) { return reject(e); }
-    execFile("infsh", ["app", "run", appId, "--input", tmpInput, "--json"], {
+    const attempt = (n) => execFile("infsh", ["app", "run", appId, "--input", tmpInput, "--json", "--no-input"], {
       timeout: o.timeout || 300000,
       maxBuffer: 1024 * 1024 * 50,
       env: { ...process.env, HOME: process.env.HOME || "/root" },
     }, (err, stdout, stderr) => {
+      if (err && n < 2 && infshNeverRan(stdout, stderr)) {
+        console.warn(`[INFSH] ${appId}: CLI updated itself instead of running, retrying once.`);
+        return setTimeout(() => attempt(n + 1), 3000);
+      }
       try { fs.unlinkSync(tmpInput); } catch {}
       const clean = (t) => String(t || "").replace(/\x1b\[[0-9;]*m/g, "").trim();
       if (err) return reject(new Error(clean(stderr) || err.message));
@@ -776,6 +789,7 @@ function runInfshApp(appId, inputObj, opts) {
       try { resolve(JSON.parse(stripped.slice(jsonStart))); }
       catch (e) { reject(new Error("could not parse output: " + e.message)); }
     });
+    attempt(1);
   });
 }
 
@@ -1134,7 +1148,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
             }
           } catch {}
         }
-        execFile("infsh", ["app", "run", "google/gemini-3-1-flash-image-preview", "--input", tmpInput, "--json"], {
+        execFile("infsh", ["app", "run", "google/gemini-3-1-flash-image-preview", "--input", tmpInput, "--json", "--no-input"], {
           timeout: 120000,
           maxBuffer: 1024 * 1024 * 50,
           env: { ...process.env, HOME: "/root" },
@@ -1765,11 +1779,17 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const tmpInput = path.join(__dirname, "data", `ai-vid-input-${task.id}.json`);
   fs.writeFileSync(tmpInput, JSON.stringify(inputObj));
 
-  execFile("infsh", ["app", "run", model, "--input", tmpInput, "--json"], {
+  const runVideo = (n) => execFile("infsh", ["app", "run", model, "--input", tmpInput, "--json", "--no-input"], {
     timeout: 600000,  // 10 min — video gen can be slow
     maxBuffer: 1024 * 1024 * 50,
     env: { ...process.env, HOME: "/root" },
   }, async (err, stdout, stderr) => {
+    // The CLI updated itself instead of running the app: nothing was generated
+    // and nothing was charged, so simply hand it the job a second time.
+    if (err && n < 2 && infshNeverRan(stdout, stderr)) {
+      console.warn("[AI-VIDEO] inference.sh CLI updated itself instead of running, retrying once.");
+      return setTimeout(() => runVideo(n + 1), 3000);
+    }
     try { fs.unlinkSync(tmpInput); } catch {}
     if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
     if (resizedPath) try { fs.unlinkSync(resizedPath); } catch {}
@@ -1779,7 +1799,18 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
 
     if (err) {
       console.error("[AI-VIDEO] Generation failed:", err.message, stderr?.substring(0, 200));
-      const errText = (stderr || "").replace(/\x1b\[[0-9;]*m/g, "").trim() || err.message || "Unknown error";
+      // The CLI exits non-zero on a provider error but still prints the reason
+      // as JSON on stdout; that message is far more useful than "command failed".
+      let errText = "";
+      try {
+        const j = String(stdout || "").replace(/\x1b\[[0-9;]*m/g, "");
+        const start = j.indexOf("{");
+        if (start >= 0) {
+          const parsed = JSON.parse(j.slice(start));
+          errText = typeof parsed.error === "string" ? parsed.error : (parsed.error ? JSON.stringify(parsed.error) : parsed.status_text || "");
+        }
+      } catch {}
+      errText = errText || (stderr || "").replace(/\x1b\[[0-9;]*m/g, "").trim() || err.message || "Unknown error";
       update = { status: "failed", error: errText.slice(0, 500) };
     } else {
       try {
@@ -1836,6 +1867,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     Object.assign(allTasks[idx], update, { updated_at: new Date().toISOString() });
     writeTaskFile("ai-video-tasks.json", allTasks);
   });
+  runVideo(1);
 });
 
 // ── AI VIDEO TOOLS (translate / lipsync / upscale) ────
@@ -2796,7 +2828,7 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       res.json({ ok: r.ok, message: r.ok ? `API reachable — ${d.totalPages || 0} connected accounts` : d.message || "Auth failed" });
     } else if (id === "inference") {
       const { execFile: ef } = require("child_process");
-      ef("infsh", ["app", "sample", "google/gemini-3-1-flash-image-preview", "--save", "/dev/null"], { timeout: 10000 }, (err, stdout, stderr) => {
+      ef("infsh", ["app", "sample", "google/gemini-3-1-flash-image-preview", "--save", "/dev/null", "--no-input"], { timeout: 10000 }, (err, stdout, stderr) => {
         const output = (stdout || "") + (stderr || "");
         const ok = !err || output.includes("Function") || output.includes("inference.sh");
         res.json({ ok, message: ok ? "CLI authenticated & model available" : "CLI not authenticated" });
