@@ -223,6 +223,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="poster">Poster</option>
               <option value="presentation">Presentation</option>
               <option value="logo">Logo</option>
+              <option value="custom">Custom size (free format)</option>
             </select>
           </div>
           <div class="form-field">
@@ -307,6 +308,22 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="4">4 variants in one run</option>
             </select>
           </div>
+          <div class="form-field" id="custom-size-field" style="grid-column: 1 / -1; display:none">
+            <label class="form-label">Canvas Size <span style="font-weight:400;color:var(--text-dim)">(pixels, 64–4096 per side)</span></label>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+              <input type="number" class="form-input" id="design-width" min="64" max="4096" value="1500" style="width:110px">
+              <span style="color:var(--text-dim);font-family:var(--font-data)">&times;</span>
+              <input type="number" class="form-input" id="design-height" min="64" max="4096" value="500" style="width:110px">
+              <span id="custom-size-note" style="font-size:11px;color:var(--text-dim);font-family:var(--font-data)"></span>
+            </div>
+            <div id="size-presets" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+              <span class="style-tag" data-size="1500x500">1500 &times; 500 Banner</span>
+              <span class="style-tag" data-size="1584x396">1584 &times; 396 LinkedIn</span>
+              <span class="style-tag" data-size="1200x628">1200 &times; 628 Link</span>
+              <span class="style-tag" data-size="2560x1440">2560 &times; 1440 YT Banner</span>
+              <span class="style-tag" data-size="1080x1080">1080 &times; 1080 Square</span>
+            </div>
+          </div>
           <div class="form-field" id="slide-count-field" style="display:none">
             <label class="form-label">Slides</label>
             <input type="number" class="form-input" id="design-slides" min="2" max="10" value="3" />
@@ -388,7 +405,7 @@ function renderTasks(tasks) {
   const typeLabels = {
     instagram_post: 'Instagram Post', instagram_carousel: 'IG Carousel', your_story: 'Story', youtube_thumbnail: 'YT Thumbnail',
     youtube_banner: 'YT Banner', twitter_post: 'X Post', facebook_post: 'FB Post', ad_creative: 'Ad Creative',
-    infographic: 'Infographic', poster: 'Poster', presentation: 'Presentation', logo: 'Logo'
+    infographic: 'Infographic', poster: 'Poster', presentation: 'Presentation', logo: 'Logo', custom: 'Custom size'
   };
 
   document.getElementById('tasks-grid').innerHTML = tasks.map(t => {
@@ -412,7 +429,7 @@ function renderTasks(tasks) {
         }
       </div>
       <div class="task-body">
-        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : ''}${t.engine ? ' &middot; ' + t.engine : ''}</div>
+        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.custom_width && t.custom_height ? ' &middot; ' + t.custom_width + '&times;' + t.custom_height : (t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : '')}${t.engine ? ' &middot; ' + t.engine : ''}</div>
         <div class="task-desc">${t.description}</div>
         <div class="task-footer">
           <span class="task-status-badge ${t.status}">${t.status}</span>
@@ -442,6 +459,7 @@ function syncFormFields() {
   document.getElementById('variants-field').style.display = engine === 'higgsfield' && mode === 'generate' ? '' : 'none';
   document.getElementById('edit-source-note').style.display = mode === 'edit' && editSource ? '' : 'none';
   document.getElementById('submit-btn').textContent = mode === 'edit' ? 'Edit Image' : 'Submit Design Task';
+  updateSizeNote();
 }
 document.getElementById('design-engine').addEventListener('change', syncFormFields);
 document.getElementById('design-mode').addEventListener('change', syncFormFields);
@@ -487,13 +505,64 @@ async function enhanceTask(id, action) {
   setTimeout(() => { status.textContent = ''; }, 4000);
 }
 
-// Show/hide slide count and aspect ratio fields based on design type
-document.getElementById('design-type').addEventListener('change', function() {
-  const isAd = this.value === 'ad_creative';
-  document.getElementById('slide-count-field').style.display = this.value === 'instagram_carousel' ? '' : 'none';
+// Show/hide slide count, aspect ratio and canvas size based on design type
+function syncTypeFields() {
+  const type = document.getElementById('design-type').value;
+  const isAd = type === 'ad_creative';
+  const isCustom = type === 'custom';
+  document.getElementById('slide-count-field').style.display = type === 'instagram_carousel' ? '' : 'none';
   document.getElementById('aspect-ratio-field').style.display = isAd ? '' : 'none';
-  // Ad creatives use the multi-select chips below instead of the single dropdown.
-  document.getElementById('design-aspect').closest('.form-field').style.display = isAd ? 'none' : '';
+  document.getElementById('custom-size-field').style.display = isCustom ? '' : 'none';
+  // Ad creatives use the multi-select chips, a free format derives its ratio
+  // from the canvas size — in both cases the single dropdown is meaningless.
+  document.getElementById('design-aspect').closest('.form-field').style.display = isAd || isCustom ? 'none' : '';
+  updateSizeNote();
+}
+document.getElementById('design-type').addEventListener('change', syncTypeFields);
+
+// The image engines render a fixed set of ratios: say which one will be used and
+// that the result is trimmed to the exact canvas afterwards.
+const ENGINE_ASPECTS = ['1:1', '4:5', '5:4', '3:4', '4:3', '2:3', '3:2', '9:16', '16:9', '21:9'];
+function readCanvas() {
+  const w = parseInt(document.getElementById('design-width').value, 10);
+  const h = parseInt(document.getElementById('design-height').value, 10);
+  return (w > 0 && h > 0) ? { width: w, height: h } : null;
+}
+function updateSizeNote() {
+  const note = document.getElementById('custom-size-note');
+  const size = readCanvas();
+  const engine = document.getElementById('design-engine').value;
+  if (!note) return;
+  if (!size) { note.textContent = ''; return; }
+  if (size.width < 64 || size.height < 64 || size.width > 4096 || size.height > 4096) {
+    note.textContent = 'Each side must be between 64 and 4096 pixels.';
+    return;
+  }
+  if (engine === 'playwright') {
+    note.textContent = 'Rendered at exactly ' + size.width + ' \u00d7 ' + size.height + '.';
+    return;
+  }
+  const want = size.width / size.height;
+  const closest = ENGINE_ASPECTS.reduce((best, a) => {
+    const [aw, ah] = a.split(':').map(Number);
+    const diff = Math.abs(Math.log((aw / ah) / want));
+    return diff < best.diff ? { a, diff } : best;
+  }, { a: ENGINE_ASPECTS[0], diff: Infinity }).a;
+  note.textContent = 'Generated at ' + closest + ', then trimmed to ' + size.width + ' \u00d7 ' + size.height + '.';
+}
+document.getElementById('design-width').addEventListener('input', updateSizeNote);
+document.getElementById('design-height').addEventListener('input', updateSizeNote);
+
+// Size presets fill the two inputs; they are a shortcut, not a restriction.
+document.querySelectorAll('#size-presets .style-tag').forEach(el => {
+  el.addEventListener('click', () => {
+    const [w, h] = el.dataset.size.split('x');
+    document.getElementById('design-width').value = w;
+    document.getElementById('design-height').value = h;
+    document.querySelectorAll('#size-presets .style-tag').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    updateSizeNote();
+  });
 });
 
 // Aspect-ratio chip toggles (multi-select, always keep at least one active)
@@ -519,7 +588,9 @@ async function submitTask() {
   const aspectRatios = designType === 'ad_creative'
     ? [...document.querySelectorAll('#aspect-chips .style-tag.active')].map(el => el.dataset.aspect)
     : null;
-  const singleAspect = designType === 'ad_creative' ? '' : document.getElementById('design-aspect').value;
+  const singleAspect = designType === 'ad_creative' || designType === 'custom' ? '' : document.getElementById('design-aspect').value;
+  const canvas = designType === 'custom' ? readCanvas() : null;
+  if (designType === 'custom' && !canvas) { status.textContent = 'Please enter a width and a height'; btn.disabled = false; return; }
   const mode = document.getElementById('design-mode').value;
   const engine = document.getElementById('design-engine').value;
   const extra = {
@@ -560,6 +631,7 @@ async function submitTask() {
       for (const [k, v] of Object.entries(look)) if (v) fd.append(k, v);
       for (const [k, v] of Object.entries(extra)) if (v) fd.append(k, v);
       if (singleAspect) fd.append('aspect_ratio', singleAspect);
+      if (canvas) { fd.append('width', canvas.width); fd.append('height', canvas.height); }
       if (slideCount) fd.append('slide_count', slideCount);
       if (aspectRatios && aspectRatios.length) {
         for (const ar of aspectRatios) fd.append('aspect_ratios', ar);
@@ -581,6 +653,8 @@ async function submitTask() {
           slide_count: slideCount,
           aspect_ratios: aspectRatios,
           aspect_ratio: singleAspect || null,
+          width: canvas ? canvas.width : null,
+          height: canvas ? canvas.height : null,
           description: desc,
         }),
       });
@@ -629,6 +703,7 @@ function closePreview(e) {
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
 
 // Load tasks and poll every 10 seconds
+syncTypeFields();
 syncFormFields();
 loadTasks();
 setInterval(loadTasks, 10000);

@@ -39,7 +39,7 @@ const os = require("os");
 const crypto = require("crypto");
 const cookieParser = require("cookie-parser");
 
-const { renderSlide, renderCarousel } = require("./slide-renderer");
+const { renderSlide, renderCarousel, fitImage } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
 const { execFile, spawn } = require("child_process");
 const { createProxyMiddleware } = require("http-proxy-middleware");
@@ -658,6 +658,51 @@ function buildImagePrompt(content, s, opts) {
   return parts.filter(Boolean).map((p) => p.trim().replace(/[.\s]+$/, "")).join(". ") + ".";
 }
 
+// ── FREE FORMAT (custom canvas size) ──────────
+// Design types are presets; a free-format request carries its own pixel size
+// (e.g. 1500x500). Accepts width/height or a single "1500x500" string.
+const CANVAS_MIN_PX = 64;
+const CANVAS_MAX_PX = 4096;
+function parseCanvasSize(body) {
+  const b = body || {};
+  let w = parseInt(b.width, 10);
+  let h = parseInt(b.height, 10);
+  if (!(w > 0 && h > 0)) {
+    const m = String(b.size || b.canvas_size || "").match(/^\s*(\d{2,5})\s*[x×*]\s*(\d{2,5})\s*$/i);
+    if (m) { w = parseInt(m[1], 10); h = parseInt(m[2], 10); }
+  }
+  if (!(w > 0 && h > 0)) return null;
+  if (w < CANVAS_MIN_PX || h < CANVAS_MIN_PX || w > CANVAS_MAX_PX || h > CANVAS_MAX_PX) {
+    return { error: `Canvas size must be between ${CANVAS_MIN_PX} and ${CANVAS_MAX_PX} pixels per side.` };
+  }
+  return { width: w, height: h };
+}
+// The image engines only accept a fixed set of ratios, so a free size is
+// generated at the closest one and trimmed afterwards (see fitImage).
+function nearestAspect(width, height, allowed) {
+  const want = width / height;
+  let best = allowed[0], bestDiff = Infinity;
+  for (const a of allowed) {
+    const [aw, ah] = String(a).split(":").map(Number);
+    if (!(aw > 0 && ah > 0)) continue;
+    const diff = Math.abs(Math.log((aw / ah) / want));
+    if (diff < bestDiff) { bestDiff = diff; best = a; }
+  }
+  return best;
+}
+const IMAGE_ENGINE_ASPECTS = ["1:1", "4:5", "5:4", "3:4", "4:3", "2:3", "3:2", "9:16", "16:9", "21:9"];
+// Trim a finished image to the exact size that was requested. Never fatal: a
+// failed trim leaves the original (correct content, wrong pixel size) in place.
+async function fitToCanvas(file, task, label) {
+  if (!task || !task.custom_width || !task.custom_height) return;
+  try {
+    await fitImage(file, file, task.custom_width, task.custom_height);
+    console.log(`[DESIGNER] ${label} ${task.id} trimmed to ${task.custom_width}x${task.custom_height}`);
+  } catch (e) {
+    console.warn(`[DESIGNER] ${label} ${task.id}: trimming to ${task.custom_width}x${task.custom_height} failed:`, e.message);
+  }
+}
+
 // ── DESIGNER TASKS ────────────────────────────
 app.get("/designer/tasks", (_req, res) => res.json(readTaskFile("designer-tasks.json")));
 
@@ -795,6 +840,12 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const refImagePaths = Array.isArray(req.files) ? req.files.map(f => f.path) : [];
   const refImagePath = refImagePaths[0] || null; // backwards-compat for engines that only use one
   const designType = req.body.design_type || "instagram_post";
+  // Free format: an explicit canvas size overrules the design-type preset.
+  const canvas = parseCanvasSize(req.body);
+  if (canvas && canvas.error) return res.status(400).json({ error: canvas.error });
+  if (designType === "custom" && !canvas) {
+    return res.status(400).json({ error: "Custom size needs a width and a height (for example 1500 x 500)." });
+  }
   // Label only — the designer no longer styles anything from the brand config.
   const brand = (loadBrand().company_name || "DEFAULT").toUpperCase();
   const engine = req.body.engine || "nanobanana"; // nanobanana | higgsfield | playwright | claude | canva
@@ -877,7 +928,9 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     facebook_post: "1:1", ad_creative: "1:1", infographic: "9:16", poster: "3:4",
     presentation: "16:9", logo: "1:1",
   };
-  const defaultAspect = aspectMap[designType] || "1:1";
+  const defaultAspect = canvas
+    ? nearestAspect(canvas.width, canvas.height, IMAGE_ENGINE_ASPECTS)
+    : (aspectMap[designType] || "1:1");
   // For ad_creative + multiple aspect ratios: one task per ratio.
   // For other types: keep slide/carousel semantics and use a single aspect (custom or mapped).
   const isAdVariantMode = designType === "ad_creative" && customAspectRatios.length > 1;
@@ -898,6 +951,8 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, engine: engineName, design_style: designStyle,
         aspect_ratio: thisAspect,
+        custom_width: canvas && !isAdVariantMode ? canvas.width : null,
+        custom_height: canvas && !isAdVariantMode ? canvas.height : null,
         carousel_parent: carouselParentId,
         carousel_slide: !isAdVariantMode && numImages > 1 ? i + 1 : null,
         carousel_total: !isAdVariantMode && numImages > 1 ? numImages : null,
@@ -962,6 +1017,8 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         slideNumber: parseInt(s.num) || (i + 1),
         totalSlides,
         designType,
+        width: canvas ? canvas.width : 0,
+        height: canvas ? canvas.height : 0,
         style: { mood: [globalStyle, styleSentence(designStyle)].filter(Boolean).join(" | "), ...rendererStyle(designStyle) },
       }));
 
@@ -971,6 +1028,8 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         id: genId(), status: "completed",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, engine: "playwright", design_style: designStyle,
+        custom_width: canvas ? canvas.width : null,
+        custom_height: canvas ? canvas.height : null,
         carousel_parent: parentId,
         carousel_slide: parseInt(s.num) || (i + 1),
         carousel_total: totalSlides,
@@ -1004,12 +1063,16 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         slideNumber: "",
         totalSlides: "",
         designType,
+        width: canvas ? canvas.width : 0,
+        height: canvas ? canvas.height : 0,
         style: { mood: [desc, styleSentence(designStyle)].filter(Boolean).join(" | "), ...rendererStyle(designStyle) },
       }, aiDesign);
       const task = {
         id: genId(), status: "completed",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, engine: "playwright", design_style: designStyle,
+        custom_width: canvas ? canvas.width : null,
+        custom_height: canvas ? canvas.height : null,
         description: desc,
         result_url: result.url, result_thumbnail: result.url,
         result_design_id: null, error: null,
@@ -1139,13 +1202,19 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
             const outFile = path.join(imgDir, `nanobanana-${task.id}.png`);
 
             // Store the image locally — the generator URL expires after a while.
-            execFile("curl", ["-s", "-o", outFile, imgUrl], { timeout: 30000 }, (dlErr) => {
-              allTasks[idx].status = "completed";
+            execFile("curl", ["-s", "-o", outFile, imgUrl], { timeout: 30000 }, async (dlErr) => {
               const local = !dlErr && fs.existsSync(outFile);
-              allTasks[idx].result_url = local ? `/generated-images/nanobanana-${task.id}.png` : imgUrl;
-              allTasks[idx].result_thumbnail = allTasks[idx].result_url;
-              allTasks[idx].updated_at = new Date().toISOString();
-              writeTaskFile("designer-tasks.json", allTasks);
+              if (local) await fitToCanvas(outFile, task, "Nano Banana");
+              // Re-read: trimming takes a moment and a sibling slide may have
+              // written the task file in the meantime.
+              const fresh = readTaskFile("designer-tasks.json");
+              const fi = fresh.findIndex(t => t.id === task.id);
+              if (fi === -1) { resolveBatch(); return; }
+              fresh[fi].status = "completed";
+              fresh[fi].result_url = local ? `/generated-images/nanobanana-${task.id}.png` : imgUrl;
+              fresh[fi].result_thumbnail = fresh[fi].result_url;
+              fresh[fi].updated_at = new Date().toISOString();
+              writeTaskFile("designer-tasks.json", fresh);
               console.log(`[DESIGNER] Nano Banana task ${task.id} completed`);
               resolveBatch();
             });
@@ -1307,7 +1376,11 @@ Step 3: Edit text — call start-editing-transaction, then get-design-content, t
 After ALL ${slideCount} slides are done, output each design URL on its own line like:
 DESIGN_URL: https://...`;
     } else {
-      prompt = `Create a ${designType} design in Canva.
+      // Canva's generate-design takes a design type from its own list, so a free
+      // format asks for the closest type plus the exact size in the brief.
+      const canvaType = designType === "custom" ? "poster" : designType;
+      const canvasNote = canvas ? `\n\nIMPORTANT: the design must be ${canvas.width} x ${canvas.height} pixels. Use resize-design if the generated design has another size.` : "";
+      prompt = `Create a ${canvas ? `${canvas.width}x${canvas.height} px` : designType} design in Canva.
 
 You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
 - NEVER call request-outline-review
@@ -1319,7 +1392,7 @@ You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
 ${desc}
 
 ## Steps:
-Step 1: Call generate-design with design_type "${designType}" and a detailed query describing the visual style above and the text content.
+Step 1: Call generate-design with design_type "${canvaType}" and a detailed query describing the visual style above and the text content.${canvasNote}
 Step 2: Immediately call create-design-from-candidate with the FIRST candidate. Do NOT present options.
 Step 3: Edit text — call start-editing-transaction, then get-design-content, then perform-editing-operations to set the correct text, then commit-editing-transaction.
 
@@ -1335,6 +1408,8 @@ DESIGN_URL: https://...`;
         id: genId(), status: "processing",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, engine: "claude", design_style: designStyle,
+        custom_width: canvas ? canvas.width : null,
+        custom_height: canvas ? canvas.height : null,
         carousel_parent: parentId,
         carousel_slide: isCarousel ? i + 1 : null,
         carousel_total: isCarousel ? slideCount : null,
@@ -4262,7 +4337,7 @@ You can:
 4. Propose content ideas
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
-   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana. Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
+   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana. Free format: design_type="custom" + width and height in pixels (e.g. 1500x500). Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: edit a video via Remotion (Video Editor)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
@@ -4360,7 +4435,7 @@ Je kunt:
 5. Content ideeën voorstellen
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
-   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana. Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
+   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana. Vrij formaat: design_type="custom" + width en height in pixels (bijv. 1500x500). Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
@@ -4446,7 +4521,9 @@ app.post("/ctrl/chat", async (req, res) => {
           type: "object",
           properties: {
             description: { type: "string", description: "Beschrijving van het gewenste design" },
-            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "ad_creative", "infographic", "poster", "presentation", "logo"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides. Gebruik ad_creative voor advertentie creatives (combineer met aspect_ratio)." },
+            design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "ad_creative", "infographic", "poster", "presentation", "logo", "custom"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides. Gebruik ad_creative voor advertentie creatives (combineer met aspect_ratio). Gebruik custom voor een vrij formaat en geef dan width en height mee." },
+            width: { type: "number", description: "Vrij formaat: breedte in pixels (64-4096). Samen met height; overschrijft het formaat van het design_type." },
+            height: { type: "number", description: "Vrij formaat: hoogte in pixels (64-4096). Samen met width." },
             engine: { type: "string", enum: ["nanobanana", "higgsfield", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image (Gemini), Higgsfield = AI image (Soul), Playwright = instant HTML-to-image, Claude = Canva MCP" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
             aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override (single). Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven). Gebruik aspect_ratios voor meerdere varianten." },
@@ -4691,6 +4768,8 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           slide_count: input.slide_count || null,
           aspect_ratio: input.aspect_ratio || null,
           aspect_ratios: Array.isArray(input.aspect_ratios) ? input.aspect_ratios : null,
+          width: input.width || null,
+          height: input.height || null,
           style: input.style || "",
           color_scheme: input.color_scheme || "",
           custom_colors: input.custom_colors || "",
@@ -5974,7 +6053,11 @@ const HIGGSFIELD_SIZES = {
   "3:2": "2016x1344",
 };
 function higgsfieldSize(aspect) {
-  return HIGGSFIELD_SIZES[aspect] || "2048x2048";
+  if (HIGGSFIELD_SIZES[aspect]) return HIGGSFIELD_SIZES[aspect];
+  const [aw, ah] = String(aspect || "").split(":").map(Number);
+  // Free format: generate at the closest size the API accepts, trim afterwards.
+  if (aw > 0 && ah > 0) return HIGGSFIELD_SIZES[nearestAspect(aw, ah, Object.keys(HIGGSFIELD_SIZES))];
+  return "2048x2048";
 }
 // The edit models take an aspect ratio from a fixed enum instead of a size.
 const HIGGSFIELD_ASPECTS = ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "9:16", "16:9", "21:9"];
@@ -6212,6 +6295,7 @@ async function pollDesignerHiggsfield() {
             const img = await fetch(urls[i]);
             if (img.ok) {
               fs.writeFileSync(outFile, Buffer.from(await img.arrayBuffer()));
+              await fitToCanvas(outFile, target, "Higgsfield");
               local = `/generated-images/higgsfield-${target.id}.png`;
             }
           } catch {}

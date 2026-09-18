@@ -66,7 +66,12 @@ const DIMENSIONS = {
   logo:             { width: 1080, height: 1080 },
 };
 
-function getDimensions(designType) {
+// A free-format request (explicit width/height) wins over the design-type preset,
+// so a canvas like 1500x500 renders at exactly that size.
+function getDimensions(designType, override) {
+  const w = Math.round(Number(override && override.width) || 0);
+  const h = Math.round(Number(override && override.height) || 0);
+  if (w > 0 && h > 0) return { width: w, height: h };
   return DIMENSIONS[designType] || DIMENSIONS.instagram_post;
 }
 
@@ -337,9 +342,11 @@ function buildSlideHTML(slide) {
     style = {},
     designType = "instagram_post",
     template: templateName = "default",
+    width: customWidth = 0,
+    height: customHeight = 0,
   } = slide;
 
-  const dim = getDimensions(designType);
+  const dim = getDimensions(designType, { width: customWidth, height: customHeight });
   const tpl = getTemplate(templateName);
 
   const keywords = parseStyleKeywords(style.mood || "");
@@ -620,9 +627,11 @@ function buildAISlideHTML(slide, aiDesign) {
     totalSlides = "",
     style = {},
     designType = "instagram_post",
+    width: customWidth = 0,
+    height: customHeight = 0,
   } = slide;
 
-  const dim = getDimensions(designType);
+  const dim = getDimensions(designType, { width: customWidth, height: customHeight });
   const d = aiDesign;
 
   // Theme from AI or fallback
@@ -933,7 +942,7 @@ function lightenColor(hexColor, amount) {
 // ── RENDER FUNCTIONS ──
 async function renderSlide(slide, aiDesign = null) {
   const html = aiDesign ? buildAISlideHTML(slide, aiDesign) : buildSlideHTML(slide);
-  const dim = getDimensions(slide.designType || "instagram_post");
+  const dim = getDimensions(slide.designType || "instagram_post", slide);
   const br = await getBrowser();
   const page = await br.newPage({ viewport: { width: dim.width, height: dim.height } });
 
@@ -959,8 +968,35 @@ async function renderCarousel(slides, aiDesigns = null) {
   return results;
 }
 
+// Scale an existing image to an exact pixel size (cover, centered — no stretching).
+// The AI engines only render a fixed set of aspect ratios, so a free-format request
+// is generated at the closest ratio and then trimmed to the size that was asked for.
+async function fitImage(inputPath, outputPath, width, height) {
+  const w = Math.round(Number(width) || 0);
+  const h = Math.round(Number(height) || 0);
+  if (!(w > 0 && h > 0)) throw new Error("fitImage needs a positive width and height");
+  const ext = path.extname(inputPath).toLowerCase();
+  const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "image/png";
+  const dataUrl = `data:${mime};base64,${fs.readFileSync(inputPath).toString("base64")}`;
+  const br = await getBrowser();
+  const page = await br.newPage({ viewport: { width: w, height: h } });
+  try {
+    await page.setContent(
+      `<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}`
+      + `img{display:block;width:${w}px;height:${h}px;object-fit:cover;object-position:center}</style>`
+      + `<img src="${dataUrl}">`,
+    );
+    await page.waitForSelector("img");
+    await page.evaluate(() => { const i = document.querySelector("img"); return i.complete ? null : i.decode(); });
+    await page.screenshot({ path: outputPath, type: "png" });
+  } finally {
+    await page.close();
+  }
+  return { width: w, height: h };
+}
+
 async function cleanup() {
   if (browser) await browser.close();
 }
 
-module.exports = { renderSlide, renderCarousel, buildSlideHTML, buildAISlideHTML, parseStyleKeywords, cleanup };
+module.exports = { renderSlide, renderCarousel, buildSlideHTML, buildAISlideHTML, parseStyleKeywords, fitImage, cleanup };
