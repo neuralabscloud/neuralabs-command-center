@@ -1642,12 +1642,46 @@ const aiVideoUpload = require("multer")({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
     filename: (_req, file, cb) => cb(null, Date.now() + path.extname(file.originalname || ".png")),
   }),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 200 * 1024 * 1024 }, // a source video weighs a lot more than a reference image
 });
+
+// Continuing an existing clip: which inference.sh apps accept a source video,
+// and under which input field they expect it. Every other model is text- or
+// image-only, so handing it a video would just fail inside the provider.
+const VIDEO_SOURCE_FIELDS = {
+  "xai/grok-extend-video": "video",
+  "bytedance/seedance-2-0": "reference_videos",
+  "bytedance/seedance-2-0-fast": "reference_videos",
+};
+// Models that reject an aspect_ratio field, or want it under another name.
+const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
+const VIDEO_ASPECT_FIELD = { "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio" };
+
+// A finished video that this server stores itself (/video-outputs/x.mp4) back
+// to a file on disk, so it can be fed straight into the next run.
+function localVideoForResultUrl(url) {
+  const m = String(url || "").match(/^\/video-outputs\/([\w.-]+)$/);
+  if (!m) return "";
+  const p = path.join(VIDEO_OUTPUT_DIR, m[1]);
+  return fs.existsSync(p) ? p : "";
+}
+
+// The source clip for an extend run: a fresh upload, one of our own files, or
+// the provider URL of an earlier generation (those stay publicly fetchable).
+function resolveSourceVideo(body, files) {
+  const up = files && files.source_video && files.source_video[0];
+  if (up) return { file: up.path, upload: up.path };
+  const raw = String((body && body.source_url) || "").trim();
+  if (!raw) return { file: "", upload: "" };
+  const local = localVideoForResultUrl(raw);
+  if (local) return { file: local, upload: "" };
+  if (/^https?:\/\//i.test(raw)) return { file: raw, upload: "" };
+  return { file: "", upload: "" };
+}
 
 app.get("/video/ai-generate", (_req, res) => res.json(readTaskFile("ai-video-tasks.json")));
 
-app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => {
+app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 1 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
   const tasks = readTaskFile("ai-video-tasks.json");
   const model = req.body.model || "google/veo-3";
   const prompt = req.body.prompt || "";
@@ -1655,7 +1689,25 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   // Front-end omits the field when the model has no supported ratios.
   const aspectRatio = (req.body.aspect_ratio || "").trim() || null;
   const duration = parseInt(req.body.duration) || 8;
-  const refImagePath = req.file ? req.file.path : null;
+  const refImagePath = (req.files && req.files.ref_image && req.files.ref_image[0]) ? req.files.ref_image[0].path : null;
+  // Extending an existing clip: the source video plus the field this model wants it in.
+  const source = resolveSourceVideo(req.body, req.files);
+  const sourceField = VIDEO_SOURCE_FIELDS[model] || "";
+  const dropUploads = () => {
+    for (const f of [refImagePath, source.upload]) if (f) { try { fs.unlinkSync(f); } catch {} }
+  };
+  if (source.file && !sourceField) {
+    dropUploads();
+    return res.status(400).json({ error: "This model cannot continue an existing video. Choose Grok Extend or Seedance 2.0." });
+  }
+  if (!source.file && sourceField === "video") {
+    dropUploads();
+    return res.status(400).json({ error: "This model only extends an existing clip: pick a source video first." });
+  }
+  if (source.file && refImagePath && sourceField === "reference_videos") {
+    dropUploads();
+    return res.status(400).json({ error: "Seedance takes either a reference image or a source video, not both." });
+  }
   const brandContext = loadBrandContext(req.body.brand);
 
   const task = {
@@ -1665,6 +1717,8 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
     brand: brandContext.name,
     brand_context: brandContext,
     ref_image: refImagePath ? true : false,
+    source_video: source.file ? true : false,
+    extends_task: String(req.body.source_task_id || "").trim() || null,
     result_url: null, error: null,
   };
   tasks.unshift(task);
@@ -1676,8 +1730,20 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
   // uploads the file itself. Passing a base64 data URL is rejected with
   // "[1201] File is not in a valid base64 format".
   const inputObj = { prompt };
-  if (aspectRatio) inputObj.aspect_ratio = aspectRatio;
+  if (aspectRatio && !VIDEO_NO_ASPECT.has(model)) inputObj[VIDEO_ASPECT_FIELD[model] || "aspect_ratio"] = aspectRatio;
   if (duration) inputObj.duration = duration;
+  if (source.file) {
+    if (sourceField === "reference_videos") {
+      inputObj.reference_videos = [source.file];
+      // Seedance addresses its inputs by number in the prompt itself; without a
+      // @Video1 mention it treats the clip as loose inspiration.
+      if (!/@video\s*\d/i.test(prompt)) {
+        inputObj.prompt = "@Video1 is the source clip. Continue it seamlessly. " + prompt;
+      }
+    } else {
+      inputObj[sourceField] = source.file;
+    }
+  }
   let resizedPath = null;
   if (refImagePath && fs.existsSync(refImagePath)) {
     // Resize / re-encode to JPEG max 1024px to satisfy provider size limits
@@ -1703,67 +1769,71 @@ app.post("/video/ai-generate", aiVideoUpload.single("ref_image"), (req, res) => 
     timeout: 600000,  // 10 min — video gen can be slow
     maxBuffer: 1024 * 1024 * 50,
     env: { ...process.env, HOME: "/root" },
-  }, (err, stdout, stderr) => {
+  }, async (err, stdout, stderr) => {
     try { fs.unlinkSync(tmpInput); } catch {}
     if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
     if (resizedPath) try { fs.unlinkSync(resizedPath); } catch {}
+    if (source.upload) try { fs.unlinkSync(source.upload); } catch {}
 
-    const allTasks = readTaskFile("ai-video-tasks.json");
-    const idx = allTasks.findIndex(t => t.id === task.id);
-    if (idx === -1) return;
+    let update;
 
     if (err) {
       console.error("[AI-VIDEO] Generation failed:", err.message, stderr?.substring(0, 200));
-      allTasks[idx].status = "failed";
       const errText = (stderr || "").replace(/\x1b\[[0-9;]*m/g, "").trim() || err.message || "Unknown error";
-      allTasks[idx].error = errText.slice(0, 500);
-      allTasks[idx].updated_at = new Date().toISOString();
-      writeTaskFile("ai-video-tasks.json", allTasks);
-      return;
-    }
+      update = { status: "failed", error: errText.slice(0, 500) };
+    } else {
+      try {
+        // Strip ANSI codes and find JSON (object or array)
+        const stripped = stdout.replace(/\x1b\[[0-9;]*m/g, "");
+        const jsonStart = Math.min(
+          ...[stripped.indexOf("{"), stripped.indexOf("[")].filter(i => i >= 0).concat([Infinity])
+        );
+        if (jsonStart === Infinity) throw new Error("No JSON in output: " + stripped.substring(0, 200));
+        const result = JSON.parse(stripped.slice(jsonStart));
 
-    try {
-      // Strip ANSI codes and find JSON (object or array)
-      const stripped = stdout.replace(/\x1b\[[0-9;]*m/g, "");
-      const jsonStart = Math.min(
-        ...[stripped.indexOf("{"), stripped.indexOf("[")].filter(i => i >= 0).concat([Infinity])
-      );
-      if (jsonStart === Infinity) throw new Error("No JSON in output: " + stripped.substring(0, 200));
-      const cleanOutput = stripped.slice(jsonStart);
-      const result = JSON.parse(cleanOutput);
+        // Extract video URL — different models return in different formats
+        const output = result.output || result;
+        let videoUrl = output.video || output.video_url || output.url
+          || (output.videos && output.videos[0])
+          || (output.files && output.files[0])
+          || null;
+        if (!videoUrl) {
+          const urlMatch = JSON.stringify(output).match(/https?:\/\/[^\s"']+\.(mp4|webm|mov)[^\s"']*/i);
+          if (urlMatch) videoUrl = urlMatch[0];
+        }
 
-      // Extract video URL — different models return in different formats
-      const output = result.output || result;
-      const videoUrl = output.video || output.video_url || output.url
-        || (output.videos && output.videos[0])
-        || (output.files && output.files[0])
-        || null;
-
-      if (videoUrl) {
-        allTasks[idx].status = "completed";
-        allTasks[idx].result_url = videoUrl;
-        console.log(`[AI-VIDEO] Task ${task.id} completed: ${videoUrl}`);
-      } else {
-        // Try to find any URL in the output
-        const urlMatch = JSON.stringify(output).match(/https?:\/\/[^\s"']+\.(mp4|webm|mov)[^\s"']*/i);
-        if (urlMatch) {
-          allTasks[idx].status = "completed";
-          allTasks[idx].result_url = urlMatch[0];
-          console.log(`[AI-VIDEO] Task ${task.id} completed (extracted): ${urlMatch[0]}`);
+        if (videoUrl) {
+          // Keep our own copy: provider URLs expire, and a clip that is still on
+          // disk can be fed straight back in as the source of an extend run.
+          let localUrl = "";
+          if (/^https?:/i.test(videoUrl)) {
+            const ext = (path.extname(String(videoUrl).split("?")[0]) || ".mp4").slice(0, 5) || ".mp4";
+            try {
+              await downloadTo(videoUrl, path.join(VIDEO_OUTPUT_DIR, task.id + ext));
+              localUrl = `/video-outputs/${task.id}${ext}`;
+            } catch (dlErr) {
+              console.error("[AI-VIDEO] Could not store the video locally:", dlErr.message);
+            }
+          }
+          update = { status: "completed", result_url: localUrl || videoUrl, provider_url: videoUrl };
+          console.log(`[AI-VIDEO] Task ${task.id} completed: ${update.result_url}`);
         } else {
-          allTasks[idx].status = "failed";
           const errMsg = typeof result.error === "string" ? result.error : (result.error ? JSON.stringify(result.error) : result.status_text || "No video URL in output");
-          allTasks[idx].error = errMsg.slice(0, 500);
+          update = { status: "failed", error: errMsg.slice(0, 500) };
           console.error("[AI-VIDEO] No video URL found in:", JSON.stringify(output).slice(0, 500));
         }
+      } catch (e) {
+        console.error("[AI-VIDEO] Parse error:", e.message);
+        update = { status: "failed", error: "Failed to parse output: " + e.message.slice(0, 200) };
       }
-    } catch (e) {
-      console.error("[AI-VIDEO] Parse error:", e.message);
-      allTasks[idx].status = "failed";
-      allTasks[idx].error = "Failed to parse output: " + e.message.slice(0, 200);
     }
 
-    allTasks[idx].updated_at = new Date().toISOString();
+    // Re-read: downloading takes a moment and another task may have written the
+    // task file in the meantime.
+    const allTasks = readTaskFile("ai-video-tasks.json");
+    const idx = allTasks.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    Object.assign(allTasks[idx], update, { updated_at: new Date().toISOString() });
     writeTaskFile("ai-video-tasks.json", allTasks);
   });
 });

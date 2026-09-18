@@ -476,6 +476,22 @@ body::after {
               <img id="ai-ref-thumb" style="max-height:120px;border-radius:8px;border:1px solid var(--border);" />
             </div>
           </div>
+          <div id="ai-source-wrap" style="margin-bottom:12px;display:none;">
+            <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Source Video</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <select id="ai-src-select" onchange="onSrcSelect()" style="flex:1;min-width:240px;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font-body);outline:none;">
+                <option value="">No source video</option>
+              </select>
+              <label style="padding:8px 16px;background:hsla(264 65% 49% / 0.06);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.15);border-radius:8px;cursor:pointer;font-family:var(--font-data);font-size:11px;transition:all 0.2s;">
+                Upload Video
+                <input type="file" id="ai-src-file" style="display:none" accept="video/*" onchange="pickSrcVideo(this)">
+              </label>
+              <span id="ai-src-name" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+              <button id="ai-src-clear" style="display:none;background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;" onclick="clearSrcVideo()">&#x2715; Remove</button>
+            </div>
+            <div id="ai-src-hint" style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-top:6px;"></div>
+            <video id="ai-src-preview" controls style="display:none;max-height:130px;margin-top:8px;border-radius:8px;border:1px solid var(--border);"></video>
+          </div>
           <div style="display:flex;gap:10px;align-items:center;">
             <button id="ai-submit" onclick="submitAIVideo()" style="padding:10px 24px;background:linear-gradient(135deg, var(--primary), hsl(270 65% 55%));border:none;border-radius:8px;color:white;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.2s;font-family:var(--font-body);">Generate Video</button>
             <span id="ai-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
@@ -839,7 +855,7 @@ body::after {
       'pruna/wan-i2v': ['16:9','9:16','1:1'],
       'pruna/p-video': ['16:9','9:16','1:1'],
       'xai/grok-imagine-video': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
-      'xai/grok-extend-video': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
+      'xai/grok-extend-video': [],
       'xai/grok-reference-video': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
       'klingai/video-v3': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
       'klingai/video-v2-6': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
@@ -859,6 +875,24 @@ body::after {
       '2:3':  '2:3',
       '21:9': '21:9 (Cinematic)',
     };
+    // Which models accept an existing clip, and what they do with it. Mirrors
+    // VIDEO_SOURCE_FIELDS on the server.
+    const EXTEND_MODELS = {
+      'xai/grok-extend-video': 'Grok Extend continues this clip where it ends.',
+      'bytedance/seedance-2-0': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
+      'bytedance/seedance-2-0-fast': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
+    };
+    // Longer clips are only offered where the model really supports them.
+    const DURATIONS_BY_MODEL = {
+      'xai/grok-extend-video': [5, 8, 10, 15],
+      'bytedance/seedance-2-0': [5, 8, 10, 15],
+      'bytedance/seedance-2-0-fast': [5, 8, 10, 15],
+    };
+    let aiSrcFile = null;    // uploaded source clip
+    let aiSrcUrl = '';       // or the URL of an earlier generation
+    let aiSrcTaskId = '';
+    let aiVideoTasks = [];   // last loaded list, feeds the source dropdown
+
     function syncAspectRatioOptions() {
       const modelSel = document.getElementById('ai-model');
       const ratioSel = document.getElementById('ai-ratio');
@@ -876,11 +910,123 @@ body::after {
       ).join('');
       ratioSel.value = allowed.includes(prev) ? prev : allowed[0];
     }
+    function syncDurationOptions() {
+      const modelSel = document.getElementById('ai-model');
+      const durSel = document.getElementById('ai-duration');
+      if (!modelSel || !durSel) return;
+      const allowed = DURATIONS_BY_MODEL[modelSel.value] || [5, 8];
+      const prev = durSel.value;
+      const max = Math.max(...allowed);
+      durSel.innerHTML = allowed.map(d =>
+        `<option value="${d}">${d} seconds${d === max ? ' (max)' : ''}</option>`
+      ).join('');
+      durSel.value = allowed.includes(Number(prev)) ? prev : String(allowed.includes(8) ? 8 : allowed[0]);
+    }
+
+    function syncSourceField() {
+      const modelSel = document.getElementById('ai-model');
+      const wrap = document.getElementById('ai-source-wrap');
+      const btn = document.getElementById('ai-submit');
+      if (!modelSel || !wrap) return;
+      const hint = EXTEND_MODELS[modelSel.value];
+      if (!hint) {
+        wrap.style.display = 'none';
+        clearSrcVideo();
+      } else {
+        wrap.style.display = '';
+        document.getElementById('ai-src-hint').textContent = hint
+          + ' Pick one of the generated videos below, or upload your own.';
+        fillSourceOptions();
+      }
+      if (btn) btn.textContent = modelSel.value === 'xai/grok-extend-video' ? 'Extend Video' : 'Generate Video';
+    }
+
+    function syncModelFields() {
+      syncAspectRatioOptions();
+      syncDurationOptions();
+      syncSourceField();
+    }
+
+    // The dropdown lists the finished clips so an earlier generation can be fed
+    // straight back in without downloading and re-uploading it.
+    function fillSourceOptions() {
+      const sel = document.getElementById('ai-src-select');
+      if (!sel) return;
+      const done = aiVideoTasks.filter(t => t.status === 'completed' && t.result_url);
+      const prev = aiSrcUrl;
+      sel.innerHTML = '<option value="">No source video</option>' + done.map(t => {
+        const label = (t.model.split('/').pop() + ' — ' + (t.prompt || '')).slice(0, 60);
+        return `<option value="${t.result_url}" data-id="${t.id}">${label.replace(/</g, '&lt;')}</option>`;
+      }).join('');
+      if (prev && done.some(t => t.result_url === prev)) sel.value = prev;
+    }
+
+    function onSrcSelect() {
+      const sel = document.getElementById('ai-src-select');
+      aiSrcUrl = sel.value;
+      aiSrcTaskId = sel.selectedOptions[0] ? (sel.selectedOptions[0].dataset.id || '') : '';
+      if (aiSrcUrl) {
+        aiSrcFile = null;
+        document.getElementById('ai-src-file').value = '';
+        document.getElementById('ai-src-name').textContent = '';
+      }
+      showSrcPreview(aiSrcUrl);
+      document.getElementById('ai-src-clear').style.display = aiSrcUrl ? 'inline' : 'none';
+    }
+
+    function pickSrcVideo(input) {
+      const file = input.files[0];
+      if (!file) return;
+      aiSrcFile = file;
+      aiSrcUrl = '';
+      aiSrcTaskId = '';
+      document.getElementById('ai-src-select').value = '';
+      document.getElementById('ai-src-name').textContent = file.name;
+      document.getElementById('ai-src-clear').style.display = 'inline';
+      showSrcPreview(URL.createObjectURL(file));
+    }
+
+    function clearSrcVideo() {
+      aiSrcFile = null; aiSrcUrl = ''; aiSrcTaskId = '';
+      const sel = document.getElementById('ai-src-select');
+      if (sel) sel.value = '';
+      const f = document.getElementById('ai-src-file');
+      if (f) f.value = '';
+      const name = document.getElementById('ai-src-name');
+      if (name) name.textContent = '';
+      const clr = document.getElementById('ai-src-clear');
+      if (clr) clr.style.display = 'none';
+      showSrcPreview('');
+    }
+
+    function showSrcPreview(src) {
+      const v = document.getElementById('ai-src-preview');
+      if (!v) return;
+      if (src) { v.src = src; v.style.display = 'block'; }
+      else { v.removeAttribute('src'); v.style.display = 'none'; }
+    }
+
+    // "Extend" on a finished clip: switch to the extend model and preselect it.
+    function extendVideo(id) {
+      const task = aiVideoTasks.find(t => t.id === id);
+      if (!task || !task.result_url) return;
+      const modelSel = document.getElementById('ai-model');
+      if (!EXTEND_MODELS[modelSel.value]) modelSel.value = 'xai/grok-extend-video';
+      syncModelFields();
+      const sel = document.getElementById('ai-src-select');
+      sel.value = task.result_url;
+      onSrcSelect();
+      document.getElementById('aigen-panel').scrollTo({ top: 0, behavior: 'smooth' });
+      const prompt = document.getElementById('ai-prompt');
+      prompt.focus();
+      document.getElementById('ai-status').textContent = 'Source video selected. Describe what happens next.';
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       const modelSel = document.getElementById('ai-model');
       if (modelSel) {
-        modelSel.addEventListener('change', syncAspectRatioOptions);
-        syncAspectRatioOptions();
+        modelSel.addEventListener('change', syncModelFields);
+        syncModelFields();
       }
     });
 
@@ -904,11 +1050,17 @@ body::after {
         const vtBrand = document.getElementById('vt-brand');
         if (vtBrand && vtBrand.value) formData.append('brand', vtBrand.value);
         if (aiRefFile) formData.append('ref_image', aiRefFile);
+        if (aiSrcFile) formData.append('source_video', aiSrcFile);
+        else if (aiSrcUrl) {
+          formData.append('source_url', aiSrcUrl);
+          if (aiSrcTaskId) formData.append('source_task_id', aiSrcTaskId);
+        }
 
         const res = await fetch('/video/ai-generate', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Failed');
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed');
         document.getElementById('ai-prompt').value = '';
         clearRefImage();
+        clearSrcVideo();
         document.getElementById('ai-status').textContent = 'Video generation started!';
         loadAIVideos();
         setTimeout(() => { document.getElementById('ai-status').textContent = ''; }, 3000);
@@ -920,6 +1072,8 @@ body::after {
       try {
         const res = await fetch('/video/ai-generate');
         const tasks = await res.json();
+        aiVideoTasks = tasks;
+        fillSourceOptions();
         const el = document.getElementById('ai-video-list');
         if (!tasks.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No AI videos generated yet</div>'; return; }
         el.innerHTML = tasks.map(t => {
@@ -936,6 +1090,7 @@ body::after {
               ${t.result_url ? `<div style="margin-top:8px;">
                 <video src="${t.result_url}" controls style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);"></video>
                 <a href="${t.result_url}" target="_blank" download style="display:inline-block;margin-top:4px;font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;">Download video</a>
+                <button onclick="extendVideo('${t.id}')" style="margin-left:10px;background:none;border:none;color:var(--primary);cursor:pointer;font-size:10px;font-family:var(--font-data);padding:0;">Extend this video</button>
               </div>` : ''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
