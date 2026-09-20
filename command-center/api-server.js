@@ -1654,7 +1654,8 @@ app.delete("/video/tasks/:id", (req, res) => {
 const aiVideoUpload = require("multer")({
   storage: require("multer").diskStorage({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
-    filename: (_req, file, cb) => cb(null, Date.now() + path.extname(file.originalname || ".png")),
+    filename: (_req, file, cb) =>
+      cb(null, Date.now() + "-" + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname || ".png")),
   }),
   limits: { fileSize: 200 * 1024 * 1024 }, // a source video weighs a lot more than a reference image
 });
@@ -1667,6 +1668,33 @@ const VIDEO_SOURCE_FIELDS = {
   "bytedance/seedance-2-0": "reference_videos",
   "bytedance/seedance-2-0-fast": "reference_videos",
 };
+// How many reference images each model really takes and where they go:
+//   first = single first-frame field, end = last-frame field,
+//   refs  = array field for several reference images, mention = how the model
+//   addresses them inside the prompt, required = the model cannot run without.
+// Read off the app input schemas (`infsh app get <model>`); a model that is
+// handed more than it accepts fails inside the provider.
+const VIDEO_IMAGE_INPUTS = {
+  "google/veo-3":                { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "google/veo-3-fast":           { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "google/veo-3-1":              { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "google/veo-2":                { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "xai/grok-imagine-video":      { first: "image", max: 1 },
+  "xai/grok-extend-video":       { max: 0 },
+  "xai/grok-reference-video":    { refs: "reference_images", max: 6, required: true },
+  "pruna/wan-t2v":               { max: 0 },
+  "pruna/wan-i2v":               { first: "image", max: 1 },
+  "pruna/p-video":               { first: "image", max: 1 },
+  "klingai/video-v3":            { first: "image", end: "end_image", max: 2 },
+  "klingai/video-v2-6":          { first: "image", end: "end_image", max: 2 },
+  "klingai/video-v2-5":          { first: "image", end: "end_image", max: 2 },
+  "klingai/video-o1":            { first: "image", refs: "reference_images", max: 7, mention: "@image_" },
+  "bytedance/seedance-2-0":      { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
+  "bytedance/seedance-2-0-fast": { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
+  "bytedance/seedance-1-5-pro":  { first: "image", max: 1 },
+};
+const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
+
 // Models that reject an aspect_ratio field, or want it under another name.
 const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
 const VIDEO_ASPECT_FIELD = { "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio" };
@@ -1695,7 +1723,7 @@ function resolveSourceVideo(body, files) {
 
 app.get("/video/ai-generate", (_req, res) => res.json(readTaskFile("ai-video-tasks.json")));
 
-app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 1 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
+app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 9 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
   const tasks = readTaskFile("ai-video-tasks.json");
   const model = req.body.model || "google/veo-3";
   const prompt = req.body.prompt || "";
@@ -1703,13 +1731,25 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   // Front-end omits the field when the model has no supported ratios.
   const aspectRatio = (req.body.aspect_ratio || "").trim() || null;
   const duration = parseInt(req.body.duration) || 8;
-  const refImagePath = (req.files && req.files.ref_image && req.files.ref_image[0]) ? req.files.ref_image[0].path : null;
+  const refImagePaths = ((req.files && req.files.ref_image) || []).map((f) => f.path);
+  const imageSpec = VIDEO_IMAGE_INPUTS[model] || VIDEO_IMAGE_DEFAULT;
+  const maxRefImages = imageSpec.max || 0;
   // Extending an existing clip: the source video plus the field this model wants it in.
   const source = resolveSourceVideo(req.body, req.files);
   const sourceField = VIDEO_SOURCE_FIELDS[model] || "";
   const dropUploads = () => {
-    for (const f of [refImagePath, source.upload]) if (f) { try { fs.unlinkSync(f); } catch {} }
+    for (const f of [...refImagePaths, source.upload]) if (f) { try { fs.unlinkSync(f); } catch {} }
   };
+  if (refImagePaths.length > maxRefImages) {
+    dropUploads();
+    return res.status(400).json({ error: maxRefImages === 0
+      ? "This model does not take reference images."
+      : `This model takes at most ${maxRefImages} reference image${maxRefImages > 1 ? "s" : ""} (received ${refImagePaths.length}).` });
+  }
+  if (imageSpec.required && !refImagePaths.length) {
+    dropUploads();
+    return res.status(400).json({ error: "This model generates from reference images: upload at least one." });
+  }
   if (source.file && !sourceField) {
     dropUploads();
     return res.status(400).json({ error: "This model cannot continue an existing video. Choose Grok Extend or Seedance 2.0." });
@@ -1717,10 +1757,6 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   if (!source.file && sourceField === "video") {
     dropUploads();
     return res.status(400).json({ error: "This model only extends an existing clip: pick a source video first." });
-  }
-  if (source.file && refImagePath && sourceField === "reference_videos") {
-    dropUploads();
-    return res.status(400).json({ error: "Seedance takes either a reference image or a source video, not both." });
   }
   const brandContext = loadBrandContext(req.body.brand);
 
@@ -1730,7 +1766,8 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     model, prompt, aspect_ratio: aspectRatio, duration,
     brand: brandContext.name,
     brand_context: brandContext,
-    ref_image: refImagePath ? true : false,
+    ref_image: refImagePaths.length > 0,
+    ref_images: refImagePaths.length,
     source_video: source.file ? true : false,
     extends_task: String(req.body.source_task_id || "").trim() || null,
     result_url: null, error: null,
@@ -1752,27 +1789,47 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
       // Seedance addresses its inputs by number in the prompt itself; without a
       // @Video1 mention it treats the clip as loose inspiration.
       if (!/@video\s*\d/i.test(prompt)) {
-        inputObj.prompt = "@Video1 is the source clip. Continue it seamlessly. " + prompt;
+        inputObj.prompt = "@Video1 is the source clip. Continue it seamlessly. " + inputObj.prompt;
       }
     } else {
       inputObj[sourceField] = source.file;
     }
   }
-  let resizedPath = null;
-  if (refImagePath && fs.existsSync(refImagePath)) {
-    // Resize / re-encode to JPEG max 1024px to satisfy provider size limits
-    // (Kling caps at 10MB). Falls back to the original file on failure.
-    resizedPath = refImagePath.replace(/\.\w+$/, "-resized.jpg");
+  // Resize / re-encode every reference image to JPEG max 1024px to satisfy
+  // provider size limits (Kling caps at 10MB). Falls back to the original file.
+  const resizedPaths = [];
+  const preparedRefs = refImagePaths.filter((p) => fs.existsSync(p)).map((p) => {
+    const out = p.replace(/\.\w+$/, "") + "-resized.jpg";
     try {
       require("child_process").execSync(
-        `convert "${refImagePath}" -resize "1024x1024>" -quality 85 "${resizedPath}"`,
+        `convert "${p}" -resize "1024x1024>" -quality 85 "${out}"`,
         { timeout: 15000 }
       );
-      inputObj.image = resizedPath;
+      resizedPaths.push(out);
+      return out;
     } catch (resizeErr) {
       console.error("[AI-VIDEO] Image resize failed, using original:", resizeErr.message);
-      resizedPath = null;
-      inputObj.image = refImagePath;
+      return p;
+    }
+  });
+  if (preparedRefs.length) {
+    // Several images (or a model without a first-frame field, or one whose
+    // first-frame field clashes with the source clip) go into the array field;
+    // a single image stays the first frame, as it has always been.
+    const useRefs = imageSpec.refs &&
+      (preparedRefs.length > 1 || !imageSpec.first || sourceField === "reference_videos");
+    if (useRefs) {
+      inputObj[imageSpec.refs] = preparedRefs;
+      // Seedance and Kling Omni address their inputs by number in the prompt;
+      // without a mention they treat the images as loose inspiration.
+      if (imageSpec.mention && !/@image[\s_]*\d/i.test(inputObj.prompt)) {
+        const list = preparedRefs.map((_, i) => imageSpec.mention + (i + 1)).join(", ");
+        inputObj.prompt = `${list} ${preparedRefs.length > 1 ? "are the reference images" : "is the reference image"}. ` + inputObj.prompt;
+      }
+    } else {
+      inputObj[imageSpec.first] = preparedRefs[0];
+      // A second image on a model without an array field is the closing frame.
+      if (preparedRefs[1] && imageSpec.end) inputObj[imageSpec.end] = preparedRefs[1];
     }
   }
 
@@ -1791,8 +1848,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
       return setTimeout(() => runVideo(n + 1), 3000);
     }
     try { fs.unlinkSync(tmpInput); } catch {}
-    if (refImagePath) try { fs.unlinkSync(refImagePath); } catch {}
-    if (resizedPath) try { fs.unlinkSync(resizedPath); } catch {}
+    for (const f of [...refImagePaths, ...resizedPaths]) try { fs.unlinkSync(f); } catch {}
     if (source.upload) try { fs.unlinkSync(source.upload); } catch {}
 
     let update;
