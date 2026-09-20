@@ -1667,6 +1667,10 @@ const VIDEO_SOURCE_FIELDS = {
   "xai/grok-extend-video": "video",
   "bytedance/seedance-2-0": "reference_videos",
   "bytedance/seedance-2-0-fast": "reference_videos",
+  // Seedance 2.5 runs on Higgsfield, where the clip is a video_url on the
+  // extend / edit endpoint (see HF_VIDEO_MODELS below).
+  "higgsfield/seedance-2.5": "video_url",
+  "higgsfield/seedance-2.5-edit": "video_url",
 };
 // How many reference images each model really takes and where they go:
 //   first = single first-frame field, end = last-frame field,
@@ -1692,12 +1696,35 @@ const VIDEO_IMAGE_INPUTS = {
   "bytedance/seedance-2-0":      { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
   "bytedance/seedance-2-0-fast": { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
   "bytedance/seedance-1-5-pro":  { first: "image", max: 1 },
+  "higgsfield/seedance-2.5":      { first: "image_url", refs: "image_urls", max: 30 },
+  "higgsfield/seedance-2.5-edit": { refs: "image_urls", max: 30 },
 };
 const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
 
 // Models that reject an aspect_ratio field, or want it under another name.
 const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
 const VIDEO_ASPECT_FIELD = { "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio" };
+
+// Resize / re-encode every reference image to JPEG max 1024px to satisfy
+// provider size limits (Kling caps at 10MB, Higgsfield only takes a handful of
+// content types). Falls back to the original file. Every file it creates is
+// appended to `created` so the caller can clean up afterwards.
+function shrinkRefImages(paths, created) {
+  return paths.filter((p) => fs.existsSync(p)).map((p) => {
+    const out = p.replace(/\.\w+$/, "") + "-resized.jpg";
+    try {
+      require("child_process").execSync(
+        `convert "${p}" -resize "1024x1024>" -quality 85 "${out}"`,
+        { timeout: 15000 }
+      );
+      created.push(out);
+      return out;
+    } catch (resizeErr) {
+      console.error("[AI-VIDEO] Image resize failed, using original:", resizeErr.message);
+      return p;
+    }
+  });
+}
 
 // A finished video that this server stores itself (/video-outputs/x.mp4) back
 // to a file on disk, so it can be fed straight into the next run.
@@ -1719,6 +1746,154 @@ function resolveSourceVideo(body, files) {
   if (local) return { file: local, upload: "" };
   if (/^https?:\/\//i.test(raw)) return { file: raw, upload: "" };
   return { file: "", upload: "" };
+}
+
+// ── SEEDANCE 2.5 VIA THE HIGGSFIELD API ───────────────
+// inference.sh does not carry Seedance 2.5, so these models talk to
+// api.higgsfield.ai directly with the same HIGGSFIELD_API_KEY
+// ("KEY_ID:KEY_SECRET") the UGC worker uses. The API fetches its inputs from
+// public URLs only, so every local file is uploaded to Higgsfield first.
+// Endpoints (docs.higgsfield.ai/docs/models/seedance-2-5/*):
+//   POST /bytedance/seedance-2.5/{text|image|reference}-to-video
+//   POST /bytedance/seedance-2.5/video-{edit,extend}
+//   GET  /requests/{id}/status
+const HIGGSFIELD_API = "https://api.higgsfield.ai";
+const HF_SEEDANCE_ASPECTS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
+const HF_SEEDANCE_RESOLUTIONS = ["720p", "480p"];
+// Which endpoint a run lands on is decided by what the user supplied, the same
+// way the model page splits its workflows.
+const HF_VIDEO_MODELS = {
+  "higgsfield/seedance-2.5": {
+    label: "Seedance 2.5",
+    endpoint: ({ images, video }) =>
+      video ? "bytedance/seedance-2.5/video-extend"
+      : images.length > 1 ? "bytedance/seedance-2.5/reference-to-video"
+      : images.length ? "bytedance/seedance-2.5/image-to-video"
+      : "bytedance/seedance-2.5/text-to-video",
+  },
+  "higgsfield/seedance-2.5-edit": {
+    label: "Seedance 2.5 Edit",
+    needsSource: true,
+    endpoint: () => "bytedance/seedance-2.5/video-edit",
+  },
+};
+const HF_CONTENT_TYPES = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".webp": "image/webp", ".gif": "image/gif", ".mp4": "video/mp4", ".wav": "audio/wav",
+};
+
+// Presigned upload: ask for a slot, PUT the file, hand back the public URL.
+// The credentials go to Higgsfield only — never to the storage host.
+async function higgsfieldUpload(file) {
+  const type = HF_CONTENT_TYPES[path.extname(file).toLowerCase()];
+  if (!type) throw new Error("Higgsfield does not accept " + path.extname(file) + " files");
+  const r = await fetch(`${HIGGSFIELD_API}/files/generate-upload-url`, {
+    method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ content_type: type }),
+  });
+  if (!r.ok) throw new Error(`upload slot ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const slot = await r.json();
+  const put = await fetch(slot.upload_url, {
+    method: "PUT", headers: { ...(slot.upload_headers || {}) }, body: fs.readFileSync(file),
+  });
+  if (!put.ok) throw new Error(`upload ${put.status}: ${(await put.text()).slice(0, 200)}`);
+  return slot.public_url;
+}
+
+// The parameters every Seedance 2.5 endpoint shares, plus the ones only some of
+// them accept: a clip or a first frame sets the framing itself, so those
+// endpoints reject aspect_ratio, and video-edit takes its length from the source.
+function higgsfieldVideoBody(endpoint, o) {
+  const body = {
+    prompt: o.prompt,
+    resolution: HF_SEEDANCE_RESOLUTIONS.includes(o.resolution) ? o.resolution : HF_SEEDANCE_RESOLUTIONS[0],
+    generate_audio: o.generateAudio !== false,
+    output_format: "mp4",
+  };
+  if (!endpoint.endsWith("/video-edit")) {
+    body.duration = Math.min(30, Math.max(4, Number(o.duration) || 5));
+  }
+  if (endpoint.endsWith("/text-to-video") || endpoint.endsWith("/reference-to-video")) {
+    body.aspect_ratio = HF_SEEDANCE_ASPECTS.includes(o.aspectRatio) ? o.aspectRatio : "16:9";
+  }
+  if (endpoint.endsWith("/image-to-video")) body.image_url = o.images[0];
+  else if (o.images.length) body.image_urls = o.images.slice(0, 30);
+  if (o.video) body.video_url = o.video;
+  return body;
+}
+
+// Submit and poll until the request reaches a state it never leaves again.
+async function higgsfieldGenerateVideo(endpoint, body, opts = {}) {
+  const r = await fetch(`${HIGGSFIELD_API}/${endpoint}`, {
+    method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify(body),
+  });
+  const queued = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`${endpoint} ${r.status}: ${(queued && queued.detail ? JSON.stringify(queued.detail) : JSON.stringify(queued)).slice(0, 300)}`);
+  const id = queued.request_id;
+  if (!id) throw new Error("Higgsfield returned no request_id");
+  console.log(`[AI-VIDEO] Higgsfield ${endpoint} queued as ${id}`);
+  const deadline = Date.now() + (opts.timeout || 30 * 60 * 1000);
+  let misses = 0;
+  while (Date.now() < deadline) {
+    await new Promise((done) => setTimeout(done, 5000));
+    const s = await fetch(`${HIGGSFIELD_API}/requests/${encodeURIComponent(id)}/status`, { headers: higgsfieldHeaders() });
+    if (!s.ok) {
+      // A dropped poll must not end a generation that is still running.
+      if (s.status >= 500 && ++misses <= 5) continue;
+      throw new Error(`status ${s.status}: ${(await s.text()).slice(0, 200)}`);
+    }
+    misses = 0;
+    const data = await s.json();
+    const status = String(data.status || "").toLowerCase();
+    if (status === "completed") {
+      const url = (data.video && data.video.url)
+        || (Array.isArray(data.videos) && data.videos[0] && data.videos[0].url)
+        || (JSON.stringify(data).match(/https?:\/\/[^\s"']+\.(?:mp4|mov)[^\s"']*/i) || [])[0];
+      if (!url) throw new Error("finished without a video URL");
+      return url;
+    }
+    if (["failed", "nsfw", "canceled", "cancelled", "error"].includes(status)) {
+      const why = data.error ? (typeof data.error === "string" ? data.error : JSON.stringify(data.error)) : "";
+      throw new Error(`Higgsfield reported "${status}"${why ? ": " + why : ""}`);
+    }
+  }
+  throw new Error("Higgsfield did not finish in time");
+}
+
+// One AI-generate task, run against Higgsfield instead of inference.sh.
+async function runHiggsfieldVideoTask(task, cfg, o) {
+  const resized = [];
+  let update;
+  try {
+    const images = [];
+    for (const p of shrinkRefImages(o.refImagePaths, resized)) images.push(await higgsfieldUpload(p));
+    let video = "";
+    if (o.source.file) {
+      video = /^https?:\/\//i.test(o.source.file) ? o.source.file : await higgsfieldUpload(o.source.file);
+    }
+    const endpoint = cfg.endpoint({ images, video });
+    const url = await higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video }));
+    // Keep our own copy: Higgsfield's URLs expire, and a clip still on disk can
+    // be fed straight back in as the source of the next run.
+    let localUrl = "";
+    try {
+      await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4"));
+      localUrl = `/video-outputs/${task.id}.mp4`;
+    } catch (dlErr) {
+      console.error("[AI-VIDEO] Could not store the video locally:", dlErr.message);
+    }
+    update = { status: "completed", result_url: localUrl || url, provider_url: url, endpoint };
+    console.log(`[AI-VIDEO] Task ${task.id} completed via Higgsfield: ${update.result_url}`);
+  } catch (e) {
+    update = { status: "failed", error: String(e.message).slice(0, 500) };
+    console.error(`[AI-VIDEO] ${cfg.label} failed:`, String(e.message).slice(0, 300));
+  }
+  for (const f of [...o.refImagePaths, ...resized]) { try { fs.unlinkSync(f); } catch {} }
+  if (o.source.upload) { try { fs.unlinkSync(o.source.upload); } catch {} }
+  const all = readTaskFile("ai-video-tasks.json");
+  const idx = all.findIndex((t) => t.id === task.id);
+  if (idx === -1) return;
+  Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+  writeTaskFile("ai-video-tasks.json", all);
 }
 
 app.get("/video/ai-generate", (_req, res) => res.json(readTaskFile("ai-video-tasks.json")));
@@ -1752,18 +1927,32 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   }
   if (source.file && !sourceField) {
     dropUploads();
-    return res.status(400).json({ error: "This model cannot continue an existing video. Choose Grok Extend or Seedance 2.0." });
+    return res.status(400).json({ error: "This model cannot continue an existing video. Choose Grok Extend, Seedance 2.0 or Seedance 2.5." });
   }
   if (!source.file && sourceField === "video") {
     dropUploads();
     return res.status(400).json({ error: "This model only extends an existing clip: pick a source video first." });
   }
+  if (HF_VIDEO_MODELS[model] && !(process.env.HIGGSFIELD_API_KEY || "").trim()) {
+    dropUploads();
+    return res.status(400).json({ error: "This model runs on Higgsfield: set HIGGSFIELD_API_KEY in .env first." });
+  }
+  if (!source.file && (HF_VIDEO_MODELS[model] || {}).needsSource) {
+    dropUploads();
+    return res.status(400).json({ error: "This model edits an existing clip: pick a source video first." });
+  }
   const brandContext = loadBrandContext(req.body.brand);
+  // Higgsfield-only settings: 480p halves the bill, audio is generated along
+  // with the picture. Both are ignored by every inference.sh model.
+  const hfModel = HF_VIDEO_MODELS[model];
+  const resolution = HF_SEEDANCE_RESOLUTIONS.includes(req.body.resolution) ? req.body.resolution : HF_SEEDANCE_RESOLUTIONS[0];
+  const generateAudio = !(req.body.generate_audio === "false" || req.body.generate_audio === false);
 
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     model, prompt, aspect_ratio: aspectRatio, duration,
+    ...(hfModel ? { resolution, generate_audio: generateAudio } : {}),
     brand: brandContext.name,
     brand_context: brandContext,
     ref_image: refImagePaths.length > 0,
@@ -1775,6 +1964,16 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   tasks.unshift(task);
   writeTaskFile("ai-video-tasks.json", tasks);
   res.status(201).json(task);
+
+  // Seedance 2.5 is not on inference.sh: that one runs against the Higgsfield
+  // API, which uploads its own inputs and polls for the result.
+  if (hfModel) {
+    runHiggsfieldVideoTask(task, hfModel, {
+      prompt, aspectRatio, duration, resolution, generateAudio,
+      refImagePaths, source,
+    });
+    return;
+  }
 
   // Build infsh input. Inference.sh apps with `format: "file"` fields (Kling,
   // Seedance, Veo, Wan, etc.) expect a local file path or public URL — the CLI
@@ -1795,23 +1994,8 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
       inputObj[sourceField] = source.file;
     }
   }
-  // Resize / re-encode every reference image to JPEG max 1024px to satisfy
-  // provider size limits (Kling caps at 10MB). Falls back to the original file.
   const resizedPaths = [];
-  const preparedRefs = refImagePaths.filter((p) => fs.existsSync(p)).map((p) => {
-    const out = p.replace(/\.\w+$/, "") + "-resized.jpg";
-    try {
-      require("child_process").execSync(
-        `convert "${p}" -resize "1024x1024>" -quality 85 "${out}"`,
-        { timeout: 15000 }
-      );
-      resizedPaths.push(out);
-      return out;
-    } catch (resizeErr) {
-      console.error("[AI-VIDEO] Image resize failed, using original:", resizeErr.message);
-      return p;
-    }
-  });
+  const preparedRefs = shrinkRefImages(refImagePaths, resizedPaths);
   if (preparedRefs.length) {
     // Several images (or a model without a first-frame field, or one whose
     // first-frame field clashes with the source clip) go into the array field;
