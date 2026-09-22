@@ -253,8 +253,8 @@ body::after {
 /* ── AGENT CARDS (retro space) ───────────────────── */
 .agents-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
 }
 .ac {
   --ac: 264 65% 49%;
@@ -264,8 +264,8 @@ body::after {
   aspect-ratio: 2 / 3;
   display: flex;
   flex-direction: column;
-  padding: 22px 22px 18px;
-  border-radius: 16px;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
   border: 1px solid hsla(0 0% 100% / 0.08);
   background: radial-gradient(120% 85% at 50% 32%, hsl(228 58% 13%) 0%, hsl(232 52% 7%) 48%, hsl(240 30% 3%) 100%);
   color: hsl(0 0% 100%);
@@ -346,12 +346,17 @@ body::after {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ac-name {
-  margin-top: 8px;
+  margin-top: 6px;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: clamp(28px, 13cqi, 56px); font-weight: 800; line-height: 1; letter-spacing: -0.03em;
+  font-size: clamp(20px, 13cqi, 34px); font-weight: 800; line-height: 1; letter-spacing: -0.03em;
   color: hsl(0 0% 100%);
 }
-.ac-hero { position: relative; flex: 1; min-height: 120px; display: grid; place-items: center; margin: 10px 0; }
+.ac-title {
+  margin-top: 4px;
+  font-size: clamp(11px, 6cqi, 14px); font-weight: 600; line-height: 1.2;
+  color: hsl(var(--ac)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ac-hero { position: relative; flex: 1; min-height: 70px; display: grid; place-items: center; margin: 6px 0; }
 .ac-glow {
   position: absolute; width: 78cqi; aspect-ratio: 1; border-radius: 50%;
   background: radial-gradient(circle, hsla(var(--ac) / 0.42) 0%, hsla(var(--ac) / 0.12) 38%, transparent 66%);
@@ -376,11 +381,11 @@ body::after {
   text-shadow: 0 0 10px hsla(var(--ac) / 0.9);
   animation: ac-float 3s ease-in-out infinite;
 }
-.ac-role { font-size: 16px; line-height: 1.4; color: hsla(0 0% 100% / 0.85); }
-.ac-divider { height: 1px; margin: 14px 0 12px; background: hsla(0 0% 100% / 0.1); }
-.ac-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.ac-stat-label { font-size: 11px; color: hsl(215 16% 58%); margin-bottom: 3px; }
-.ac-stat-value { font-size: 20px; font-weight: 700; color: hsl(0 0% 100%); font-variant-numeric: tabular-nums; }
+.ac-role { font-size: clamp(11px, 5.6cqi, 14px); line-height: 1.35; color: hsla(0 0% 100% / 0.8); }
+.ac-divider { height: 1px; margin: 10px 0 8px; background: hsla(0 0% 100% / 0.1); }
+.ac-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ac-stat-label { font-size: 10px; color: hsl(215 16% 58%); margin-bottom: 3px; }
+.ac-stat-value { font-size: clamp(14px, 8cqi, 18px); font-weight: 700; color: hsl(0 0% 100%); font-variant-numeric: tabular-nums; }
 .ac-status {
   align-self: flex-end; margin-top: 12px;
   display: flex; align-items: center; gap: 8px;
@@ -405,19 +410,21 @@ body::after {
 @keyframes ac-floor { from { background-position: 0 0; } to { background-position: 0 34px; } }
 @keyframes ac-dash { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
+  .agents-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
   .agents-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 768px) {
   .agents-grid {
-    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: min(78%, 320px);
+    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: min(62%, 240px);
     overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
   .agents-grid::-webkit-scrollbar { display: none; }
   .main, section:has(> .agents-grid) { min-width: 0; max-width: 100%; }
-  .ac { scroll-snap-align: start; padding: 18px 18px 16px; }
-  .ac-role { font-size: 15px; }
+  .ac { scroll-snap-align: start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ac, .ac * , .ac *::before, .ac *::after { animation: none !important; }
@@ -1026,7 +1033,8 @@ function agentCardHtml(a) {
       style="--ac:${escTask(a.hsl || '264 65% 49%')};--sx:${Math.round(rnd() * 200)}px;--sy:${Math.round(rnd() * 220)}px">
     <div class="ac-bg"><div class="ac-stars"></div>${sparks}<div class="ac-floor"></div></div>
     <div class="ac-model">${escTask(a.model)}</div>
-    <div class="ac-name">${escTask(a.name)}</div>
+    <div class="ac-name">${escTask(a.nickname || a.name)}</div>
+    ${a.nickname ? `<div class="ac-title">${escTask(a.name)}</div>` : ''}
     <div class="ac-hero"><div class="ac-glow"></div>${hero}</div>
     <div class="ac-role">${escTask(a.role)}</div>
     <div class="ac-divider"></div>
@@ -1050,7 +1058,7 @@ async function renderAiTeam() {
   try { agents = await (await fetch('/agents/overview')).json(); } catch { return; }
   if (!Array.isArray(agents)) return;
   const grid = document.getElementById('ai-team-grid');
-  const key = agents.map(a => `${a.id}:${a.sprite || ''}:${(a.stats || []).map(s => s.label).join('|')}`).join(',');
+  const key = agents.map(a => `${a.id}:${a.nickname || ''}:${a.sprite || ''}:${(a.stats || []).map(s => s.label).join('|')}`).join(',');
   if (grid.dataset.key !== key) {
     grid.innerHTML = agents.map(agentCardHtml).join('');
     grid.dataset.key = key;

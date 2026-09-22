@@ -7490,15 +7490,15 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
 // One place that describes the agents and derives their live status from the task files.
 // Sprites are optional: drop public/agents/<id>.png and the card picks it up.
 const AGENT_DEFS = [
-  { id: "designer", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "canva connect",
+  { id: "designer", nickname: "Vince", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "canva connect",
     role: "Creates visual assets and social graphics in Canva.", files: ["designer-tasks.json"], needs: ["CANVA_CLIENT_ID"] },
-  { id: "video-editor", name: "Video editor", hsl: "0 72% 51%", href: "editor.html", model: "remotion + higgsfield",
+  { id: "video-editor", nickname: "Cam", name: "Video editor", hsl: "0 72% 51%", href: "editor.html", model: "remotion + higgsfield",
     role: "Edits and generates videos with Remotion and AI models.", files: ["video-tasks.json", "ai-video-tasks.json"], needs: [] },
-  { id: "content-creator", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
+  { id: "content-creator", nickname: "Boo", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
     role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
-  { id: "social-media-manager", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
+  { id: "social-media-manager", nickname: "Bubbles", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
     role: "Writes, schedules and publishes posts to X and Telegram." },
-  { id: "marketeer", name: "Marketeer", hsl: "340 80% 55%", href: "chat.html", kind: "chat", model: "claude-sonnet-4-6",
+  { id: "marketeer", nickname: "Buzz", name: "Marketeer", hsl: "340 80% 55%", href: "chat.html", kind: "chat", model: "claude-sonnet-4-6",
     role: "Plans marketing strategy, copy, SEO and growth.", needs: ["ANTHROPIC_API_KEY"] },
 ];
 const AGENT_BUSY = new Set(["pending", "queued", "processing", "running", "generating", "in_progress", "rendering"]);
@@ -7514,7 +7514,7 @@ app.get("/agents/overview", (_req, res) => {
   const today = agentDay(new Date().toISOString());
   const out = AGENT_DEFS.map(def => {
     const base = {
-      id: def.id, name: def.name, role: def.role, hsl: def.hsl, href: def.href, model: def.model || "",
+      id: def.id, nickname: def.nickname || "", name: def.name, role: def.role, hsl: def.hsl, href: def.href, model: def.model || "",
       // Animated .webp wins over a still .png; ?v= busts the cache when a sprite is replaced
       sprite: ["webp", "png"].map(ext => `${def.id}.${ext}`)
         .filter(f => fs.existsSync(path.join(__dirname, "public", "agents", f)))
