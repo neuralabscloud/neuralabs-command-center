@@ -2221,7 +2221,8 @@ app.delete("/video/ai-generate/:id", (req, res) => {
 
 
 // ── COMMUNITY MANAGER: CHANNELS ───────────────
-app.get("/community/channels", (_req, res) => res.json(readChannels()));
+const publicChannel = (c) => (c.platform === "twitter" ? { ...c, x_auth: xAuthStatus(c) } : c);
+app.get("/community/channels", (_req, res) => res.json(readChannels().map(publicChannel)));
 
 app.post("/community/channels", (req, res) => {
   const channels = readChannels();
@@ -2258,16 +2259,35 @@ app.patch("/community/channels/:id", (req, res) => {
   const idx = channels.findIndex(c => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: "Not found" });
   const current = channels[idx];
-  const next = { ...current, ...req.body, id: current.id, updated_at: new Date().toISOString() };
-  if (req.body.review) next.review = { ...current.review, ...req.body.review };
+  const { x_credentials, x_auth, ...body } = req.body || {};
+  const next = { ...current, ...body, id: current.id, updated_at: new Date().toISOString() };
+  if (body.review) next.review = { ...current.review, ...body.review };
+  if (body.autopilot) next.autopilot = { ...(current.autopilot || {}), ...body.autopilot };
+  // Blank key fields keep what is stored; { clear: true } removes the channel's own keys.
+  if (x_credentials && current.platform === "twitter") {
+    const all = readXCredentials();
+    if (x_credentials.clear) delete all[current.id];
+    else {
+      const entry = { ...(all[current.id] || {}) };
+      for (const f of X_CRED_FIELDS) {
+        const v = String(x_credentials[f] || "").trim();
+        if (v) entry[f] = v;
+      }
+      all[current.id] = entry;
+    }
+    writeXCredentials(all);
+    delete next.x_username;
+  }
   channels[idx] = next;
   writeChannels(channels);
-  res.json(next);
+  res.json(publicChannel(next));
 });
 
 app.delete("/community/channels/:id", (req, res) => {
   const channels = readChannels().filter(c => c.id !== req.params.id);
   writeChannels(channels);
+  const creds = readXCredentials();
+  if (creds[req.params.id]) { delete creds[req.params.id]; writeXCredentials(creds); }
   res.json({ ok: true });
 });
 
@@ -2277,9 +2297,13 @@ app.post("/community/channels/:id/validate", async (req, res) => {
   if (!channel) return res.status(404).json({ ok: false, error: "Channel not found" });
   if (channel.platform === "twitter") {
     try {
-      const me = await twitterVerifyCredentials();
+      const me = await twitterVerifyCredentials(twitterCreds(channel));
       const usage = twitterUsageSummary();
-      return res.json({ ok: true, title: `@${me.username}`, type: "X account", usage });
+      const channels = readChannels();
+      const c = channels.find(x => x.id === channel.id);
+      if (c && c.x_username !== me.username) { c.x_username = me.username; writeChannels(channels); }
+      const source = xAuthStatus(channel).source;
+      return res.json({ ok: true, title: `@${me.username}`, type: source === "channel" ? "X account (channel keys)" : "X account (.env keys)", usage });
     } catch (e) {
       return res.status(400).json({ ok: false, error: e.message });
     }
@@ -7019,7 +7043,7 @@ async function publishToChannel(task, channel) {
   if (!channel) throw new Error(`Channel "${task.channel_id}" not found`);
   if (channel.enabled === false) throw new Error(`Channel "${channel.id}" is disabled`);
   if (channel.platform === "telegram") return publishTelegramPost(task, channel);
-  if (channel.platform === "twitter") return publishTwitterPost(task);
+  if (channel.platform === "twitter") return publishTwitterPost(task, channel);
   if (channel.platform === "discord") throw new Error("Discord publishing is not yet implemented");
   throw new Error(`Unknown platform: ${channel.platform}`);
 }
@@ -7030,12 +7054,48 @@ async function publishToChannel(task, channel) {
 const TWITTER_USAGE_FILE = path.join(__dirname, "data", "twitter-usage.json");
 const TWITTER_UPLOAD_URL = "https://api.x.com/2/media/upload";
 
-function twitterCreds() {
+// Keys per channel live in their own file (mode 600) and never leave the server;
+// a channel without its own keys falls back to the TWITTER_* keys in .env.
+const X_CREDENTIALS_FILE = path.join(COMMUNITY_DIR, "x-credentials.json");
+const X_CRED_FIELDS = ["api_key", "api_secret", "access_token", "access_secret"];
+function readXCredentials() {
+  try { return JSON.parse(fs.readFileSync(X_CREDENTIALS_FILE, "utf8")); } catch { return {}; }
+}
+function writeXCredentials(all) {
+  fs.mkdirSync(COMMUNITY_DIR, { recursive: true });
+  fs.writeFileSync(X_CREDENTIALS_FILE, JSON.stringify(all, null, 2), { mode: 0o600 });
+  fs.chmodSync(X_CREDENTIALS_FILE, 0o600);
+}
+function channelXCreds(channelId) {
+  const c = channelId && readXCredentials()[channelId];
+  return c && X_CRED_FIELDS.every(f => c[f]) ? c : null;
+}
+function envXCredsComplete() {
   const { TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET } = process.env;
-  if (!TWITTER_API_KEY || !TWITTER_API_SECRET || !TWITTER_ACCESS_TOKEN || !TWITTER_ACCESS_SECRET) {
-    throw new Error("X credentials missing — set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN and TWITTER_ACCESS_SECRET in .env");
+  return !!(TWITTER_API_KEY && TWITTER_API_SECRET && TWITTER_ACCESS_TOKEN && TWITTER_ACCESS_SECRET);
+}
+function xAuthStatus(channel) {
+  if (channel.platform !== "twitter") return undefined;
+  const stored = readXCredentials()[channel.id] || {};
+  return {
+    source: channelXCreds(channel.id) ? "channel" : envXCredsComplete() ? "env" : null,
+    fields: Object.fromEntries(X_CRED_FIELDS.map(f => [f, !!stored[f]])),
+  };
+}
+
+function twitterCreds(channel) {
+  const own = channel && channelXCreds(channel.id);
+  const fingerprint = (k) => crypto.createHash("sha256").update(k.token).digest("hex").slice(0, 12);
+  if (own) {
+    const k = { key: own.api_key, secret: own.api_secret, token: own.access_token, tokenSecret: own.access_secret };
+    return { ...k, fingerprint: fingerprint(k) };
   }
-  return { key: TWITTER_API_KEY, secret: TWITTER_API_SECRET, token: TWITTER_ACCESS_TOKEN, tokenSecret: TWITTER_ACCESS_SECRET };
+  const { TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET } = process.env;
+  if (!envXCredsComplete()) {
+    throw new Error("X credentials missing: add the 4 keys on the channel, or set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN and TWITTER_ACCESS_SECRET in .env");
+  }
+  const k = { key: TWITTER_API_KEY, secret: TWITTER_API_SECRET, token: TWITTER_ACCESS_TOKEN, tokenSecret: TWITTER_ACCESS_SECRET };
+  return { ...k, fingerprint: fingerprint(k) };
 }
 
 // OAuth 1.0a HMAC-SHA1 signature. Only oauth_* params and URL query params are signed —
@@ -7100,8 +7160,7 @@ async function twitterApi(method, url, creds, { json, form } = {}) {
   return data;
 }
 
-async function twitterVerifyCredentials() {
-  const creds = twitterCreds();
+async function twitterVerifyCredentials(creds = twitterCreds()) {
   const d = await twitterApi("GET", "https://api.x.com/2/users/me", creds);
   if (!d.data?.username) throw new Error("X API: unexpected /users/me response");
   return d.data;
@@ -7155,8 +7214,8 @@ async function twitterUploadMedia(mediaPath, creds) {
   return String(mediaId);
 }
 
-async function publishTwitterPost(task) {
-  const creds = twitterCreds();
+async function publishTwitterPost(task, channel) {
+  const creds = twitterCreds(channel);
   const { used, limit } = twitterUsageSummary();
   if (used >= limit) {
     throw new Error(`X monthly post limit reached (${used}/${limit}). Resets next month, or raise TWITTER_MONTHLY_POST_LIMIT if your API tier allows more.`);
@@ -7299,7 +7358,10 @@ async function processCommunityTasks() {
   const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
   const channelMap = Object.fromEntries(readChannels().map(c => [c.id, c]));
   const now = Date.now();
-  let changed = false;
+  // Publishing takes seconds; other writers (UI, autopilot) may add or edit
+  // tasks meanwhile. Collect our changes and merge them into a fresh read.
+  const updates = new Map();
+  const save = (task) => updates.set(task.id, task);
   for (const task of tasks) {
     if (task.status !== "scheduled") continue;
     if (processingTasks.has(task.id)) continue;
@@ -7309,7 +7371,7 @@ async function processCommunityTasks() {
       task.status = "failed";
       task.error = task.error || "Max attempts reached";
       task.updated_at = new Date().toISOString();
-      changed = true;
+      save(task);
       continue;
     }
     const channel = channelMap[task.channel_id];
@@ -7325,19 +7387,34 @@ async function processCommunityTasks() {
       task.attempts = (task.attempts || 0) + 1;
       task.updated_at = task.published_at;
       task.error = null;
-      changed = true;
+      save(task);
       console.log(`[WORKER] Community post ${task.id} published (msg ${result.message_id})`);
+      if (task.autopilot && channel.platform === "twitter") {
+        const handle = channel.x_username || "i";
+        sendTelegram(`𝕏 Autopilot posted (${escapeHtmlTg(channel.name)})`,
+          `${escapeHtmlTg(task.text)}\n\nhttps://x.com/${handle}/status/${result.message_id}`, "info");
+      }
     } catch (e) {
       task.attempts = (task.attempts || 0) + 1;
       task.error = e.message;
       task.updated_at = new Date().toISOString();
-      changed = true;
+      if (task.autopilot && task.attempts >= 5) {
+        task.status = "failed";
+        sendTelegram(`𝕏 Autopilot post failed (${escapeHtmlTg(channel.name)})`, escapeHtmlTg(e.message.slice(0, 300)), "danger");
+      }
+      save(task);
       console.error(`[WORKER] Community post ${task.id} failed (attempt ${task.attempts}): ${e.message}`);
     } finally {
       processingTasks.delete(task.id);
     }
   }
-  if (changed) writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  if (updates.size) {
+    const fresh = readTaskFile(COMMUNITY_TASKS_FILE);
+    writeTaskFile(COMMUNITY_TASKS_FILE, fresh.map(t => updates.get(t.id) || t));
+  }
+}
+function escapeHtmlTg(s) {
+  return String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
 
 // Run workers every 15 seconds
@@ -7362,6 +7439,52 @@ setTimeout(() => {
   pollUgcStatus().catch(() => {});
   pollAvatarCreator().catch(() => {});
 }, 3000);
+
+// ── SOCIAL MEDIA AUTOPILOT (X) ────────────────
+// Finds well-performing posts per topic, writes an original post, redraws the
+// image in the house style and queues it; processCommunityTasks() publishes it.
+const autopilot = require("./social-autopilot").createAutopilot({
+  dataDir: path.join(__dirname, "data"),
+  mediaDir: MEDIA_DIR,
+  tz: TIMEZONE,
+  readChannels,
+  readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
+  addTask: (task) => writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]),
+  twitterApi,
+  twitterCredsFor: (channel) => twitterCreds(channel),
+  twitterVerify: (creds) => twitterVerifyCredentials(creds),
+  twitterWeightedLength,
+  higgsfield: {
+    base: HIGGSFIELD.base,
+    endpoints: HIGGSFIELD.endpoints,
+    headers: higgsfieldHeaders,
+    upload: higgsfieldUpload,
+    size: higgsfieldSize,
+  },
+  anthropic,
+  brand: loadBrand,
+  notify: sendTelegram,
+});
+setInterval(() => autopilot.tick().catch(e => console.error("[AUTOPILOT]", e.message)), 60_000);
+
+app.get("/community/channels/:id/autopilot", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+  if (channel.platform !== "twitter") return res.status(400).json({ error: "Autopilot is only available for X channels" });
+  res.json(autopilot.status(channel));
+});
+
+app.post("/community/channels/:id/autopilot/run", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel) return res.status(404).json({ error: "Channel not found" });
+  if (channel.platform !== "twitter") return res.status(400).json({ error: "Autopilot is only available for X channels" });
+  try {
+    autopilot.runNow(channel, req.body?.mode);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(409).json({ error: e.message });
+  }
+});
 
 // ── REMOTION VIDEO PROJECTS ──
 const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");

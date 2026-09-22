@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="/theme.css">
 <script src="/brand-loader.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Community Manager</title>
+<title>Social Media Manager</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
 <style>
@@ -119,6 +119,23 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 .arch-editor.open { display: flex; }
 .arch-editor textarea { min-height: 360px; }
 
+.ap-box { border: 1px solid hsla(264 65% 49% / 0.35); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; background: hsla(264 65% 49% / 0.03); }
+.ap-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ap-title { font-family: var(--font-data); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--premium); }
+.ap-status { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+.ap-slots { display: flex; gap: 6px; flex-wrap: wrap; }
+.ap-slot { font-family: var(--font-data); font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }
+.ap-slot.done { color: var(--success); border-color: hsla(142 76% 36% / 0.4); }
+.ap-slot.running { color: var(--premium); border-color: hsla(270 95% 65% / 0.5); }
+.ap-slot.failed, .ap-slot.skipped { color: var(--danger); border-color: hsla(0 72% 51% / 0.4); }
+.ap-refs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ap-ref { position: relative; }
+.ap-ref img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.ap-ref button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-card); color: var(--danger); cursor: pointer; font-size: 10px; line-height: 1; }
+.post-source { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+.post-source a { color: var(--agent-color); text-decoration: none; }
+.post-source a:hover { text-decoration: underline; }
+@media (max-width: 720px) { .edit-grid { grid-template-columns: 1fr; } .main { padding: 20px 16px; } }
 .new-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border: 1px dashed var(--border); border-radius: var(--radius); background: hsla(264 65% 49% / 0.02); }
 .new-row input, .new-row select { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-data); font-size: 12px; outline: none; }
 </style>
@@ -132,8 +149,8 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
   <div class="sidebar"></div>
   <div class="main">
     <div class="fade-up">
-      <div class="header-title">COMMUNITY MANAGER</div>
-      <div class="header-sub">Schedule and publish posts to Telegram/Discord channels your assistant manages</div>
+      <div class="header-title">SOCIAL MEDIA MANAGER</div>
+      <div class="header-sub">Schedule and publish posts to Telegram and X, or let the autopilot post to X on its own</div>
     </div>
 
     <div class="tabs fade-up">
@@ -301,7 +318,7 @@ function renderChannelCard(c) {
   const isDiscord = c.platform === 'discord';
   const isTwitter = c.platform === 'twitter';
   const discordNote = isDiscord ? `<div class="discord-banner">⚠ Discord publishing is not implemented yet. Settings are saved so you can wire up a bot later.</div>` : '';
-  const twitterNote = isTwitter ? `<div class="discord-banner">𝕏 Posts publish to the X account of the API keys in .env (TWITTER_API_KEY / TWITTER_API_SECRET / TWITTER_ACCESS_TOKEN / TWITTER_ACCESS_SECRET). Requires an X API plan with post-write access (pay-per-use: ~$0.015 per post, $0.20 if it contains a link). A monthly counter caps posts as a cost guard (TWITTER_MONTHLY_POST_LIMIT, default 500). Use Validate to test the connection and see usage.</div>` : '';
+  const twitterNote = isTwitter ? renderXAuthNote(c) : '';
   const setNames = archetypeSetsCache.map(s => typeof s === 'string' ? s : s.name);
   const setOptions = ['<option value="">— none —</option>', ...setNames.map(s => `<option value="${esc(s)}"${c.archetype_set === s ? ' selected' : ''}>${esc(s)}</option>`)].join('');
   const dayOptions = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => `<option value="${d}"${(c.review?.day||'sunday') === d ? ' selected' : ''}>${d}</option>`).join('');
@@ -383,11 +400,197 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel('${esc(c.id)}')">Save</button>
       </div>
     </div>
   `;
+}
+
+// ── X ACCOUNT KEYS ──
+function renderXAuthNote(c) {
+  const a = c.x_auth || {};
+  const who = c.x_username ? ` as <b>@${esc(c.x_username)}</b>` : '';
+  const src = a.source === 'channel' ? `Posting with this channel's own keys${who}.`
+    : a.source === 'env' ? `No keys on this channel yet: posting falls back to the TWITTER_* keys in .env${who}. Add the 4 keys below to post to a different account.`
+    : 'No X keys yet. Add the 4 keys below (or TWITTER_* in .env).';
+  return `<div class="discord-banner">𝕏 ${src} Create them at developer.x.com: an app with <b>Read and write</b> permission, then the API key/secret and an access token/secret generated while logged in as the account you want to post to. X bills per use (~$0.015 per post, reads for the autopilot's searches are billed too); a monthly counter caps posts (TWITTER_MONTHLY_POST_LIMIT, default 500). Use Validate to test.</div>`;
+}
+function renderXKeys(c) {
+  const f = (c.x_auth && c.x_auth.fields) || {};
+  const field = (k, label) => `
+    <div>
+      <label class="edit-label">${label}</label>
+      <input class="edit-input" type="password" autocomplete="off" id="ch-x-${k}-${esc(c.id)}" placeholder="${f[k] ? '•••••• saved (leave blank to keep)' : 'not set'}">
+    </div>`;
+  const hasOwn = Object.values(f).some(Boolean);
+  return `
+    <div class="edit-grid">
+      ${field('api_key', 'API key (consumer key)')}
+      ${field('api_secret', 'API key secret')}
+      <div></div>
+      ${field('access_token', 'Access token')}
+      ${field('access_secret', 'Access token secret')}
+      <div style="display:flex;align-items:flex-end">${hasOwn ? `<button class="btn-sm danger" onclick="clearXKeys('${esc(c.id)}')">Remove channel keys</button>` : ''}</div>
+    </div>`;
+}
+async function clearXKeys(id) {
+  if (!confirm('Remove the X keys stored on this channel? It falls back to the .env keys.')) return;
+  try {
+    await fetchJson(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ x_credentials: { clear: true } }) });
+    await loadChannels();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── AUTOPILOT ──
+const apRefs = {};   // channel id → style reference paths being edited
+function renderAutopilot(c) {
+  const ap = c.autopilot || {};
+  const v = (k, d) => esc(ap[k] != null ? ap[k] : d);
+  apRefs[c.id] = Array.isArray(ap.style_refs) ? ap.style_refs.slice() : [];
+  const topics = Array.isArray(ap.topics) ? ap.topics.join('\n') : (ap.topics || '');
+  setTimeout(() => loadAutopilotStatus(c.id), 0);
+  return `
+    <div class="ap-box">
+      <div class="ap-head">
+        <span class="ap-title">⚡ Autopilot</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="runAutopilot('${esc(c.id)}','review')" title="Find a post, write it, make the image, and put it in the queue as a draft">Run once → draft</button>
+          <button class="btn-sm primary" onclick="runAutopilot('${esc(c.id)}','auto')" title="Same, but post it to X right away">Run once → post</button>
+        </div>
+      </div>
+      <div class="ap-status" id="ap-status-${esc(c.id)}">Loading status…</div>
+      <div class="edit-grid">
+        <div>
+          <label class="edit-label">Autopilot</label>
+          <select class="edit-select" id="ch-ap-enabled-${esc(c.id)}">
+            <option value="false"${!ap.enabled ? ' selected' : ''}>Off</option>
+            <option value="true"${ap.enabled ? ' selected' : ''}>On</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Mode</label>
+          <select class="edit-select" id="ch-ap-mode-${esc(c.id)}">
+            <option value="auto"${ap.mode !== 'review' ? ' selected' : ''}>Fully automatic (post)</option>
+            <option value="review"${ap.mode === 'review' ? ' selected' : ''}>Drafts for review</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Posts per day</label>
+          <input class="edit-input" type="number" min="1" max="24" id="ch-ap-ppd-${esc(c.id)}" value="${v('posts_per_day', 8)}">
+        </div>
+        <div>
+          <label class="edit-label">Window start (server timezone)</label>
+          <input class="edit-input" id="ch-ap-start-${esc(c.id)}" value="${v('window_start', '08:00')}" placeholder="08:00">
+        </div>
+        <div>
+          <label class="edit-label">Window end</label>
+          <input class="edit-input" id="ch-ap-end-${esc(c.id)}" value="${v('window_end', '23:00')}" placeholder="23:00">
+        </div>
+        <div>
+          <label class="edit-label">Min. likes on source post</label>
+          <input class="edit-input" type="number" min="0" id="ch-ap-likes-${esc(c.id)}" value="${v('min_likes', 20)}">
+        </div>
+        <div class="full">
+          <label class="edit-label">Topics: one per line, "Label: X search query" (rotated, least-posted first)</label>
+          <textarea class="edit-textarea" style="min-height:120px" id="ch-ap-topics-${esc(c.id)}" placeholder="Bitcoin: (bitcoin OR $BTC)&#10;Ethereum: (ethereum OR $ETH)">${esc(topics)}</textarea>
+        </div>
+        <div class="full">
+          <label class="edit-label">Account voice (optional)</label>
+          <input class="edit-input" id="ch-ap-voice-${esc(c.id)}" value="${v('voice', '')}" placeholder="e.g. Confident, data-driven market commentary with a dry sense of humor">
+        </div>
+        <div class="full">
+          <label class="edit-label">Image style (blank = derived from your brand color)</label>
+          <textarea class="edit-textarea" style="min-height:80px" id="ch-ap-style-${esc(c.id)}" placeholder="Describe the look every generated image should have">${v('style_prompt', '')}</textarea>
+        </div>
+        <div class="full">
+          <label class="edit-label">Style reference images (max 2 used; they show the generator your look)</label>
+          <div class="ap-refs" id="ap-refs-${esc(c.id)}">${renderRefs(c.id)}</div>
+        </div>
+        <div>
+          <label class="edit-label">Search depth (posts read per search)</label>
+          <input class="edit-input" type="number" min="10" max="100" id="ch-ap-depth-${esc(c.id)}" value="${v('search_depth', 50)}">
+        </div>
+        <div>
+          <label class="edit-label">Max age of source post (hours)</label>
+          <input class="edit-input" type="number" min="1" max="168" id="ch-ap-age-${esc(c.id)}" value="${v('max_age_hours', 36)}">
+        </div>
+      </div>
+    </div>`;
+}
+function renderRefs(id) {
+  const refs = apRefs[id] || [];
+  return refs.map((p, i) => `<div class="ap-ref"><img src="${esc(p)}" alt="style"><button title="Remove" onclick="removeRef('${esc(id)}', ${i})">✕</button></div>`).join('') + `
+    <input type="file" id="ap-ref-file-${esc(id)}" accept="image/png,image/jpeg,image/webp" multiple style="display:none" onchange="addRefs('${esc(id)}', this.files)">
+    <button class="btn-sm" onclick="document.getElementById('ap-ref-file-${esc(id)}').click()">+ Add image</button>`;
+}
+async function addRefs(id, files) {
+  try {
+    for (const file of Array.from(files || []).slice(0, 4)) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const d = await fetchJson('/media/upload', { method: 'POST', body: fd });
+      if (!d.path) throw new Error(d.error || 'upload failed');
+      apRefs[id].push(d.path);
+    }
+  } catch (e) { alert('Upload error: ' + e.message); }
+  document.getElementById(`ap-refs-${id}`).innerHTML = renderRefs(id);
+}
+function removeRef(id, i) {
+  apRefs[id].splice(i, 1);
+  document.getElementById(`ap-refs-${id}`).innerHTML = renderRefs(id);
+}
+function collectAutopilot(id) {
+  const g = k => document.getElementById(`ch-ap-${k}-${id}`);
+  if (!g('enabled')) return null;
+  return {
+    enabled: g('enabled').value === 'true',
+    mode: g('mode').value,
+    posts_per_day: Number(g('ppd').value) || 8,
+    window_start: g('start').value.trim() || '08:00',
+    window_end: g('end').value.trim() || '23:00',
+    min_likes: Number(g('likes').value) || 0,
+    search_depth: Number(g('depth').value) || 50,
+    max_age_hours: Number(g('age').value) || 36,
+    topics: g('topics').value.split('\n').map(t => t.trim()).filter(Boolean),
+    voice: g('voice').value.trim(),
+    style_prompt: g('style').value.trim(),
+    style_refs: (apRefs[id] || []).slice(),
+  };
+}
+const apPollers = {};
+async function loadAutopilotStatus(id) {
+  const el = document.getElementById(`ap-status-${id}`);
+  if (!el) return;
+  try {
+    const s = await fetchJson(`/community/channels/${encodeURIComponent(id)}/autopilot`);
+    const lines = [];
+    if (s.running) lines.push(`<span style="color:var(--premium)">● Working: ${esc(s.running.step)}…</span>`);
+    const lr = s.last_run;
+    if (lr && !s.running) {
+      lines.push(lr.status === 'failed'
+        ? `<span style="color:var(--danger)">Last run ${esc(fmt(lr.at))} failed: ${esc(lr.error)}</span>`
+        : `Last run ${esc(fmt(lr.at))}: ${esc(lr.status)}${lr.task_id ? ' (see Queue)' : ''}`);
+    }
+    const slots = s.slots || [];
+    if (s.config.enabled && slots.length) {
+      const done = slots.filter(x => x.status === 'done').length;
+      lines.push(`Today: ${done}/${slots.length} made`);
+      lines.push(`<div class="ap-slots">${slots.map(x => `<span class="ap-slot ${esc(x.status)}" title="${esc(x.error || x.status)}">${esc(new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>`).join('')}</div>`);
+    } else if (!s.config.enabled) lines.push('Autopilot is off. Turn it on and Save to start posting on a daily plan.');
+    else lines.push('Planning today’s posts within a minute…');
+    el.innerHTML = lines.join('<br>');
+    clearTimeout(apPollers[id]);
+    if (s.running) apPollers[id] = setTimeout(() => { loadAutopilotStatus(id); loadTasks(); }, 5000);
+  } catch (e) { el.textContent = 'Status error: ' + e.message; }
+}
+async function runAutopilot(id, mode) {
+  if (mode === 'auto' && !confirm('Find a post, generate the image and publish it to X right away?')) return;
+  try {
+    await fetchJson(`/community/channels/${encodeURIComponent(id)}/autopilot/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
+    setTimeout(() => loadAutopilotStatus(id), 800);
+  } catch (e) { alert('Autopilot: ' + e.message); }
 }
 
 async function saveChannel(id) {
@@ -415,10 +618,20 @@ async function saveChannel(id) {
     if (topicEl) payload.guild_id = topicEl.value.trim();
     const wh = gv('webhook'); if (wh) payload.webhook_url = wh.value.trim();
   }
+  if (platform === 'twitter') {
+    const keys = {};
+    for (const k of ['api_key', 'api_secret', 'access_token', 'access_secret']) {
+      const el = gv('x-' + k);
+      if (el && el.value.trim()) keys[k] = el.value.trim();
+    }
+    if (Object.keys(keys).length) payload.x_credentials = keys;
+    const ap = collectAutopilot(id);
+    if (ap) payload.autopilot = ap;
+  }
   try {
-    const r = await fetch(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!r.ok) throw new Error('PATCH failed');
+    await fetchJson(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     await loadChannels();
+    if (payload.x_credentials) validateChannel(id);
   } catch (e) { alert('Save error: ' + e.message); }
 }
 
@@ -560,6 +773,10 @@ function renderPost(t) {
   const arch = t.archetype ? `<span class="post-arch">${esc(t.archetype)}</span>` : '';
   const chan = t.channel_id ? `<span class="post-channel">📡 ${esc(channelLabel(t.channel_id))}</span>` : '';
   const when = t.scheduled_local || fmt(t.scheduled_at);
+  const src = t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
+  const chanObj = channelsCache.find(c => c.id === t.channel_id);
+  const xLink = t.status === 'published' && t.message_id && chanObj && chanObj.platform === 'twitter'
+    ? `<a class="btn-sm" style="text-decoration:none" href="https://x.com/${esc(chanObj.x_username || 'i')}/status/${esc(t.message_id)}" target="_blank" rel="noopener">View on X</a>` : '';
   const err = t.error ? `<div class="post-err">Error: ${esc(t.error)} (attempts ${t.attempts || 0})</div>` : '';
   const isManual = t.status === 'manual';
   const canPublish = !isManual && t.status !== 'published' && t.status !== 'cancelled';
@@ -632,8 +849,9 @@ function renderPost(t) {
       </div>
       <div class="post-body">${esc(t.text)}</div>
       ${mediaBlock}
+      ${src}
       ${err}
-      <div class="post-actions">${actions}</div>
+      <div class="post-actions">${xLink}${actions}</div>
     </div>
   `;
 }

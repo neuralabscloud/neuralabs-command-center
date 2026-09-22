@@ -363,7 +363,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
                 <div class="cfg-card-title">Telegram</div>
                 <span class="cfg-pill required">Required</span>
               </div>
-              <div class="cfg-card-desc">Assistant DMs, reviews, alerts and Community Manager publishing.</div>
+              <div class="cfg-card-desc">Assistant DMs, reviews, alerts and Social Media Manager publishing.</div>
             </div>
             <span class="cfg-pill empty" id="cfg-status-telegram">Not set</span>
           </div>
@@ -376,7 +376,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <div class="cfg-field">
               <div class="cfg-field-label">Your Chat ID (DM)</div>
               <input type="text" id="cfg-tg-chatid" class="cfg-input" placeholder="123456789">
-              <div class="cfg-field-hint">Your personal chat with the assistant. Not the same as community channel IDs — those are per-channel in Community Manager.</div>
+              <div class="cfg-field-hint">Your personal chat with the assistant. Not the same as community channel IDs — those are per-channel in Social Media Manager.</div>
             </div>
           </div>
         </div>
@@ -597,14 +597,14 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div class="brand-assets-grid" id="brand-assets-grid"></div>
     </section>
 
-    <!-- COMMUNITY MANAGER -->
+    <!-- SOCIAL MEDIA MANAGER -->
     <section class="fade-up delay-3" id="community-manager-section">
-      <div class="section-header">Community Manager</div>
+      <div class="section-header">Social Media Manager</div>
       <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
-        Configure which Telegram chats/topics (and later Discord servers) your assistant can post to. Each channel has its own archetype set, review schedule, and enabled flag. Full configuration lives on the <a href="community-manager.html" style="color:var(--primary)">Community Manager page</a>.
+        Configure which Telegram chats/topics and X accounts your assistant can post to. Each channel has its own archetype set, review schedule, and enabled flag. Full configuration lives on the <a href="community-manager.html" style="color:var(--primary)">Social Media Manager page</a>.
       </p>
       <div id="cm-summary" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-      <a href="community-manager.html" style="display:inline-block;padding:8px 16px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-family:var(--font-body);font-size:11px;text-transform:uppercase;letter-spacing:0.06em">Open Community Manager →</a>
+      <a href="community-manager.html" style="display:inline-block;padding:8px 16px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-family:var(--font-body);font-size:11px;text-transform:uppercase;letter-spacing:0.06em">Open Social Media Manager →</a>
     </section>
 
     <!-- SOCIAL CONNECTIONS -->
@@ -1528,7 +1528,7 @@ async function loadCommunitySummary() {
       fetchJson('/community/archetype-sets'),
     ]);
     if (!channels.length) {
-      box.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:10px 12px;border:1px dashed var(--border);border-radius:6px">No channels configured yet. Open the Community Manager to add one.</div>';
+      box.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:10px 12px;border:1px dashed var(--border);border-radius:6px">No channels configured yet. Open the Social Media Manager to add one.</div>';
       return;
     }
     const rows = channels.map(c => {

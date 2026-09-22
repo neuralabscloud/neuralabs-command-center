@@ -331,7 +331,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
               <option value="ads_optimizer">Ads Optimizer</option>
-              <option value="community_manager">Community Manager</option>
+              <option value="community_manager">Social Media Manager</option>
               <option value="opusclip">OpusClip Clipper</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
@@ -386,7 +386,7 @@ const AI_TEAM = [
   { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
   { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
   { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'Higgsfield UGC & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/ugc/tasks', '/opusclip/tasks'], type: 'CONTENT' },
-  { name: 'COMMUNITY MANAGER', emoji: '\u{1F4AC}', role: 'Telegram / Discord Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
+  { name: 'SOCIAL MEDIA MANAGER', emoji: '\u{1F4AC}', role: 'X / Telegram Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
   { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
   { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
 ];
@@ -557,7 +557,7 @@ async function loadAllTasks() {
     { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },
     { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/opusclip/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Clipper' },
-    { api: '/community-manager/tasks', agent: 'COMMUNITY MANAGER', type: 'COMMUNITY' },
+    { api: '/community-manager/tasks', agent: 'SOCIAL MEDIA MANAGER', type: 'COMMUNITY' },
   ];
 
   allTasks = [];
@@ -696,7 +696,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'COMMUNITY MANAGER', opusclip: 'OPUSCLIP' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -929,7 +929,7 @@ async function populateCommunityChannelSelect(selectedId) {
     const channels = await res.json();
     const enabled = (channels || []).filter(c => c.enabled !== false);
     if (!enabled.length) {
-      sel.innerHTML = '<option value="">No enabled channels — add one in Community Manager</option>';
+      sel.innerHTML = '<option value="">No enabled channels — add one in Social Media Manager</option>';
       return;
     }
     sel.innerHTML = enabled.map(c => {
