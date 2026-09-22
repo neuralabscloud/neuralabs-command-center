@@ -330,7 +330,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="marketeer">Marketeer</option>
               <option value="assistant">Assistant (Calendar)</option>
               <option value="ads_optimizer">Ads Optimizer</option>
-              <option value="community_manager">Social Media Manager</option>
               <option value="opusclip">OpusClip Clipper</option>
               <option value="ugc_autopilot">UGC Video (Marketeer → Content Creator)</option>
               <option value="growth_marketeer">Growth Marketeer (weekly research + ideas)</option>
@@ -574,7 +573,6 @@ const AGENT_DESCRIPTIONS = {
   marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
-  community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
   ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
   growth_marketeer: 'Acts as your growth marketer: researches your product online, competitors, gaps in the market and buzz opportunities, then delivers a report with concrete growth ideas (newsletter, ads, UGC, community actions and more) on the Marketing page.',
@@ -598,11 +596,6 @@ function buildScheduleSummary(s) {
       return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Calendar overview';
     case 'ads_optimizer':
       return `Analyzes campaign performance (${p.period || 'last_7d'}), auto-pauses ROAS < 0.8, scales ROAS > 2.5, sends Telegram report`;
-    case 'community_manager': {
-      const n = parseInt(p.post_count);
-      const count = Number.isFinite(n) && n > 0 ? `${n}` : 'auto';
-      return `Generates ${count} ${p.language || 'NL'} drafts for channel ${escHtml(p.channel_id || '?')} · spread across next 7 days`;
-    }
     case 'opusclip': {
       const minD = parseInt(p.min_duration) || 30;
       const maxD = parseInt(p.max_duration) || 90;
@@ -743,28 +736,6 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Notify via Telegram</label>
         <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
     </div>`,
-  community_manager: `
-    <div style="background:hsla(200 90% 55%/0.06);border:1px solid hsla(200 90% 55%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
-      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
-      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
-        <li>Loads the selected channel's archetype set</li>
-        <li>Asks Claude to generate <b>N</b> draft posts spread across the next 7 days, following the archetype schedule</li>
-        <li>Skips archetypes marked as manual-only</li>
-        <li>Drafts land as <b style="color:hsl(200 90% 55%)">status: draft</b> in the Community queue, ready for the Sunday review cron</li>
-      </ul>
-    </div>
-    <div class="sched-form-row">
-      <div><label class="sched-label">Channel</label>
-        <select class="sched-select" id="sp-channel_id"><option value="">Loading channels…</option></select></div>
-      <div><label class="sched-label">Language</label>
-        <select class="sched-select" id="sp-language"><option value="NL">NL</option><option value="EN">EN</option></select></div>
-    </div>
-    <div class="sched-form-row">
-      <div><label class="sched-label">Post count (leave empty = auto from archetype schedule)</label>
-        <input class="sched-input" id="sp-post_count" type="number" min="1" max="40" placeholder="auto"></div>
-      <div><label class="sched-label">Notify via Telegram</label>
-        <select class="sched-select" id="sp-notify"><option value="true">Ja</option><option value="false">Nee</option></select></div>
-    </div>`,
   ads_optimizer: `
     <div style="background:hsla(142 76% 36%/0.06);border:1px solid hsla(142 76% 36%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
       <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
@@ -881,10 +852,6 @@ function updatePayloadFields() {
   const agent = document.getElementById('sched-agent').value;
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
   document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
-  // Load channels for community_manager
-  if (agent === 'community_manager') {
-    populateCommunityChannelSelect();
-  }
   if (agent === 'ugc_autopilot') populateAvatarSelect();
 }
 
@@ -898,27 +865,6 @@ async function populateAvatarSelect(selectedId) {
       `<option value="${escHtml(a.id)}">${escHtml(a.name)}${a.gender_resolved ? ' · ' + a.gender_resolved : ' · gender unknown (skipped)'}</option>`).join('');
     if (selectedId) sel.value = selectedId;
   } catch {}
-}
-
-async function populateCommunityChannelSelect(selectedId) {
-  const sel = document.getElementById('sp-channel_id');
-  if (!sel) return;
-  try {
-    const res = await fetch('/community/channels', { credentials: 'include' });
-    const channels = await res.json();
-    const enabled = (channels || []).filter(c => c.enabled !== false);
-    if (!enabled.length) {
-      sel.innerHTML = '<option value="">No enabled channels — add one in Social Media Manager</option>';
-      return;
-    }
-    sel.innerHTML = enabled.map(c => {
-      const label = `${c.name}${c.archetype_set ? ' · ' + c.archetype_set : ' · no archetype set'}`;
-      return `<option value="${escHtml(c.id)}">${escHtml(label)}</option>`;
-    }).join('');
-    if (selectedId) sel.value = selectedId;
-  } catch {
-    sel.innerHTML = '<option value="">Error loading channels</option>';
-  }
 }
 
 function openScheduleModal(data) {
@@ -943,10 +889,6 @@ function openScheduleModal(data) {
         if (el.type === 'checkbox') el.checked = !!v;
         else if (Array.isArray(v)) el.value = v.join(', ');
         else el.value = v;
-      }
-      // Re-populate community channel select with the saved selection (it's async)
-      if (data?.agent === 'community_manager' && data?.payload?.channel_id) {
-        populateCommunityChannelSelect(data.payload.channel_id);
       }
       if (data?.agent === 'ugc_autopilot' && data?.payload?.avatar_id) {
         populateAvatarSelect(data.payload.avatar_id);

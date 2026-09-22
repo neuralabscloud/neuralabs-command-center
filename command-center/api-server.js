@@ -476,7 +476,6 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 
 // ── COMMUNITY MANAGER DATA LAYER ──
 const COMMUNITY_DIR = path.join(__dirname, "data", "community");
-const COMMUNITY_ARCHETYPE_DIR = path.join(COMMUNITY_DIR, "archetypes");
 const COMMUNITY_CHANNELS_FILE = path.join(COMMUNITY_DIR, "channels.json");
 const COMMUNITY_TASKS_FILE = "community-tasks.json";
 
@@ -491,63 +490,11 @@ function writeChannels(channels) {
 function getChannel(id) {
   return readChannels().find(c => c.id === id) || null;
 }
-function sanitizeSetName(name) {
-  const safe = String(name || "").trim().replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
-  if (!safe) throw new Error("Invalid archetype set name");
-  return safe;
-}
-function listArchetypeSets() {
-  try {
-    return fs.readdirSync(COMMUNITY_ARCHETYPE_DIR)
-      .filter(f => f.endsWith(".md"))
-      .map(f => f.slice(0, -3))
-      .sort();
-  } catch { return []; }
-}
-function readArchetypeSet(name) {
-  return fs.readFileSync(path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md"), "utf8");
-}
-function writeArchetypeSet(name, content) {
-  fs.mkdirSync(COMMUNITY_ARCHETYPE_DIR, { recursive: true });
-  fs.writeFileSync(path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md"), content);
-}
-function deleteArchetypeSet(name) {
-  const p = path.join(COMMUNITY_ARCHETYPE_DIR, sanitizeSetName(name) + ".md");
-  if (fs.existsSync(p)) fs.unlinkSync(p);
-}
-function renameArchetypeSet(oldName, newName) {
-  const from = sanitizeSetName(oldName);
-  const to = sanitizeSetName(newName);
-  if (from === to) return to;
-  const fromPath = path.join(COMMUNITY_ARCHETYPE_DIR, from + ".md");
-  const toPath = path.join(COMMUNITY_ARCHETYPE_DIR, to + ".md");
-  if (!fs.existsSync(fromPath)) throw new Error(`Archetype set "${from}" does not exist`);
-  if (fs.existsSync(toPath)) throw new Error(`Archetype set "${to}" already exists`);
-  fs.renameSync(fromPath, toPath);
-  const channels = readChannels();
-  let dirty = false;
-  for (const c of channels) {
-    if (c.archetype_set === from) { c.archetype_set = to; c.updated_at = new Date().toISOString(); dirty = true; }
-  }
-  if (dirty) writeChannels(channels);
-  return to;
-}
-function channelsUsingArchetypeSet(name) {
-  const n = sanitizeSetName(name);
-  return readChannels().filter(c => c.archetype_set === n).map(c => ({ id: c.id, name: c.name, platform: c.platform }));
-}
-
 // One-time migration from legacy "social-media" naming to "community"
 function migrateSocialToCommunity() {
   if (fs.existsSync(COMMUNITY_CHANNELS_FILE)) return;
   try {
-    fs.mkdirSync(COMMUNITY_ARCHETYPE_DIR, { recursive: true });
-
-    const legacyArch = path.join(__dirname, "data", "social-media", "archetypes.md");
-    const newArch = path.join(COMMUNITY_ARCHETYPE_DIR, "default.md");
-    if (fs.existsSync(legacyArch) && !fs.existsSync(newArch)) {
-      fs.copyFileSync(legacyArch, newArch);
-    }
+    fs.mkdirSync(COMMUNITY_DIR, { recursive: true });
 
     const legacyPosts = path.join(__dirname, "data", "social-media", "posts_week17.md");
     const newPosts = path.join(COMMUNITY_DIR, "posts_week17.md");
@@ -561,7 +508,6 @@ function migrateSocialToCommunity() {
       platform: "telegram",
       chat_id: process.env.SOCIAL_TARGET_CHAT_ID || "",
       topic_id: process.env.SOCIAL_TOPIC_ID || "",
-      archetype_set: fs.existsSync(newArch) ? "default" : "",
       enabled: true,
       review: {
         enabled: true,
@@ -586,7 +532,7 @@ function migrateSocialToCommunity() {
       fs.writeFileSync(newTasks, JSON.stringify(tasks, null, 2));
     }
 
-    console.log("[MIGRATION] Community manager initialized (default channel + archetype set)");
+    console.log("[MIGRATION] Community manager initialized (default channel)");
   } catch (e) {
     console.error("[MIGRATION] Community manager migration failed:", e.message);
   }
@@ -2246,7 +2192,6 @@ app.post("/community/channels", (req, res) => {
     topic_id: req.body.topic_id || "",
     guild_id: req.body.guild_id || "",
     webhook_url: req.body.webhook_url || "",
-    archetype_set: req.body.archetype_set || "",
     enabled: req.body.enabled !== false,
     review: {
       enabled: req.body.review?.enabled !== false,
@@ -2335,96 +2280,11 @@ app.post("/community/channels/:id/validate", async (req, res) => {
 // Twitter/X monthly post usage (free tier = 500 writes/month)
 app.get("/community/twitter/usage", (_req, res) => res.json(twitterUsageSummary()));
 
-// ── COMMUNITY MANAGER: ARCHETYPE SETS ─────────
-app.get("/community/archetype-sets", (_req, res) => {
-  const names = listArchetypeSets();
-  res.json(names.map(name => ({ name, channels: channelsUsingArchetypeSet(name) })));
-});
-
-app.get("/community/archetype-sets/:name", (req, res) => {
-  try {
-    res.json({
-      name: sanitizeSetName(req.params.name),
-      content: readArchetypeSet(req.params.name),
-      channels: channelsUsingArchetypeSet(req.params.name),
-    });
-  } catch (e) { res.status(404).json({ error: e.message }); }
-});
-
-app.put("/community/archetype-sets/:name", (req, res) => {
-  try {
-    writeArchetypeSet(req.params.name, req.body?.content || "");
-    res.json({ ok: true, name: sanitizeSetName(req.params.name) });
-  } catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-app.patch("/community/archetype-sets/:name", (req, res) => {
-  try {
-    const { new_name, channel_ids } = req.body || {};
-    let currentName = sanitizeSetName(req.params.name);
-    if (new_name && sanitizeSetName(new_name) !== currentName) {
-      currentName = renameArchetypeSet(currentName, new_name);
-    }
-    if (Array.isArray(channel_ids)) {
-      const wanted = new Set(channel_ids);
-      const channels = readChannels();
-      let dirty = false;
-      for (const c of channels) {
-        const currentlyLinked = c.archetype_set === currentName;
-        const shouldBeLinked = wanted.has(c.id);
-        if (shouldBeLinked && !currentlyLinked) { c.archetype_set = currentName; c.updated_at = new Date().toISOString(); dirty = true; }
-        else if (!shouldBeLinked && currentlyLinked) { c.archetype_set = null; c.updated_at = new Date().toISOString(); dirty = true; }
-      }
-      if (dirty) writeChannels(channels);
-    }
-    res.json({ ok: true, name: currentName, channels: channelsUsingArchetypeSet(currentName) });
-  } catch (e) { res.status(400).json({ error: e.message }); }
-});
-
-app.delete("/community/archetype-sets/:name", (req, res) => {
-  try { deleteArchetypeSet(req.params.name); res.json({ ok: true }); }
-  catch (e) { res.status(400).json({ error: e.message }); }
-});
-
 // ── COMMUNITY MANAGER: TASKS ──────────────────
 app.get("/community/tasks", (req, res) => {
   const all = readTaskFile(COMMUNITY_TASKS_FILE);
   const filtered = req.query.channel_id ? all.filter(t => t.channel_id === req.query.channel_id) : all;
   res.json(filtered);
-});
-
-app.get("/community-manager/tasks", (_req, res) => {
-  res.json(readTaskFile("community-manager-tasks.json"));
-});
-
-// Generate drafts for a channel right now — same engine as the weekly scheduler,
-// but triggered manually from the UI. Fire-and-forget; poll /community-manager/tasks
-// (schedule_id match) for progress.
-const communityGenerating = new Set();
-app.post("/community/generate", (req, res) => {
-  const channelId = req.body?.channel_id;
-  if (!channelId) return res.status(400).json({ error: "channel_id required" });
-  const channel = getChannel(channelId);
-  if (!channel) return res.status(404).json({ error: "Channel not found" });
-  if (channel.enabled === false) return res.status(400).json({ error: "Channel is disabled" });
-  if (!channel.archetype_set) return res.status(400).json({ error: "Channel has no archetype set assigned" });
-  if (communityGenerating.has(channelId)) return res.status(409).json({ error: "Generation already running for this channel" });
-
-  const syntheticSchedule = {
-    id: `manual-${genId()}`,
-    name: `Generate Posts — ${channel.name}`,
-    payload: {
-      channel_id: channelId,
-      post_count: req.body?.post_count,
-      language: req.body?.language || process.env.LANGUAGE || "NL",
-      notify: req.body?.notify === true,
-    },
-  };
-  communityGenerating.add(channelId);
-  executeCommunityManagerSchedule(syntheticSchedule, new Date())
-    .catch((e) => console.error(`[COMMUNITY] Manual generation for ${channelId} failed: ${e.message}`))
-    .finally(() => communityGenerating.delete(channelId));
-  res.status(202).json({ ok: true, started: true, schedule_id: syntheticSchedule.id, channel_id: channelId });
 });
 
 app.post("/community/tasks", (req, res) => {
@@ -7501,13 +7361,14 @@ async function publishTelegramPost(task, channel) {
   if (!chatId) throw new Error(`Channel "${channel.id}" has no chat_id`);
   const topicId = channel.topic_id || null;
   const text = task.text || "";
+  const parseMode = task.parse_mode === "HTML" ? "HTML" : "Markdown";
 
   const mediaPaths = Array.isArray(task.media_paths) && task.media_paths.length
     ? task.media_paths.filter(Boolean)
     : (task.media_path ? [task.media_path] : []);
 
   if (!mediaPaths.length) {
-    const body = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true };
+    const body = { chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true };
     if (topicId) body.message_thread_id = Number(topicId);
     const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
@@ -7530,7 +7391,7 @@ async function publishTelegramPost(task, channel) {
     if (topicId) form.append("message_thread_id", String(topicId));
     if (captionFits && text) {
       form.append("caption", text);
-      form.append("parse_mode", "Markdown");
+      form.append("parse_mode", parseMode);
     }
     form.append(kind.field, new Blob([buffer]), name);
 
@@ -7540,7 +7401,7 @@ async function publishTelegramPost(task, channel) {
     const primaryMsgId = data.result.message_id;
 
     if (!captionFits && text) {
-      const body2 = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
+      const body2 = { chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
       if (topicId) body2.message_thread_id = Number(topicId);
       const r2 = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
@@ -7574,7 +7435,7 @@ async function publishTelegramPost(task, channel) {
     const entry = { type: it.type, media: `attach://file${i}` };
     if (i === 0 && captionFits && text) {
       entry.caption = text;
-      entry.parse_mode = "Markdown";
+      entry.parse_mode = parseMode;
     }
     return entry;
   });
@@ -7590,7 +7451,7 @@ async function publishTelegramPost(task, channel) {
   const primaryMsgId = data.result[0].message_id;
 
   if (!captionFits && text) {
-    const body2 = { chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
+    const body2 = { chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true, reply_to_message_id: primaryMsgId };
     if (topicId) body2.message_thread_id = Number(topicId);
     const r2 = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
@@ -7642,6 +7503,9 @@ async function processCommunityTasks() {
         const handle = channel.x_username || "i";
         sendTelegram(`𝕏 Autopilot posted (${escapeHtmlTg(channel.name)})`,
           `${escapeHtmlTg(task.text)}\n\nhttps://x.com/${handle}/status/${result.message_id}`, "info");
+      }
+      if (task.autopilot && channel.platform === "telegram") {
+        sendTelegram(`✈️ Autopilot posted (${escapeHtmlTg(channel.name)})`, task.parse_mode === "HTML" ? task.text : escapeHtmlTg(task.text), "info");
       }
     } catch (e) {
       task.attempts = (task.attempts || 0) + 1;
@@ -7717,6 +7581,22 @@ const autopilot = require("./social-autopilot").createAutopilot({
 });
 setInterval(() => autopilot.tick().catch(e => console.error("[AUTOPILOT]", e.message)), 60_000);
 
+// ── SOCIAL MEDIA AUTOPILOT (Telegram) ─────────
+// Daily promo posts per Telegram channel; config lives on channel.autopilot.
+const tgAutopilot = require("./telegram-autopilot").createTelegramAutopilot({
+  dataDir: path.join(__dirname, "data"),
+  tz: TIMEZONE,
+  readChannels,
+  readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
+  addTask: (task) => writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]),
+  anthropic,
+  brand: loadBrand,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  notify: sendTelegram,
+});
+setInterval(() => tgAutopilot.tick().catch(e => console.error("[TG-AUTOPILOT]", e.message)), 60_000);
+const autopilotFor = (channel) => (channel.platform === "telegram" ? tgAutopilot : channel.platform === "twitter" ? autopilot : null);
+
 // Every autonomous job that is not a row in scheduled-tasks.json, so the
 // Agents page can list them next to the schedules.
 app.get("/agents/autonomous", (_req, res) => {
@@ -7735,6 +7615,23 @@ app.get("/agents/autonomous", (_req, res) => {
         enabled: !!cfg.enabled, toggle: { channel_id: c.id, field: "autopilot" },
         when: `${cfg.posts_per_day}x/day · ${cfg.window_start}-${cfg.window_end} ${tz}`,
         details: `${cfg.mode === "review" ? "Drafts for review" : "Posts automatically"} · topics: ${cfg.topics.map(t => t.split(":")[0].trim()).join(", ") || "none"}`,
+        today: st.day ? { done: count("done"), failed: count("failed") + count("skipped"), pending: count("pending") } : null,
+        next_run: cfg.enabled && next ? next.at : null,
+        last_run: st.last_run ? { at: st.last_run.finished_at || st.last_run.at, status: st.last_run.status, error: st.last_run.error || null } : null,
+        running: !!st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "telegram" && c.autopilot) {
+      const st = tgAutopilot.status(c);
+      const cfg = st.config;
+      const count = (k) => st.slots.filter(sl => sl.status === k).length;
+      const next = st.slots.find(sl => sl.status === "pending");
+      jobs.push({
+        id: "tg_autopilot:" + c.id, kind: "tg_autopilot", agent: "community_manager",
+        name: `Telegram Autopilot · ${c.name}`,
+        enabled: !!cfg.enabled, toggle: { channel_id: c.id, field: "autopilot" },
+        when: `${cfg.posts_per_day}x/day · random time ${cfg.window_start}-${cfg.window_end} ${tz}`,
+        details: `${cfg.mode === "review" ? "Drafts for review" : "Posts automatically"}${cfg.product ? " · promotes " + cfg.product : ""}${cfg.offer ? " · " + cfg.offer : ""}`,
         today: st.day ? { done: count("done"), failed: count("failed") + count("skipped"), pending: count("pending") } : null,
         next_run: cfg.enabled && next ? next.at : null,
         last_run: st.last_run ? { at: st.last_run.finished_at || st.last_run.at, status: st.last_run.status, error: st.last_run.error || null } : null,
@@ -7783,16 +7680,18 @@ app.get("/agents/autonomous", (_req, res) => {
 app.get("/community/channels/:id/autopilot", (req, res) => {
   const channel = getChannel(req.params.id);
   if (!channel) return res.status(404).json({ error: "Channel not found" });
-  if (channel.platform !== "twitter") return res.status(400).json({ error: "Autopilot is only available for X channels" });
-  res.json(autopilot.status(channel));
+  const ap = autopilotFor(channel);
+  if (!ap) return res.status(400).json({ error: "Autopilot is only available for X and Telegram channels" });
+  res.json(ap.status(channel));
 });
 
 app.post("/community/channels/:id/autopilot/run", (req, res) => {
   const channel = getChannel(req.params.id);
   if (!channel) return res.status(404).json({ error: "Channel not found" });
-  if (channel.platform !== "twitter") return res.status(400).json({ error: "Autopilot is only available for X channels" });
+  const ap = autopilotFor(channel);
+  if (!ap) return res.status(400).json({ error: "Autopilot is only available for X and Telegram channels" });
   try {
-    autopilot.runNow(channel, req.body?.mode);
+    ap.runNow(channel, req.body?.mode);
     res.json({ ok: true });
   } catch (e) {
     res.status(409).json({ error: e.message });
@@ -8585,8 +8484,6 @@ async function executeSchedule(schedule) {
       await executeAssistantSchedule(schedule, today);
     } else if (schedule.agent === "ads_optimizer") {
       await executeAdsOptimizerSchedule(schedule, today);
-    } else if (schedule.agent === "community_manager") {
-      await executeCommunityManagerSchedule(schedule, today);
     } else if (schedule.agent === "opusclip") {
       await executeOpusclipSchedule(schedule, today);
     } else if (schedule.agent === "ugc_autopilot") {
@@ -9107,214 +9004,6 @@ function extractFirstJsonArray(text) {
     }
   }
   return null;
-}
-
-// ── COMMUNITY MANAGER (weekly draft batch generator) ──
-async function executeCommunityManagerSchedule(schedule, today) {
-  const p = schedule.payload || {};
-  const channelId = p.channel_id;
-  const rawCount = parseInt(p.post_count);
-  const autoCount = !Number.isFinite(rawCount) || rawCount <= 0;
-  const postCount = autoCount ? null : Math.min(rawCount, 40);
-  const language = (p.language || "NL").toUpperCase();
-
-  // Create task-run record for the feed
-  const runTaskId = genId();
-  const runTasks = readTaskFile("community-manager-tasks.json");
-  runTasks.unshift({
-    id: runTaskId,
-    status: "processing",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    schedule_id: schedule.id,
-    schedule_name: schedule.name,
-    channel_id: channelId || null,
-    channel_name: null,
-    archetype_set: null,
-    language,
-    post_count: autoCount ? "auto" : postCount,
-    drafts_added: 0,
-    description: `Weekly drafts for channel ${channelId || "?"} (${language})`,
-    error: null,
-  });
-  writeTaskFile("community-manager-tasks.json", runTasks);
-
-  const markRun = (patch) => {
-    const all = readTaskFile("community-manager-tasks.json");
-    const i = all.findIndex(t => t.id === runTaskId);
-    if (i >= 0) {
-      all[i] = { ...all[i], ...patch, updated_at: new Date().toISOString() };
-      writeTaskFile("community-manager-tasks.json", all);
-    }
-  };
-
-  const markScheduleRun = ({ last_task_id = runTaskId, last_error = null } = {}) => {
-    const schedules = readTaskFile("scheduled-tasks.json");
-    const idx = schedules.findIndex(s => s.id === schedule.id);
-    if (idx >= 0) {
-      schedules[idx].last_run = new Date().toISOString();
-      schedules[idx].last_task_id = last_task_id;
-      schedules[idx].last_error = last_error;
-      writeTaskFile("scheduled-tasks.json", schedules);
-    }
-  };
-
-  if (!channelId) {
-    console.error(`[SCHEDULER] Community Manager: no channel_id in payload for "${schedule.name}"`);
-    sendTelegram(`💬 ${schedule.name} — FOUT`, "No channel_id configured in payload.", "danger");
-    markRun({ status: "failed", error: "No channel_id in payload" });
-    markScheduleRun({ last_error: "No channel_id in payload" });
-    return;
-  }
-
-  const channel = getChannel(channelId);
-  if (!channel || !channel.enabled) {
-    console.error(`[SCHEDULER] Community Manager: channel "${channelId}" not found or disabled`);
-    sendTelegram(`💬 ${schedule.name} — FOUT`, `Channel ${channelId} not found or disabled.`, "danger");
-    markRun({ status: "failed", error: `Channel ${channelId} not found or disabled` });
-    markScheduleRun({ last_error: `Channel ${channelId} not found or disabled` });
-    return;
-  }
-
-  markRun({ channel_name: channel.name, archetype_set: channel.archetype_set || null, description: `Weekly drafts for ${channel.name} (${language})` });
-
-  if (!channel.archetype_set) {
-    console.error(`[SCHEDULER] Community Manager: channel "${channelId}" has no archetype_set`);
-    sendTelegram(`💬 ${schedule.name} — FOUT`, `Channel ${channel.name} has no archetype set assigned.`, "danger");
-    markRun({ status: "failed", error: "No archetype set assigned" });
-    markScheduleRun({ last_error: "No archetype set assigned" });
-    return;
-  }
-
-  let archetypeMd;
-  try {
-    archetypeMd = readArchetypeSet(channel.archetype_set);
-  } catch (e) {
-    console.error(`[SCHEDULER] Community Manager: archetype set "${channel.archetype_set}" unreadable: ${e.message}`);
-    sendTelegram(`💬 ${schedule.name} — FOUT`, `Archetype set ${channel.archetype_set} not found.`, "danger");
-    markRun({ status: "failed", error: `Archetype set unreadable: ${e.message}` });
-    markScheduleRun({ last_error: `Archetype set unreadable: ${e.message}` });
-    return;
-  }
-
-  // Build prompt
-  const tz = process.env.TIMEZONE || "Europe/Amsterdam";
-  const now = new Date();
-  const startIso = now.toISOString();
-  const endIso = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const platformRules = channel.platform === "twitter"
-    ? `\n- PLATFORM = X (Twitter): every post MUST be 280 characters or less (URLs count as 23 chars). Plain text only, no markdown. Avoid links unless the archetype explicitly requires one. Ignore any footer-link instructions in the archetype doc.`
-    : "";
-  const aiPrompt = `You are a community content planner generating draft social posts for a ${channel.platform === "twitter" ? "X (Twitter) account" : `${channel.platform} channel`}.
-
-CHANNEL: ${channel.name} (platform: ${channel.platform})
-ARCHETYPE SET: ${channel.archetype_set}
-LANGUAGE: ${language}
-TIMEZONE FOR SCHEDULING: ${tz}
-WINDOW: ${startIso} to ${endIso} (next 7 days)
-POST COUNT: ${autoCount ? "AUTO (derive from the week schedule in the archetype doc)" : postCount}
-
-${brandKnowledgeBlock(channel.brand)}
-
-ARCHETYPES & WEEK SCHEDULE (source of truth):
----
-${archetypeMd}
----
-
-RULES:${platformRules}
-- ${autoCount
-    ? "Generate exactly as many drafts as the week schedule in the archetype doc prescribes. Count every non-manual slot in the schedule table; one post per slot. Do not skip, add, or duplicate slots."
-    : `Generate exactly ${postCount} draft posts, spread across the next 7 days using the week schedule in the archetype doc. If the schedule has more slots than ${postCount}, pick the highest-cadence archetypes first.`}
-- SKIP any archetype explicitly marked as manual-only (look for markers like "NOT via", "handmatig", "⚠", "manually by"). Those are NOT generated here and do NOT count toward the total.
-- Follow every STYLE RULE in the archetype doc (em-dash ban, no hollow superlatives, concrete numbers, short sentences, language setting)
-- Each post must follow its archetype's structure and length guidelines
-- scheduled_at: ISO 8601 with timezone offset matching ${tz}, aligned with the archetype's cadence slot (e.g. Monday 08:30 local for archetype A)
-- trigger_word: only if the archetype specifies one (DELTA, CASCADE, PREMIUM, etc.), otherwise null
-- text: full post body including footer links as shown in the examples
-
-OUTPUT: ONLY a valid JSON array, no prose, no markdown fences. Schema per item:
-{
-  "archetype": "A — Market Intelligence Drop",
-  "scheduled_at": "2026-04-21T08:30:00+02:00",
-  "trigger_word": null,
-  "text": "..."
-}`;
-
-  console.log(`[SCHEDULER] Community Manager: generating ${autoCount ? "auto-count" : postCount} drafts for channel "${channel.name}" (set: ${channel.archetype_set})`);
-
-  let drafts;
-  try {
-    const raw = await new Promise((resolve, reject) => {
-      const child = spawn("/root/.local/bin/claude", ["-p", aiPrompt, "--output-format", "json", "--max-turns", "5", "--disallowed-tools", "Bash Read Edit Write Grep Glob WebSearch WebFetch Task NotebookEdit"], {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, HOME: "/root" },
-      });
-      let stdout = "", stderr = "";
-      const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("Claude CLI timeout after 600s")); }, 600000);
-      child.stdout.on("data", d => { stdout += d.toString(); });
-      child.stderr.on("data", d => { stderr += d.toString(); });
-      child.on("error", err => { clearTimeout(timer); reject(err); });
-      child.on("close", code => {
-        clearTimeout(timer);
-        if (code !== 0) return reject(new Error(`Claude CLI exited ${code} | stderr: ${stderr.slice(0, 400) || "(empty)"} | stdout: ${stdout.slice(0, 400) || "(empty)"}`));
-        try {
-          const parsed = JSON.parse(stdout);
-          resolve(parsed.result || parsed.content || stdout);
-        } catch {
-          resolve(stdout);
-        }
-      });
-    });
-
-    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
-    try { fs.writeFileSync(path.join(__dirname, "data", "community-last-raw.txt"), text); } catch {}
-    const arrStr = extractFirstJsonArray(text);
-    if (!arrStr) throw new Error(`No JSON array in Claude output. Text head: ${text.slice(0, 300)}`);
-    drafts = JSON.parse(arrStr);
-    if (!Array.isArray(drafts) || !drafts.length) throw new Error("Empty or invalid draft array");
-  } catch (e) {
-    console.error(`[SCHEDULER] Community Manager: generation failed: ${e.message}`);
-    sendTelegram(`💬 ${schedule.name} — FOUT`, `Generation failed: ${e.message.slice(0, 300)}`, "danger");
-    markRun({ status: "failed", error: e.message.slice(0, 500) });
-    markScheduleRun({ last_error: e.message.slice(0, 500) });
-    return;
-  }
-
-  // Persist drafts
-  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
-  let added = 0;
-  for (const d of drafts) {
-    if (!d || !d.text || !d.scheduled_at) continue;
-    tasks.push({
-      id: genId(),
-      channel_id: channel.id,
-      status: "draft",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      scheduled_at: d.scheduled_at,
-      scheduled_local: null,
-      archetype: d.archetype || null,
-      trigger_word: d.trigger_word || null,
-      media_path: null,
-      text: String(d.text),
-      published_at: null,
-      message_id: null,
-      attempts: 0,
-      error: null,
-      source: `scheduler:${schedule.id}`,
-    });
-    added++;
-  }
-  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
-  console.log(`[SCHEDULER] Community Manager: added ${added} drafts to community-tasks.json`);
-
-  if (p.notify !== "false" && p.notify !== false) {
-    sendTelegram(`💬 ${schedule.name}`, `${added} drafts klaar voor <b>${channel.name}</b> (set: ${channel.archetype_set}).\nReview ze op de Community Manager pagina.`, "info");
-  }
-
-  markRun({ status: "completed", drafts_added: added, result: `${added} drafts generated for ${channel.name}` });
-  markScheduleRun();
 }
 
 // ── ADS RULES ENGINE (checks every 5 minutes) ──

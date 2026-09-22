@@ -150,13 +150,12 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
   <div class="main">
     <div class="fade-up">
       <div class="header-title">SOCIAL MEDIA MANAGER</div>
-      <div class="header-sub">Schedule and publish posts to Telegram and X, or let the autopilot post to X on its own</div>
+      <div class="header-sub">Schedule and publish posts to Telegram and X, or let the autopilot post on its own</div>
     </div>
 
     <div class="tabs fade-up">
       <button class="tab active" data-tab="queue" onclick="switchTab('queue')">Queue</button>
       <button class="tab" data-tab="channels" onclick="switchTab('channels')">Channels</button>
-      <button class="tab" data-tab="archetypes" onclick="switchTab('archetypes')">Archetype Sets</button>
     </div>
 
     <!-- QUEUE TAB -->
@@ -167,7 +166,6 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
         <select class="edit-select" id="queue-channel-filter" onchange="onChannelFilterChange()" style="max-width:240px"></select>
         <button class="btn-sm" onclick="validateSelectedChannel()">Validate chat</button>
         <button class="btn-sm primary" onclick="toggleNewPostForm()" id="new-post-btn" style="margin-left:auto">+ New post</button>
-        <button class="btn-sm" onclick="generatePosts()" id="generate-posts-btn">⚡ Generate posts</button>
         <button class="btn-sm" onclick="sendReview()">Send review batch</button>
         <button class="btn-sm" onclick="loadTasks()">Refresh</button>
       </div>
@@ -180,24 +178,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
         <div class="edit-grid">
           <div>
             <label class="edit-label">Channel</label>
-            <select class="edit-select" id="np-channel" onchange="loadNewPostLinks()"></select>
-          </div>
-          <div>
-            <label class="edit-label">Archetype (optional)</label>
-            <input class="edit-input" id="np-archetype" placeholder="e.g. A, B, E, G">
-          </div>
-          <div>
-            <label class="edit-label">Trigger word (optional)</label>
-            <input class="edit-input" id="np-trigger" placeholder="e.g. PREMIUM">
-          </div>
-          <div class="full">
-            <label class="edit-label">Link labels (from archetype set) — selected labels are appended as footer on publish</label>
-            <div id="np-links" style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 10px;background:hsl(0 0% 3%);border:1px solid var(--border);border-radius:6px;min-height:40px;align-items:center">
-              <span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">Loading…</span>
-            </div>
-            <div class="post-actions" style="margin-top:6px">
-              <button class="btn-sm" type="button" onclick="insertNewPostLinks()">Insert at cursor instead (for mid-body placement)</button>
-            </div>
+            <select class="edit-select" id="np-channel"></select>
           </div>
           <div class="full">
             <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
@@ -250,15 +231,6 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
       </div>
     </div>
 
-    <!-- ARCHETYPE SETS TAB -->
-    <div class="tab-panel" id="tab-archetypes">
-      <div class="section-header">Archetype Sets</div>
-      <div id="archetypes-list"><div class="empty">Loading…</div></div>
-      <div class="new-row">
-        <input type="text" id="new-set-name" placeholder="new-set-name (lowercase, no spaces)">
-        <button class="btn-sm primary" onclick="createArchetypeSet()">+ Create Set</button>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -274,7 +246,6 @@ const fmt = t => {
 };
 
 let channelsCache = [];
-let archetypeSetsCache = [];
 
 async function fetchJson(url, opts) {
   const r = await fetch(url, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, opts || {}));
@@ -298,16 +269,13 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   if (name === 'channels') loadChannels();
-  if (name === 'archetypes') loadArchetypeSets();
 }
 
 // ── CHANNELS ──
 async function loadChannels() {
   const container = document.getElementById('channels-list');
   try {
-    const [channels, sets] = await Promise.all([fetchJson('/community/channels'), fetchJson('/community/archetype-sets')]);
-    channelsCache = channels;
-    archetypeSetsCache = sets;
+    channelsCache = await fetchJson('/community/channels');
     refreshChannelFilter();
     if (!channelsCache.length) { container.innerHTML = '<div class="empty">No channels configured. Add one below.</div>'; return; }
     container.innerHTML = channelsCache.map(renderChannelCard).join('');
@@ -319,8 +287,6 @@ function renderChannelCard(c) {
   const isTwitter = c.platform === 'twitter';
   const discordNote = isDiscord ? `<div class="discord-banner">⚠ Discord publishing is not implemented yet. Settings are saved so you can wire up a bot later.</div>` : '';
   const twitterNote = isTwitter ? renderXAuthNote(c) : '';
-  const setNames = archetypeSetsCache.map(s => typeof s === 'string' ? s : s.name);
-  const setOptions = ['<option value="">— none —</option>', ...setNames.map(s => `<option value="${esc(s)}"${c.archetype_set === s ? ' selected' : ''}>${esc(s)}</option>`)].join('');
   const dayOptions = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].map(d => `<option value="${d}"${(c.review?.day||'sunday') === d ? ' selected' : ''}>${d}</option>`).join('');
   const platformBadge = c.enabled === false ? 'disabled' : c.platform;
   const platformLabel = c.enabled === false ? 'disabled' : c.platform;
@@ -367,10 +333,6 @@ function renderChannelCard(c) {
           <label class="edit-label">${isDiscord ? 'Guild ID (optional)' : 'Topic ID (optional, Telegram forum)'}</label>
           <input class="edit-input" id="ch-topicid-${esc(c.id)}" value="${esc(isDiscord ? (c.guild_id || '') : (c.topic_id || ''))}" placeholder="${isDiscord ? 'Guild / server ID' : 'e.g. 12345'}">
         </div>`}
-        <div>
-          <label class="edit-label">Archetype Set</label>
-          <select class="edit-select" id="ch-arch-${esc(c.id)}">${setOptions}</select>
-        </div>
         ${isDiscord ? `
         <div class="full">
           <label class="edit-label">Webhook URL (optional — for future Discord publisher)</label>
@@ -400,7 +362,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel('${esc(c.id)}')">Save</button>
       </div>
@@ -519,6 +481,111 @@ function renderAutopilot(c) {
       </div>
     </div>`;
 }
+// Telegram autopilot: writes its own promo post (text only) and ends it with the offer + a clickable link.
+function renderTgAutopilot(c) {
+  const ap = c.autopilot || {};
+  const v = (k, d) => esc(ap[k] != null ? ap[k] : d);
+  const angles = Array.isArray(ap.angles) ? ap.angles.join('\n') : (ap.angles || '');
+  setTimeout(() => loadAutopilotStatus(c.id), 0);
+  return `
+    <div class="ap-box">
+      <div class="ap-head">
+        <span class="ap-title">⚡ Autopilot</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="runAutopilot('${esc(c.id)}','review','Telegram')" title="Write a post and put it in the queue as a draft">Run once → draft</button>
+          <button class="btn-sm primary" onclick="runAutopilot('${esc(c.id)}','auto','Telegram')" title="Same, but post it right away">Run once → post</button>
+        </div>
+      </div>
+      <div class="ap-status" id="ap-status-${esc(c.id)}">Loading status…</div>
+      <div class="edit-grid">
+        <div>
+          <label class="edit-label">Autopilot</label>
+          <select class="edit-select" id="ch-tg-enabled-${esc(c.id)}">
+            <option value="false"${!ap.enabled ? ' selected' : ''}>Off</option>
+            <option value="true"${ap.enabled ? ' selected' : ''}>On</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Mode</label>
+          <select class="edit-select" id="ch-tg-mode-${esc(c.id)}">
+            <option value="auto"${ap.mode !== 'review' ? ' selected' : ''}>Fully automatic (post)</option>
+            <option value="review"${ap.mode === 'review' ? ' selected' : ''}>Drafts for review</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Posts per day</label>
+          <input class="edit-input" type="number" min="1" max="6" id="ch-tg-ppd-${esc(c.id)}" value="${v('posts_per_day', 1)}">
+        </div>
+        <div>
+          <label class="edit-label">Window start (random time in between)</label>
+          <input class="edit-input" id="ch-tg-start-${esc(c.id)}" value="${v('window_start', '09:00')}" placeholder="09:00">
+        </div>
+        <div>
+          <label class="edit-label">Window end</label>
+          <input class="edit-input" id="ch-tg-end-${esc(c.id)}" value="${v('window_end', '20:00')}" placeholder="20:00">
+        </div>
+        <div>
+          <label class="edit-label">Language</label>
+          <input class="edit-input" id="ch-tg-lang-${esc(c.id)}" value="${v('language', 'English')}" placeholder="English">
+        </div>
+        <div>
+          <label class="edit-label">Product to promote</label>
+          <input class="edit-input" id="ch-tg-product-${esc(c.id)}" value="${v('product', '')}" placeholder="e.g. Pro plan">
+        </div>
+        <div>
+          <label class="edit-label">Offer (mentioned in every post)</label>
+          <input class="edit-input" id="ch-tg-offer-${esc(c.id)}" value="${v('offer', '')}" placeholder="e.g. 7-day free trial">
+        </div>
+        <div>
+          <label class="edit-label">Link (always at the bottom)</label>
+          <input class="edit-input" id="ch-tg-url-${esc(c.id)}" value="${v('cta_url', '')}" placeholder="https://…">
+        </div>
+        <div class="full">
+          <label class="edit-label">Link text (clickable)</label>
+          <input class="edit-input" id="ch-tg-label-${esc(c.id)}" value="${v('cta_label', '')}" placeholder="e.g. Start your 7-day free trial">
+        </div>
+        <div class="full">
+          <label class="edit-label">Audience (optional)</label>
+          <input class="edit-input" id="ch-tg-audience-${esc(c.id)}" value="${v('audience', '')}" placeholder="Who reads this channel?">
+        </div>
+        <div class="full">
+          <label class="edit-label">Voice (optional)</label>
+          <input class="edit-input" id="ch-tg-voice-${esc(c.id)}" value="${v('voice', '')}" placeholder="e.g. Friendly founder who trades himself, direct and down to earth">
+        </div>
+        <div class="full">
+          <label class="edit-label">Angles: one per line (rotated, least used first; blank = built-in set)</label>
+          <textarea class="edit-textarea" style="min-height:100px" id="ch-tg-angles-${esc(c.id)}" placeholder="A mistake most traders make&#10;A feature explained through a real situation">${esc(angles)}</textarea>
+        </div>
+        <div>
+          <label class="edit-label">Market hooks (web search)</label>
+          <select class="edit-select" id="ch-tg-market-${esc(c.id)}">
+            <option value="true"${ap.market_hooks !== false ? ' selected' : ''}>On: may tie in today's news</option>
+            <option value="false"${ap.market_hooks === false ? ' selected' : ''}>Off</option>
+          </select>
+        </div>
+      </div>
+    </div>`;
+}
+function collectTgAutopilot(id) {
+  const g = k => document.getElementById(`ch-tg-${k}-${id}`);
+  if (!g('enabled')) return null;
+  return {
+    enabled: g('enabled').value === 'true',
+    mode: g('mode').value,
+    posts_per_day: Number(g('ppd').value) || 1,
+    window_start: g('start').value.trim() || '09:00',
+    window_end: g('end').value.trim() || '20:00',
+    language: g('lang').value.trim() || 'English',
+    product: g('product').value.trim(),
+    offer: g('offer').value.trim(),
+    cta_url: g('url').value.trim(),
+    cta_label: g('label').value.trim(),
+    audience: g('audience').value.trim(),
+    voice: g('voice').value.trim(),
+    angles: g('angles').value.split('\n').map(t => t.trim()).filter(Boolean),
+    market_hooks: g('market').value === 'true',
+  };
+}
 function renderRefs(id) {
   const refs = apRefs[id] || [];
   return refs.map((p, i) => `<div class="ap-ref"><img src="${esc(p)}" alt="style"><button title="Remove" onclick="removeRef('${esc(id)}', ${i})">✕</button></div>`).join('') + `
@@ -585,8 +652,8 @@ async function loadAutopilotStatus(id) {
     if (s.running) apPollers[id] = setTimeout(() => { loadAutopilotStatus(id); loadTasks(); }, 5000);
   } catch (e) { el.textContent = 'Status error: ' + e.message; }
 }
-async function runAutopilot(id, mode) {
-  if (mode === 'auto' && !confirm('Find a post, generate the image and publish it to X right away?')) return;
+async function runAutopilot(id, mode, where = 'X') {
+  if (mode === 'auto' && !confirm(where === 'X' ? 'Find a post, generate the image and publish it to X right away?' : `Write a post and publish it to ${where} right away?`)) return;
   try {
     await fetchJson(`/community/channels/${encodeURIComponent(id)}/autopilot/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
     setTimeout(() => loadAutopilotStatus(id), 800);
@@ -600,7 +667,6 @@ async function saveChannel(id) {
     name: gv('name').value,
     platform,
     enabled: gv('enabled').value === 'true',
-    archetype_set: gv('arch').value,
     schedule_window_days: Number(gv('window').value) || 7,
     review: {
       enabled: gv('rev-enabled').value === 'true',
@@ -614,6 +680,8 @@ async function saveChannel(id) {
   const topicEl = gv('topicid');
   if (platform === 'telegram') {
     if (topicEl) payload.topic_id = topicEl.value.trim();
+    const tap = collectTgAutopilot(id);
+    if (tap) payload.autopilot = tap;
   } else if (platform === 'discord') {
     if (topicEl) payload.guild_id = topicEl.value.trim();
     const wh = gv('webhook'); if (wh) payload.webhook_url = wh.value.trim();
@@ -767,13 +835,20 @@ function channelLabel(id) {
   return c ? c.name : (id || '—');
 }
 
+// Telegram HTML posts: show the formatting, only the tags Telegram supports.
+function tgHtml(text) {
+  return esc(text)
+    .replace(/&lt;(\/?)(b|i|u|s|code)&gt;/g, '<$1$2>')
+    .replace(/&lt;a href=&quot;(https?:\/\/[^&"\s]+)&quot;&gt;([\s\S]*?)&lt;\/a&gt;/g, '<a href="$1" target="_blank" rel="noopener">$2</a>');
+}
+
 function renderPost(t) {
   if (editingPosts.has(t.id)) return renderEditForm(t);
   const trigger = t.trigger_word ? `<span class="post-trigger">${esc(t.trigger_word)}</span>` : '';
   const arch = t.archetype ? `<span class="post-arch">${esc(t.archetype)}</span>` : '';
   const chan = t.channel_id ? `<span class="post-channel">📡 ${esc(channelLabel(t.channel_id))}</span>` : '';
   const when = t.scheduled_local || fmt(t.scheduled_at);
-  const src = t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
+  const src = t.autopilot && t.angle ? `<div class="post-source">⚡ Autopilot · angle: ${esc(t.angle)}</div>` : t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
   const chanObj = channelsCache.find(c => c.id === t.channel_id);
   const xLink = t.status === 'published' && t.message_id && chanObj && chanObj.platform === 'twitter'
     ? `<a class="btn-sm" style="text-decoration:none" href="https://x.com/${esc(chanObj.x_username || 'i')}/status/${esc(t.message_id)}" target="_blank" rel="noopener">View on X</a>` : '';
@@ -847,7 +922,7 @@ function renderPost(t) {
         <div class="post-meta">${arch}${chan}<span class="post-time">${esc(when)}</span>${trigger}</div>
         <span class="post-status ${esc(t.status)}">${esc(t.status)}</span>
       </div>
-      <div class="post-body">${esc(t.text)}</div>
+      <div class="post-body">${t.parse_mode === 'HTML' ? tgHtml(t.text) : esc(t.text)}</div>
       ${mediaBlock}
       ${src}
       ${err}
@@ -872,20 +947,12 @@ function renderEditForm(t) {
           <label class="edit-label">Channel</label>
           <select class="edit-select" id="edit-chan-${esc(t.id)}">${chanOptions}</select>
         </div>
-        <div>
-          <label class="edit-label">Archetype</label>
-          <input class="edit-input" id="edit-arch-${esc(t.id)}" value="${esc(t.archetype)}">
-        </div>
-        <div>
-          <label class="edit-label">Trigger word</label>
-          <input class="edit-input" id="edit-trig-${esc(t.id)}" value="${esc(t.trigger_word)}" placeholder="e.g. PREMIUM">
-        </div>
         <div class="full">
           <label class="edit-label">Scheduled (local)</label>
           <input class="edit-input" type="datetime-local" id="edit-when-${esc(t.id)}" value="${localTime}">
         </div>
         <div class="full">
-          <label class="edit-label">Text (Markdown, *bold* for bold, [text](url) for links)</label>
+          <label class="edit-label">${t.parse_mode === 'HTML' ? 'Text (Telegram HTML: &lt;b&gt;bold&lt;/b&gt;, &lt;a href="url"&gt;text&lt;/a&gt;)' : 'Text (Markdown, *bold* for bold, [text](url) for links)'}</label>
           <textarea class="edit-textarea" id="edit-text-${esc(t.id)}" oninput="updateCharCount('${esc(t.id)}')">${esc(t.text)}</textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
             <div class="char-count${warn}" id="cc-${esc(t.id)}">${textLen} chars${t.media_path ? ` · media caption limit 1024` : ''}</div>
@@ -926,11 +993,9 @@ async function copyText(id) {
 
 async function saveEdit(id) {
   const channel_id = document.getElementById(`edit-chan-${id}`)?.value || null;
-  const archetype = document.getElementById(`edit-arch-${id}`).value.trim() || null;
-  const trigger_word = document.getElementById(`edit-trig-${id}`).value.trim() || null;
   const whenLocal = document.getElementById(`edit-when-${id}`).value;
   const text = document.getElementById(`edit-text-${id}`).value;
-  const payload = { archetype, trigger_word, text };
+  const payload = { text };
   if (channel_id) payload.channel_id = channel_id;
   if (whenLocal) {
     const d = new Date(whenLocal);
@@ -983,45 +1048,6 @@ async function sendReview() {
     else alert('Failed: ' + (d.error || 'unknown'));
   } catch (e) { alert('Error: ' + e.message); }
   loadTasks();
-}
-
-let generatePollTimer = null;
-async function generatePosts() {
-  const channelId = document.getElementById('queue-channel-filter').value;
-  if (!channelId) { alert('Select a channel first (generation uses that channel\'s archetype set).'); return; }
-  const c = channelsCache.find(x => x.id === channelId);
-  if (c && !c.archetype_set) { alert(`Channel "${c.name}" has no archetype set assigned. Set one on the Channels tab first.`); return; }
-  const countRaw = prompt('How many posts? Leave empty for auto (follows the week schedule in the archetype doc).', '');
-  if (countRaw === null) return;
-  const post_count = countRaw.trim() ? parseInt(countRaw.trim()) : undefined;
-  if (countRaw.trim() && (!Number.isFinite(post_count) || post_count <= 0)) { alert('Enter a positive number or leave empty.'); return; }
-
-  const btn = document.getElementById('generate-posts-btn');
-  try {
-    const d = await fetchJson('/community/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_id: channelId, post_count }) });
-    if (!d.ok) { alert('Failed: ' + (d.error || 'unknown')); return; }
-    btn.disabled = true;
-    btn.textContent = '⚡ Generating…';
-    const scheduleId = d.schedule_id;
-    clearInterval(generatePollTimer);
-    generatePollTimer = setInterval(async () => {
-      try {
-        const runs = await fetchJson('/community-manager/tasks');
-        const run = runs.find(r => r.schedule_id === scheduleId);
-        if (!run || run.status === 'processing') return;
-        clearInterval(generatePollTimer);
-        btn.disabled = false;
-        btn.textContent = '⚡ Generate posts';
-        if (run.status === 'completed') alert(`✅ ${run.drafts_added} draft(s) generated for ${run.channel_name || channelId}. Review and approve them below.`);
-        else alert(`❌ Generation failed: ${run.error || 'unknown error'}`);
-        loadTasks();
-      } catch {}
-    }, 5000);
-  } catch (e) {
-    alert('Error: ' + e.message);
-    btn.disabled = false;
-    btn.textContent = '⚡ Generate posts';
-  }
 }
 
 async function publishNow(id) {
@@ -1087,151 +1113,8 @@ async function approveAllDrafts() {
   if (fail) alert(`${ok} approved, ${fail} failed.`);
 }
 
-// ── ARCHETYPE SETS ──
-const openEditors = new Set();
-async function loadArchetypeSets() {
-  const list = document.getElementById('archetypes-list');
-  try {
-    const [setsRaw, channels] = await Promise.all([fetchJson('/community/archetype-sets'), fetchJson('/community/channels')]);
-    archetypeSetsCache = setsRaw;
-    channelsCache = channels;
-    if (!archetypeSetsCache.length) { list.innerHTML = '<div class="empty">No archetype sets yet. Create one below.</div>'; return; }
-    list.innerHTML = archetypeSetsCache.map(renderArchetypeCard).join('');
-    for (const s of archetypeSetsCache) loadArchetypeContent(typeof s === 'string' ? s : s.name);
-  } catch (e) { list.innerHTML = `<div class="empty">Load error: ${esc(e.message)}</div>`; }
-}
-
-function renderArchetypeCard(entry) {
-  const name = typeof entry === 'string' ? entry : entry.name;
-  const linked = (typeof entry === 'string' ? [] : (entry.channels || []));
-  const linkedIds = new Set(linked.map(c => c.id));
-  const chips = linked.length
-    ? linked.map(c => `<span style="font-family:var(--font-data);font-size:10px;padding:3px 8px;border-radius:4px;background:hsla(200 90% 55% / 0.08);color:var(--agent-color);border:1px solid hsla(200 90% 55% / 0.25)">📡 ${esc(c.name)} <span style="color:var(--text-dim)">(${esc(c.platform)})</span></span>`).join(' ')
-    : `<span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);font-style:italic">not linked to any channel</span>`;
-  const chanCheckboxes = channelsCache.length
-    ? channelsCache.map(c => `<label style="display:flex;gap:6px;align-items:center;font-family:var(--font-data);font-size:12px;color:var(--text);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px"><input type="checkbox" id="arch-link-${esc(name)}-${esc(c.id)}"${linkedIds.has(c.id) ? ' checked' : ''}> ${esc(c.name)} <span style="color:var(--text-dim);font-size:10px">(${esc(c.platform)})</span></label>`).join('')
-    : `<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No channels configured yet</span>`;
-  return `
-    <div class="arch-card" data-name="${esc(name)}">
-      <div class="arch-head">
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <span class="arch-name">${esc(name)}</span>
-          <span class="arch-meta" id="arch-meta-${esc(name)}">…</span>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-sm" onclick="toggleArchetypeEditor('${esc(name)}')">Open editor</button>
-          <button class="btn-sm danger" onclick="deleteArchetypeSet('${esc(name)}')">Delete</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;background:hsl(0 0% 3%);border:1px solid var(--border);border-radius:6px">
-        <span style="font-family:var(--font-data);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Linked to:</span>
-        ${chips}
-      </div>
-      <div class="edit-grid">
-        <div class="full">
-          <label class="edit-label">Rename</label>
-          <div style="display:flex;gap:8px">
-            <input class="edit-input" id="arch-rename-${esc(name)}" value="${esc(name)}" placeholder="new-name (lowercase, a-z 0-9 _ -)" style="flex:1">
-            <button class="btn-sm primary" onclick="renameArchetypeSet('${esc(name)}')">Rename</button>
-          </div>
-        </div>
-        <div class="full">
-          <label class="edit-label">Linked channels</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${chanCheckboxes}</div>
-          <div class="post-actions" style="margin-top:8px"><button class="btn-sm" onclick="saveArchetypeLinks('${esc(name)}')">Save channel links</button></div>
-        </div>
-      </div>
-      <div class="arch-editor${openEditors.has(name) ? ' open' : ''}" id="arch-ed-${esc(name)}">
-        <textarea class="edit-textarea" id="arch-txt-${esc(name)}" placeholder="Loading…"></textarea>
-        <div class="post-actions"><button class="btn-sm primary" onclick="saveArchetypeSet('${esc(name)}')">Save content</button></div>
-      </div>
-    </div>
-  `;
-}
-
-async function loadArchetypeContent(name) {
-  try {
-    const d = await fetchJson(`/community/archetype-sets/${encodeURIComponent(name)}`);
-    const txt = document.getElementById(`arch-txt-${name}`);
-    if (txt) txt.value = d.content || '';
-    const meta = document.getElementById(`arch-meta-${name}`);
-    if (meta) meta.textContent = `${(d.content || '').length} chars`;
-  } catch {}
-}
-
-function toggleArchetypeEditor(name) {
-  if (openEditors.has(name)) openEditors.delete(name); else openEditors.add(name);
-  const el = document.getElementById(`arch-ed-${name}`);
-  if (el) el.classList.toggle('open');
-}
-
-async function saveArchetypeSet(name) {
-  const txt = document.getElementById(`arch-txt-${name}`).value;
-  try {
-    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: txt }) });
-    if (!r.ok) throw new Error('save failed');
-    const meta = document.getElementById(`arch-meta-${name}`);
-    if (meta) meta.textContent = `${txt.length} chars — saved`;
-    setTimeout(() => { if (meta) meta.textContent = `${txt.length} chars`; }, 1500);
-  } catch (e) { alert('Save error: ' + e.message); }
-}
-
-async function renameArchetypeSet(oldName) {
-  const newName = document.getElementById(`arch-rename-${oldName}`).value.trim();
-  if (!newName || newName === oldName) return;
-  if (!confirm(`Rename archetype set "${oldName}" to "${newName}"? Channels currently linked to it will be updated.`)) return;
-  try {
-    await fetchJson(`/community/archetype-sets/${encodeURIComponent(oldName)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_name: newName }) });
-    await loadArchetypeSets();
-  } catch (e) { alert('Rename error: ' + e.message); }
-}
-
-async function saveArchetypeLinks(name) {
-  const channel_ids = channelsCache.filter(c => document.getElementById(`arch-link-${name}-${c.id}`)?.checked).map(c => c.id);
-  try {
-    await fetchJson(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel_ids }) });
-    await loadArchetypeSets();
-  } catch (e) { alert('Link save error: ' + e.message); }
-}
-
-async function createArchetypeSet() {
-  const name = document.getElementById('new-set-name').value.trim();
-  if (!name) { alert('Name required'); return; }
-  const template = `# ${name}
-
-Describe your archetypes here.
-
----
-
-**Standard link-footer options** (pick 2-3 per post, separated by \` | \`):
-
-| Emoji | Name | URL |
-|---|---|---|
-| 🔗 | Link 1 | \`https://example.com\` |
-| 📊 | Link 2 | \`https://example.com\` |
-| 🏦 | Link 3 | \`https://example.com\` |
-
-**Format in post (markdown hyperlink syntax):**
-\`\`\`
-🔗 [Link 1](https://example.com) | 📊 [Link 2](https://example.com)
-\`\`\`
-`;
-  try {
-    const r = await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: template }) });
-    if (!r.ok) throw new Error('create failed');
-    document.getElementById('new-set-name').value = '';
-    await loadArchetypeSets();
-  } catch (e) { alert('Create error: ' + e.message); }
-}
-
-async function deleteArchetypeSet(name) {
-  if (!confirm(`Delete archetype set "${name}"? This removes the .md file.`)) return;
-  try { await fetch(`/community/archetype-sets/${encodeURIComponent(name)}`, { method: 'DELETE' }); await loadArchetypeSets(); }
-  catch (e) { alert('Delete error: ' + e.message); }
-}
-
 // ── NEW POST FORM ──
-const newPostState = { mediaPaths: [], linksByChannel: new Map() };
+const newPostState = { mediaPaths: [] };
 
 function toggleNewPostForm() {
   const form = document.getElementById('new-post-form');
@@ -1241,7 +1124,6 @@ function toggleNewPostForm() {
   btn.textContent = open ? '× Close' : '+ New post';
   if (open) {
     populateNewPostChannels();
-    loadNewPostLinks();
   }
 }
 
@@ -1255,57 +1137,6 @@ function populateNewPostChannels() {
   }
   sel.innerHTML = writable.map(c => `<option value="${esc(c.id)}"${c.id === current ? ' selected' : ''}>${esc(c.name)} (${esc(c.platform)})</option>`).join('');
   if (!writable.some(c => c.id === current) && writable[0]) sel.value = writable[0].id;
-}
-
-function parseArchetypeLinks(md) {
-  if (!md) return [];
-  const lines = md.split('\n');
-  const links = [];
-  const seen = new Set();
-  const rowRe = /^\|\s*([^\|\s][^\|]*?)\s*\|\s*([^\|]+?)\s*\|\s*`?([^`|\s]+)`?\s*\|/;
-  for (const line of lines) {
-    const m = line.match(rowRe);
-    if (!m) continue;
-    const [, emoji, name, url] = m;
-    if (!/^https?:\/\//i.test(url)) continue;
-    const key = emoji.trim() + '|' + name.trim() + '|' + url.trim();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    links.push({ emoji: emoji.trim(), name: name.trim(), url: url.trim() });
-  }
-  return links;
-}
-
-async function loadNewPostLinks() {
-  const container = document.getElementById('np-links');
-  const channelId = document.getElementById('np-channel').value;
-  const channel = channelsCache.find(c => c.id === channelId);
-  const setName = channel?.archetype_set;
-  if (!setName) {
-    container.innerHTML = '<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No archetype set linked to this channel — configure one in Channels tab.</span>';
-    return;
-  }
-  let links = newPostState.linksByChannel.get(setName);
-  if (!links) {
-    try {
-      const d = await fetchJson(`/community/archetype-sets/${encodeURIComponent(setName)}`);
-      links = parseArchetypeLinks(d.content || '');
-      newPostState.linksByChannel.set(setName, links);
-    } catch (e) {
-      container.innerHTML = `<span style="font-family:var(--font-data);font-size:11px;color:var(--danger)">Load error: ${esc(e.message)}</span>`;
-      return;
-    }
-  }
-  if (!links.length) {
-    container.innerHTML = `<span style="font-family:var(--font-data);font-size:11px;color:var(--text-dim)">No link table found in archetype set <b>${esc(setName)}</b>. Add a table with columns Emoji | Name | URL.</span>`;
-    return;
-  }
-  container.innerHTML = links.map((l, i) => `
-    <label style="display:flex;gap:6px;align-items:center;font-family:var(--font-data);font-size:12px;color:var(--text);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card)">
-      <input type="checkbox" id="np-link-${i}" data-emoji="${esc(l.emoji)}" data-name="${esc(l.name)}" data-url="${esc(l.url)}">
-      ${esc(l.emoji)} ${esc(l.name)}
-    </label>
-  `).join('');
 }
 
 // ── EMOJI PICKER ──
@@ -1353,36 +1184,6 @@ function toggleEmojiPicker(textareaId, anchorBtn) {
   if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
   pop.style.left = left + 'px';
   pop.style.top = Math.max(8, top) + 'px';
-}
-
-function buildNewPostLinkFooter() {
-  const boxes = Array.from(document.querySelectorAll('#np-links input[type=checkbox]:checked'));
-  if (!boxes.length) return '';
-  return boxes.map(b => `${b.dataset.emoji} [${b.dataset.name}](${b.dataset.url})`).join(' | ');
-}
-
-function appendFooterToText(text, footer) {
-  if (!footer) return text;
-  const base = text.replace(/\s+$/, '');
-  return (base ? base + '\n\n' : '') + footer;
-}
-
-function insertNewPostLinks() {
-  const footer = buildNewPostLinkFooter();
-  if (!footer) { alert('Select one or more link labels first.'); return; }
-  const ta = document.getElementById('np-text');
-  const pos = ta.selectionStart ?? ta.value.length;
-  const before = ta.value.slice(0, pos);
-  const after = ta.value.slice(pos);
-  const sep = before && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
-  const insertion = sep + footer;
-  ta.value = before + insertion + after;
-  const newPos = before.length + insertion.length;
-  ta.selectionStart = ta.selectionEnd = newPos;
-  ta.focus();
-  // Clear checkboxes so submit doesn't append the same footer a second time
-  document.querySelectorAll('#np-links input[type=checkbox]').forEach(b => b.checked = false);
-  updateNewPostCharCount();
 }
 
 function updateNewPostCharCount() {
@@ -1459,21 +1260,15 @@ function clearNewPostMedia() {
 }
 
 function resetNewPostForm() {
-  document.getElementById('np-archetype').value = '';
-  document.getElementById('np-trigger').value = '';
   document.getElementById('np-text').value = '';
   document.getElementById('np-when').value = '';
   clearNewPostMedia();
-  document.querySelectorAll('#np-links input[type=checkbox]').forEach(b => b.checked = false);
   updateNewPostCharCount();
 }
 
 async function submitNewPost(mode) {
   const channel_id = document.getElementById('np-channel').value;
-  const archetype = document.getElementById('np-archetype').value.trim() || null;
-  const trigger_word = document.getElementById('np-trigger').value.trim() || null;
-  const footer = buildNewPostLinkFooter();
-  const text = appendFooterToText(document.getElementById('np-text').value, footer);
+  const text = document.getElementById('np-text').value;
   const whenLocal = document.getElementById('np-when').value;
   if (!channel_id) { alert('Select a channel first.'); return; }
   if (!text.trim()) { alert('Write some text first.'); return; }
@@ -1504,8 +1299,6 @@ async function submitNewPost(mode) {
       status: mode === 'publish' ? 'draft' : 'scheduled',
       scheduled_at,
       scheduled_local,
-      archetype,
-      trigger_word,
       text,
       media_path: newPostState.mediaPaths[0] || null,
       media_paths: newPostState.mediaPaths.slice(),
