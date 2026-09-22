@@ -7515,7 +7515,10 @@ app.get("/agents/overview", (_req, res) => {
   const out = AGENT_DEFS.map(def => {
     const base = {
       id: def.id, name: def.name, role: def.role, hsl: def.hsl, href: def.href, model: def.model || "",
-      sprite: fs.existsSync(path.join(__dirname, "public", "agents", `${def.id}.png`)) ? `agents/${def.id}.png` : null,
+      // Animated .webp wins over a still .png; ?v= busts the cache when a sprite is replaced
+      sprite: ["webp", "png"].map(ext => `${def.id}.${ext}`)
+        .filter(f => fs.existsSync(path.join(__dirname, "public", "agents", f)))
+        .map(f => `agents/${f}?v=${Math.floor(fs.statSync(path.join(__dirname, "public", "agents", f)).mtimeMs)}`)[0] || null,
     };
     if (def.kind === "social") {
       const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
