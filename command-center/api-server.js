@@ -7717,6 +7717,69 @@ const autopilot = require("./social-autopilot").createAutopilot({
 });
 setInterval(() => autopilot.tick().catch(e => console.error("[AUTOPILOT]", e.message)), 60_000);
 
+// Every autonomous job that is not a row in scheduled-tasks.json, so the
+// Agents page can list them next to the schedules.
+app.get("/agents/autonomous", (_req, res) => {
+  const tz = TIMEZONE;
+  const jobs = [];
+  const channels = readChannels();
+  for (const c of channels) {
+    if (c.platform === "twitter" && c.autopilot) {
+      const st = autopilot.status(c);
+      const cfg = st.config;
+      const count = (k) => st.slots.filter(sl => sl.status === k).length;
+      const next = st.slots.find(sl => sl.status === "pending");
+      jobs.push({
+        id: "x_autopilot:" + c.id, kind: "x_autopilot", agent: "community_manager",
+        name: `X Autopilot · ${c.name}${st.username ? " (@" + st.username + ")" : ""}`,
+        enabled: !!cfg.enabled, toggle: { channel_id: c.id, field: "autopilot" },
+        when: `${cfg.posts_per_day}x/day · ${cfg.window_start}-${cfg.window_end} ${tz}`,
+        details: `${cfg.mode === "review" ? "Drafts for review" : "Posts automatically"} · topics: ${cfg.topics.map(t => t.split(":")[0].trim()).join(", ") || "none"}`,
+        today: st.day ? { done: count("done"), failed: count("failed") + count("skipped"), pending: count("pending") } : null,
+        next_run: cfg.enabled && next ? next.at : null,
+        last_run: st.last_run ? { at: st.last_run.finished_at || st.last_run.at, status: st.last_run.status, error: st.last_run.error || null } : null,
+        running: !!st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.enabled && c.review && c.review.enabled !== false) { // same test as maybeFireCommunityReviewCron
+      jobs.push({
+        id: "review:" + c.id, kind: "channel_review", agent: "community_manager",
+        name: `Weekly review · ${c.name}`,
+        enabled: true, toggle: { channel_id: c.id, field: "review" },
+        when: `${c.review.day || "sunday"} ${c.review.time || "18:00"} ${tz}`,
+        details: "Sends upcoming drafts to Telegram for approve / skip / edit",
+        manage_url: "/community-manager.html",
+      });
+    }
+  }
+  let rules = [];
+  try { rules = readTaskFile("ads-rules.json"); } catch {}
+  if (rules.length) {
+    const on = rules.filter(r => r.enabled !== false);
+    const last = rules.map(r => r.last_triggered).filter(Boolean).sort().pop();
+    jobs.push({
+      id: "ads_rules", kind: "ads_rules", agent: "ads_optimizer",
+      name: "Ads rules engine", enabled: on.length > 0,
+      when: "every 5 min",
+      details: `${on.length}/${rules.length} rules active: ${on.slice(0, 4).map(r => r.name).join(", ")}${on.length > 4 ? "..." : ""}`,
+      last_run: last ? { at: last, status: "triggered" } : null,
+    });
+  }
+  const queued = readTaskFile(COMMUNITY_TASKS_FILE).filter(t => t.status === "scheduled");
+  const byName = Object.fromEntries(channels.map(c => [c.id, c.name]));
+  const nextPost = queued.map(t => t.scheduled_at).filter(Boolean).sort()[0] || null;
+  jobs.push({
+    id: "publisher", kind: "publisher", agent: "community_manager",
+    name: "Post publisher", enabled: true,
+    when: "continuous (checks every 15s)",
+    details: queued.length
+      ? `${queued.length} approved post${queued.length === 1 ? "" : "s"} queued · ${[...new Set(queued.map(t => byName[t.channel_id] || t.channel_id))].join(", ")}`
+      : "No approved posts queued",
+    next_run: nextPost, manage_url: "/community-manager.html",
+  });
+  res.json(jobs);
+});
+
 app.get("/community/channels/:id/autopilot", (req, res) => {
   const channel = getChannel(req.params.id);
   if (!channel) return res.status(404).json({ error: "Channel not found" });

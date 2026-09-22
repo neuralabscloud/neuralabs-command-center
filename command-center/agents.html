@@ -70,6 +70,9 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 }
 .sched-btn:hover { border-color: var(--primary); color: var(--primary); }
 .sched-btn.del:hover { border-color: var(--danger); color: var(--danger); }
+.sched-sub { font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); margin: 18px 0 10px; }
+.sched-badge.run { background: hsla(264 65% 49% / 0.1); color: var(--primary-glow, hsl(264 65% 65%)); border: 1px solid hsla(264 65% 49% / 0.3); }
+.sched-last.err { color: var(--danger); opacity: 0.85; }
 .sched-last { font-family: var(--font-data); font-size: 9px; color: var(--text-dim); margin-top: 6px; opacity: 0.7; }
 .sched-add-btn {
   background: linear-gradient(135deg, var(--primary), hsl(270 65% 55%)); color: white;
@@ -308,6 +311,8 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="sched-add-btn" onclick="openScheduleModal()">+ New Schedule</button>
       </div>
       <div id="sched-grid" class="sched-grid"></div>
+      <div class="sched-sub">Always-on agent jobs</div>
+      <div id="auto-grid" class="sched-grid"></div>
     </section>
 
     <!-- SCHEDULE MODAL -->
@@ -783,6 +788,49 @@ async function loadSchedules() {
   } catch { document.getElementById('sched-grid').innerHTML = ''; }
 }
 
+// Built-in autonomous jobs (X autopilot, channel reviews, ads rules, publisher).
+// They are configured on their own pages; here they can only be paused.
+function fmtWhen(iso) {
+  return iso ? new Date(iso).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+}
+async function loadAutonomous() {
+  const el = document.getElementById('auto-grid');
+  try {
+    const res = await fetch('/agents/autonomous', { credentials: 'include' });
+    if (!res.ok) return;
+    const jobs = await res.json();
+    if (!jobs.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No always-on jobs</span>'; return; }
+    el.innerHTML = jobs.map(j => {
+      const badge = j.running ? '<span class="sched-badge run">running</span>'
+        : `<span class="sched-badge ${j.enabled ? 'on' : 'off'}">${j.enabled ? 'active' : 'paused'}</span>`;
+      const today = j.today ? `<div class="sched-details">Today: ${j.today.done} posted · ${j.today.failed} failed/skipped · ${j.today.pending} to go</div>` : '';
+      const next = j.next_run ? `Next: ${fmtWhen(j.next_run)}` : '';
+      const last = j.last_run ? `Last run: ${fmtWhen(j.last_run.at)} · ${escHtml(j.last_run.status || '')}` : '';
+      const err = j.last_run && j.last_run.error && j.last_run.status === 'failed'
+        ? `<div class="sched-last err" title="${escHtml(j.last_run.error)}">${escHtml(j.last_run.error.substring(0, 110))}${j.last_run.error.length > 110 ? '...' : ''}</div>` : '';
+      const toggle = j.toggle ? `<button class="sched-btn" onclick="toggleAutonomous('${j.toggle.channel_id}','${j.toggle.field}',${!j.enabled})">${j.enabled ? 'Pause' : 'Enable'}</button>` : '';
+      const manage = j.manage_url ? `<button class="sched-btn" onclick="location.href='${j.manage_url}'">Open</button>` : '';
+      return `
+        <div class="sched-card ${j.enabled ? '' : 'disabled'}">
+          <div class="sched-actions">${toggle}${manage}</div>
+          <div class="sched-name">${escHtml(j.name)}</div>
+          <div class="sched-agent" style="${AGENT_STYLES[j.agent] || ''}">${AGENT_LABELS[j.agent] || j.agent}</div>
+          <div class="sched-time">${badge}${escHtml(j.when || '')}</div>
+          <div class="sched-details">${escHtml(j.details || '')}</div>
+          ${today}
+          <div class="sched-last">${[next, last].filter(Boolean).join(' &middot; ') || '&nbsp;'}</div>
+          ${err}
+        </div>`;
+    }).join('');
+  } catch { el.innerHTML = ''; }
+}
+
+async function toggleAutonomous(channelId, field, enabled) {
+  if (!enabled && !confirm('Pause this job?')) return;
+  await fetch('/community/channels/' + channelId, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ [field]: { enabled } }) });
+  loadAutonomous();
+}
+
 async function toggleSchedule(id, enabled) {
   await fetch('/scheduled-tasks/' + id, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enabled }) });
   loadSchedules();
@@ -1083,6 +1131,8 @@ checkCanvaStatus();
 setInterval(loadAll, 8000);
 setInterval(checkCanvaStatus, 30000);
 setInterval(loadSchedules, 30000);
+loadAutonomous();
+setInterval(loadAutonomous, 30000);
 </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
