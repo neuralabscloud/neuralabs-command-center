@@ -59,6 +59,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .task-badge { font-family: var(--font-data); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; display: inline-flex; align-items: center; gap: 5px; }
 .task-badge.pending { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
 .task-badge.processing { color: var(--teal); background: hsla(180 70% 45% / 0.08); }
+.task-badge.finishing { color: var(--teal); background: hsla(180 70% 45% / 0.08); }
 .task-badge.completed { color: var(--success); background: hsla(142 76% 36% / 0.08); }
 .task-badge.failed { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
 .task-badge.processing::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); animation: pulse-glow 2s infinite; }
@@ -858,6 +859,7 @@ async function loadTasks() {
       fetch(API_UGC).then(r => r.json()).catch(() => []),
       fetch(API_CLIPPER).then(r => r.json()).catch(() => []),
     ]);
+    _ugcTaskCache = ugcTasks;
     const all = [
       ...ugcTasks.map(t => ({ ...t, _type: 'ugc' })),
       ...clipperTasks.map(t => ({ ...t, _type: 'clipper' })),
@@ -896,8 +898,10 @@ async function loadTasks() {
             <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;word-break:break-all;">${esc(preview)}</div>
             ${ugcMeta}
             ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
-            ${t.result_url ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video on Higgsfield ↗</a>' : ''}
+            ${t.result_url && !String(t.result_url).startsWith('/media/') ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video on Higgsfield ↗</a>' : ''}
+            ${isUgc ? renderUgcDelivery(t) : ''}
           </div>
+          ${isUgc && String(t.result_url || '').startsWith('/media/') ? `<video src="${esc(t.result_url)}" controls preload="metadata" playsinline style="width:120px;aspect-ratio:9/16;border-radius:8px;background:#000;flex-shrink:0;object-fit:cover;"></video>` : ''}
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
             <span class="task-badge ${t.status}">${t.status}</span>
             <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
@@ -908,6 +912,38 @@ async function loadTasks() {
       </div>`;
     }).join('');
   } catch { document.getElementById('tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'; }
+}
+
+// Autopilot / caption tasks: who made it, the ready-to-post caption and the file.
+function renderUgcDelivery(t) {
+  const parts = [];
+  if (t.autopilot) {
+    const meta = [t.avatar_name, t.voice_name && ('voice ' + t.voice_name.split(' - ')[0]), t.words && (t.words + ' words'), t.speak_model].filter(Boolean).join(' · ');
+    parts.push(`<div style="font-size:10px;color:hsl(340 80% 60%);font-family:var(--font-data);margin:4px 0;">Marketeer → Content Creator · ${esc(meta)}</div>`);
+  }
+  if (t.status === 'finishing') parts.push('<div style="font-size:10px;color:var(--warning);font-family:var(--font-data);">Burning in captions…</div>');
+  if (t.caption_error) parts.push(`<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">Captions failed: ${esc(t.caption_error)}</div>`);
+  if (String(t.result_url || '').startsWith('/media/')) {
+    parts.push(`<a href="${esc(t.result_url)}" download style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;margin-right:10px;">⬇ Download${t.final_url ? ' (with captions)' : ''}</a>`);
+  }
+  if (t.post_caption) {
+    parts.push(`<div style="margin-top:6px;background:var(--bg-input, rgba(255,255,255,0.04));border:1px solid var(--border);border-radius:6px;padding:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;">Caption · Reels / TikTok</span>
+        <button onclick="copyUgcCaption('${t.id}', this)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:2px 8px;cursor:pointer;">Copy</button>
+      </div>
+      <div style="font-size:11px;color:var(--text);white-space:pre-wrap;line-height:1.45;">${esc(t.post_caption)}</div>
+    </div>`);
+  }
+  return parts.join('');
+}
+
+let _ugcTaskCache = [];
+async function copyUgcCaption(id, btn) {
+  if (!_ugcTaskCache.length) _ugcTaskCache = await fetch(API_UGC).then(r => r.json()).catch(() => []);
+  const t = _ugcTaskCache.find(x => x.id === id);
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t.post_caption || ''); btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy', 1500); } catch {}
 }
 
 async function submitClipperTask() {

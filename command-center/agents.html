@@ -333,6 +333,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="ads_optimizer">Ads Optimizer</option>
               <option value="community_manager">Social Media Manager</option>
               <option value="opusclip">OpusClip Clipper</option>
+              <option value="ugc_autopilot">UGC Video (Marketeer → Content Creator)</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -696,7 +697,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -704,6 +705,7 @@ const AGENT_STYLES = {
   ads_optimizer: 'color:hsl(142 76% 36%)',
   community_manager: 'color:hsl(200 90% 55%)',
   opusclip: 'color:hsl(0 72% 51%)',
+  ugc_autopilot: 'color:hsl(180 70% 45%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -712,6 +714,7 @@ const AGENT_DESCRIPTIONS = {
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   community_manager: 'Generates a weekly batch of draft community posts for a channel, following its archetype set. Drafts land in the review queue.',
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
+  ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
 };
 
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -741,6 +744,10 @@ function buildScheduleSummary(s) {
       const minD = parseInt(p.min_duration) || 30;
       const maxD = parseInt(p.max_duration) || 90;
       return `YouTube channel ${escHtml(p.channel_id || 'connected channel')} · clips ${minD}-${maxD}s · ${p.source_lang || 'auto'}`;
+    }
+    case 'ugc_autopilot': {
+      const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Main product from brand knowledge';
+      return `${focus} · avatar: ${p.avatar_id ? escHtml(p.avatar_id) : 'rotating'} · ${p.speak_model || 'kling'} · captions ${p.captions === 'false' ? 'off' : 'on'}`;
     }
     default:
       return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
@@ -909,6 +916,35 @@ const PAYLOAD_FIELDS = {
       <div><label class="sched-label">Topic keywords (comma-separated, optional)</label>
         <input class="sched-input" id="sp-topic_keywords" placeholder="hook, key takeaway"></div>
     </div>`,
+  ugc_autopilot: `
+    <div style="background:hsla(180 70% 45%/0.06);border:1px solid hsla(180 70% 45%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li><b>Marketeer</b> writes an English 15-30 s testimonial script (hook in the first 2 s, open loop, one concrete product, soft CTA) using your brand knowledge</li>
+        <li><b>Content Creator</b> picks an avatar from the Avatar library and an ElevenLabs voice of the same gender</li>
+        <li>Renders the talking avatar, burns in word-by-word captions + a hook title</li>
+        <li>Delivers the video + IG Reels / TikTok caption on the Content Creator page and via Telegram</li>
+        <li>Requires <b>HIGGSFIELD_API_KEY</b> + <b>ELEVENLABS_API_KEY</b></li>
+      </ul>
+    </div>
+    <div><label class="sched-label">What should the videos be about?</label>
+      <textarea class="sched-input" id="sp-focus" rows="3" style="width:100%;resize:vertical" placeholder="e.g. 'Our trading tools and indicators: what they help a trader with and why you would recommend them to a friend'. Leave empty = main product from brand knowledge"></textarea></div>
+    <div class="sched-form-row" style="margin-top:8px">
+      <div><label class="sched-label">Avatar</label>
+        <select class="sched-select" id="sp-avatar_id"><option value="">Rotate through the library</option></select></div>
+      <div><label class="sched-label">Speak model</label>
+        <select class="sched-select" id="sp-speak_model"><option value="kling">Kling Speak</option><option value="higgsfield">Higgsfield Speak</option></select></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Burned-in captions</label>
+        <select class="sched-select" id="sp-captions"><option value="true">On</option><option value="false">Off</option></select></div>
+      <div><label class="sched-label">Hook title (first 3 s)</label>
+        <select class="sched-select" id="sp-hook_title"><option value="true">On</option><option value="false">Off</option></select></div>
+    </div>
+    <div class="sched-form-row">
+      <div><label class="sched-label">Notify via Telegram</label>
+        <select class="sched-select" id="sp-notify"><option value="true">Yes</option><option value="false">No</option></select></div>
+    </div>`,
 };
 
 function updatePayloadFields() {
@@ -919,6 +955,19 @@ function updatePayloadFields() {
   if (agent === 'community_manager') {
     populateCommunityChannelSelect();
   }
+  if (agent === 'ugc_autopilot') populateAvatarSelect();
+}
+
+async function populateAvatarSelect(selectedId) {
+  const sel = document.getElementById('sp-avatar_id');
+  if (!sel) return;
+  try {
+    const avatars = await fetch('/ugc/avatars', { credentials: 'include' }).then(r => r.json());
+    const ready = (avatars || []).filter(a => a.status === 'ready' && a.image_url);
+    sel.innerHTML = '<option value="">Rotate through the library</option>' + ready.map(a =>
+      `<option value="${escHtml(a.id)}">${escHtml(a.name)}${a.gender_resolved ? ' · ' + a.gender_resolved : ' · gender unknown (skipped)'}</option>`).join('');
+    if (selectedId) sel.value = selectedId;
+  } catch {}
 }
 
 async function populateCommunityChannelSelect(selectedId) {
@@ -968,6 +1017,9 @@ function openScheduleModal(data) {
       // Re-populate community channel select with the saved selection (it's async)
       if (data?.agent === 'community_manager' && data?.payload?.channel_id) {
         populateCommunityChannelSelect(data.payload.channel_id);
+      }
+      if (data?.agent === 'ugc_autopilot' && data?.payload?.avatar_id) {
+        populateAvatarSelect(data.payload.avatar_id);
       }
     }, 10);
   }

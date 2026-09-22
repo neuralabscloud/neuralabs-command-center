@@ -207,6 +207,15 @@ app.get("/ref-media/:file", (req, res) => {
   res.sendFile(p);
 });
 
+// Remember the public address the dashboard is reached on, so jobs without a
+// request (scheduled UGC videos) can still give Higgsfield a public audio URL.
+let lastPublicOrigin = "";
+app.use((req, _res, next) => {
+  const o = detectPublicOrigin(req);
+  if (looksPublicHost(o.host)) lastPublicOrigin = o.origin;
+  next();
+});
+
 // Protect all other routes (API + HTML pages)
 app.use((req, res, next) => {
   if (req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
@@ -2792,7 +2801,7 @@ app.get("/ugc/voices", async (req, res) => {
     if (!key) return res.json([]);
     const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
     const data = await r.json();
-    const list = Array.isArray(data.voices) ? data.voices.map(v => ({ id: v.voice_id, name: v.name, provider: "elevenlabs" })) : [];
+    const list = Array.isArray(data.voices) ? data.voices.map(v => ({ id: v.voice_id, name: v.name, provider: "elevenlabs", gender: (v.labels && v.labels.gender) || "" })) : [];
     res.json(list);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -2880,7 +2889,7 @@ app.delete("/audio/voiceovers/:id", (req, res) => {
 // ── UGC AVATAR LIBRARY (Higgsfield Soul portraits) ──────────────────
 // Create reusable avatar portraits from a prompt; the Talking Avatar mode
 // selects them by their generated image URL.
-app.get("/ugc/avatars", (_req, res) => res.json(readTaskFile("ugc-avatars.json")));
+app.get("/ugc/avatars", (_req, res) => res.json(readTaskFile("ugc-avatars.json").map(a => ({ ...a, gender_resolved: ugcAuto.inferGender(a) }))));
 
 app.post("/ugc/avatars", async (req, res) => {
   const b = req.body || {};
@@ -2897,11 +2906,31 @@ app.post("/ugc/avatars", async (req, res) => {
     if (!request_id) return res.status(502).json({ error: "no job-set id: " + JSON.stringify(data).slice(0, 200) });
     const avatars = readTaskFile("ugc-avatars.json");
     const avatar = { id: "av_" + Date.now().toString(36), name: b.name || "Avatar", prompt, status: "processing", request_id, image_url: "", created_at: new Date().toISOString() };
+    if (b.gender === "male" || b.gender === "female") avatar.gender = b.gender;
     avatars.unshift(avatar);
     if (avatars.length > 100) avatars.length = 100;
     writeTaskFile("ugc-avatars.json", avatars);
     res.json({ ok: true, avatar });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Gender (drives the voice match) and an optional fixed voice per avatar.
+app.patch("/ugc/avatars/:id", (req, res) => {
+  const avatars = readTaskFile("ugc-avatars.json");
+  const a = avatars.find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: "not found" });
+  const b = req.body || {};
+  if ("gender" in b) { if (b.gender === "male" || b.gender === "female") a.gender = b.gender; else delete a.gender; }
+  if ("voice_id" in b) { if (b.voice_id) a.voice_id = String(b.voice_id); else delete a.voice_id; }
+  if (typeof b.name === "string" && b.name.trim()) a.name = b.name.trim();
+  writeTaskFile("ugc-avatars.json", avatars);
+  res.json({ ok: true, avatar: { ...a, gender_resolved: ugcAuto.inferGender(a) } });
+});
+
+// Run the UGC autopilot once by hand (same as a scheduled run).
+app.post("/ugc/autopilot/run", async (req, res) => {
+  try { res.json({ ok: true, task: await createUgcAutopilotTask(req.body || {}) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.delete("/ugc/avatars/:id", (req, res) => {
@@ -6571,13 +6600,25 @@ async function synthesizeSpeech(opts) {
   const key = (process.env.ELEVENLABS_API_KEY || "").trim();
   if (!key) throw new Error("ELEVENLABS_API_KEY not set");
   const voiceId = opts.voice_id || ELEVENLABS_DEFAULT_VOICE;
-  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+  const body = { text, model_id: "eleven_multilingual_v2" };
+  const speed = Number(opts.speed) || 1;
+  if (speed !== 1) body.voice_settings = { speed: Math.min(1.2, Math.max(0.7, speed)) };
+  // With timestampsFile the character timings are saved next to the audio, so
+  // captions can be burned in word by word.
+  const withTs = !!opts.timestampsFile;
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}${withTs ? "/with-timestamps" : ""}`, {
     method: "POST",
-    headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg" },
-    body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+    headers: { "xi-api-key": key, "Content-Type": "application/json", "Accept": withTs ? "application/json" : "audio/mpeg" },
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error("ElevenLabs TTS " + r.status + ": " + (await r.text()).slice(0, 200));
-  fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+  if (withTs) {
+    const data = await r.json();
+    fs.writeFileSync(outFile, Buffer.from(data.audio_base64 || "", "base64"));
+    fs.writeFileSync(opts.timestampsFile, JSON.stringify(data.alignment || data.normalized_alignment || {}));
+  } else {
+    fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+  }
   return outFile;
 }
 
@@ -6594,6 +6635,7 @@ async function generateUgcAudio(task) {
   await synthesizeSpeech({
     text, outFile: mp3Path,
     provider: task.voice_provider, voice_id: task.voice_id, emotion: task.voice_emotion, speed: task.voice_speed,
+    timestampsFile: task.captions ? path.join(dir, task.id + ".words.json") : undefined,
   });
   // Higgsfield's speak endpoint rejects mp3 ("invalid_audio_format") — convert
   // to 16-bit PCM WAV (mono, 44.1 kHz) with ffmpeg, which it accepts.
@@ -6610,6 +6652,7 @@ async function generateUgcAudio(task) {
 
 // Track which tasks are already being processed to avoid duplicates
 const processingTasks = new Set();
+const ugcAuto = require("./ugc-autopilot");
 
 // ── UGC WORKER — submit pending tasks to Higgsfield ─────────────────
 async function processUgcTasks() {
@@ -6624,6 +6667,12 @@ async function processUgcTasks() {
         // 1. Voice from the script (ElevenLabs), hosted publicly for Higgsfield.
         if (!t.audio_url) {
           t.audio_url = await generateUgcAudio(t);
+          // A length cap (autopilot: 30 s) gets one retry at a faster pace.
+          const cap = Number(t.max_seconds) || 0;
+          if (cap && t.audio_duration > cap && (Number(t.voice_speed) || 1) < 1.1 && ttsProvider(t.voice_provider) === "elevenlabs") {
+            t.voice_speed = Math.min(1.15, +((t.audio_duration / cap) * (Number(t.voice_speed) || 1)).toFixed(2));
+            t.audio_url = await generateUgcAudio(t);
+          }
           changed = true;
           writeTaskFile("ugc-tasks.json", tasks);
         }
@@ -6658,7 +6707,9 @@ async function processUgcTasks() {
         // Scene prompt only if the user gave one — the description ("what is
         // this video for?", e.g. "product ad") used to leak in here as the
         // scene direction and made the avatar hold products.
-        const scenePrompt = (t.prompt || "").trim();
+        // Kling requires a prompt: fall back to a neutral talking head.
+        const scenePrompt = (t.prompt || "").trim()
+          || (speakModel === "kling" ? "A person talking naturally to the camera, selfie-style UGC video, relaxed natural gestures, empty hands, steady framing" : "");
         params = {
           input_image: { type: "image_url", image_url: inputImageUrl },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
@@ -6698,7 +6749,19 @@ async function processUgcTasks() {
       processingTasks.delete(t.id);
     } catch (e) { t.status = "failed"; t.error = e.message; changed = true; processingTasks.delete(t.id); }
   }
+  if (notifyUgcFailures(tasks)) changed = true;
   if (changed) writeTaskFile("ugc-tasks.json", tasks);
+}
+
+// Autopilot runs nobody is watching: report a failure once via Telegram.
+function notifyUgcFailures(tasks) {
+  let changed = false;
+  for (const t of tasks) {
+    if (!t.autopilot || t.status !== "failed" || t.fail_notified) continue;
+    sendTelegram("UGC video failed", `${escTg(t.description || t.id)}\n${escTg(String(t.error || "").slice(0, 300))}`, "danger");
+    t.fail_notified = true; changed = true;
+  }
+  return changed;
 }
 
 // ── UGC WORKER — poll processing tasks ──────────────────────────────
@@ -6794,13 +6857,120 @@ async function pollUgcStatus() {
       const url = (job.results && ((job.results.raw && job.results.raw.url) || (job.results.min && job.results.min.url)))
         || job.result_url || (job.video && job.video.url) || (job.result && job.result.url) || "";
       if (status === "completed" || status === "success") {
-        t.status = "completed"; t.result_url = url; changed = true;
+        // Caption/autopilot tasks get a finishing stage: download (Higgsfield
+        // links expire), burn in captions, deliver.
+        if (t.captions || t.autopilot) { t.status = "finishing"; t.remote_url = url; }
+        else t.status = "completed";
+        t.result_url = url; changed = true;
       } else if (status === "failed" || status === "nsfw" || status === "error") {
         t.status = "failed"; t.error = status; changed = true;
       }
     } catch (e) { /* transient — retry next tick */ }
   }
+  if (notifyUgcFailures(tasks)) changed = true;
   if (changed) writeTaskFile("ugc-tasks.json", tasks);
+  // Also picks up tasks left in "finishing" by a restart.
+  for (const t of tasks) {
+    if (t.status === "finishing" && !ugcFinishing.has(t.id)) {
+      ugcFinishing.add(t.id);
+      finishUgcVideo(t.id).catch(e => console.error("[UGC] finishing failed:", e.message)).finally(() => ugcFinishing.delete(t.id));
+    }
+  }
+}
+
+// ── UGC FINISHING — local copy + burned-in captions + delivery ──────
+const UGC_MEDIA_DIR = path.join(MEDIA_DIR, "ugc");
+const UGC_FONTS_DIR = path.join(__dirname, "assets", "fonts");
+const ugcFinishing = new Set();
+
+function runFfmpeg(args, timeout = 600000) {
+  return new Promise((resolve, reject) => {
+    execFile("ffmpeg", args, { timeout, maxBuffer: 1 << 24 }, (err, _o, stderr) =>
+      err ? reject(new Error(String(stderr || err.message).split("\n").filter(Boolean).slice(-3).join(" | "))) : resolve());
+  });
+}
+
+function probeVideo(file) {
+  return new Promise((resolve) => {
+    execFile("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", file],
+      { timeout: 30000 }, (err, out) => {
+        try {
+          const j = JSON.parse(out);
+          const s = (j.streams || [])[0] || {};
+          resolve({ width: s.width || 1080, height: s.height || 1920, duration: Number(j.format && j.format.duration) || 0 });
+        } catch { resolve({ width: 1080, height: 1920, duration: 0 }); }
+      });
+  });
+}
+
+function updateUgcTask(id, patch) {
+  const all = readTaskFile("ugc-tasks.json");
+  const t = all.find(x => x.id === id);
+  if (!t) return null;
+  Object.assign(t, patch);
+  writeTaskFile("ugc-tasks.json", all);
+  return t;
+}
+
+async function finishUgcVideo(id) {
+  const t = readTaskFile("ugc-tasks.json").find(x => x.id === id);
+  if (!t || t.status !== "finishing") return;
+  fs.mkdirSync(UGC_MEDIA_DIR, { recursive: true });
+  const raw = path.join(UGC_MEDIA_DIR, `${id}-raw.mp4`);
+  const out = path.join(UGC_MEDIA_DIR, `${id}.mp4`);
+  if (!fs.existsSync(raw)) await downloadTo(t.remote_url || t.result_url, raw);
+  const patch = { status: "completed", raw_url: `/media/ugc/${id}-raw.mp4`, result_url: `/media/ugc/${id}-raw.mp4` };
+  if (t.captions) {
+    try {
+      const info = await probeVideo(raw);
+      let words = [];
+      try { words = ugcAuto.wordsFromAlignment(JSON.parse(fs.readFileSync(path.join(__dirname, "data", "ugc-audio", id + ".words.json"), "utf8"))); } catch {}
+      if (!words.length) words = ugcAuto.wordsEvenly(t.script, info.duration || t.audio_duration || 20);
+      const assFile = path.join(UGC_MEDIA_DIR, `${id}.ass`);
+      fs.writeFileSync(assFile, ugcAuto.buildAss({ words, width: info.width, height: info.height, hook: t.on_screen_hook || "", hookSeconds: Math.min(3, (words[0] && words[words.length - 1].end) || 3) }));
+      await runFfmpeg(["-y", "-i", raw, "-vf", `ass=${assFile}:fontsdir=${UGC_FONTS_DIR}`,
+        "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out]);
+      try { fs.unlinkSync(assFile); } catch {}
+      patch.final_url = `/media/ugc/${id}.mp4`;
+      patch.result_url = patch.final_url;
+    } catch (e) {
+      patch.caption_error = String(e.message).slice(0, 300);
+      console.error(`[UGC] captions failed for ${id}:`, patch.caption_error);
+    }
+  }
+  const done = updateUgcTask(id, patch);
+  console.log(`[UGC] ${id} finished${patch.final_url ? " with captions" : ""}`);
+  if (done && done.autopilot) deliverUgcToTelegram(done).catch(e => console.error("[UGC] telegram delivery failed:", e.message));
+}
+
+function escTg(s) { return String(s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+// Ready-to-post delivery: the video itself, then the caption as its own
+// message so it can be copied in one tap.
+async function deliverUgcToTelegram(t) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  const file = path.join(MEDIA_DIR, String(t.result_url || "").replace(/^\/media\//, ""));
+  const head = `🎬 <b>UGC video ready</b> · ${escTg(t.avatar_name || "")}${t.angle ? " · " + escTg(t.angle) : ""}`;
+  if (fs.existsSync(file) && fs.statSync(file).size < 49 * 1024 * 1024) {
+    const form = new FormData();
+    form.append("chat_id", String(TG_CHAT));
+    form.append("caption", head);
+    form.append("parse_mode", "HTML");
+    form.append("supports_streaming", "true");
+    form.append("video", new Blob([fs.readFileSync(file)], { type: "video/mp4" }), path.basename(file));
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendVideo`, { method: "POST", body: form });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) throw new Error(d.description || "sendVideo failed");
+  } else {
+    sendTelegram("UGC video ready", `${head}\nToo large for Telegram, open it on the Content Creator page.`, "info");
+  }
+  const caption = t.post_caption || "";
+  if (caption) {
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: TG_CHAT, text: caption, disable_web_page_preview: true }),
+    });
+  }
 }
 
 // ── AVATAR LIBRARY WORKER — poll Soul portrait generations ──────────
@@ -8346,6 +8516,8 @@ async function executeSchedule(schedule) {
       await executeCommunityManagerSchedule(schedule, today);
     } else if (schedule.agent === "opusclip") {
       await executeOpusclipSchedule(schedule, today);
+    } else if (schedule.agent === "ugc_autopilot") {
+      await executeUgcAutopilotSchedule(schedule);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -8559,6 +8731,128 @@ async function executeMarketeerSchedule(schedule, today) {
   const idx = schedules.findIndex(s => s.id === schedule.id);
   if (idx >= 0) {
     schedules[idx].last_run = new Date().toISOString();
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+}
+
+// ── UGC AUTOPILOT: Marketeer writes, Content Creator renders ────────
+// 1. pick an avatar from the library (rotating) + a voice of the same gender
+// 2. the Marketeer writes a 15-30 s testimonial script + post caption (JSON)
+// 3. a speak task goes to the Content Creator queue with captions on; the UGC
+//    workers render, burn in captions and deliver the result via Telegram.
+function knownPublicOrigin() {
+  const env = (process.env.PUBLIC_BASE_URL || process.env.PUBLIC_ORIGIN || "").trim().replace(/\/+$/, "");
+  if (env) return env;
+  if (lastPublicOrigin) return lastPublicOrigin;
+  const hit = readTaskFile("ugc-tasks.json").find(t => t.public_origin && looksPublicHost(String(t.public_origin).replace(/^https?:\/\//, "")));
+  return hit ? hit.public_origin : "";
+}
+
+async function listElevenVoices() {
+  const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+  if (!key) return [];
+  const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": key } });
+  const data = await r.json().catch(() => ({}));
+  return Array.isArray(data.voices) ? data.voices : [];
+}
+
+async function createUgcAutopilotTask(p = {}) {
+  const origin = knownPublicOrigin();
+  if (!origin) throw new Error("No public address known yet: open the dashboard once via its domain, or set PUBLIC_BASE_URL in .env");
+  const tasks = readTaskFile("ugc-tasks.json");
+  const recent = tasks.filter(t => t.autopilot);
+  const avatar = ugcAuto.pickAvatar(readTaskFile("ugc-avatars.json"), recent.map(t => t.avatar_id), p.avatar_id || "");
+  if (!avatar) throw new Error("No ready avatar with a recognisable gender in the Avatar library");
+  const gender = ugcAuto.inferGender(avatar);
+
+  // Voice: explicit on the avatar, else a stable ElevenLabs match by gender + age.
+  let voice = null;
+  if (avatar.voice_id) voice = { voice_id: avatar.voice_id, name: avatar.voice_id, labels: { gender } };
+  else voice = ugcAuto.pickVoice(await listElevenVoices(), { gender, age: ugcAuto.inferAge(avatar), seed: avatar.id });
+  if (!voice) throw new Error(`No ${gender} ElevenLabs voice available (check ELEVENLABS_API_KEY)`);
+
+  const brand = p.brand || defaultBrandKey();
+  const prompt = ugcAuto.buildScriptPrompt({
+    focus: p.focus || "",
+    persona: ugcAuto.personaFor(avatar),
+    recentHooks: recent.map(t => t.hook),
+    brandKnowledge: brandKnowledgeBlock(brand),
+  });
+  const model = (process.env.UGC_AUTOPILOT_MODEL || "claude-opus-5-5").trim();
+  let script = null, lastErr = "";
+  const messages = [{ role: "user", content: prompt }];
+  for (let attempt = 0; attempt < 3 && !script; attempt++) {
+    const resp = await anthropic.messages.create({ model, max_tokens: 2000, messages });
+    const text = (resp.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+    try {
+      const s = ugcAuto.parseScriptJson(text);
+      if (s.words > ugcAuto.WORDS_MAX || s.words < ugcAuto.WORDS_MIN) {
+        lastErr = `script is ${s.words} words`;
+        messages.push({ role: "assistant", content: text }, { role: "user", content: `That script is ${s.words} words. Rewrite it to ${ugcAuto.WORDS_MIN + 7}-${ugcAuto.WORDS_MAX - 7} words, same JSON format.` });
+        continue;
+      }
+      script = s;
+    } catch (e) {
+      lastErr = e.message;
+      messages.push({ role: "assistant", content: text || "(empty)" }, { role: "user", content: "Return only the JSON object, valid JSON, nothing else." });
+    }
+  }
+  if (!script) throw new Error("Marketeer could not write a usable script: " + lastErr);
+
+  const task = {
+    id: "ugc_" + Date.now().toString(36),
+    status: "pending",
+    mode: "speak",
+    image_url: avatar.image_url,
+    prompt: p.scene_prompt || "",
+    script: script.script,
+    model: "dop-lite", motion_id: "",
+    voice_id: voice.voice_id, voice_name: voice.name || "", voice_provider: "elevenlabs",
+    voice_emotion: "", voice_speed: 1,
+    speak_model: HIGGSFIELD.speakModels.includes(p.speak_model) ? p.speak_model : "kling",
+    video_engine: "dop", duration: "", resolution: "",
+    avatar_prompt: "", avatar_request_id: "",
+    audio_url: "", audio_duration: 0,
+    public_origin: origin,
+    brand,
+    description: `UGC · ${avatar.name}${script.angle ? " · " + script.angle : ""}`,
+    request_id: "", result_url: "",
+    created_at: new Date().toISOString(),
+    // autopilot extras
+    autopilot: true, assigned_by: "marketeer",
+    captions: p.captions !== "false" && p.captions !== false,
+    max_seconds: 30,
+    avatar_id: avatar.id, avatar_name: avatar.name, gender,
+    angle: script.angle, hook: script.hook, on_screen_hook: p.hook_title === "false" ? "" : script.on_screen_hook,
+    post_caption: ugcAuto.postCaption(script), words: script.words,
+  };
+  const all = readTaskFile("ugc-tasks.json");
+  all.unshift(task);
+  if (all.length > 50) all.length = 50;
+  writeTaskFile("ugc-tasks.json", all);
+  return task;
+}
+
+async function executeUgcAutopilotSchedule(schedule) {
+  const p = schedule.payload || {};
+  let taskId = null;
+  try {
+    const t = await createUgcAutopilotTask(p);
+    taskId = t.id;
+    console.log(`[SCHEDULER] UGC autopilot task ${t.id}: ${t.avatar_name} / ${t.voice_name} / ${t.words} words`);
+    if (p.notify !== "false") {
+      sendTelegram(`📣 ${escTg(schedule.name)}`,
+        `Marketeer wrote a script for the Content Creator.\nAvatar: ${escTg(t.avatar_name)} · voice: ${escTg(t.voice_name)} · ${t.words} words\n\n<i>${escTg(t.script)}</i>\n\nThe video is rendering, it arrives here when it is ready.`, "info");
+    }
+  } catch (e) {
+    console.error(`[SCHEDULER] UGC autopilot failed:`, e.message);
+    sendTelegram(`📣 ${escTg(schedule.name)}: failed`, escTg(e.message), "danger");
+  }
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    schedules[idx].last_task_id = taskId;
     writeTaskFile("scheduled-tasks.json", schedules);
   }
 }
