@@ -6971,6 +6971,7 @@ async function deliverUgcToTelegram(t) {
       body: JSON.stringify({ chat_id: TG_CHAT, text: caption, disable_web_page_preview: true }),
     });
   }
+  console.log(`[UGC] ${t.id} delivered to Telegram`);
 }
 
 // ── AVATAR LIBRARY WORKER — poll Soul portrait generations ──────────
