@@ -177,6 +177,7 @@ function createAutopilot(deps) {
     readChannels, updateChannel, readTasks, addTask,
     twitterApi, twitterCredsFor, twitterVerify, twitterWeightedLength,
     higgsfield, anthropic, brand, notify,
+    brandKnowledge = () => "",
     log = (...a) => console.log("[AUTOPILOT]", ...a),
   } = deps;
   const STATE_FILE = path.join(dataDir, "community", "autopilot-state.json");
@@ -336,6 +337,8 @@ function createAutopilot(deps) {
     const content = [{
       type: "text",
       text: `You write posts for an X account. Voice: ${voice}
+${brandKnowledge(channel)}
+
 Below are ${candidates.length} recent posts that are performing well on X. Pick the ONE best suited to inspire our next post, then write an ORIGINAL post in ${cfg.language} about the same subject.
 
 Rules for the post:

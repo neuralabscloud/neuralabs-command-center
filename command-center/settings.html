@@ -217,6 +217,20 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   border: 1px solid hsla(264 65% 49% / 0.2); border-radius: 4px; padding: 5px 8px; cursor: pointer; white-space: nowrap;
 }
 .brand-font-add-btn:hover { border-color: var(--primary); background: hsla(264 65% 49% / 0.12); }
+.brand-knowledge { display: flex; align-items: center; gap: 8px; }
+.brand-knowledge-status { flex: 1; font-family: var(--font-data); font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+.brand-knowledge-status b { color: var(--text); font-weight: 600; }
+.bk-modal { position: fixed; inset: 0; z-index: 1000; background: hsla(0 0% 0% / 0.75); display: none; align-items: center; justify-content: center; padding: 16px; }
+.bk-modal.open { display: flex; }
+.bk-box { width: min(860px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.bk-head { display: flex; align-items: center; gap: 10px; }
+.bk-title { flex: 1; font-family: var(--font-data); font-size: 12px; font-weight: 700; color: var(--primary); letter-spacing: 0.1em; text-transform: uppercase; }
+.bk-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.bk-text { flex: 1; min-height: 360px; resize: vertical; padding: 12px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; outline: none; }
+.bk-text:focus { border-color: var(--primary); }
+.bk-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bk-count { flex: 1; font-family: var(--font-data); font-size: 10px; color: var(--text-dim); }
+.bk-count.over { color: var(--danger); }
 
 @keyframes pulse-glow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
@@ -658,6 +672,21 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   </main>
 </div>
 
+<div class="bk-modal" id="bk-modal" onclick="if(event.target===this)closeKnowledge()">
+  <div class="bk-box">
+    <div class="bk-head">
+      <div class="bk-title" id="bk-title">Knowledge for agents</div>
+      <button class="brand-remove-btn" onclick="closeKnowledge()" title="Close" style="font-size:14px">&#x2715;</button>
+    </div>
+    <div class="bk-desc">Everything the agents should always know about this brand: what it is, products and prices, audience, tone of voice and rules. It is added to every agent prompt (chat, marketeer, skills, social posts, scheduled tasks), so keep it factual and compact. Markdown is fine.</div>
+    <textarea class="bk-text" id="bk-text" oninput="updateKnowledgeCount()" spellcheck="false"></textarea>
+    <div class="bk-foot">
+      <div class="bk-count" id="bk-count"></div>
+      <button class="brand-upload-btn" onclick="insertKnowledgeTemplate()">Template</button>
+      <button class="brand-font-add-btn" id="bk-save" onclick="saveKnowledge()" style="padding:8px 16px">Save</button>
+    </div>
+  </div>
+</div>
 <script>
 // ── Theme toggle ─────────────────────────────────────
 (function initThemeToggle(){
@@ -1273,6 +1302,108 @@ const ASSET_TYPES = [
 let brandConfigs = {};
 let brandList = [];
 
+// ── Brand knowledge (appended to every agent prompt) ──
+let knowledgeSummary = { default_brand: '', max_chars: 20000, brands: {} };
+let knowledgeBrand = null;
+
+async function loadKnowledgeSummary() {
+  try {
+    const res = await fetch('/brands/knowledge');
+    if (res.ok) knowledgeSummary = await res.json();
+  } catch {}
+}
+
+function knowledgeStatus(brand) {
+  const k = knowledgeSummary.brands[brand];
+  const isDefault = brand === knowledgeSummary.default_brand;
+  const used = isDefault ? 'Used by all agents' : 'Used when a task names this brand';
+  if (!k) return `Empty. ${isDefault ? 'Agents only know the company name.' : used + '.'}`;
+  return `<b>${k.words} words</b> · ${used}`;
+}
+
+const KNOWLEDGE_TEMPLATE = `# What we are
+One paragraph: what the company does, for whom, and why it exists.
+
+# Products and prices
+- Product: what it is, price, who it is for, link
+
+# Audience
+Who they are, what they already know, what they want, what holds them back.
+
+# Tone of voice
+How we sound. Words we use, words we never use.
+
+# Rules
+Claims we may not make, disclaimers, topics to avoid.
+
+# Facts and links
+Website, social handles, community, recurring events, calls to action.
+`;
+
+async function openKnowledge(brand) {
+  knowledgeBrand = brand;
+  const modal = document.getElementById('bk-modal');
+  const ta = document.getElementById('bk-text');
+  document.getElementById('bk-title').textContent = `${brand} · Knowledge for agents`;
+  ta.value = '';
+  ta.placeholder = 'Loading...';
+  modal.classList.add('open');
+  try {
+    const res = await fetch(`/brands/${encodeURIComponent(brand)}/knowledge`);
+    const d = await res.json();
+    ta.value = d.text || '';
+  } catch {}
+  ta.placeholder = 'Describe the company here, or start from the template.';
+  updateKnowledgeCount();
+  ta.focus();
+}
+
+function closeKnowledge() {
+  document.getElementById('bk-modal').classList.remove('open');
+  knowledgeBrand = null;
+}
+
+function insertKnowledgeTemplate() {
+  const ta = document.getElementById('bk-text');
+  if (ta.value.trim() && !confirm('Replace the current text with the empty template?')) return;
+  ta.value = KNOWLEDGE_TEMPLATE;
+  updateKnowledgeCount();
+}
+
+function updateKnowledgeCount() {
+  const text = document.getElementById('bk-text').value;
+  const el = document.getElementById('bk-count');
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const max = knowledgeSummary.max_chars || 20000;
+  el.textContent = `${words} words · ${text.length.toLocaleString()} / ${max.toLocaleString()} characters · aim for 500 to 1500 words`;
+  el.classList.toggle('over', text.length > max);
+}
+
+async function saveKnowledge() {
+  if (!knowledgeBrand) return;
+  const btn = document.getElementById('bk-save');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const res = await fetch(`/brands/${encodeURIComponent(knowledgeBrand)}/knowledge`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: document.getElementById('bk-text').value }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || 'Save failed');
+    closeKnowledge();
+    loadBrandAssets();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && knowledgeBrand) closeKnowledge();
+});
+
 async function loadBrandConfigs() {
   try {
     const res = await fetch('/brands/config');
@@ -1282,7 +1413,7 @@ async function loadBrandConfigs() {
 
 async function loadBrandAssets() {
   try {
-    await loadBrandConfigs();
+    await Promise.all([loadBrandConfigs(), loadKnowledgeSummary()]);
     const res = await fetch('/brands');
     if (!res.ok) throw new Error();
     const data = await res.json();
@@ -1346,6 +1477,11 @@ function renderBrandAssets(data) {
           </select>
           <button class="brand-font-add-btn" onclick="addBrandFont('${brand}')">Add</button>
         </div>
+      </div>
+      <div class="brand-section-title">Knowledge for agents</div>
+      <div class="brand-knowledge">
+        <div class="brand-knowledge-status">${knowledgeStatus(brand)}</div>
+        <button class="brand-font-add-btn" onclick="openKnowledge('${brand}')">Edit</button>
       </div>
     </div>`;
   }).join('');

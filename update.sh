@@ -99,6 +99,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/brand.json' \
         --exclude='data/brand-configs.json' \
         --exclude='data/brand-assets/' \
+        --exclude='data/brand-knowledge/' \
         --exclude='data/avatars.json' \
         --exclude='data/ugc-avatars.json' \
         --exclude='data/social-connections.json' \

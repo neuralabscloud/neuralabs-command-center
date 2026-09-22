@@ -3892,6 +3892,71 @@ function writeBrandConfigs(data) {
   fs.writeFileSync(BRAND_CONFIG_FILE, JSON.stringify(data, null, 2));
 }
 
+// ── BRAND KNOWLEDGE ──
+// Free-form text per brand (what the company is, products, audience, tone, rules).
+// Every agent prompt gets it appended, so scheduled/autonomous work knows the brand.
+// Agents use the brand that matches company_name unless a task names another one.
+const BRAND_KNOWLEDGE_DIR = path.join(__dirname, "data", "brand-knowledge");
+const BRAND_KNOWLEDGE_MAX = 20000;
+
+function defaultBrandKey() {
+  return sanitizeBrandName(loadBrand().company_name || "");
+}
+
+function brandKnowledgeFile(brand) {
+  return path.join(BRAND_KNOWLEDGE_DIR, `${sanitizeBrandName(brand)}.md`);
+}
+
+function readBrandKnowledge(brand) {
+  const key = sanitizeBrandName(brand || defaultBrandKey());
+  if (!key) return "";
+  try { return fs.readFileSync(brandKnowledgeFile(key), "utf-8").trim().slice(0, BRAND_KNOWLEDGE_MAX); } catch { return ""; }
+}
+
+// Prompt block; empty string when nothing is filled in, so prompts stay unchanged
+function brandKnowledgeBlock(brand) {
+  const text = readBrandKnowledge(brand);
+  if (!text) return "";
+  return `\n\n## BRAND KNOWLEDGE\nThe owner wrote the text below about the company. Treat it as the source of truth for what the company is, its products, prices, audience, tone of voice and rules. Never contradict it and never invent products, prices or claims that are not in it.\n<brand_knowledge>\n${text}\n</brand_knowledge>`;
+}
+
+app.get("/brands/knowledge", (_req, res) => {
+  const out = {};
+  try {
+    for (const f of fs.readdirSync(BRAND_KNOWLEDGE_DIR)) {
+      if (!f.endsWith(".md")) continue;
+      const text = fs.readFileSync(path.join(BRAND_KNOWLEDGE_DIR, f), "utf-8").trim();
+      if (!text) continue;
+      out[f.slice(0, -3)] = {
+        words: text.split(/\s+/).length,
+        chars: text.length,
+        updated_at: fs.statSync(path.join(BRAND_KNOWLEDGE_DIR, f)).mtime.toISOString(),
+      };
+    }
+  } catch {}
+  res.json({ default_brand: defaultBrandKey(), max_chars: BRAND_KNOWLEDGE_MAX, brands: out });
+});
+
+app.get("/brands/:brand/knowledge", (req, res) => {
+  const brand = sanitizeBrandName(req.params.brand);
+  if (!brand) return res.status(400).json({ error: "Invalid brand name" });
+  let text = "";
+  try { text = fs.readFileSync(brandKnowledgeFile(brand), "utf-8"); } catch {}
+  res.json({ brand, text, is_default: brand === defaultBrandKey(), max_chars: BRAND_KNOWLEDGE_MAX });
+});
+
+app.put("/brands/:brand/knowledge", (req, res) => {
+  const brand = sanitizeBrandName(req.params.brand);
+  if (!brand) return res.status(400).json({ error: "Invalid brand name" });
+  const text = String((req.body && req.body.text) || "");
+  if (text.length > BRAND_KNOWLEDGE_MAX) return res.status(413).json({ error: `Too long: max ${BRAND_KNOWLEDGE_MAX} characters` });
+  fs.mkdirSync(BRAND_KNOWLEDGE_DIR, { recursive: true });
+  if (text.trim()) fs.writeFileSync(brandKnowledgeFile(brand), text);
+  else { try { fs.unlinkSync(brandKnowledgeFile(brand)); } catch {} }
+  console.log(`[BRAND] Knowledge ${text.trim() ? "saved" : "cleared"} for ${brand} (${text.length} chars)`);
+  res.json({ ok: true, brand, chars: text.length });
+});
+
 app.get("/brands/config", (_req, res) => {
   res.json(readBrandConfigs());
 });
@@ -3966,6 +4031,7 @@ app.delete("/brands/:brand", (req, res) => {
   try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   const configs = readBrandConfigs();
   if (configs[brand]) { delete configs[brand]; writeBrandConfigs(configs); }
+  try { fs.unlinkSync(brandKnowledgeFile(brand)); } catch {}
   console.log(`[BRAND] Deleted ${brand}`);
   res.json({ ok: true });
 });
@@ -3984,6 +4050,7 @@ app.post("/brands/:brand/rename", (req, res) => {
   } catch (e) { return res.status(500).json({ error: e.message }); }
   const configs = readBrandConfigs();
   if (configs[oldName]) { configs[newName] = configs[oldName]; delete configs[oldName]; writeBrandConfigs(configs); }
+  try { if (fs.existsSync(brandKnowledgeFile(oldName))) fs.renameSync(brandKnowledgeFile(oldName), brandKnowledgeFile(newName)); } catch {}
   console.log(`[BRAND] Renamed ${oldName} → ${newName}`);
   res.json({ ok: true, brand: newName });
 });
@@ -4680,7 +4747,12 @@ app.get("/brand", (_req, res) => {
   res.json(brand);
 });
 
+// Brand knowledge rides along with every prompt this builds
 function buildSystemPrompt() {
+  return buildSystemPromptBase() + brandKnowledgeBlock();
+}
+
+function buildSystemPromptBase() {
   const brand = loadBrand();
   if (!IS_NL) {
     return `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}, built into the ${brand.company_name} Command Center.
@@ -5542,11 +5614,12 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
             const brand = loadBrand();
             const skillSystem = IS_NL
               ? `Je bent ${brand.assistant_name}, de AI assistant van ${brand.company_name}.\n\n${skillContent}\n\nBELANGRIJK: Volg de instructies in de skill hierboven exact. Genereer ALLE gevraagde secties. Spreek Nederlands tenzij de input Engels is.`
-              : `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections. Reply in the user's language.`;
+              : `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections. Reply in the user's language.`
+            const skillSystemFull = skillSystem + brandKnowledgeBlock();
             const skillResponse = await skillClient.messages.create({
               model: "claude-sonnet-4-6",
               max_tokens: 8192,
-              system: skillSystem,
+              system: skillSystemFull,
               messages: [{ role: "user", content: prompt }],
             });
             const skillOutput = skillResponse.content.filter(b => b.type === "text").map(b => b.text).join("\n");
@@ -5951,7 +6024,12 @@ function loadMarketingSkill(slug) {
 
 const marketeerSessions = {};
 
+// Brand knowledge rides along with every prompt this builds
 function buildMarketeerSystem() {
+  return buildMarketeerSystemBase() + brandKnowledgeBlock();
+}
+
+function buildMarketeerSystemBase() {
   const skillList = Object.entries(MARKETING_SKILLS)
     .map(([slug, desc]) => `- ${slug}: ${desc}`)
     .join("\n");
@@ -7463,6 +7541,7 @@ const autopilot = require("./social-autopilot").createAutopilot({
   },
   anthropic,
   brand: loadBrand,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
   notify: sendTelegram,
 });
 setInterval(() => autopilot.tick().catch(e => console.error("[AUTOPILOT]", e.message)), 60_000);
@@ -8647,6 +8726,8 @@ TIMEZONE FOR SCHEDULING: ${tz}
 WINDOW: ${startIso} to ${endIso} (next 7 days)
 POST COUNT: ${autoCount ? "AUTO (derive from the week schedule in the archetype doc)" : postCount}
 
+${brandKnowledgeBlock(channel.brand)}
+
 ARCHETYPES & WEEK SCHEDULE (source of truth):
 ---
 ${archetypeMd}
@@ -8915,7 +8996,7 @@ BESCHIKBARE ACTIES (gebruik het tool):
 - set_daily_budget: stel daily budget in (in euro's)
 - alert: stuur alleen een melding, geen actie
 
-Analyseer de data en voer acties uit. Geef een kort rapport.`;
+Analyseer de data en voer acties uit. Geef een kort rapport.` + brandKnowledgeBlock();
 
     const userMsg = `Campaign performance data (${period}):\n\n${JSON.stringify(allData, null, 2)}\n\nAnalyseer elke campaign en neem de juiste acties. Geef een kort rapport van wat je hebt gedaan en waarom.`;
 
