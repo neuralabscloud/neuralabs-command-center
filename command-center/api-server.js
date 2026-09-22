@@ -7500,8 +7500,6 @@ const AGENT_DEFS = [
     role: "Writes, schedules and publishes posts to X and Telegram." },
   { id: "marketeer", name: "Marketeer", hsl: "340 80% 55%", href: "chat.html", kind: "chat", model: "claude-sonnet-4-6",
     role: "Plans marketing strategy, copy, SEO and growth.", needs: ["ANTHROPIC_API_KEY"] },
-  { id: "assistant", name: "Assistant", hsl: "210 90% 55%", href: "chat.html", kind: "calendar", model: "composio",
-    role: "Manages your calendar and books meetings.", needs: ["COMPOSIO_API_KEY"] },
 ];
 const AGENT_BUSY = new Set(["pending", "queued", "processing", "running", "generating", "in_progress", "rendering"]);
 const agentDay = (iso) => { const t = Date.parse(iso || ""); return isFinite(t) ? new Date(t).toLocaleDateString("en-CA", { timeZone: TIMEZONE }) : null; };

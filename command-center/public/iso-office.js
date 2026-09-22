@@ -7,7 +7,6 @@
     { key:'content',      name:'CONTENT',    role:'HIGGSFIELD UGC',     emoji:'\u{1F3AC}', hsl:'180 70% 45%', pos:[0,0], href:'content-creator.html', taskApis:['/ugc/tasks'] },
     { key:'video',        name:'VIDEO ED',   role:'REMOTION + AI',      emoji:'\u2702\uFE0F', hsl:'0 72% 51%',   pos:[1,0], href:'editor.html',          taskApis:['/video/tasks','/video/ai-generate'] },
     { key:'designer',     name:'DESIGNER',   role:'CANVA ASSETS',       emoji:'\u{1F3A8}', hsl:'45 93% 55%',  pos:[2,0], href:'designer.html',        taskApi:'/designer/tasks' },
-    { key:'assistant',    name:'ASSISTANT',  role:'CALENDAR',           emoji:'\u{1F4C5}', hsl:'210 90% 55%', pos:[0,1], href:'chat.html' },
     { key:'marketeer',    name:'MARKETEER',  role:'GROWTH',             emoji:'\u{1F4E3}', hsl:'340 80% 55%', pos:[1,1], href:'agents.html' },
     { key:'community',    name:'SOCIAL MEDIA', role:'X / TELEGRAM', emoji:'\u{1F4AC}', hsl:'200 90% 55%', pos:[2,1], href:'community-manager.html', taskApi:'/community/tasks', isCommunity:true },
   ];
@@ -19,9 +18,7 @@
     ['video',     'designer',  3.6],
     ['designer',  'marketeer', 3.4],
     ['designer',  'community', 3.8],
-    ['marketeer', 'assistant', 3.0],
     ['marketeer', 'community', 3.6],
-    ['assistant', 'community', 3.2],
   ];
 
 
