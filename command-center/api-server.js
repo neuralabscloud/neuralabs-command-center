@@ -7811,8 +7811,8 @@ const AGENT_DEFS = [
     role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
   { id: "social-media-manager", nickname: "Bubbles", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
     role: "Writes, schedules and publishes posts to X and Telegram." },
-  { id: "marketeer", nickname: "Buzz", name: "Marketeer", hsl: "340 80% 55%", href: "chat.html", kind: "chat", model: "claude-sonnet-4-6",
-    role: "Plans marketing strategy, copy, SEO and growth.", needs: ["ANTHROPIC_API_KEY"] },
+  { id: "marketeer", nickname: "Buzz", name: "Marketeer", hsl: "340 80% 55%", href: "marketing.html", kind: "growth",
+    role: "Researches the market every week and delivers growth ideas and proposals.", needs: ["ANTHROPIC_API_KEY"] },
 ];
 const AGENT_BUSY = new Set(["pending", "queued", "processing", "running", "generating", "in_progress", "rendering"]);
 const agentDay = (iso) => { const t = Date.parse(iso || ""); return isFinite(t) ? new Date(t).toLocaleDateString("en-CA", { timeZone: TIMEZONE }) : null; };
@@ -7841,6 +7841,15 @@ app.get("/agents/overview", (_req, res) => {
       return { ...base, model: require("./social-autopilot").MODEL, status, stats: [
         { label: "Posts today", value: tasks.filter(t => t.status === "published" && agentDay(t.published_at || t.updated_at) === today).length },
         { label: "In queue", value: tasks.filter(t => t.status === "scheduled").length },
+      ] };
+    }
+    if (def.kind === "growth") {
+      const reports = readGrowthReports();
+      const last = reports.find(r => r.status === "completed");
+      const status = growthRun ? "running" : reports[0]?.status === "failed" ? "error" : agentHasKeys(def.needs) ? "ready" : "idle";
+      return { ...base, model: growth.MODEL, status, stats: [
+        { label: "Open ideas", value: reports.flatMap(r => r.ideas || []).filter(i => ["new", "planned", "doing"].includes(i.status)).length },
+        { label: "Last report", value: last ? new Date(last.created_at).toLocaleDateString("en-GB", { timeZone: TIMEZONE, day: "numeric", month: "short" }) : "None yet" },
       ] };
     }
     if (def.kind === "chat" || def.kind === "calendar") {
@@ -8581,7 +8590,8 @@ async function executeSchedule(schedule) {
     } else if (schedule.agent === "opusclip") {
       await executeOpusclipSchedule(schedule, today);
     } else if (schedule.agent === "ugc_autopilot") {
-      await executeUgcAutopilotSchedule(schedule);
+      await executeUgcAutopilotSchedule(schedule);    } else if (schedule.agent === "growth_marketeer") {
+      await executeGrowthMarketeerSchedule(schedule);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -8798,6 +8808,127 @@ async function executeMarketeerSchedule(schedule, today) {
     writeTaskFile("scheduled-tasks.json", schedules);
   }
 }
+
+// ── GROWTH MARKETEER: weekly research + growth ideas dashboard (marketing.html) ──
+// Researches the product online (web search), competitors, market gaps and buzz,
+// then stores a structured report with growth ideas the owner can track.
+const growth = require("./growth-marketeer");
+const GROWTH_FILE = "growth-reports.json";
+const GROWTH_KEEP = 26;
+let growthRun = null; // { started_at, queries: [], goal } while a report is being written
+
+function readGrowthReports() {
+  const r = readTaskFile(GROWTH_FILE);
+  return Array.isArray(r) ? r : [];
+}
+
+async function runGrowthReport({ goal = "", focus = "", product = "", language = "", brand = "", trigger = "manual", schedule_id = null } = {}) {
+  if (growthRun) throw new Error("A growth report is already being written");
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
+  const lang = language || (IS_NL ? "Dutch" : "English");
+  const id = `gr_${Date.now().toString(36)}`;
+  growthRun = { id, started_at: new Date().toISOString(), queries: [], goal };
+  try {
+    const previous = growth.previousIdeas(readGrowthReports().filter(r => r.status === "completed"));
+    const today = new Date().toLocaleDateString("en-GB", { timeZone: TIMEZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const params = {
+      model: growth.MODEL,
+      max_tokens: 32000,
+      system: growth.systemPrompt({ language: lang }) + brandKnowledgeBlock(brand || defaultBrandKey()),
+      thinking: { type: "adaptive" },
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: growth.MAX_SEARCHES }],
+      messages: [{ role: "user", content: growth.userPrompt({ goal, focus, product, previous, today }) }],
+    };
+    const content = [];
+    let msg, usage = { input_tokens: 0, output_tokens: 0 };
+    // Server tools can pause a long turn; continue it a few times
+    for (let turn = 0; turn < 5; turn++) {
+      const stream = anthropic.messages.stream(params);
+      stream.on("contentBlock", (b) => {
+        if (b?.type === "server_tool_use" && b.input?.query) growthRun.queries.push(b.input.query);
+      });
+      msg = await stream.finalMessage();
+      content.push(...msg.content);
+      usage.input_tokens += msg.usage?.input_tokens || 0;
+      usage.output_tokens += msg.usage?.output_tokens || 0;
+      if (msg.stop_reason !== "pause_turn") break;
+      params.messages = [...params.messages, { role: "assistant", content: msg.content }];
+    }
+    if (msg.stop_reason === "refusal") throw new Error("Claude refused the request");
+    const report = growth.normalizeReport(growth.extractJson(growth.textOf(msg.content)), { idPrefix: `${id}_` });
+    const saved = {
+      id, status: "completed", trigger, schedule_id, created_at: new Date().toISOString(), started_at: growthRun.started_at,
+      model: growth.MODEL, language: lang, goal_input: goal, focus, ...report,
+      sources: growth.collectSources(content), queries: growth.collectQueries(content), usage,
+    };
+    const all = [saved, ...readGrowthReports()].slice(0, GROWTH_KEEP);
+    writeTaskFile(GROWTH_FILE, all);
+    console.log(`[GROWTH] ${id} done: ${saved.ideas.length} ideas, ${saved.sources.length} sources, ${saved.queries.length} searches`);
+    return saved;
+  } catch (e) {
+    const failed = { id, status: "failed", trigger, schedule_id, created_at: new Date().toISOString(), started_at: growthRun.started_at, goal_input: goal, error: e.message, ideas: [] };
+    writeTaskFile(GROWTH_FILE, [failed, ...readGrowthReports()].slice(0, GROWTH_KEEP));
+    throw e;
+  } finally {
+    growthRun = null;
+  }
+}
+
+async function executeGrowthMarketeerSchedule(schedule) {
+  const p = schedule.payload || {};
+  try {
+    const r = await runGrowthReport({ goal: p.goal, focus: p.focus, product: p.product, language: p.language, brand: p.brand, trigger: "schedule", schedule_id: schedule.id });
+    if (p.notify !== "false") {
+      const origin = knownPublicOrigin();
+      sendTelegram(`📈 ${schedule.name}`, growth.telegramSummary(r, { url: origin ? `${origin}/marketing.html` : "" }), "info");
+    }
+  } catch (e) {
+    console.error(`[GROWTH] Schedule failed: ${e.message}`);
+    sendTelegram(`📈 ${schedule.name}: failed`, e.message, "danger");
+  }
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+}
+
+app.get("/growth/reports", (_req, res) => {
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const scheds = (Array.isArray(schedules) ? schedules : []).filter(s => s.agent === "growth_marketeer")
+    .map(s => ({ id: s.id, name: s.name, enabled: s.enabled, days: s.days, hour: s.hour, minute: s.minute, goal: s.payload?.goal || "", last_run: s.last_run || null }));
+  res.json({ running: growthRun, schedules: scheds, channels: growth.CHANNELS, reports: readGrowthReports() });
+});
+
+app.post("/growth/run", (req, res) => {
+  if (growthRun) return res.status(409).json({ error: "Already running", running: growthRun });
+  const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.agent === "growth_marketeer");
+  const p = { ...(sched?.payload || {}), ...(req.body || {}) };
+  runGrowthReport({ goal: p.goal, focus: p.focus, product: p.product, language: p.language, brand: p.brand, trigger: "manual" })
+    .catch(e => console.error(`[GROWTH] Manual run failed: ${e.message}`));
+  res.json({ ok: true, started: true });
+});
+
+app.patch("/growth/reports/:id/ideas/:ideaId", (req, res) => {
+  const status = String(req.body?.status || "");
+  if (!growth.IDEA_STATUSES.includes(status)) return res.status(400).json({ error: "Invalid status" });
+  const all = readGrowthReports();
+  const idea = all.find(r => r.id === req.params.id)?.ideas?.find(i => i.id === req.params.ideaId);
+  if (!idea) return res.status(404).json({ error: "Not found" });
+  idea.status = status;
+  idea.status_at = new Date().toISOString();
+  writeTaskFile(GROWTH_FILE, all);
+  res.json({ ok: true, idea });
+});
+
+app.delete("/growth/reports/:id", (req, res) => {
+  const all = readGrowthReports();
+  const next = all.filter(r => r.id !== req.params.id);
+  if (next.length === all.length) return res.status(404).json({ error: "Not found" });
+  writeTaskFile(GROWTH_FILE, next);
+  res.json({ ok: true });
+});
 
 // ── UGC AUTOPILOT: Marketeer writes, Content Creator renders ────────
 // 1. pick an avatar from the library (rotating) + a voice of the same gender

@@ -5,6 +5,7 @@
     { href: 'editor.html', label: 'Video Editor', icon: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>' },
     { href: 'designer.html', label: 'Designer', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },
     { href: 'content-creator.html', label: 'Content Creator', icon: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>' },
+    { href: 'marketing.html', label: 'Marketing', icon: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>' },
     { href: 'community-manager.html', label: 'Social Media Manager', icon: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>' },
   ];
 
@@ -29,11 +30,7 @@
         return `<a class="nav-item${active}" href="${item.href}"${target}>${svg(item.icon)}<span class="tooltip">${item.label}</span></a>`;
       }).join('\n      ')}
     </nav>
-    <a class="nav-item${currentPage === 'chat.html' ? ' active' : ''}" href="chat.html" style="margin-top:auto">
-      ${svg('<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>')}
-      <span class="tooltip" id="sidebar-assistant-tooltip">Assistant</span>
-    </a>
-    <div class="nav-item notif-bell" onclick="toggleNotifPanel()">
+    <div class="nav-item notif-bell" onclick="toggleNotifPanel()" style="margin-top:auto">
       ${svg(BELL_ICON)}
       <span class="tooltip">Notifications</span>
       <span class="notif-badge" id="notif-badge" style="display:none">0</span>
@@ -43,12 +40,4 @@
       <span class="tooltip">Settings</span>
     </a>
   `;
-
-  // Dynamically load assistant name from brand config
-  fetch('/brand').then(r => r.json()).then(b => {
-    const name = b && b.assistant_name;
-    if (!name) return;
-    const el = document.getElementById('sidebar-assistant-tooltip');
-    if (el) el.textContent = name;
-  }).catch(() => {});
 })();
