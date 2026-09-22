@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="/theme.css">
 <script src="/brand-loader.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agents</title>
+<title>Scheduler</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -291,18 +291,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
     <div class="fade-up delay-1">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div class="header-title">AI AGENTS</div>
-          <div class="header-sub">Team overview, task queue & real-time activity</div>
+          <div class="header-title">SCHEDULER</div>
+          <div class="header-sub">Scheduled & autonomous agent tasks, and what they delivered</div>
         </div>
         <div id="canva-status"></div>
       </div>
     </div>
-
-    <!-- AI TEAM -->
-    <section class="fade-up delay-2">
-      <div class="section-header">Team Detail</div>
-      <div class="agents-grid" id="ai-team-grid"></div>
-    </section>
 
     <!-- SCHEDULED TASKS -->
     <section class="fade-up delay-3">
@@ -374,7 +368,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
     <!-- TASK FEED -->
     <section class="fade-up delay-3">
-      <div class="section-header">Task Feed</div>
+      <div class="section-header">Task History</div>
       <div class="task-feed-header">
         <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
         <button class="filter-btn" data-filter="processing" onclick="setFilter('processing')">Active</button>
@@ -388,15 +382,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 </div>
 
 <script>
-const AI_TEAM = [
-  { name: 'DESIGNER', emoji: '\u{1F3A8}', role: 'Visual Assets (Canva)', color: 'var(--warning)', hsl: '45 93% 55%', taskApi: '/designer/tasks', type: 'DESIGN' },
-  { name: 'VIDEO EDITOR', emoji: '\u2702\uFE0F', role: 'Video Production (Remotion + AI)', color: 'var(--danger)', hsl: '0 72% 51%', taskApis: ['/video/tasks', '/video/ai-generate'], type: 'VIDEO' },
-  { name: 'CONTENT CREATOR', emoji: '\u{1F3AC}', role: 'Higgsfield UGC & OpusClip', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', taskApis: ['/ugc/tasks', '/opusclip/tasks'], type: 'CONTENT' },
-  { name: 'SOCIAL MEDIA MANAGER', emoji: '\u{1F4AC}', role: 'X / Telegram Posts', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', isCommunity: true },
-  { name: 'MARKETEER', emoji: '\u{1F4E3}', role: 'Marketing Strategy & Content', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', isMarketeer: true },
-  { name: 'ASSISTANT', emoji: '\u{1F4C5}', role: 'Google Calendar Assistant', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', isCalendar: true },
-];
-
 const AGENT_COLORS = {
   DESIGN: 'var(--warning)', VIDEO: 'var(--danger)',
   CONTENT: 'hsl(180 70% 45%)', COMMUNITY: 'hsl(200 90% 55%)',
@@ -425,136 +410,6 @@ function setFilter(f) {
 }
 
 // ── AI TEAM ──
-async function loadAiTeam() {
-  const grid = document.getElementById('ai-team-grid');
-  const cards = [];
-
-  for (const agent of AI_TEAM) {
-    if (agent.isMarketeer) {
-      cards.push(`<div class="agent-card is-running" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-          <span class="agent-status running">25 skills</span>
-        </div>
-        <div class="agent-card-body">
-          <div class="agent-task">Content, copy, ads, SEO & growth strategy</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">engine <span>Claude + Skills</span></span>
-          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
-        </div>
-      </div>`);
-      continue;
-    }
-
-    if (agent.isCalendar) {
-      cards.push(`<div class="agent-card is-running" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-          <span class="agent-status running">connected</span>
-        </div>
-        <div class="agent-card-body">
-          <div class="agent-task">Google Calendar via Composio</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">engine <span>Composio</span></span>
-          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
-        </div>
-      </div>`);
-      continue;
-    }
-
-    if (agent.isCommunity) {
-      let tasks = [];
-      let channels = [];
-      try { tasks = await (await fetch('/community/tasks')).json(); } catch {}
-      try { channels = await (await fetch('/community/channels')).json(); } catch {}
-      if (!Array.isArray(tasks)) tasks = [];
-      if (!Array.isArray(channels)) channels = [];
-      const nowMs = Date.now();
-      const scheduled = tasks.filter(t => t.status === 'scheduled').length;
-      const drafts = tasks.filter(t => t.status === 'draft').length;
-      const published = tasks.filter(t => t.status === 'published').length;
-      const failed = tasks.filter(t => t.status === 'failed').length;
-      const firingSoon = tasks.some(t => t.status === 'scheduled' && (Date.parse(t.scheduled_at || '') - nowMs) <= 15*60*1000 && (Date.parse(t.scheduled_at || '') - nowMs) > -60*1000);
-      const status = firingSoon ? 'running' : scheduled > 0 || drafts > 0 ? 'queued' : 'idle';
-      const nextPost = tasks
-        .filter(t => t.status === 'scheduled' && Date.parse(t.scheduled_at || '') > nowMs)
-        .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at))[0];
-      const statusText = firingSoon ? 'Publishing soon…'
-        : nextPost ? `Next: ${fmtTime(nextPost.scheduled_at)}`
-        : scheduled > 0 ? `${scheduled} scheduled`
-        : drafts > 0 ? `${drafts} draft(s) awaiting review`
-        : 'No posts queued';
-      cards.push(`<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-          <span class="agent-status ${status}">${status}</span>
-        </div>
-        <div class="agent-card-body">
-          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
-            <span style="color:var(--text-dim)">${drafts} draft</span>
-            <span style="color:var(--warning)">${scheduled} scheduled</span>
-            <span style="color:var(--success)">${published} published</span>
-            ${failed ? '<span style="color:var(--danger)">'+failed+' failed</span>' : ''}
-          </div>
-          <div class="agent-task">${esc(statusText)}</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">channels <span>${channels.length}</span></span>
-          <a href="community-manager.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
-        </div>
-      </div>`);
-      continue;
-    }
-
-    // Fetch tasks
-    let tasks = [];
-    if (agent.taskApis) {
-      for (const api of agent.taskApis) { try { tasks = tasks.concat(await (await fetch(api)).json()); } catch {} }
-    } else if (agent.taskApi) {
-      try { tasks = await (await fetch(agent.taskApi)).json(); } catch {}
-    }
-
-    const pending = tasks.filter(t => t.status === 'pending').length;
-    const processing = tasks.filter(t => t.status === 'processing').length;
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    const failed = tasks.filter(t => t.status === 'failed').length;
-    const total = tasks.length;
-    const status = processing > 0 ? 'running' : pending > 0 ? 'queued' : 'idle';
-    const currentTask = tasks.find(t => t.status === 'processing');
-    const statusText = processing > 0
-      ? (currentTask?.description || currentTask?.topic || currentTask?.query || currentTask?.prompt || 'Processing...').substring(0, 50)
-      : pending > 0 ? `${pending} task(s) in queue` : 'Awaiting assignment';
-
-    cards.push(`<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${agent.hsl} / 0.4); --agent-color: ${agent.color}">
-      <div class="agent-card-header">
-        <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${agent.color}"></div><span style="position:relative;z-index:1">${agent.emoji}</span></div>
-        <div class="agent-header-info"><div class="agent-name">${agent.name}</div><div class="agent-role">${agent.role}</div></div>
-        <span class="agent-status ${status}">${status}</span>
-      </div>
-      <div class="agent-card-body">
-        <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
-          <span style="color:var(--warning)">${pending} pending</span>
-          <span style="color:var(--primary)">${processing} active</span>
-          <span style="color:var(--success)">${completed} done</span>
-          ${failed ? '<span style="color:var(--danger)">'+failed+' failed</span>' : ''}
-        </div>
-        <div class="agent-task">${esc(statusText)}</div>
-      </div>
-      <div class="agent-card-footer">
-        <span class="agent-footer-label"><span>${total}</span> total tasks</span>
-        <span class="agent-footer-label">status <span>${status}</span></span>
-      </div>
-    </div>`);
-  }
-
-  grid.innerHTML = cards.join('');
-}
-
 // ── TASK FEED ──
 async function loadAllTasks() {
   const sources = [
@@ -1123,7 +978,7 @@ async function editSchedule(id) {
 }
 // ── INIT ──
 async function loadAll() {
-  await Promise.allSettled([loadAiTeam(), loadAllTasks()]);
+  await Promise.allSettled([loadAllTasks()]);
 }
 loadAll();
 loadSchedules();
