@@ -7486,6 +7486,66 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
   }
 });
 
+// ── AGENT OVERVIEW (dashboard cards) ──
+// One place that describes the agents and derives their live status from the task files.
+// Sprites are optional: drop public/agents/<id>.png and the card picks it up.
+const AGENT_DEFS = [
+  { id: "designer", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "canva connect",
+    role: "Creates visual assets and social graphics in Canva.", files: ["designer-tasks.json"], needs: ["CANVA_CLIENT_ID"] },
+  { id: "video-editor", name: "Video editor", hsl: "0 72% 51%", href: "editor.html", model: "remotion + higgsfield",
+    role: "Edits and generates videos with Remotion and AI models.", files: ["video-tasks.json", "ai-video-tasks.json"], needs: [] },
+  { id: "content-creator", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
+    role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
+  { id: "social-media-manager", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
+    role: "Writes, schedules and publishes posts to X and Telegram." },
+  { id: "marketeer", name: "Marketeer", hsl: "340 80% 55%", href: "chat.html", kind: "chat", model: "claude-sonnet-4-6",
+    role: "Plans marketing strategy, copy, SEO and growth.", needs: ["ANTHROPIC_API_KEY"] },
+  { id: "assistant", name: "Assistant", hsl: "210 90% 55%", href: "chat.html", kind: "calendar", model: "composio",
+    role: "Manages your calendar and books meetings.", needs: ["COMPOSIO_API_KEY"] },
+];
+const AGENT_BUSY = new Set(["pending", "queued", "processing", "running", "generating", "in_progress", "rendering"]);
+const agentDay = (iso) => { const t = Date.parse(iso || ""); return isFinite(t) ? new Date(t).toLocaleDateString("en-CA", { timeZone: TIMEZONE }) : null; };
+const agentHasKeys = (needs = []) => needs.every(n => n.split("|").some(k => !!process.env[k]));
+function agentLastFailed(tasks) {
+  const stamp = (t) => Date.parse(t.updated_at || t.published_at || t.created_at || "") || 0;
+  const last = tasks.reduce((a, t) => (!a || stamp(t) > stamp(a) ? t : a), null);
+  return !!last && last.status === "failed" && Date.now() - stamp(last) < 24 * 3600e3;
+}
+
+app.get("/agents/overview", (_req, res) => {
+  const today = agentDay(new Date().toISOString());
+  const out = AGENT_DEFS.map(def => {
+    const base = {
+      id: def.id, name: def.name, role: def.role, hsl: def.hsl, href: def.href, model: def.model || "",
+      sprite: fs.existsSync(path.join(__dirname, "public", "agents", `${def.id}.png`)) ? `agents/${def.id}.png` : null,
+    };
+    if (def.kind === "social") {
+      const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+      const channels = readChannels().filter(c => c.enabled !== false);
+      const soon = tasks.some(t => t.status === "scheduled" && Date.parse(t.scheduled_at || "") - Date.now() < 15 * 60e3);
+      const status = autopilot.busy() || soon ? "running" : agentLastFailed(tasks) ? "error" : channels.length ? "ready" : "idle";
+      return { ...base, model: require("./social-autopilot").MODEL, status, stats: [
+        { label: "Posts today", value: tasks.filter(t => t.status === "published" && agentDay(t.published_at || t.updated_at) === today).length },
+        { label: "In queue", value: tasks.filter(t => t.status === "scheduled").length },
+      ] };
+    }
+    if (def.kind === "chat" || def.kind === "calendar") {
+      const ok = agentHasKeys(def.needs);
+      return { ...base, status: ok ? "ready" : "idle", stats: def.kind === "chat"
+        ? [{ label: "Skills", value: 25 }, { label: "Engine", value: ok ? "Claude" : "Not set" }]
+        : [{ label: "Calendar", value: ok ? "Connected" : "Not set" }, { label: "Channel", value: "Chat" }] };
+    }
+    const tasks = def.files.flatMap(f => { const t = readTaskFile(f); return Array.isArray(t) ? t : []; });
+    const status = tasks.some(t => AGENT_BUSY.has(t.status)) ? "running"
+      : agentLastFailed(tasks) ? "error" : agentHasKeys(def.needs) ? "ready" : "idle";
+    return { ...base, status, stats: [
+      { label: "Tasks today", value: tasks.filter(t => agentDay(t.created_at) === today).length },
+      { label: "Completed", value: tasks.filter(t => t.status === "completed").length },
+    ] };
+  });
+  res.json(out);
+});
+
 // ── REMOTION VIDEO PROJECTS ──
 const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
 if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recursive: true });

@@ -7,7 +7,7 @@
 <script src="/brand-loader.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Operations Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;600;700;900&family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/iso-office.css">
 <style>
 /* ── CSS VARIABLES ──────────────────────────────── */
@@ -251,197 +251,180 @@ body::after {
   background: linear-gradient(90deg, var(--border), transparent);
 }
 
-/* ── AGENTS SECTION ─────────────────────────────── */
+/* ── AGENT CARDS (retro space) ───────────────────── */
 .agents-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
 }
-@keyframes agent-border-scan {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
-}
-@keyframes agent-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
-}
-@keyframes agent-task-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.agent-card {
-  background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+.ac {
+  --ac: 264 65% 49%;
+  --ac-status: hsl(215 16% 55%);
   position: relative;
-  overflow: hidden;
-}
-/* Animated scanning border for running agents */
-.agent-card.is-running::before {
-  content: '';
-  position: absolute; inset: -1px;
-  border-radius: 14px;
-  padding: 1px;
-  background: linear-gradient(90deg, transparent 0%, var(--agent-glow, hsla(264 65% 49% / 0.4)) 25%, transparent 50%, var(--agent-glow, hsla(264 65% 49% / 0.3)) 75%, transparent 100%);
-  background-size: 200% 100%;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: agent-border-scan 3s linear infinite;
-}
-/* Static glow on hover for non-running */
-.agent-card:not(.is-running)::before {
-  content: '';
-  position: absolute; inset: -1px;
-  border-radius: 14px;
-  padding: 1px;
-  background: linear-gradient(135deg, transparent 30%, var(--agent-glow, hsla(264 65% 49% / 0.4)) 70%, transparent 100%);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.4s;
-}
-.agent-card:not(.is-running):hover::before { opacity: 1; }
-.agent-card:hover { border-color: hsla(264 65% 49% / 0.3); box-shadow: 0 8px 40px hsla(264 65% 49% / 0.08), 0 0 1px hsla(264 65% 49% / 0.2); transform: translateY(-2px); }
-
-.agent-card-header {
-  padding: 18px 20px 14px;
+  container-type: inline-size;
+  aspect-ratio: 2 / 3;
   display: flex;
-  align-items: center;
-  gap: 14px;
-  border-bottom: 1px solid hsla(217 32% 20% / 0.4);
+  flex-direction: column;
+  padding: 22px 22px 18px;
+  border-radius: 16px;
+  border: 1px solid hsla(0 0% 100% / 0.08);
+  background: radial-gradient(120% 85% at 50% 32%, hsl(228 58% 13%) 0%, hsl(232 52% 7%) 48%, hsl(240 30% 3%) 100%);
+  color: hsl(0 0% 100%);
+  text-decoration: none;
+  isolation: isolate;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.3s, box-shadow 0.3s;
 }
-.agent-avatar {
-  width: 42px; height: 42px;
-  border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 20px;
-  flex-shrink: 0;
-  position: relative;
+.ac:hover, .ac:focus-visible {
+  transform: translateY(-4px);
+  border-color: hsla(var(--ac) / 0.75);
+  box-shadow: 0 14px 44px hsla(var(--ac) / 0.22), 0 0 0 1px hsla(var(--ac) / 0.25);
+  outline: none;
 }
-.agent-avatar-bg {
+.ac.ready   { --ac-status: hsl(45 93% 55%); }
+.ac.running { --ac-status: hsl(142 76% 45%); }
+.ac.error   { --ac-status: hsl(0 72% 55%); }
+.ac.idle    { --ac-status: hsl(215 16% 45%); }
+
+/* Background layers: clipped here so the card itself can grow with its content */
+.ac-bg { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; z-index: -1; pointer-events: none; }
+.ac-stars, .ac-stars::after {
   position: absolute; inset: 0;
-  border-radius: 12px;
-  opacity: 0.12;
+  background-position: var(--sx, 0) var(--sy, 0);
 }
-.agent-header-info { flex: 1; }
-.agent-name {
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--text);
-  margin-bottom: 2px;
+.ac-stars {
+  background-image:
+    radial-gradient(1px 1px at 18px 24px, hsla(0 0% 100% / 0.9) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 92px 61px, hsla(0 0% 100% / 0.7) 50%, transparent 51%),
+    radial-gradient(1px 1px at 151px 18px, hsla(0 0% 100% / 0.5) 50%, transparent 51%),
+    radial-gradient(2px 2px at 64px 142px, hsla(0 0% 100% / 0.85) 50%, transparent 51%),
+    radial-gradient(1px 1px at 178px 118px, hsla(0 0% 100% / 0.6) 50%, transparent 51%),
+    radial-gradient(1px 1px at 120px 190px, hsla(0 0% 100% / 0.45) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 30px 205px, hsla(0 0% 100% / 0.55) 50%, transparent 51%);
+  background-size: 200px 220px;
+  animation: ac-twinkle 7s ease-in-out infinite;
 }
-.agent-role {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-family: var(--font-data);
-}
-.agent-status {
-  font-family: var(--font-data);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-.agent-status.running { color: var(--success); background: hsla(142 76% 36% / 0.08); }
-.agent-status.running::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: pulse-glow 2s infinite; }
-.agent-status.idle { color: var(--warning); background: hsla(45 93% 55% / 0.08); }
-.agent-status.idle::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); opacity: 0.5; }
-.agent-status.queued { color: var(--accent); background: hsla(264 65% 49% / 0.08); }
-.agent-status.queued::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0.5; }
-.agent-status.offline { color: var(--danger); background: hsla(0 72% 51% / 0.08); }
-.agent-status.offline::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
-.health-row { display: flex; gap: 10px; margin-top: 6px; font-family: var(--font-data); font-size: 9px; letter-spacing: 0.04em; }
-.health-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; background: hsla(0 0% 100% / 0.03); border: 1px solid var(--border); }
-.health-tag .dot { width: 5px; height: 5px; border-radius: 50%; }
-.health-tag .dot.ok { background: var(--success); }
-.health-tag .dot.err { background: var(--danger); }
-
-.agent-card-body { padding: 16px 20px; }
-.agent-progress-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.agent-progress {
-  flex: 1;
-  height: 4px;
-  background: hsla(217 32% 20% / 0.4);
-  border-radius: 4px;
-  overflow: hidden;
-}
-.agent-progress-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-/* Glow tip */
-.agent-progress-fill::after {
+.ac-stars::after {
   content: '';
-  position: absolute; right: 0; top: -1px; bottom: -1px; width: 12px;
-  border-radius: 0 4px 4px 0;
-  filter: blur(4px);
-  background: inherit;
-  opacity: 0.6;
+  background-image:
+    radial-gradient(1px 1px at 40px 80px, hsla(0 0% 100% / 0.7) 50%, transparent 51%),
+    radial-gradient(1px 1px at 128px 36px, hsla(0 0% 100% / 0.5) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 96px 128px, hsla(0 0% 100% / 0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 12px 150px, hsla(0 0% 100% / 0.4) 50%, transparent 51%);
+  background-size: 160px 170px;
+  animation: ac-twinkle 11s ease-in-out infinite reverse;
 }
-/* Shimmer sweep on running progress bars */
-.is-running .agent-progress-fill::before {
+.ac-spark {
+  position: absolute;
+  width: 9px; height: 9px;
+  background: hsl(0 0% 100%);
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  filter: drop-shadow(0 0 3px hsla(0 0% 100% / 0.8));
+  animation: ac-sparkle 5s ease-in-out infinite;
+}
+.ac-floor {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 35%;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to top, hsl(0 0% 0%) 20%, transparent 100%);
+          mask-image: linear-gradient(to top, hsl(0 0% 0%) 20%, transparent 100%);
+}
+.ac-floor::before {
   content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 0%, hsla(0 0% 100% / 0.15) 50%, transparent 100%);
-  animation: agent-shimmer 2s ease-in-out infinite;
-}
-.agent-progress-pct {
-  font-family: var(--font-data);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  min-width: 32px;
-  text-align: right;
-}
-.agent-task {
-  font-family: var(--font-data);
-  font-size: 10px;
-  color: var(--text-dim);
-  line-height: 1.4;
-}
-/* Blinking cursor after task text for running agents */
-.is-running .agent-task::after {
-  content: '▋';
-  color: var(--agent-color, var(--primary));
-  font-size: 10px;
-  margin-left: 2px;
-  animation: agent-task-blink 1s step-end infinite;
+  position: absolute; left: -60%; right: -60%; bottom: 0; height: 220%;
+  background-image:
+    linear-gradient(hsla(0 0% 100% / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, hsla(0 0% 100% / 0.06) 1px, transparent 1px);
+  background-size: 34px 34px;
+  transform: perspective(220px) rotateX(62deg);
+  transform-origin: bottom center;
+  animation: ac-floor 6s linear infinite;
 }
 
-.agent-card-footer {
-  padding: 10px 20px 14px;
-  border-top: 1px solid hsla(217 32% 20% / 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* Content */
+.ac-model {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: hsl(215 16% 62%);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.agent-footer-label {
-  font-family: var(--font-data);
-  font-size: 9px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.ac-name {
+  margin-top: 8px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(28px, 13cqi, 56px); font-weight: 800; line-height: 1; letter-spacing: -0.03em;
+  color: hsl(0 0% 100%);
 }
-.agent-footer-label span { color: var(--text); font-weight: 600; }
+.ac-hero { position: relative; flex: 1; min-height: 120px; display: grid; place-items: center; margin: 10px 0; }
+.ac-glow {
+  position: absolute; width: 78cqi; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, hsla(var(--ac) / 0.42) 0%, hsla(var(--ac) / 0.12) 38%, transparent 66%);
+  animation: ac-pulse 4s ease-in-out infinite;
+  transition: opacity 0.3s, transform 0.3s;
+}
+.ac:hover .ac-glow { opacity: 1; filter: brightness(1.45); }
+.ac-sprite {
+  position: relative; width: 55cqi; height: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 14px hsla(var(--ac) / 0.45));
+  animation: ac-float 3s ease-in-out infinite;
+}
+.ac-initials {
+  position: relative; width: 34cqi; aspect-ratio: 1;
+  display: grid; place-items: center;
+  font-family: 'Press Start 2P', ui-monospace, monospace; font-size: 9cqi;
+  color: hsl(0 0% 100%);
+  background: hsla(var(--ac) / 0.14);
+  border: 3px solid hsl(var(--ac));
+  box-shadow: 0 0 26px hsla(var(--ac) / 0.55), inset 0 0 18px hsla(var(--ac) / 0.35);
+  text-shadow: 0 0 10px hsla(var(--ac) / 0.9);
+  animation: ac-float 3s ease-in-out infinite;
+}
+.ac-role { font-size: 16px; line-height: 1.4; color: hsla(0 0% 100% / 0.85); }
+.ac-divider { height: 1px; margin: 14px 0 12px; background: hsla(0 0% 100% / 0.1); }
+.ac-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ac-stat-label { font-size: 11px; color: hsl(215 16% 58%); margin-bottom: 3px; }
+.ac-stat-value { font-size: 20px; font-weight: 700; color: hsl(0 0% 100%); font-variant-numeric: tabular-nums; }
+.ac-status {
+  align-self: flex-end; margin-top: 12px;
+  display: flex; align-items: center; gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: hsla(0 0% 100% / 0.75);
+}
+.ac-dashes { display: flex; gap: 3px; }
+.ac-dashes i { width: 8px; height: 2px; background: var(--ac-status); box-shadow: 0 0 6px var(--ac-status); }
+.ac.idle .ac-dashes i { box-shadow: none; }
+.ac.running .ac-dashes i { animation: ac-dash 1.2s ease-in-out infinite; }
+.ac.running .ac-dashes i:nth-child(2) { animation-delay: 0.2s; }
+.ac.running .ac-dashes i:nth-child(3) { animation-delay: 0.4s; }
+.ac.running .ac-status-text::after { content: '_'; margin-left: 1px; animation: agent-task-blink 1s step-end infinite; }
+.ac:hover .ac-dashes i { box-shadow: 0 0 8px hsla(var(--ac) / 0.9); }
+
+@keyframes agent-task-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes ac-twinkle { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes ac-sparkle { 0%, 100% { opacity: 0.25; transform: scale(0.6); } 50% { opacity: 1; transform: scale(1); } }
+@keyframes ac-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes ac-pulse { 0%, 100% { opacity: 0.75; transform: scale(0.96); } 50% { opacity: 1; transform: scale(1.04); } }
+@keyframes ac-floor { from { background-position: 0 0; } to { background-position: 0 34px; } }
+@keyframes ac-dash { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+@media (max-width: 1100px) {
+  .agents-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 768px) {
+  .agents-grid {
+    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: min(78%, 320px);
+    overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .agents-grid::-webkit-scrollbar { display: none; }
+  .main, section:has(> .agents-grid) { min-width: 0; max-width: 100%; }
+  .ac { scroll-snap-align: start; padding: 18px 18px 16px; }
+  .ac-role { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac, .ac * , .ac *::before, .ac *::after { animation: none !important; }
+  .ac { transition: border-color 0.3s, box-shadow 0.3s; }
+  .ac:hover, .ac:focus-visible { transform: none; }
+}
 
 /* ── KANBAN ──────────────────────────────────────── */
 .kanban {
@@ -720,7 +703,6 @@ body::after {
   :root { --sidebar-w: 0px; }
   .main { margin-right: 0; margin-left: 0; }
   .briefing { grid-template-columns: repeat(2, 1fr); }
-  .agents-grid { grid-template-columns: repeat(2, 1fr); }
   .fade-up.delay-6 { grid-template-columns: 1fr !important; }
   .kanban { grid-template-columns: repeat(3, 1fr); }
   .sop-grid { grid-template-columns: repeat(2, 1fr); }
@@ -781,14 +763,10 @@ body::after {
   #menu-btn { display: none; }
   .briefing { grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
   .briefing-item-value { font-size: 13px; }
-  .agents-grid { grid-template-columns: 1fr; }
   .kanban { grid-template-columns: 1fr; overflow-x: auto; }
   .kanban-col { min-width: 240px; }
   .sop-grid { grid-template-columns: 1fr; }
   .section-header { font-size: 13px; letter-spacing: 0.1em; }
-  .agent-card-header { padding: 14px 16px 10px; }
-  .agent-card-body { padding: 12px 16px; }
-  .agent-card-footer { padding: 8px 16px 12px; }
 }
 
 /* ── RESPONSIVE: SMALL MOBILE (≤480px) ─────────── */
@@ -796,7 +774,6 @@ body::after {
   .main { padding: 12px; gap: 16px; }
   .header-title { font-size: 14px; }
   .briefing { grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; }
-  .agent-card { border-radius: 10px; }
   .sidebar-nav { gap: 0; padding: 0 2px; }
   .nav-item { width: 33px; height: 33px; }
   .nav-item svg { width: 15px; height: 15px; }
@@ -845,7 +822,7 @@ body::after {
 
     <!-- AI TEAM -->
     <section class="fade-up delay-3">
-      <div class="section-header">Team Detail</div>
+      <div class="section-header">Team detail</div>
       <div class="agents-grid" id="ai-team-grid"></div>
     </section>
 
@@ -1031,145 +1008,62 @@ renderSystemHealth();
 setInterval(renderSystemHealth, 10000);
 
 // ── AI TEAM ───────────────────────────────────
-const aiTeam = [
-  { name: 'DESIGNER', emoji: '🎨', role: 'Visual Assets (Canva)', status: 'idle', color: 'var(--warning)', hsl: '45 93% 55%', task: 'Awaiting assignment' },
-  { name: 'VIDEO EDITOR', emoji: '✂️', role: 'Video Production', status: 'idle', color: 'var(--danger)', hsl: '0 72% 51%', task: 'Awaiting assignment' },
-  { name: 'CONTENT CREATOR', emoji: '🎬', role: 'Higgsfield UGC Content', status: 'idle', color: 'hsl(180 70% 45%)', hsl: '180 70% 45%', task: 'Awaiting assignment' },
-  { name: 'SOCIAL MEDIA MANAGER', emoji: '💬', role: 'X / Telegram Posts', status: 'idle', color: 'hsl(200 90% 55%)', hsl: '200 90% 55%', task: 'Awaiting assignment', isCommunity: true },
-  { name: 'MARKETEER', emoji: '📣', role: 'Marketing Strategy & Content', status: 'idle', color: 'hsl(340 80% 55%)', hsl: '340 80% 55%', task: 'Awaiting assignment', isMarketeer: true },
-  { name: 'ASSISTANT', emoji: '📅', role: 'Google Calendar Assistant', status: 'idle', color: 'hsl(210 90% 55%)', hsl: '210 90% 55%', task: 'Awaiting assignment', isCalendar: true },
-];
-
-const TASK_APIS = {
-  DESIGNER: '/designer/tasks',
-  'VIDEO EDITOR': ['/video/tasks', '/video/ai-generate'],
-  'CONTENT CREATOR': '/ugc/tasks',
-};
-
-async function renderAiTeam() {
-  // Fetch task counts per agent
-  const taskCounts = {};
-  for (const [name, api] of Object.entries(TASK_APIS)) {
-    try {
-      const apis = Array.isArray(api) ? api : [api];
-      let allTasks = [];
-      for (const a of apis) { try { allTasks = allTasks.concat(await (await fetch(a)).json()); } catch {} }
-      taskCounts[name] = {
-        pending: allTasks.filter(t => t.status === 'pending').length,
-        processing: allTasks.filter(t => t.status === 'processing').length,
-        completed: allTasks.filter(t => t.status === 'completed').length,
-      };
-    } catch { taskCounts[name] = { pending: 0, processing: 0, completed: 0 }; }
-  }
-
-  // Community Manager: distinct status model (draft / scheduled / published / failed)
-  let communityTasks = [], communityChannels = [];
-  try { communityTasks = await (await fetch('/community/tasks')).json(); } catch {}
-  try { communityChannels = await (await fetch('/community/channels')).json(); } catch {}
-  if (!Array.isArray(communityTasks)) communityTasks = [];
-  if (!Array.isArray(communityChannels)) communityChannels = [];
-
-  document.getElementById('ai-team-grid').innerHTML = aiTeam.map(a => {
-    if (a.isMarketeer) {
-      return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-          <span class="agent-status running">25 skills</span>
-        </div>
-        <div class="agent-card-body">
-          <div class="agent-task">Content, copy, ads, SEO & growth strategy</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">engine <span>Claude + Skills</span></span>
-          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
-        </div>
-      </div>`;
-    }
-
-    if (a.isCalendar) {
-      return `<div class="agent-card is-running" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-          <span class="agent-status running">connected</span>
-        </div>
-        <div class="agent-card-body">
-          <div class="agent-task">Google Calendar via Composio</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">engine <span>Composio</span></span>
-          <a href="chat.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open in chat</a>
-        </div>
-      </div>`;
-    }
-
-    if (a.isCommunity) {
-      const nowMs = Date.now();
-      const drafts = communityTasks.filter(t => t.status === 'draft').length;
-      const scheduled = communityTasks.filter(t => t.status === 'scheduled').length;
-      const published = communityTasks.filter(t => t.status === 'published').length;
-      const failed = communityTasks.filter(t => t.status === 'failed').length;
-      const firingSoon = communityTasks.some(t => {
-        if (t.status !== 'scheduled') return false;
-        const when = Date.parse(t.scheduled_at || '');
-        return isFinite(when) && when - nowMs <= 15*60*1000 && when - nowMs > -60*1000;
-      });
-      const nextPost = communityTasks
-        .filter(t => t.status === 'scheduled' && Date.parse(t.scheduled_at || '') > nowMs)
-        .sort((x, y) => Date.parse(x.scheduled_at) - Date.parse(y.scheduled_at))[0];
-      const status = firingSoon ? 'running' : (scheduled > 0 || drafts > 0) ? 'queued' : 'idle';
-      const statusText = firingSoon ? 'Publishing soon…'
-        : nextPost ? `Next: ${fmtTaskTime(nextPost.scheduled_at)}`
-        : scheduled > 0 ? `${scheduled} scheduled`
-        : drafts > 0 ? `${drafts} draft(s) awaiting review`
-        : 'No posts queued';
-      return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-        <div class="agent-card-header">
-          <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
-          <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-          <span class="agent-status ${status}">${status}</span>
-        </div>
-        <div class="agent-card-body">
-          <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
-            <span style="color:var(--text-dim)">${drafts} draft</span>
-            <span style="color:var(--warning)">${scheduled} scheduled</span>
-            <span style="color:var(--success)">${published} published</span>
-            ${failed ? '<span style="color:var(--danger)">'+failed+' failed</span>' : ''}
-          </div>
-          <div class="agent-task">${statusText}</div>
-        </div>
-        <div class="agent-card-footer">
-          <span class="agent-footer-label">channels <span>${communityChannels.length}</span></span>
-          <a href="community-manager.html" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;">Open</a>
-        </div>
-      </div>`;
-    }
-
-    const tc = taskCounts[a.name] || { pending: 0, processing: 0, completed: 0 };
-    const status = tc.processing > 0 ? 'running' : tc.pending > 0 ? 'queued' : tc.completed > 0 ? 'idle' : 'idle';
-    const statusText = tc.processing > 0 ? `Processing ${tc.processing}` : tc.pending > 0 ? `${tc.pending} pending` : 'Awaiting assignment';
-
-    return `<div class="agent-card ${status === 'running' ? 'is-running' : ''}" style="--agent-glow: hsla(${a.hsl} / 0.4); --agent-color: ${a.color}">
-      <div class="agent-card-header">
-        <div class="agent-avatar"><div class="agent-avatar-bg" style="background:${a.color}"></div><span style="position:relative;z-index:1">${a.emoji}</span></div>
-        <div class="agent-header-info"><div class="agent-name">${a.name}</div><div class="agent-role">${a.role}</div></div>
-        <span class="agent-status ${status}">${status}</span>
-      </div>
-      <div class="agent-card-body">
-        <div style="display:flex;gap:12px;margin-bottom:8px;font-family:var(--font-data);font-size:11px;">
-          <span style="color:var(--warning)">${tc.pending} pending</span>
-          <span style="color:var(--primary)">${tc.processing} active</span>
-          <span style="color:var(--success)">${tc.completed} done</span>
-        </div>
-        <div class="agent-task">${statusText}</div>
-      </div>
-      <div class="agent-card-footer">
-        <span class="agent-footer-label"><span>${tc.pending + tc.processing + tc.completed}</span> total tasks</span>
-        <span class="agent-footer-label">status <span>${status}</span></span>
-      </div>
-    </div>`;
+// Cards come from /agents/overview (agents, model, status and stats live in the backend).
+// The DOM is built once per agent set and then patched, so the animations never restart.
+function acRand(seed) {
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0; return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+}
+function acInitials(name) {
+  return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+function agentCardHtml(a) {
+  const rnd = acRand(a.id);
+  const sparks = [0, 1, 2].map(i => {
+    const top = (6 + rnd() * 52).toFixed(1), left = (6 + rnd() * 88).toFixed(1);
+    return `<span class="ac-spark" style="top:${top}%;left:${left}%;animation-delay:${(i * 1.7 + rnd()).toFixed(2)}s"></span>`;
   }).join('');
+  const hero = a.sprite
+    ? `<img class="ac-sprite" src="${escTask(a.sprite)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ac-initials',textContent:'${acInitials(a.name)}'}))">`
+    : `<div class="ac-initials">${escTask(acInitials(a.name))}</div>`;
+  const stats = (a.stats || []).slice(0, 2).map((st, i) =>
+    `<div><div class="ac-stat-label">${escTask(st.label)}</div><div class="ac-stat-value" data-stat="${i}">${escTask(st.value)}</div></div>`).join('');
+  return `<a class="ac ${escTask(a.status)}" href="${escTask(a.href || 'agents.html')}" data-id="${escTask(a.id)}"
+      style="--ac:${escTask(a.hsl || '264 65% 49%')};--sx:${Math.round(rnd() * 200)}px;--sy:${Math.round(rnd() * 220)}px">
+    <div class="ac-bg"><div class="ac-stars"></div>${sparks}<div class="ac-floor"></div></div>
+    <div class="ac-model">${escTask(a.model)}</div>
+    <div class="ac-name">${escTask(a.name)}</div>
+    <div class="ac-hero"><div class="ac-glow"></div>${hero}</div>
+    <div class="ac-role">${escTask(a.role)}</div>
+    <div class="ac-divider"></div>
+    <div class="ac-stats">${stats}</div>
+    <div class="ac-status"><span class="ac-dashes"><i></i><i></i><i></i></span><span class="ac-status-text">${escTask(a.status)}</span></div>
+  </a>`;
+}
+function updateAgentCard(a) {
+  const el = document.querySelector(`.ac[data-id="${CSS.escape(a.id)}"]`);
+  if (!el) return;
+  for (const s of ['ready', 'running', 'error', 'idle']) el.classList.toggle(s, s === a.status);
+  el.querySelector('.ac-status-text').textContent = a.status;
+  el.querySelector('.ac-model').textContent = a.model || '';
+  (a.stats || []).slice(0, 2).forEach((st, i) => {
+    const v = el.querySelector(`[data-stat="${i}"]`);
+    if (v && v.textContent !== String(st.value)) v.textContent = st.value;
+  });
+}
+async function renderAiTeam() {
+  let agents;
+  try { agents = await (await fetch('/agents/overview')).json(); } catch { return; }
+  if (!Array.isArray(agents)) return;
+  const grid = document.getElementById('ai-team-grid');
+  const key = agents.map(a => `${a.id}:${a.sprite || ''}:${(a.stats || []).map(s => s.label).join('|')}`).join(',');
+  if (grid.dataset.key !== key) {
+    grid.innerHTML = agents.map(agentCardHtml).join('');
+    grid.dataset.key = key;
+  } else {
+    agents.forEach(updateAgentCard);
+  }
 }
 renderAiTeam();
 setInterval(renderAiTeam, 10000);

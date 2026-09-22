@@ -551,7 +551,7 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
 }
 
 module.exports = {
-  createAutopilot, DEFAULTS,
+  createAutopilot, DEFAULTS, MODEL,
   config, parseTopics, buildQuery, scoreTweet, isPromo, rankCandidates, cleanPostText,
   nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots,
 };

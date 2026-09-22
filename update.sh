@@ -123,6 +123,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/nb-input-*.json' \
         --exclude='data/*.log' \
         --exclude='public/media/' \
+        --exclude='public/agents/' \
         --exclude='logs' \
         "$SCRIPT_DIR/$component/" "$INSTALL_DIR/$component/"
     fi
