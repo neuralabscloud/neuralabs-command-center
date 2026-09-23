@@ -19,6 +19,7 @@ const DEFAULTS = {
   window_end: "23:00",
   topics: [],              // lines: "Label: X search query" or just a query
   min_likes: 20,
+  min_followers: 1000,     // shill/bot accounts are mostly small; 0 = off
   search_depth: 50,        // posts read per search (X bills per post read)
   max_age_hours: 36,
   language: "English",
@@ -29,11 +30,16 @@ const DEFAULTS = {
 
 const MODEL = process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5";
 const MAX_CANDIDATES = 6;
+const PER_TOPIC = 3;        // one noisy topic may not fill the whole shortlist
+const TOPICS_PER_ROUND = 2; // topics searched before Claude picks
+const MAX_SEARCHES = 4;     // per run; a rejected shortlist triggers the next topics
 const LATE_LIMIT_MS = 90 * 60 * 1000;   // a slot this late (server was down) is skipped
 const RETRY_DELAY_MS = 10 * 60 * 1000;
 const MAX_TRIES = 3;
 const X_IMAGE_MAX = 5 * 1024 * 1024;
-const PROMO_RE = /\b(giveaways?|airdrops?|presales?|pre-sale|whitelist|free mint|claim (now|your)|dm me|link in (bio|comments)|join (my|our)|telegram group|whatsapp|discord\.gg|referral|use (my )?code|promo code|sign ?up bonus|\d{3,}x|next (gem|100x)|to the moon)\b/i;
+const PROMO_RE = /\b(giveaways?|airdrops?|presales?|pre-sale|whitelist|free mint|claim (now|your)|dm me|link in (bio|comments)|join (my|our)|telegram group|whatsapp|discord\.gg|referral|use (my )?code|promo code|sign ?up bonus|\d{3,}x|next (gem|100x)|to the moon|mint(ing)? (is )?(live|now)|stealth launch|fair launch|just launched|ape in|tag \d+ friends|like (and|&) (rt|retweet)|rt (and|&) follow)\b/i;
+// A contract address in the text is the clearest sign of a token shill.
+const CA_RE = /\b(CA\s*[:：]|0x[a-fA-F0-9]{40}\b|[1-9A-HJ-NP-Za-km-z]{32,44}(pump|bonk)?\b)/;
 const IMAGE_ASPECTS = { "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "1:1": 1, "4:5": 4 / 5 };
 
 // ── pure helpers (exported for tests) ─────────
@@ -41,6 +47,7 @@ function config(channel) {
   const c = { ...DEFAULTS, ...(channel && channel.autopilot || {}) };
   c.posts_per_day = Math.min(24, Math.max(1, Number(c.posts_per_day) || DEFAULTS.posts_per_day));
   c.min_likes = Math.max(0, Number(c.min_likes) || 0);
+  c.min_followers = Math.max(0, Number(c.min_followers ?? DEFAULTS.min_followers) || 0);
   c.search_depth = Math.min(100, Math.max(10, Number(c.search_depth) || DEFAULTS.search_depth));
   c.max_age_hours = Math.min(168, Math.max(1, Number(c.max_age_hours) || DEFAULTS.max_age_hours));
   if (!/^\d{2}:\d{2}$/.test(c.window_start)) c.window_start = DEFAULTS.window_start;
@@ -61,7 +68,7 @@ function parseTopics(lines) {
 }
 
 function buildQuery(query, ownUsername) {
-  return `(${query}) has:images -is:retweet -is:reply -is:quote lang:en${ownUsername ? ` -from:${ownUsername}` : ""}`;
+  return `(${query}) has:images -is:retweet -is:reply -is:quote -is:nullcast lang:en -giveaway -airdrop -presale -whitelist -"free mint"${ownUsername ? ` -from:${ownUsername}` : ""}`;
 }
 
 function scoreTweet(t, nowMs) {
@@ -76,6 +83,7 @@ function scoreTweet(t, nowMs) {
 function isPromo(text) {
   const s = String(text || "");
   if (PROMO_RE.test(s)) return true;
+  if (CA_RE.test(s)) return true;
   if ((s.match(/\$[A-Za-z]{2,10}\b/g) || []).length > 4) return true;
   if ((s.match(/#\w+/g) || []).length > 5) return true;
   return false;
@@ -83,7 +91,7 @@ function isPromo(text) {
 
 // Turn a search response into ranked candidates, dropping everything we can't
 // or shouldn't use.
-function rankCandidates(resp, { nowMs, minLikes, maxAgeHours, usedSources = [], usedAuthors = [] }) {
+function rankCandidates(resp, { nowMs, minLikes, maxAgeHours, minFollowers = 0, usedSources = [], usedAuthors = [] }) {
   const media = new Map((resp.includes?.media || []).map(m => [m.media_key, m]));
   const users = new Map((resp.includes?.users || []).map(u => [u.id, u]));
   const used = new Set(usedSources.map(String));
@@ -98,6 +106,8 @@ function rankCandidates(resp, { nowMs, minLikes, maxAgeHours, usedSources = [], 
     const author = user.username || "";
     if (author && authorsUsed.has(author.toLowerCase())) continue;
     if ((t.public_metrics?.like_count || 0) < minLikes) continue;
+    const followers = user.public_metrics?.followers_count;
+    if (minFollowers && followers != null && followers < minFollowers) continue;
     if (nowMs - Date.parse(t.created_at || 0) > maxAgeHours * 3.6e6) continue;
     if (isPromo(t.text)) continue;
     out.push({
@@ -113,6 +123,23 @@ function rankCandidates(resp, { nowMs, minLikes, maxAgeHours, usedSources = [], 
     });
   }
   return out.sort((a, b) => b.score - a.score);
+}
+
+// Shortlist for Claude: best first, but at most perTopic per topic so one
+// noisy topic (full of shills) can't crowd out the others.
+function pickCandidates(pool, max = MAX_CANDIDATES, perTopic = PER_TOPIC) {
+  const seen = new Set();
+  const perT = {};
+  const out = [];
+  for (const c of [...pool].sort((a, b) => b.score - a.score)) {
+    if (seen.has(c.tweet_id)) continue;
+    if ((perT[c.topic] || 0) >= perTopic) continue;
+    seen.add(c.tweet_id);
+    perT[c.topic] = (perT[c.topic] || 0) + 1;
+    out.push(c);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 // Never em/en dashes in post text (house rule); plus no links or stray quotes.
@@ -212,7 +239,7 @@ function createAutopilot(deps) {
     const day = localDay(now, tz);
     const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}`;
     if (st.plan_key === key) return false;
-    if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; }
+    if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; }
     const keep = st.day === day ? (st.slots || []).filter(s => s.status !== "pending") : [];
     const produced = keep.filter(s => s.status === "done" || s.status === "running").length;
     const start = zonedTime(day, cfg.window_start, tz).getTime();
@@ -299,11 +326,11 @@ function createAutopilot(deps) {
       expansions: "attachments.media_keys,author_id",
       "media.fields": "url,type,width,height",
       "tweet.fields": "public_metrics,created_at,possibly_sensitive",
-      "user.fields": "username",
+      "user.fields": "username,public_metrics",
     });
     const resp = await twitterApi("GET", `https://api.x.com/2/tweets/search/recent?${params}`, creds);
     return rankCandidates(resp, {
-      nowMs: Date.now(), minLikes: cfg.min_likes, maxAgeHours: cfg.max_age_hours,
+      nowMs: Date.now(), minLikes: cfg.min_likes, maxAgeHours: cfg.max_age_hours, minFollowers: cfg.min_followers,
       usedSources: st.used_sources || [], usedAuthors: st.authors_today || [],
     }).map(c => ({ ...c, topic: topic.label }));
   }
@@ -348,7 +375,7 @@ Rules for the post:
 - NEVER use em dashes or en dashes. Use periods, colons or line breaks.
 - Only state numbers, prices or facts that are visible in the candidate text or image. Never invent figures, timeframes or history (no "for weeks", "first time since" unless the source says so). When unsure, frame it as a take or a question.
 - No financial advice, no return promises.
-- Skip candidates that shill small tokens, run giveaways, look like scams, are political, or whose image shows identifiable real people (our image generator refuses those). Return choice -1 if none fit.
+- Skip candidates that shill small tokens, run giveaways, look like scams, are political, or whose image shows identifiable real people (our image generator refuses those). A candidate that merely mentions a token or project is fine when it carries real market news, data or a chart: our post takes a neutral angle on the subject and never promotes it. Return choice -1 only if none fit.
 - Do not repeat the angle of our recent posts.
 
 Rules for the image:
@@ -374,7 +401,9 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
       if (!use) throw new Error("Claude returned no post");
       const out = use.input || {};
       if (!(out.choice >= 0 && out.choice < candidates.length)) {
-        throw new Error(`No suitable candidate: ${out.reason || "all rejected"}`);
+        const err = new Error(`No suitable candidate: ${out.reason || "all rejected"}`);
+        err.noCandidate = true;
+        throw err;
       }
       out.post_text = cleanPostText(out.post_text);
       const len = twitterWeightedLength(out.post_text);
@@ -476,19 +505,50 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
       const me = await ownUsername(channel, creds);
       const st = loadState()[channel.id] || {};
       const counts = st.topic_counts || {};
-      const order = topics.map(t => ({ t, n: counts[t.label] || 0, r: Math.random() })).sort((a, b) => a.n - b.n || a.r - b.r).map(x => x.t);
+      const rejects = st.topic_rejects || {};
+      // Least posted first; a topic whose shortlist Claude rejected today goes back in the queue.
+      const queue = topics.map(t => ({ t, n: (counts[t.label] || 0) + (rejects[t.label] || 0), r: Math.random() }))
+        .sort((a, b) => a.n - b.n || a.r - b.r).map(x => x.t);
 
-      let candidates = [];
-      for (const topic of order.slice(0, 3)) {
-        candidates.push(...await searchTopic(creds, topic, cfg, me, st));
-        if (candidates.length >= 3) break;
+      // Search in rounds: a couple of topics, let Claude pick, and if the whole
+      // shortlist is rejected move on to the next topics instead of giving up.
+      let pool = [], post = null, candidates = [], searches = 0, lastReject = "";
+      const shown = new Set();
+      for (let round = 0; !post && round < 3; round++) {
+        let roundSearches = 0;
+        while (queue.length && searches < MAX_SEARCHES && (roundSearches < TOPICS_PER_ROUND || pool.length < 3)) {
+          const topic = queue.shift();
+          searches++; roundSearches++;
+          step(`searching X (${topic.label})`);
+          pool.push(...(await searchTopic(creds, topic, cfg, me, st)).filter(c => !shown.has(c.tweet_id)));
+        }
+        candidates = pickCandidates(pool);
+        if (!candidates.length) break;
+        candidates.forEach(c => shown.add(c.tweet_id));
+        pool = pool.filter(c => !shown.has(c.tweet_id));
+        step("writing post");
+        try {
+          post = await writePost(channel, cfg, candidates);
+        } catch (e) {
+          if (!e.noCandidate) throw e;
+          lastReject = e.message;
+          log(`${channel.name}: shortlist rejected (${[...new Set(candidates.map(c => c.topic))].join(", ")}): ${e.message}`);
+          const ids = candidates.map(c => c.tweet_id);
+          const labels = [...new Set(candidates.map(c => c.topic))];
+          mutate(channel.id, s2 => {
+            s2.used_sources = [...(s2.used_sources || []), ...ids].slice(-1000);
+            s2.topic_rejects = { ...(s2.topic_rejects || {}) };
+            for (const l of labels) s2.topic_rejects[l] = (s2.topic_rejects[l] || 0) + 1;
+          });
+          // Leftovers from a rejected topic would mostly be more of the same.
+          pool = pool.filter(c => !labels.includes(c.topic));
+          if ((!queue.length || searches >= MAX_SEARCHES) && !pool.length) break;
+        }
       }
-      const seen = new Set();
-      candidates = candidates.filter(c => !seen.has(c.tweet_id) && seen.add(c.tweet_id)).sort((a, b) => b.score - a.score).slice(0, MAX_CANDIDATES);
-      if (!candidates.length) throw new Error("No usable posts found (try lower min likes or broader topics)");
-
-      step("writing post");
-      const post = await writePost(channel, cfg, candidates);
+      if (!post) {
+        if (lastReject) throw new Error(`${lastReject} (after ${searches} searches)`);
+        throw new Error("No usable posts found (try lower min likes/followers or broader topics)");
+      }
       const cand = candidates[post.choice];
 
       step("generating image");
@@ -555,6 +615,6 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
 
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
-  config, parseTopics, buildQuery, scoreTweet, isPromo, rankCandidates, cleanPostText,
+  config, parseTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
   nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots,
 };

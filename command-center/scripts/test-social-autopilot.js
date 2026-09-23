@@ -74,5 +74,25 @@ ok(ranked.map(r => r.tweet_id).join(",") === "1,2", "rankCandidates: filters pro
 ok(ranked[0].tweet_id === "1", "rankCandidates: fresher post with fewer likes ranks higher (velocity)");
 ok(ranked[0].image.endsWith("m1.jpg") && ranked[0].author === "user1", "rankCandidates: image + author attached");
 
+// broader search: stricter shill filters, follower floor, per-topic cap
+ok(ap.isPromo("New gem on Arc CA: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"), "isPromo: contract address");
+ok(ap.isPromo("Mint is live now, don't miss it"), "isPromo: mint live");
+ok(!ap.isPromo("Circle minted another $500M USDC on Arc today"), "isPromo: mint news passes");
+ok(!ap.isPromo("$BTC and $ETH both reclaim key levels"), "isPromo: two cashtags pass");
+ok(q.includes("-giveaway") && q.includes("-airdrop") && q.includes("-is:nullcast"), "buildQuery: excludes giveaway/airdrop/promoted");
+ok(ap.config({}).min_followers === 1000 && ap.config({ autopilot: { min_followers: 0 } }).min_followers === 0, "config: min_followers default + off");
+const resp2 = JSON.parse(JSON.stringify(resp));
+resp2.includes.users[0].public_metrics = { followers_count: 120 };
+resp2.includes.users[1].public_metrics = { followers_count: 50000 };
+ok(ap.rankCandidates(resp2, { nowMs: now, minLikes: 20, maxAgeHours: 36, minFollowers: 1000 }).map(r => r.tweet_id).sort().join(",") === "2,7,8", "rankCandidates: small account dropped, unknown followers kept");
+const pool = [
+  ...[1, 2, 3, 4, 5].map(i => ({ tweet_id: "a" + i, topic: "Arc", score: 100 - i })),
+  { tweet_id: "b1", topic: "Bitcoin", score: 10 }, { tweet_id: "b2", topic: "Bitcoin", score: 9 },
+  { tweet_id: "e1", topic: "Ethereum", score: 5 }, { tweet_id: "a1", topic: "Arc", score: 99 },
+];
+const pick = ap.pickCandidates(pool, 6, 3);
+ok(pick.length === 6 && pick.filter(c => c.topic === "Arc").length === 3, "pickCandidates: noisy topic capped at 3");
+ok(pick.some(c => c.topic === "Ethereum") && new Set(pick.map(c => c.tweet_id)).size === 6, "pickCandidates: other topics get in, no duplicates");
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

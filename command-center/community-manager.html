@@ -454,6 +454,10 @@ function renderAutopilot(c) {
           <label class="edit-label">Min. likes on source post</label>
           <input class="edit-input" type="number" min="0" id="ch-ap-likes-${esc(c.id)}" value="${v('min_likes', 20)}">
         </div>
+        <div>
+          <label class="edit-label">Min. followers of source account (0 = off)</label>
+          <input class="edit-input" type="number" min="0" id="ch-ap-followers-${esc(c.id)}" value="${v('min_followers', 1000)}">
+        </div>
         <div class="full">
           <label class="edit-label">Topics: one per line, "Label: X search query" (rotated, least-posted first)</label>
           <textarea class="edit-textarea" style="min-height:120px" id="ch-ap-topics-${esc(c.id)}" placeholder="Bitcoin: (bitcoin OR $BTC)&#10;Ethereum: (ethereum OR $ETH)">${esc(topics)}</textarea>
@@ -618,6 +622,7 @@ function collectAutopilot(id) {
     window_start: g('start').value.trim() || '08:00',
     window_end: g('end').value.trim() || '23:00',
     min_likes: Number(g('likes').value) || 0,
+    min_followers: g('followers') ? Math.max(0, Number(g('followers').value) || 0) : 1000,
     search_depth: Number(g('depth').value) || 50,
     max_age_hours: Number(g('age').value) || 36,
     topics: g('topics').value.split('\n').map(t => t.trim()).filter(Boolean),
