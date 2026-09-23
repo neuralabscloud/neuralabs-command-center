@@ -8,6 +8,10 @@ const _envPath = _envPaths.find(p => _fs.existsSync(p)) || _envPaths[1];
 // which can make new/changed API keys appear to not take effect.
 require("dotenv").config({ path: _envPath, override: true });
 
+// Meter every paid API call (Claude SDK + fetch) before anything else uses them.
+const apiUsage = require("./api-usage");
+apiUsage.install();
+
 // One-off: if the Inference.sh CLI is already authenticated locally but
 // INFERENCE_API_KEY isn't in .env yet, mirror the CLI key in so the Settings
 // page and `/api/settings` reflect the real configuration state. (The reverse
@@ -54,6 +58,7 @@ const app = express();
 // Keep the raw body around for HMAC verification of incoming webhooks
 // (OpusClip signs the exact bytes it sends).
 app.use(express.json({ limit: "10mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
+app.use(apiUsage.middleware);
 app.use(cookieParser());
 app.use("/generated-images", express.static(path.join(__dirname, "data", "generated-images")));
 app.use("/ugc-avatars", express.static(path.join(__dirname, "data", "ugc-avatars")));
@@ -726,6 +731,7 @@ function runInfshApp(appId, inputObj, opts) {
     const tmpInput = path.join(__dirname, "data", `infsh-input-${genId()}.json`);
     try { fs.writeFileSync(tmpInput, JSON.stringify(inputObj)); }
     catch (e) { return reject(e); }
+    const usageFeature = apiUsage.currentFeature();
     const attempt = (n) => execFile("infsh", ["app", "run", appId, "--input", tmpInput, "--json", "--no-input"], {
       timeout: o.timeout || 300000,
       maxBuffer: 1024 * 1024 * 50,
@@ -736,6 +742,7 @@ function runInfshApp(appId, inputObj, opts) {
         return setTimeout(() => attempt(n + 1), 3000);
       }
       try { fs.unlinkSync(tmpInput); } catch {}
+      apiUsage.meterInfshOutput(stdout, appId, usageFeature);
       const clean = (t) => String(t || "").replace(/\x1b\[[0-9;]*m/g, "").trim();
       if (err) return reject(new Error(clean(stderr) || err.message));
       const stripped = clean(stdout);
@@ -1108,6 +1115,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
           maxBuffer: 1024 * 1024 * 50,
           env: { ...process.env, HOME: "/root" },
         }, (err, stdout, stderr) => {
+          apiUsage.meterInfshOutput(stdout, "google/gemini-3-1-flash-image-preview", "Designer");
           if (err && attempt < 3) {
             console.warn(`[DESIGNER] Nano Banana attempt ${attempt} failed, retrying in 5s:`, (stderr || err.message).slice(0, 200));
             return setTimeout(() => runInfsh(attempt + 1), 5000);
@@ -1987,6 +1995,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
       return setTimeout(() => runVideo(n + 1), 3000);
     }
     try { fs.unlinkSync(tmpInput); } catch {}
+    apiUsage.meterInfshOutput(stdout, model, "Content Creator (AI video)");
     for (const f of [...refImagePaths, ...resizedPaths]) try { fs.unlinkSync(f); } catch {}
     if (source.upload) try { fs.unlinkSync(source.upload); } catch {}
 
@@ -2849,8 +2858,8 @@ app.get("/settings/integrations", (_req, res) => {
     id: "anthropic", status: anthropicKey ? "connected" : "not-configured",
     details: [
       { label: "API Key", value: anthropicKey, secret: true },
-      { label: "Model", value: "claude-sonnet-4-6" },
-      { label: "Used by", value: "AI Chat, Analyst, Designer (Claude engine)" },
+      { label: "Models", value: "Opus 5.5, Sonnet 5, Sonnet 4.6 (per agent)" },
+      { label: "Used by", value: "AI Chat, Telegram bot, Marketeer, Growth Marketeer, X & Telegram autopilot, UGC Autopilot, Designer" },
     ],
   });
 
@@ -2947,7 +2956,70 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
+  // 10. ElevenLabs
+  const elevenKey = (process.env.ELEVENLABS_API_KEY || "").trim();
+  integrations.push({
+    id: "elevenlabs", status: elevenKey ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: elevenKey, secret: true },
+      { label: "Used by", value: "Voiceovers and UGC Autopilot (text-to-speech)" },
+    ],
+  });
+
+  // 11. X (Twitter)
+  const xKey = (process.env.TWITTER_API_KEY || "").trim();
+  integrations.push({
+    id: "x", status: xKey && process.env.TWITTER_ACCESS_TOKEN ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: xKey, secret: true },
+      { label: "Billing", value: "Pay per use (reads and posts)" },
+      { label: "Used by", value: "Social Media Manager: posting and X autopilot research" },
+    ],
+  });
+
+  // 12. Meta
+  const metaId = (process.env.META_APP_ID || "").trim();
+  integrations.push({
+    id: "meta", status: metaId ? "connected" : "not-configured",
+    details: [
+      { label: "App ID", value: metaId, secret: true },
+      { label: "Used by", value: "Social connections, Ads manager (chat and Telegram), rules engine" },
+    ],
+  });
+
+  // 13. YouTube
+  const ytKey = (process.env.YOUTUBE_API_KEY || "").trim();
+  integrations.push({
+    id: "youtube", status: ytKey ? "connected" : "not-configured",
+    details: [
+      { label: "API Key", value: ytKey, secret: true },
+      { label: "Used by", value: "YouTube lookups and transcripts" },
+    ],
+  });
+
   res.json({ integrations });
+});
+
+// API usage & costs: measured usage × rates, plus live balances where the provider exposes one.
+app.get("/settings/api-costs", async (req, res) => {
+  try {
+    apiUsage.flush();
+    const days = Math.max(7, Math.min(120, Number(req.query.days) || 30));
+    const summary = apiUsage.summary({ days });
+    summary.live = await apiUsage.liveBalances(req.query.refresh === "1");
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/settings/api-costs/config", (req, res) => {
+  try {
+    apiUsage.updateConfig(req.body || {});
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/settings/integrations/:id/test", async (req, res) => {
@@ -2991,6 +3063,22 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       if (!process.env.HIGGSFIELD_API_KEY) return res.json({ ok: false, message: "HIGGSFIELD_API_KEY not set in .env" });
       const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.status("ping"), { headers: higgsfieldHeaders() });
       res.json({ ok: r.status !== 401 && r.status !== 403, status: r.status, message: r.status !== 401 && r.status !== 403 ? "API key accepted" : "Auth failed" });
+    } else if (id === "elevenlabs") {
+      const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+      if (!key) return res.json({ ok: false, message: "ELEVENLABS_API_KEY not set in .env" });
+      const r = await fetch("https://api.elevenlabs.io/v1/user/subscription", { headers: { "xi-api-key": key } });
+      const d = await r.json().catch(() => ({}));
+      res.json({ ok: r.ok, message: r.ok ? `Plan: ${d.tier || "?"}, ${d.character_count ?? "?"} / ${d.character_limit ?? "?"} characters used` : "Auth failed" });
+    } else if (id === "x") {
+      const u = await twitterVerifyCredentials();
+      res.json({ ok: true, message: `Authorized as @${u.username}` });
+    } else if (id === "youtube") {
+      const key = (process.env.YOUTUBE_API_KEY || "").trim();
+      if (!key) return res.json({ ok: false, message: "YOUTUBE_API_KEY not set in .env" });
+      const r = await fetch(`https://www.googleapis.com/youtube/v3/i18nLanguages?part=snippet&hl=en&key=${encodeURIComponent(key)}`);
+      res.json({ ok: r.ok, message: r.ok ? "API key accepted" : `API call failed (${r.status})` });
+    } else if (id === "meta") {
+      res.json({ ok: !!process.env.META_APP_ID, message: process.env.META_APP_ID ? "App configured. Test the connection per page under Social Connections." : "META_APP_ID not set in .env" });
     } else {
       res.json({ ok: false, message: "Unknown integration" });
     }

@@ -265,6 +265,43 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .cfg-grid { grid-template-columns: 1fr; }
   .stats-row { flex-direction: column; }
 }
+
+/* ── API usage & costs ── */
+.cost-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 900px) { .cost-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cost-stat { background: linear-gradient(180deg, var(--bg-card), hsl(0 0% 3%)); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.cost-stat .v { font-family: var(--font-data); font-size: 22px; font-weight: 700; color: var(--text); }
+.cost-stat .l { font-family: var(--font-data); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-top: 4px; }
+.cost-stat .s { font-family: var(--font-data); font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+.cost-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; overflow-x: auto; }
+.cost-panel-title { font-family: var(--font-data); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cost-table { width: 100%; border-collapse: collapse; font-family: var(--font-data); font-size: 12px; }
+.cost-table th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.cost-table td { padding: 8px; border-bottom: 1px solid hsla(217 32% 20% / 0.5); vertical-align: top; }
+.cost-table tr:last-child td { border-bottom: none; }
+.cost-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cost-table .dim { color: var(--text-dim); font-size: 11px; }
+.cost-table tfoot td { border-top: 1px solid var(--border); font-weight: 700; }
+.cost-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--text-dim); }
+.cost-dot.on { background: var(--success); }
+.cost-fixed { width: 78px; padding: 4px 6px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: var(--font-data); font-size: 12px; text-align: right; }
+.cost-fixed:focus { outline: none; border-color: hsla(264 65% 49% / 0.55); }
+.cost-badge { font-size: 9px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.cost-badge.warn { color: var(--warning); border-color: hsla(45 93% 55% / 0.3); }
+.cost-chart { display: flex; align-items: flex-end; gap: 3px; height: 110px; padding-top: 6px; }
+.cost-bar { flex: 1; min-width: 3px; background: linear-gradient(180deg, hsl(264 65% 65%), hsl(264 65% 49%)); border-radius: 3px 3px 0 0; position: relative; }
+.cost-bar.zero { background: var(--border); }
+.cost-bar:hover { box-shadow: 0 0 12px hsla(264 65% 49% / 0.5); }
+.cost-chart-axis { display: flex; justify-content: space-between; font-family: var(--font-data); font-size: 10px; color: var(--text-dim); margin-top: 6px; }
+.cost-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .cost-split { grid-template-columns: 1fr; } }
+.cost-share { height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.cost-share > div { height: 100%; background: var(--primary); }
+.cost-note { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+.cost-rates { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 10px; }
+.cost-rates label { display: flex; flex-direction: column; gap: 4px; font-family: var(--font-data); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.cost-rates input { padding: 6px 8px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: var(--font-data); font-size: 12px; }
+.cost-select { padding: 4px 8px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: var(--font-data); font-size: 11px; }
 </style>
 </head>
 <body>
@@ -632,6 +669,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
+    <!-- API USAGE & COSTS -->
+    <section class="fade-up delay-3" id="api-costs-section">
+      <div class="section-header">API Usage &amp; Costs</div>
+      <p class="cost-note" style="margin:-10px 0 16px">Every paid API call made by the Command Center is metered here. Claude costs are calculated from the exact token counts, inference.sh from the amount it actually charged, the rest from call counts × the rates below. Add fixed monthly plan fees (subscriptions) in the table to see the full picture.</p>
+      <div id="api-costs"><div style="color: var(--text-dim); font-size: 13px;">Loading usage...</div></div>
+    </section>
+
     <!-- INTEGRATIONS -->
     <section class="fade-up delay-3">
       <div class="section-header">API Integrations</div>
@@ -734,6 +778,10 @@ const SERVICE_META = {
   inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
   composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
   opusclip: { icon: '✂️', color: '0 72% 51%', label: 'OpusClip', desc: 'Long-form videos → viral short-form clips' },
+  elevenlabs: { icon: '🎙️', color: '210 90% 55%', label: 'ElevenLabs', desc: 'Text-to-speech voices' },
+  x: { icon: '𝕏', color: '215 20% 65%', label: 'X (Twitter) API', desc: 'Posting and autopilot research' },
+  meta: { icon: '📘', color: '210 90% 55%', label: 'Meta (Facebook / Instagram)', desc: 'Pages, Instagram and Ads' },
+  youtube: { icon: '▶️', color: '0 72% 51%', label: 'YouTube Data API', desc: 'YouTube lookups' },
 };
 
 // Local services are checked server-side
@@ -1639,8 +1687,186 @@ async function restartApiServer() {
   setTimeout(poll, 1500);
 }
 
+// ── API usage & costs ─────────────────────────────────────
+let costData = null;
+let costDays = 30;
+
+function fmtUsd(n, precise) {
+  const v = Number(n) || 0;
+  if (v === 0) return '$0';
+  if (v < 0.01 && !precise) return '< $0.01';
+  if (precise || Math.abs(v) < 1) return '$' + v.toFixed(v < 0.1 ? 4 : 2);
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtNum(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'k';
+  return String(Math.round(v));
+}
+function escCost(t) { return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function usageText(p) {
+  const q = p.period.qty || {};
+  switch (p.id) {
+    case 'anthropic': return `${fmtNum((q.in || 0) + (q.cw || 0) + (q.cw1h || 0) + (q.cr || 0))} in · ${fmtNum(q.out)} out${q.searches ? ` · ${fmtNum(q.searches)} searches` : ''}`;
+    case 'inference': return `${fmtNum(q.tasks)} tasks`;
+    case 'elevenlabs': return `${fmtNum(q.chars)} characters`;
+    case 'x': return `${fmtNum(q.reads)} reads · ${fmtNum(q.writes)} posts`;
+    case 'higgsfield': case 'opusclip': return `${fmtNum(q.jobs)} jobs`;
+    default: return `${fmtNum(p.period.calls)} call${p.period.calls === 1 ? '' : 's'}`;
+  }
+}
+
+function liveText(id, live) {
+  const l = (live || {})[id];
+  if (!l) return '';
+  if (id === 'inference') return `Balance ${fmtUsd(l.balance_usd)}`;
+  if (id === 'elevenlabs') {
+    const reset = l.resets_at ? `, resets ${new Date(l.resets_at).toLocaleDateString()}` : '';
+    return `${l.tier || ''} plan · ${fmtNum(l.used)} / ${fmtNum(l.limit)} chars${reset}${l.overage_usd ? ` · overage ${fmtUsd(l.overage_usd)}` : ''}`;
+  }
+  return '';
+}
+
+async function loadApiCosts(refresh) {
+  const box = document.getElementById('api-costs');
+  try {
+    const r = await fetch(`/settings/api-costs?days=${costDays}${refresh ? '&refresh=1' : ''}`);
+    if (!r.ok) throw new Error(r.status);
+    costData = await r.json();
+    renderApiCosts();
+  } catch (e) {
+    box.innerHTML = `<div style="color: var(--danger); font-size: 12px;">Could not load usage: ${escCost(e.message)}</div>`;
+  }
+}
+
+function renderApiCosts() {
+  const d = costData;
+  const box = document.getElementById('api-costs');
+  const periodTotal = d.providers.reduce((a, p) => a + p.period.cost, 0);
+  const todayTotal = d.providers.reduce((a, p) => a + p.today.cost, 0);
+  const since = d.tracking_since ? new Date(d.tracking_since + 'T00:00:00Z').toLocaleDateString() : 'today';
+
+  // Providers: in use or configured first, then by cost.
+  const provs = [...d.providers].sort((a, b) =>
+    (b.period.cost + b.fixed_monthly) - (a.period.cost + a.fixed_monthly) ||
+    (b.period.calls - a.period.calls) || (b.configured - a.configured));
+
+  const rows = provs.map(p => {
+    const live = liveText(p.id, d.live);
+    const badge = p.billing === 'plan' ? '<span class="cost-badge">plan</span>'
+      : p.billing === 'free' ? '<span class="cost-badge">free</span>' : '';
+    const warn = p.unpriced ? '<span class="cost-badge warn" title="No rate set for some of this usage">no rate</span>' : '';
+    return `<tr>
+      <td><span class="cost-dot ${p.configured ? 'on' : ''}" title="${p.configured ? 'Configured' : 'Not configured'}"></span>${escCost(p.label)}${badge}${warn}
+        ${live ? `<div class="dim" style="margin-top:3px">${escCost(live)}</div>` : ''}</td>
+      <td class="dim">${p.period.calls ? usageText(p) : '—'}</td>
+      <td class="num">${p.period.calls ? fmtUsd(p.period.cost) : '—'}</td>
+      <td class="num">${fmtUsd(p.month.cost)}</td>
+      <td class="num"><input class="cost-fixed" type="number" min="0" step="0.01" data-fixed="${p.id}" value="${p.fixed_monthly || ''}" placeholder="0"></td>
+      <td class="num"><b>${fmtUsd(p.month.cost + p.fixed_monthly)}</b></td>
+    </tr>`;
+  }).join('');
+
+  const maxDay = Math.max(...d.series.map(x => x.cost), 0.0001);
+  const bars = d.series.map(x => `<div class="cost-bar ${x.cost ? '' : 'zero'}" style="height:${x.cost ? Math.max(3, x.cost / maxDay * 100) : 2}%" title="${x.day}: ${fmtUsd(x.cost, true)}"></div>`).join('');
+
+  const featTotal = d.features.reduce((a, f) => a + f.cost, 0) || 1;
+  const feats = d.features.slice(0, 14).map(f => `<tr>
+      <td>${escCost(f.feature)}<div class="cost-share"><div style="width:${(f.cost / featTotal * 100).toFixed(1)}%"></div></div></td>
+      <td class="num dim">${fmtNum(f.calls)}</td>
+      <td class="num">${fmtUsd(f.cost)}</td></tr>`).join('') || '<tr><td colspan="3" class="dim">No usage yet.</td></tr>';
+
+  const models = d.models.map(m => `<tr>
+      <td>${escCost(m.model || 'unknown')}${m.priced ? '' : '<span class="cost-badge warn">no rate</span>'}</td>
+      <td class="num dim">${fmtNum(m.calls)}</td>
+      <td class="num dim">${fmtNum(m.in + m.cw + m.cr)} / ${fmtNum(m.out)}${m.cr ? `<div style="font-size:10px">${Math.round(m.cr / Math.max(1, m.in + m.cw + m.cr) * 100)}% from cache</div>` : ''}</td>
+      <td class="num">${fmtUsd(m.cost)}</td></tr>`).join('') || '<tr><td colspan="4" class="dim">No Claude calls yet.</td></tr>';
+
+  const r = d.rates;
+  box.innerHTML = `
+    <div class="cost-stats">
+      <div class="cost-stat"><div class="v">${fmtUsd(d.month.total)}</div><div class="l">This month</div><div class="s">${fmtUsd(d.month.variable)} usage + ${fmtUsd(d.month.fixed)} plans</div></div>
+      <div class="cost-stat"><div class="v">${fmtUsd(d.month.projected)}</div><div class="l">Projected month</div><div class="s">Day ${d.month.day_of_month} of ${d.month.days_in_month}, at the current pace</div></div>
+      <div class="cost-stat"><div class="v">${fmtUsd(todayTotal)}</div><div class="l">Today</div><div class="s">Usage only (UTC day)</div></div>
+      <div class="cost-stat"><div class="v">${fmtUsd(periodTotal)}</div><div class="l">Last ${d.period.days} days</div><div class="s">Tracking since ${escCost(since)}</div></div>
+    </div>
+
+    <div class="cost-panel">
+      <div class="cost-panel-title"><span>Daily cost (usage)</span>
+        <span><select class="cost-select" onchange="costDays=Number(this.value);loadApiCosts()">
+          ${[7, 30, 90].map(n => `<option value="${n}" ${n === costDays ? 'selected' : ''}>Last ${n} days</option>`).join('')}
+        </select>
+        <button class="key-toggle" onclick="loadApiCosts(true)">Refresh</button></span></div>
+      <div class="cost-chart">${bars}</div>
+      <div class="cost-chart-axis"><span>${d.period.from}</span><span>${d.period.to}</span></div>
+    </div>
+
+    <div class="cost-panel">
+      <div class="cost-panel-title"><span>Per provider</span><span style="text-transform:none;letter-spacing:0">Green dot = key configured</span></div>
+      <table class="cost-table">
+        <thead><tr><th>Provider</th><th>Usage (${d.period.days}d)</th><th class="num">Usage cost (${d.period.days}d)</th><th class="num">Usage this month</th><th class="num">Plan / month</th><th class="num">Total this month</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td>Total</td><td></td><td class="num">${fmtUsd(periodTotal)}</td><td class="num">${fmtUsd(d.month.variable)}</td><td class="num">${fmtUsd(d.month.fixed)}</td><td class="num">${fmtUsd(d.month.total)}</td></tr></tfoot>
+      </table>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn-test" style="margin-top:0" onclick="saveCostConfig(this)">Save plan fees &amp; rates</button>
+        <span class="cost-note" id="cost-save-msg"></span>
+      </div>
+    </div>
+
+    <div class="cost-split">
+      <div class="cost-panel">
+        <div class="cost-panel-title"><span>Cost per feature (${d.period.days}d)</span></div>
+        <table class="cost-table"><thead><tr><th>Feature</th><th class="num">Calls</th><th class="num">Cost</th></tr></thead><tbody>${feats}</tbody></table>
+      </div>
+      <div class="cost-panel">
+        <div class="cost-panel-title"><span>Claude per model (${d.period.days}d)</span></div>
+        <table class="cost-table"><thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Tokens in / out</th><th class="num">Cost</th></tr></thead><tbody>${models}</tbody></table>
+      </div>
+    </div>
+
+    <div class="cost-panel">
+      <div class="cost-panel-title"><span>Rates used for estimates (USD)</span></div>
+      <div class="cost-note">Claude token prices follow Anthropic's list prices per model. The rates below are estimates; set them to what your plan actually charges and the history is recalculated.</div>
+      <div class="cost-rates">
+        <label>ElevenLabs per 1k characters<input type="number" step="0.001" min="0" data-rate="elevenlabs.per_1k_chars" value="${r.elevenlabs.per_1k_chars}"></label>
+        <label>X per read (post fetched)<input type="number" step="0.001" min="0" data-rate="x.per_read" value="${r.x.per_read}"></label>
+        <label>X per post created<input type="number" step="0.001" min="0" data-rate="x.per_write" value="${r.x.per_write}"></label>
+        <label>Higgsfield per job<input type="number" step="0.01" min="0" data-rate="higgsfield.per_job" value="${r.higgsfield.per_job}"></label>
+        <label>OpusClip per project<input type="number" step="0.01" min="0" data-rate="opusclip.per_job" value="${r.opusclip.per_job}"></label>
+        <label>Claude web search per 1k<input type="number" step="0.5" min="0" data-rate="anthropic.web_search_per_1k" value="${r.anthropic.web_search_per_1k}"></label>
+      </div>
+      <div class="cost-note" style="margin-top:10px">Not included: tools that run outside the Command Center with their own keys, and one-off purchases or top-ups made directly with a provider.</div>
+    </div>`;
+}
+
+async function saveCostConfig(btn) {
+  const fixed = {};
+  document.querySelectorAll('[data-fixed]').forEach(el => { fixed[el.dataset.fixed] = el.value; });
+  const rates = {};
+  document.querySelectorAll('[data-rate]').forEach(el => {
+    const [g, k] = el.dataset.rate.split('.');
+    (rates[g] = rates[g] || {})[k] = el.value;
+  });
+  const msg = document.getElementById('cost-save-msg');
+  btn.classList.add('testing');
+  try {
+    const r = await fetch('/settings/api-costs/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fixed, rates }) });
+    if (!r.ok) throw new Error(r.status);
+    await loadApiCosts();
+    const m = document.getElementById('cost-save-msg');
+    if (m) { m.textContent = 'Saved'; m.style.color = 'var(--success)'; }
+  } catch (e) {
+    if (msg) { msg.textContent = 'Could not save: ' + e.message; msg.style.color = 'var(--danger)'; }
+  }
+  btn.classList.remove('testing');
+}
+
 loadConfig();
 loadIntegrations();
+loadApiCosts();
 loadLocalServices();
 renderSkills();
 loadBrandAssets();

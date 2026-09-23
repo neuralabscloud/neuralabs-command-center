@@ -72,3 +72,5 @@ command-center/data/brand-knowledge/
 
 # Growth Marketeer weekly reports (customer research + ideas)
 command-center/data/growth-reports.json
+command-center/data/api-usage.json
+command-center/data/api-costs-config.json
