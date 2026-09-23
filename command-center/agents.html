@@ -610,7 +610,7 @@ function buildScheduleSummary(s) {
     }
     case 'edu_designer': {
       const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Trading & crypto education';
-      return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${p.language || 'English'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
+      return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${p.language || 'English'} · X: ${p.x_post === 'auto' ? 'auto post' : p.x_post === 'review' ? 'draft' : 'off'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
     }
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
@@ -810,6 +810,7 @@ const PAYLOAD_FIELDS = {
         <li>Extracts the lesson from the image, video or text, checks it and rewrites it in its own words</li>
         <li>Renders it pixel-perfect in your house style: no logos, no handles, only the educational info</li>
         <li>Writes a caption with hashtags; image + caption land on the <b>Designer</b> page and in Telegram</li>
+        <li>Optionally posts the image with a short X version of the caption via the <b>Social Media Manager</b></li>
         <li>Reference image for the type of content: first image in <code>data/edu-reference/</code></li>
       </ul>
     </div>
@@ -824,6 +825,12 @@ const PAYLOAD_FIELDS = {
         <select class="sched-select" id="sp-language"><option value="English">English</option><option value="Dutch">Dutch</option><option value="German">German</option><option value="Spanish">Spanish</option><option value="French">French</option></select></div>
       <div><label class="sched-label">Notify via Telegram</label>
         <select class="sched-select" id="sp-notify"><option value="true">Yes</option><option value="false">No</option></select></div>
+    </div>
+    <div class="sched-form-row" style="margin-top:8px">
+      <div><label class="sched-label">Post on X</label>
+        <select class="sched-select" id="sp-x_post"><option value="auto">Yes, publish automatically</option><option value="review">Draft in Social Media Manager</option><option value="off">No</option></select></div>
+      <div><label class="sched-label">X channel</label>
+        <select class="sched-select" id="sp-x_channel"><option value="">First X channel</option></select></div>
     </div>`,
   growth_marketeer: `
     <div style="background:hsla(340 80% 55%/0.06);border:1px solid hsla(340 80% 55%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
@@ -883,6 +890,19 @@ function updatePayloadFields() {
   document.getElementById('sched-payload').innerHTML = PAYLOAD_FIELDS[agent] || '';
   document.getElementById('sched-agent-desc').textContent = AGENT_DESCRIPTIONS[agent] || '';
   if (agent === 'ugc_autopilot') populateAvatarSelect();
+  if (agent === 'edu_designer') populateXChannelSelect();
+}
+
+async function populateXChannelSelect(selectedId) {
+  const sel = document.getElementById('sp-x_channel');
+  if (!sel) return;
+  try {
+    const channels = await fetch('/community/channels', { credentials: 'include' }).then(r => r.json());
+    const x = (channels || []).filter(c => c.platform === 'twitter');
+    sel.innerHTML = '<option value="">First X channel</option>' + x.map(c =>
+      `<option value="${escHtml(c.id)}">${escHtml(c.name)}${c.x_username ? ' (@' + escHtml(c.x_username) + ')' : ''}</option>`).join('');
+    if (selectedId) sel.value = selectedId;
+  } catch {}
 }
 
 async function populateAvatarSelect(selectedId) {
@@ -920,6 +940,7 @@ function openScheduleModal(data) {
         else if (Array.isArray(v)) el.value = v.join(', ');
         else el.value = v;
       }
+      if (data?.agent === 'edu_designer') populateXChannelSelect(data.payload.x_channel);
       if (data?.agent === 'ugc_autopilot' && data?.payload?.avatar_id) {
         populateAvatarSelect(data.payload.avatar_id);
       }

@@ -848,7 +848,7 @@ function renderPost(t) {
   const arch = t.archetype ? `<span class="post-arch">${esc(t.archetype)}</span>` : '';
   const chan = t.channel_id ? `<span class="post-channel">📡 ${esc(channelLabel(t.channel_id))}</span>` : '';
   const when = t.scheduled_local || fmt(t.scheduled_at);
-  const src = t.autopilot && t.angle ? `<div class="post-source">⚡ Autopilot · angle: ${esc(t.angle)}</div>` : t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
+  const src = t.edu_task_id ? `<div class="post-source">🎨 Designer · educational post${t.topic ? ': ' + esc(t.topic) : ''}</div>` : t.autopilot && t.angle ? `<div class="post-source">⚡ Autopilot · angle: ${esc(t.angle)}</div>` : t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
   const chanObj = channelsCache.find(c => c.id === t.channel_id);
   const xLink = t.status === 'published' && t.message_id && chanObj && chanObj.platform === 'twitter'
     ? `<a class="btn-sm" style="text-decoration:none" href="https://x.com/${esc(chanObj.x_username || 'i')}/status/${esc(t.message_id)}" target="_blank" rel="noopener">View on X</a>` : '';

@@ -19,6 +19,21 @@ check("image text loses handles", e.cleanImageText("by @trader_joe today") === "
 check("image text keeps emails-free words and caps length", e.cleanImageText("x".repeat(200), 28).length === 28);
 
 // ── X search + ranking ──
+// ── X post ──
+{
+  const base = { title: "Trading terms", items: [{ term: "SL", text: "Stop loss" }, { term: "TP", text: "Take profit" }, { term: "BE", text: "Break even" }], hashtags: ["#trading", "#crypto", "#btc", "#forex"] };
+  const own = e.normalizeDesign({ ...base, caption: "c", x_post: "Save this cheat sheet — 3 terms every trader uses.\n\n#trading" });
+  check("x_post kept and dashes stripped", own.x_post.startsWith("Save this cheat sheet") && !/[—–]/.test(own.x_post));
+  const long = "Every trader needs these terms. ".repeat(12).trim();
+  const fb = e.normalizeDesign({ ...base, caption: "Hook line here.\nValue line.\n" + long, x_post: long });
+  check("too long x_post falls back to caption hook", fb.x_post.startsWith("Hook line here.\nValue line.") && e.xLength(fb.x_post) <= e.X_LIMIT);
+  check("fallback adds hashtags", /\n\n#trading #crypto #btc$/.test(fb.x_post));
+  const none = e.normalizeDesign({ ...base, caption: "" });
+  check("no caption falls back to title", none.x_post.startsWith("Trading terms") && e.xLength(none.x_post) <= e.X_LIMIT);
+  check("emoji count double", e.xLength("🔥a") === 3);
+  check("prompt asks for x_post", e.systemPrompt({ language: "English" }).includes('"x_post"'));
+}
+
 const q = e.xSearchQuery(["trading terms", 'say "hi"']);
 check("query has images filter and no retweets", q.includes("has:images") && q.includes("-is:retweet"));
 check("query escapes quotes", !q.includes('"say "hi""'));

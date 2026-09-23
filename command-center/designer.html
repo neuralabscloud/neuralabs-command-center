@@ -699,7 +699,21 @@ function eduExtras(t) {
     <div class="task-actions" style="margin-top:6px">
       ${variants}
       ${t.caption_full ? `<button class="task-btn" onclick="copyEduCaption('${t.id}', this)">Copy caption</button>` : ''}
-    </div>`;
+      ${!t.x || ['failed', 'cancelled'].includes(t.x.status) ? `<button class="task-btn" onclick="postEduToX('${t.id}', this)">Post on X</button>` : ''}
+    </div>
+    ${t.x ? `<div style="margin-top:4px;font-size:10px;color:var(--text-dim)">𝕏 ${t.x.url ? `<a href="${escH(t.x.url)}" target="_blank" rel="noopener" style="color:hsl(142 76% 50%)">posted</a>` : escH(t.x.status === 'draft' ? 'draft in Social Media Manager' : t.x.status)}${t.x.error ? ` · <span style="color:hsl(0 72% 65%)">${escH(t.x.error)}</span>` : ''}</div>` : ''}`;
+}
+
+async function postEduToX(id, btn) {
+  if (!confirm('Post this image with its X text on your X channel now?')) return;
+  btn.disabled = true; btn.textContent = 'Queuing...';
+  try {
+    const r = await fetch(`/designer/edu/${id}/x-post`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'auto' }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    btn.textContent = 'Queued';
+    setTimeout(loadTasks, 1000);
+  } catch (e) { btn.disabled = false; btn.textContent = 'Post on X'; alert('X post failed: ' + e.message); }
 }
 
 async function copyEduCaption(id, btn) {

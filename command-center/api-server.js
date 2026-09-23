@@ -664,7 +664,19 @@ async function fitToCanvas(file, task, label) {
 }
 
 // ── DESIGNER TASKS ────────────────────────────
-app.get("/designer/tasks", (_req, res) => res.json(readTaskFile("designer-tasks.json")));
+app.get("/designer/tasks", (_req, res) => {
+  const tasks = readTaskFile("designer-tasks.json");
+  // Edu designs that went to X: attach the state of that post so the Designer page can show it.
+  if (Array.isArray(tasks) && tasks.some(t => t.community_task_id)) {
+    const posts = new Map(readTaskFile(COMMUNITY_TASKS_FILE).map(p => [p.id, p]));
+    const handles = new Map(readChannels().map(c => [c.id, c.x_username || null]));
+    for (const t of tasks) {
+      const p = t.community_task_id && posts.get(t.community_task_id);
+      if (p) t.x = { status: p.status, error: p.error || null, url: p.message_id ? `https://x.com/${handles.get(p.channel_id) || "i"}/status/${p.message_id}` : null };
+    }
+  }
+  res.json(tasks);
+});
 
 const designerUpload = require("multer")({
   storage: require("multer").diskStorage({
@@ -8992,7 +9004,7 @@ async function runEduDesign({ focus = "", topics = [], language = "", sizes = "p
       custom_width: main.size === "square" ? main.width : null, custom_height: main.size === "square" ? main.height : null,
       description: d.title, topic: d.topic, format: d.format, items: d.items.length,
       result_url: main.url, result_thumbnail: main.url, variants,
-      caption: d.caption, hashtags: d.hashtags, caption_full: edu.fullCaption(d),
+      caption: d.caption, hashtags: d.hashtags, caption_full: edu.fullCaption(d), x_post: d.x_post,
       sources: d.sources, why: d.why, x_ids: xIds, x_candidates: xPosts.length,
       queries: eduRun.queries.slice(0, 20), model: edu.MODEL, usage, error: null,
     };
@@ -9031,6 +9043,33 @@ async function deliverEduToTelegram(t, title) {
   }
 }
 
+// Hands the design to the Social Media Manager: one X post (short text + the portrait image) on an X channel.
+// mode "auto" publishes via the normal worker, "review" leaves a draft there, "off" does nothing.
+function queueEduXPost(t, { x_post: mode = "off", x_channel = "" } = {}) {
+  if (!t || !["auto", "review"].includes(mode)) return null;
+  const channels = readChannels().filter(c => c.platform === "twitter" && c.enabled !== false);
+  const channel = x_channel ? channels.find(c => c.id === x_channel) : channels[0];
+  if (!channel) throw new Error(x_channel ? `X channel "${x_channel}" not found` : "No X channel in the Social Media Manager");
+  const image = (t.variants || []).find(v => v.size === "portrait") || (t.variants || [])[0];
+  const now = new Date().toISOString();
+  const post = {
+    id: genId(), channel_id: channel.id,
+    status: mode === "review" ? "draft" : "scheduled",
+    created_at: now, updated_at: now, scheduled_at: now, scheduled_local: null,
+    archetype: `Edu · ${t.topic || t.description || "design"}`, trigger_word: null,
+    media_path: image ? image.url : null, media_paths: image ? [image.url] : [],
+    text: t.x_post || edu.xPostText("", { caption: t.caption, hashtags: t.hashtags, title: t.description }),
+    published_at: null, message_id: null, attempts: 0, error: null,
+    autopilot: true, edu_task_id: t.id, topic: t.topic || null,
+  };
+  writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), post]);
+  const tasks = readTaskFile("designer-tasks.json");
+  const i = tasks.findIndex(x => x.id === t.id);
+  if (i >= 0) { tasks[i].community_task_id = post.id; tasks[i].x_channel_id = channel.id; writeTaskFile("designer-tasks.json", tasks); }
+  console.log(`[EDU] ${t.id} → X ${mode === "review" ? "draft" : "post"} ${post.id} on ${channel.name}`);
+  return post;
+}
+
 async function executeEduDesignerSchedule(schedule) {
   const p = schedule.payload || {};
   let taskId = null;
@@ -9038,6 +9077,10 @@ async function executeEduDesignerSchedule(schedule) {
     const t = await runEduDesign({ ...p, trigger: "schedule", schedule_id: schedule.id });
     taskId = t.id;
     if (p.notify !== "false") await deliverEduToTelegram(t, schedule.name).catch(e => console.error(`[EDU] Telegram delivery failed: ${e.message}`));
+    try { queueEduXPost(t, p); } catch (e) {
+      console.error(`[EDU] X post not queued: ${e.message}`);
+      sendTelegram(`🎨 ${escTg(schedule.name)}: X post not queued`, escTg(e.message), "warning");
+    }
   } catch (e) {
     console.error(`[EDU] Schedule failed: ${e.message}`);
     sendTelegram(`🎨 ${escTg(schedule.name)}: failed`, escTg(e.message), "danger");
@@ -9051,6 +9094,16 @@ async function executeEduDesignerSchedule(schedule) {
   }
 }
 
+// Send an existing edu design to X afterwards (or again): body { mode: "auto"|"review", x_channel }.
+app.post("/designer/edu/:id/x-post", (req, res) => {
+  const t = readTaskFile("designer-tasks.json").find(x => x.id === req.params.id && x.engine === "edu");
+  if (!t) return res.status(404).json({ error: "Edu design not found" });
+  try {
+    const post = queueEduXPost(t, { x_post: req.body?.mode === "review" ? "review" : "auto", x_channel: req.body?.x_channel || "" });
+    res.json({ ok: true, post });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/designer/edu/status", (_req, res) => {
   const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.agent === "edu_designer") || null;
   res.json({ running: eduRun, schedule: sched && { id: sched.id, name: sched.name, enabled: sched.enabled, hour: sched.hour, minute: sched.minute, days: sched.days, last_run: sched.last_run || null } });
@@ -9061,7 +9114,10 @@ app.post("/designer/edu/run", (req, res) => {
   const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.agent === "edu_designer");
   const p = { ...(sched?.payload || {}), ...(req.body || {}) };
   runEduDesign({ ...p, trigger: "manual" })
-    .then(t => { if (p.notify !== "false" && req.body?.notify !== "false") return deliverEduToTelegram(t, "Edu design"); })
+    .then(async t => {
+      if (p.notify !== "false" && req.body?.notify !== "false") await deliverEduToTelegram(t, "Edu design").catch(e => console.error(`[EDU] Telegram delivery failed: ${e.message}`));
+      try { queueEduXPost(t, p); } catch (e) { console.error(`[EDU] X post not queued: ${e.message}`); }
+    })
     .catch(e => console.error(`[EDU] Manual run failed: ${e.message}`));
   res.json({ ok: true, started: true });
 });

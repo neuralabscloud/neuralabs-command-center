@@ -102,8 +102,12 @@ Caption (for Instagram, TikTok and X):
 - NEVER use em dashes or en dashes. Use periods, colons or line breaks instead.
 - 5 to 10 relevant hashtags, separately.
 
+X post (posted on X together with the image):
+- In ${language}. Max 250 characters INCLUDING 1 to 3 hashtags at the end. A hook plus one line of value, ending with a save/share nudge or question. It must work on its own next to the image.
+- NEVER use em dashes or en dashes. No links, no @mentions.
+
 Output: after your research, answer with ONLY one JSON object, no prose around it:
-{"topic": "...", "format": "glossary|steps|checklist|tips", "kicker": "...", "title": "...", "highlight": "...", "subtitle": "...", "items": [{"term": "...", "text": "..."}], "footer": "...", "caption": "...", "hashtags": ["#..."], "sources": [{"url": "...", "platform": "x|instagram|tiktok|youtube|reddit|web", "note": "what you took from it"}] (only sources you actually used, with the direct URL of the post or article; leave out rejected candidates), "why": "one line: why this topic, what made the source perform"}`;
+{"topic": "...", "format": "glossary|steps|checklist|tips", "kicker": "...", "title": "...", "highlight": "...", "subtitle": "...", "items": [{"term": "...", "text": "..."}], "footer": "...", "caption": "...", "hashtags": ["#..."], "x_post": "...", "sources": [{"url": "...", "platform": "x|instagram|tiktok|youtube|reddit|web", "note": "what you took from it"}] (only sources you actually used, with the direct URL of the post or article; leave out rejected candidates), "why": "one line: why this topic, what made the source perform"}`;
 }
 
 function userPrompt({ focus = "", history = [], xPosts = [], today = "", hasReference = false } = {}) {
@@ -187,7 +191,7 @@ function normalizeDesign(raw) {
   const title = cleanImageText(raw.title, 60);
   if (!title) throw new Error("Design has no title");
   const highlight = cleanImageText(raw.highlight, 60);
-  return {
+  const out = {
     topic: wordTrim(cleanImageText(raw.topic || title, 200), 80),
     format: FORMATS.includes(raw.format) ? raw.format : "glossary",
     kicker: cleanImageText(raw.kicker, 30),
@@ -204,6 +208,36 @@ function normalizeDesign(raw) {
       .slice(0, 8),
     why: String(raw.why || "").slice(0, 300),
   };
+  out.x_post = xPostText(raw.x_post, out);
+  return out;
+}
+
+// X counts 280 "weighted" characters; emoji and CJK count double, so stay well under.
+const X_LIMIT = 270;
+function xLength(text) {
+  let n = 0;
+  for (const ch of String(text || "")) n += ch.codePointAt(0) > 0x2000 ? 2 : 1;
+  return n;
+}
+
+// Short X version: Claude's x_post if it fits, otherwise the caption hook plus hashtags that still fit.
+function xPostText(raw, d) {
+  const own = stripDashes(String(raw || "").trim()).replace(/\n{3,}/g, "\n\n");
+  if (own && xLength(own) <= X_LIMIT) return own;
+  const lines = String(d.caption || own || d.title || "").split("\n").map(l => l.trim()).filter(Boolean);
+  let text = "";
+  for (const l of lines) {
+    const next = text ? `${text}\n${l}` : l;
+    if (xLength(next) > X_LIMIT - 40) break;
+    text = next;
+  }
+  if (!text) text = wordTrim(lines[0] || d.title || "", 200);
+  for (const h of (d.hashtags || []).slice(0, 3)) {
+    const next = `${text}${text.includes("\n\n#") ? " " : "\n\n"}${h}`;
+    if (xLength(next) > X_LIMIT) break;
+    text = next;
+  }
+  return text;
 }
 
 function fullCaption(d) {
@@ -348,6 +382,7 @@ function sizesFor(value) {
 }
 
 module.exports = {
+  X_LIMIT, xLength, xPostText,
   MODEL, MAX_SEARCHES, MAX_FETCHES, MAX_X_IMAGES, FORMATS, SIZES, DEFAULT_TOPICS,
   stripDashes, cleanImageText, isSpecificUrl, wordTrim, xSearchQuery, rankXPosts, systemPrompt, userPrompt,
   textOf, extractJson, normalizeDesign, normalizeHashtags, fullCaption, recentTopics, usedXIds,
