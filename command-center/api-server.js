@@ -8575,8 +8575,11 @@ async function executeSchedule(schedule) {
     } else if (schedule.agent === "opusclip") {
       await executeOpusclipSchedule(schedule, today);
     } else if (schedule.agent === "ugc_autopilot") {
-      await executeUgcAutopilotSchedule(schedule);    } else if (schedule.agent === "growth_marketeer") {
+      await executeUgcAutopilotSchedule(schedule);
+    } else if (schedule.agent === "growth_marketeer") {
       await executeGrowthMarketeerSchedule(schedule);
+    } else if (schedule.agent === "edu_designer") {
+      await executeEduDesignerSchedule(schedule);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -8878,6 +8881,190 @@ async function executeGrowthMarketeerSchedule(schedule) {
     writeTaskFile("scheduled-tasks.json", schedules);
   }
 }
+
+// ── EDU DESIGNER AUTOPILOT ─────────────────────────────────────────
+// Daily: find educational trading/crypto content (X search + Claude web search
+// over Instagram/TikTok/YouTube), extract the lesson, render it logo-free in the
+// house style (edu-designer.js, Playwright) and deliver image + caption.
+const edu = require("./edu-designer");
+const EDU_MEDIA_DIR = path.join(MEDIA_DIR, "edu");
+const EDU_REFERENCE_DIR = path.join(__dirname, "data", "edu-reference");
+let eduRun = null; // { id, started_at, queries: [] } while a design is being made
+
+// Optional reference image for the TYPE of content (first image in data/edu-reference/).
+function eduReferenceImage() {
+  try {
+    const f = fs.readdirSync(EDU_REFERENCE_DIR).filter(n => /\.(png|jpe?g|webp)$/i.test(n)).sort()[0];
+    if (!f) return null;
+    const buf = fs.readFileSync(path.join(EDU_REFERENCE_DIR, f));
+    if (buf.length > 3.7 * 1024 * 1024) return null; // stays under the 5 MB base64 limit
+    const ext = f.split(".").pop().toLowerCase();
+    return { type: "image", source: { type: "base64", media_type: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg", data: buf.toString("base64") } };
+  } catch { return null; }
+}
+
+async function eduXCandidates(topics, usedIds) {
+  if (!envXCredsComplete()) return [];
+  const params = new URLSearchParams({
+    query: edu.xSearchQuery(topics), max_results: "25", sort_order: "relevancy",
+    expansions: "attachments.media_keys,author_id", "media.fields": "url,type",
+    "tweet.fields": "public_metrics,created_at,possibly_sensitive,attachments", "user.fields": "username",
+  });
+  const resp = await twitterApi("GET", `https://api.x.com/2/tweets/search/recent?${params}`, twitterCreds());
+  return edu.rankXPosts(resp, { usedIds, limit: 6 });
+}
+
+async function eduImageBlock(url) {
+  try {
+    const u = /pbs\.twimg\.com/.test(url) && !url.includes("?") ? `${url}?name=medium` : url;
+    const r = await fetch(u, { signal: AbortSignal.timeout(15000) });
+    const type = (r.headers.get("content-type") || "").split(";")[0];
+    if (!r.ok || !/^image\/(jpeg|png|webp|gif)$/.test(type)) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 3.5 * 1024 * 1024) return null;
+    return { type: "image", source: { type: "base64", media_type: type, data: buf.toString("base64") } };
+  } catch { return null; }
+}
+
+async function runEduDesign({ focus = "", topics = [], language = "", sizes = "portrait", brand = "", x_search = "true", trigger = "manual", schedule_id = null } = {}) {
+  if (eduRun) throw new Error("An edu design is already being made");
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
+  const id = genId();
+  eduRun = { id, started_at: new Date().toISOString(), queries: [] };
+  try {
+    const lang = language || "English";
+    const all = readTaskFile("designer-tasks.json");
+    const topicList = (Array.isArray(topics) ? topics : String(topics || "").split(",")).map(s => String(s).trim()).filter(Boolean);
+    let xPosts = [];
+    if (String(x_search) !== "false") {
+      try { xPosts = await eduXCandidates(topicList, edu.usedXIds(all)); }
+      catch (e) { console.error(`[EDU] X search failed: ${e.message}`); }
+    }
+    const content = [];
+    const ref = eduReferenceImage();
+    if (ref) content.push(ref);
+    let attached = 0;
+    for (let i = 0; i < xPosts.length && attached < edu.MAX_X_IMAGES; i++) {
+      const img = await eduImageBlock(xPosts[i].image);
+      if (img) { content.push({ type: "text", text: `[X ${i + 1}]` }, img); attached++; }
+    }
+    const today = new Date().toLocaleDateString("en-GB", { timeZone: TIMEZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    content.push({ type: "text", text: edu.userPrompt({ focus, history: edu.recentTopics(all), xPosts, today, hasReference: !!ref }) });
+    const params = {
+      model: edu.MODEL,
+      max_tokens: 16000,
+      system: edu.systemPrompt({ language: lang }) + brandKnowledgeBlock(brand || defaultBrandKey()) +
+        "\n\nUse the brand knowledge only for the tone of the caption. The image stays purely educational: no brand, product or logo in it.",
+      thinking: { type: "adaptive" },
+      tools: [
+        { type: "web_search_20260209", name: "web_search", max_uses: edu.MAX_SEARCHES },
+        { type: "web_fetch_20260209", name: "web_fetch", max_uses: edu.MAX_FETCHES },
+      ],
+      messages: [{ role: "user", content }],
+    };
+    let msg; const usage = { input_tokens: 0, output_tokens: 0 };
+    for (let turn = 0; turn < 5; turn++) {
+      const stream = anthropic.messages.stream(params);
+      stream.on("contentBlock", (b) => { const q = b?.type === "server_tool_use" && b.input?.query; if (q && eduRun.queries[eduRun.queries.length - 1] !== q) eduRun.queries.push(q); });
+      msg = await stream.finalMessage();
+      usage.input_tokens += msg.usage?.input_tokens || 0;
+      usage.output_tokens += msg.usage?.output_tokens || 0;
+      if (msg.stop_reason !== "pause_turn") break;
+      params.messages = [...params.messages, { role: "assistant", content: msg.content }];
+    }
+    if (msg.stop_reason === "refusal") throw new Error("Claude refused the request");
+    const d = edu.normalizeDesign(edu.extractJson(edu.textOf(msg.content)));
+
+    const hue = Number(loadBrand().primary_hue) || 264;
+    const variants = [];
+    for (const size of edu.sizesFor(sizes)) {
+      const file = `${id}-${size}.png`;
+      const r = await edu.render(d, path.join(EDU_MEDIA_DIR, file), { size, hue });
+      variants.push({ size, url: `/media/edu/${file}`, width: r.width, height: r.height, label: edu.SIZES[size].label });
+    }
+    const main = variants[0];
+    // Every X candidate shown today counts as seen, so tomorrow gets fresh ones.
+    const xIds = [...new Set([...xPosts.map(p => p.id), ...d.sources.map(s => (s.url.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/) || [])[1]).filter(Boolean)])];
+    const task = {
+      id, status: "completed", engine: "edu", autopilot: trigger === "schedule", trigger, schedule_id,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      design_type: main.size === "story" ? "your_story" : main.size === "square" ? "custom" : "instagram_post",
+      custom_width: main.size === "square" ? main.width : null, custom_height: main.size === "square" ? main.height : null,
+      description: d.title, topic: d.topic, format: d.format, items: d.items.length,
+      result_url: main.url, result_thumbnail: main.url, variants,
+      caption: d.caption, hashtags: d.hashtags, caption_full: edu.fullCaption(d),
+      sources: d.sources, why: d.why, x_ids: xIds, x_candidates: xPosts.length,
+      queries: eduRun.queries.slice(0, 20), model: edu.MODEL, usage, error: null,
+    };
+    const fresh = readTaskFile("designer-tasks.json");
+    fresh.unshift(task);
+    writeTaskFile("designer-tasks.json", fresh);
+    console.log(`[EDU] ${id} done: "${d.title}" (${d.format}, ${d.items.length} items, ${variants.length} size(s), ${xPosts.length} X candidates, ${eduRun.queries.length} searches)`);
+    return task;
+  } finally {
+    eduRun = null;
+  }
+}
+
+// Ready to post: the uncompressed PNG(s) as documents, then the caption on its own so it copies in one tap.
+async function deliverEduToTelegram(t, title) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  for (const [i, v] of (t.variants || []).entries()) {
+    const file = path.join(MEDIA_DIR, v.url.replace(/^\/media\//, ""));
+    if (!fs.existsSync(file)) continue;
+    const form = new FormData();
+    form.append("chat_id", String(TG_CHAT));
+    if (i === 0) {
+      form.append("caption", `🎨 <b>${escTg(title || "Edu design")}</b>\n${escTg(t.description)} · ${escTg(t.format)} · ${t.items} items${t.why ? `\n<i>${escTg(t.why)}</i>` : ""}`.slice(0, 1024));
+      form.append("parse_mode", "HTML");
+    }
+    form.append("document", new Blob([fs.readFileSync(file)], { type: "image/png" }), `${t.topic || "edu"}-${v.label.replace(":", "x")}.png`.replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-"));
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendDocument`, { method: "POST", body: form });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) throw new Error(d.description || "sendDocument failed");
+  }
+  if (t.caption_full) {
+    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: TG_CHAT, text: t.caption_full.slice(0, 4000), disable_web_page_preview: true }),
+    });
+  }
+}
+
+async function executeEduDesignerSchedule(schedule) {
+  const p = schedule.payload || {};
+  let taskId = null;
+  try {
+    const t = await runEduDesign({ ...p, trigger: "schedule", schedule_id: schedule.id });
+    taskId = t.id;
+    if (p.notify !== "false") await deliverEduToTelegram(t, schedule.name).catch(e => console.error(`[EDU] Telegram delivery failed: ${e.message}`));
+  } catch (e) {
+    console.error(`[EDU] Schedule failed: ${e.message}`);
+    sendTelegram(`🎨 ${escTg(schedule.name)}: failed`, escTg(e.message), "danger");
+  }
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) {
+    schedules[idx].last_run = new Date().toISOString();
+    schedules[idx].last_task_id = taskId;
+    writeTaskFile("scheduled-tasks.json", schedules);
+  }
+}
+
+app.get("/designer/edu/status", (_req, res) => {
+  const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.agent === "edu_designer") || null;
+  res.json({ running: eduRun, schedule: sched && { id: sched.id, name: sched.name, enabled: sched.enabled, hour: sched.hour, minute: sched.minute, days: sched.days, last_run: sched.last_run || null } });
+});
+
+app.post("/designer/edu/run", (req, res) => {
+  if (eduRun) return res.status(409).json({ error: "Already running", running: eduRun });
+  const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.agent === "edu_designer");
+  const p = { ...(sched?.payload || {}), ...(req.body || {}) };
+  runEduDesign({ ...p, trigger: "manual" })
+    .then(t => { if (p.notify !== "false" && req.body?.notify !== "false") return deliverEduToTelegram(t, "Edu design"); })
+    .catch(e => console.error(`[EDU] Manual run failed: ${e.message}`));
+  res.json({ ok: true, started: true });
+});
 
 app.get("/growth/reports", (_req, res) => {
   const schedules = readTaskFile("scheduled-tasks.json");

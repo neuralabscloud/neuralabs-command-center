@@ -364,7 +364,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 
     <!-- TASK GALLERY -->
     <section class="fade-up delay-3">
-      <div class="section-header">Design Tasks</div>
+      <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <span>Design Tasks</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span id="edu-status" style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)"></span>
+          <button class="task-btn" id="edu-run-btn" onclick="runEduNow()" title="Research a popular educational post and design it now (about 2 to 4 minutes)">Educational post now</button>
+        </span>
+      </div>
       <div class="tasks-grid" id="tasks-grid">
         <div class="empty-state">No design tasks yet. Create one above.</div>
       </div>
@@ -391,6 +397,7 @@ async function loadTasks() {
     const tasks = await res.json();
     allTasks = tasks;
     renderTasks(tasks);
+    loadEduStatus();
   } catch(e) {
     document.getElementById('tasks-grid').innerHTML = '<div class="empty-state">Could not connect to Designer API (port 3004)</div>';
   }
@@ -436,13 +443,14 @@ function renderTasks(tasks) {
           <span class="task-time">${time}</span>
         </div>
         <div class="task-actions">
-          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${t.result_url.startsWith('/generated') ? 'download' : ''}>${['playwright','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open design' : 'Open in Canva'}</a>` : ''}
+          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${/^\/(generated|media)\//.test(t.result_url) ? 'download' : ''}>${['playwright','edu','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open design' : 'Open in Canva'}</a>` : ''}
           ${t.result_url && !t.result_url.includes('canva.com') && ['nanobanana','higgsfield','enhance'].includes(t.engine) ? `
             <button class="task-btn" onclick="useAsEditSource('${t.id}')" title="Rework this image with a prompt">Edit</button>
             <button class="task-btn" onclick="enhanceTask('${t.id}', 'rmbg')" title="Cut out the background">Cut out</button>
             <button class="task-btn" onclick="enhanceTask('${t.id}', 'upscale')" title="Upscale 2x">Upscale</button>` : ''}
           <button class="task-btn danger" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
         </div>
+        ${t.engine === 'edu' ? eduExtras(t) : ''}
         ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${t.error}</div>` : ''}
       </div>
     </div>`;
@@ -675,6 +683,58 @@ async function submitTask() {
     btn.disabled = false;
     setTimeout(() => { status.textContent = ''; }, 3000);
   }
+}
+
+// ── Educational posts (edu autopilot) ──
+function escH(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function eduExtras(t) {
+  const variants = (t.variants || []).map(v => `<a class="task-btn" href="${escH(v.url)}" download title="${v.width}x${v.height}">${escH(v.label || v.size)}</a>`).join('');
+  const sources = (t.sources || []).slice(0, 4).map(s => `<a href="${escH(s.url)}" target="_blank" rel="noopener" style="color:var(--text-dim)">${escH(s.platform || 'source')}</a>`).join(' · ');
+  return `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);line-height:1.5">
+      ${t.topic ? `<div><b style="color:var(--text)">${escH(t.topic)}</b> · ${escH(t.format || '')} · ${t.items || 0} items</div>` : ''}
+      ${sources ? `<div>Inspired by: ${sources}</div>` : ''}
+    </div>
+    ${t.caption_full ? `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);white-space:pre-wrap;max-height:96px;overflow:auto;background:var(--input, hsl(217 32% 15%));border-radius:6px;padding:6px 8px">${escH(t.caption_full)}</div>` : ''}
+    <div class="task-actions" style="margin-top:6px">
+      ${variants}
+      ${t.caption_full ? `<button class="task-btn" onclick="copyEduCaption('${t.id}', this)">Copy caption</button>` : ''}
+    </div>`;
+}
+
+async function copyEduCaption(id, btn) {
+  const t = allTasks.find(x => x.id === id);
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t.caption_full); btn.textContent = 'Copied'; }
+  catch { btn.textContent = 'Copy failed'; }
+  setTimeout(() => { btn.textContent = 'Copy caption'; }, 1500);
+}
+
+let eduPoll = null;
+async function loadEduStatus() {
+  try {
+    const d = await (await fetch('/designer/edu/status')).json();
+    const btn = document.getElementById('edu-run-btn');
+    const st = document.getElementById('edu-status');
+    if (d.running) {
+      btn.disabled = true;
+      const q = d.running.queries || [];
+      st.textContent = `Researching${q.length ? ': ' + q[q.length - 1] : '...'}`;
+      if (!eduPoll) eduPoll = setInterval(loadEduStatus, 5000);
+    } else {
+      btn.disabled = false;
+      st.textContent = d.schedule ? (d.schedule.enabled ? `Daily at ${String(d.schedule.hour).padStart(2, '0')}:${String(d.schedule.minute || 0).padStart(2, '0')} UTC` : 'Daily schedule paused') : '';
+      if (eduPoll) { clearInterval(eduPoll); eduPoll = null; loadTasks(); }
+    }
+  } catch {}
+}
+
+async function runEduNow() {
+  const btn = document.getElementById('edu-run-btn');
+  btn.disabled = true;
+  const r = await fetch('/designer/edu/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Could not start'); }
+  loadEduStatus();
 }
 
 async function deleteTask(id) {

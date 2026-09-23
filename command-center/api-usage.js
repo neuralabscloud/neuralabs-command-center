@@ -73,6 +73,7 @@ const als = new AsyncLocalStorage();
 // Function names and files on the call stack that identify a feature.
 const STACK_FEATURES = [
   [/\bat (?:async )?runGrowthReport\b/, "Growth Marketeer"],
+  [/\bat (?:async )?(?:runEduDesign|executeEduDesignerSchedule|deliverEduToTelegram)\b/, "Designer (edu autopilot)"],
   [/\bat (?:async )?(?:createUgcAutopilotTask|finishUgcVideo|executeUgcAutopilotSchedule)\b/, "UGC Autopilot"],
   [/\bat (?:async )?executeAdsOptimizerSchedule\b/, "Ads Optimizer"],
   [/\bat (?:async )?processDesignerTasks\b/, "Designer"],

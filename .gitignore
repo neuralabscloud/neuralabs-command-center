@@ -74,3 +74,5 @@ command-center/data/brand-knowledge/
 command-center/data/growth-reports.json
 command-center/data/api-usage.json
 command-center/data/api-costs-config.json
+# Edu designer: reference image(s) for the type of content (customer-provided)
+command-center/data/edu-reference/

@@ -333,6 +333,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="opusclip">OpusClip Clipper</option>
               <option value="ugc_autopilot">UGC Video (Marketeer → Content Creator)</option>
               <option value="growth_marketeer">Growth Marketeer (weekly research + ideas)</option>
+              <option value="edu_designer">Designer: educational post (daily, ready to post)</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -557,7 +558,7 @@ async function checkCanvaStatus() {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -567,6 +568,7 @@ const AGENT_STYLES = {
   opusclip: 'color:hsl(0 72% 51%)',
   ugc_autopilot: 'color:hsl(180 70% 45%)',
   growth_marketeer: 'color:hsl(340 80% 55%)',
+  edu_designer: 'color:hsl(38 92% 55%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -575,6 +577,7 @@ const AGENT_DESCRIPTIONS = {
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
   ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
+  edu_designer: 'Scouts X, Instagram, TikTok and the web for educational trading and crypto posts (term lists, cheat sheets, step by step), extracts the lesson and designs it in your house style without any logos. Delivers the image plus a ready-to-post caption on the Designer page and via Telegram.',
   growth_marketeer: 'Acts as your growth marketer: researches your product online, competitors, gaps in the market and buzz opportunities, then delivers a report with concrete growth ideas (newsletter, ads, UGC, community actions and more) on the Marketing page.',
 };
 
@@ -604,6 +607,10 @@ function buildScheduleSummary(s) {
     case 'ugc_autopilot': {
       const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Main product from brand knowledge';
       return `${focus} · avatar: ${p.avatar_id ? escHtml(p.avatar_id) : 'rotating'} · ${p.speak_model || 'kling'} · captions ${p.captions === 'false' ? 'off' : 'on'}`;
+    }
+    case 'edu_designer': {
+      const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Trading & crypto education';
+      return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${p.language || 'English'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
     }
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
@@ -794,6 +801,29 @@ const PAYLOAD_FIELDS = {
         </select></div>
       <div><label class="sched-label">Topic keywords (comma-separated, optional)</label>
         <input class="sched-input" id="sp-topic_keywords" placeholder="hook, key takeaway"></div>
+    </div>`,
+  edu_designer: `
+    <div style="background:hsla(38 92% 55%/0.06);border:1px solid hsla(38 92% 55%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">What this agent does:</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li>Searches X (API) plus Instagram, TikTok, YouTube and the web for popular educational posts (terms, cheat sheets, step by step)</li>
+        <li>Extracts the lesson from the image, video or text, checks it and rewrites it in its own words</li>
+        <li>Renders it pixel-perfect in your house style: no logos, no handles, only the educational info</li>
+        <li>Writes a caption with hashtags; image + caption land on the <b>Designer</b> page and in Telegram</li>
+        <li>Reference image for the type of content: first image in <code>data/edu-reference/</code></li>
+      </ul>
+    </div>
+    <div><label class="sched-label">Focus (optional)</label>
+      <textarea class="sched-input" id="sp-focus" rows="2" style="width:100%;resize:vertical" placeholder="e.g. 'beginner friendly, crypto and forex trading'. Leave empty = varied trading and crypto education"></textarea></div>
+    <div style="margin-top:8px"><label class="sched-label">Topics for the X search (comma-separated, optional)</label>
+      <input class="sched-input" id="sp-topics" style="width:100%" placeholder="trading terms, chart patterns, risk management"></div>
+    <div class="sched-form-row" style="margin-top:8px">
+      <div><label class="sched-label">Sizes</label>
+        <select class="sched-select" id="sp-sizes"><option value="portrait+story">Feed 4:5 + Story 9:16</option><option value="portrait">Feed 4:5</option><option value="square">Square 1:1</option><option value="portrait+square+story">All three</option></select></div>
+      <div><label class="sched-label">Language</label>
+        <select class="sched-select" id="sp-language"><option value="English">English</option><option value="Dutch">Dutch</option><option value="German">German</option><option value="Spanish">Spanish</option><option value="French">French</option></select></div>
+      <div><label class="sched-label">Notify via Telegram</label>
+        <select class="sched-select" id="sp-notify"><option value="true">Yes</option><option value="false">No</option></select></div>
     </div>`,
   growth_marketeer: `
     <div style="background:hsla(340 80% 55%/0.06);border:1px solid hsla(340 80% 55%/0.15);border-radius:8px;padding:12px;margin-bottom:10px">

@@ -108,6 +108,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/canva-oauth.json' \
         --exclude='data/ads-rules.json' \
         --exclude='data/growth-reports.json' \
+        --exclude='data/edu-reference/' \
         --exclude='data/api-usage.json' \
         --exclude='data/api-costs-config.json' \
         --exclude='data/twitter-usage.json' \
