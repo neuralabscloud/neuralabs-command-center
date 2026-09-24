@@ -116,6 +116,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/generated-images/' \
         --exclude='data/ugc-avatars/' \
         --exclude='data/ai-video-uploads/' \
+        --exclude='data/youtube-cookies.txt' \
         --exclude='data/ref-images/' \
         --exclude='data/voiceovers/' \
         --exclude='data/video-outputs/' \
@@ -164,6 +165,22 @@ fi
 if ! command -v convert &>/dev/null; then
   info "Installing ImageMagick (needed for Designer logo overlay)..."
   apt-get install -y -q imagemagick 2>&1 || warn "Failed to install ImageMagick — Designer logo overlay will be skipped until installed."
+fi
+
+# ── FFMPEG + YT-DLP (backfill; yt-dlp must stay current or YouTube breaks) ──
+if ! command -v ffmpeg &>/dev/null; then
+  info "Installing ffmpeg..."
+  apt-get install -y -q ffmpeg 2>&1 || warn "Failed to install ffmpeg — video processing features may not work until installed."
+fi
+if ! command -v yt-dlp &>/dev/null; then
+  info "Installing yt-dlp (fetch source videos from a link in Video Tools)..."
+  if timeout 90 curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp; then
+    ok "yt-dlp installed"
+  else
+    warn "yt-dlp install failed — video links in Video Tools won't work (uploads still do)."
+  fi
+else
+  timeout 90 yt-dlp -U 2>&1 | tail -1 || warn "yt-dlp update failed"
 fi
 
 # ── PRUNE OBSOLETE CRON ENTRIES (older installs) ──

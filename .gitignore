@@ -27,6 +27,7 @@ command-center/data/generated-images/*
 # AI video uploads
 command-center/data/ai-video-uploads/*
 !command-center/data/ai-video-uploads/.gitkeep
+command-center/data/youtube-cookies.txt
 
 # Video projects (user data)
 command-center/data/video-projects/*

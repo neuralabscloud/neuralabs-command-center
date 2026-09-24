@@ -2124,11 +2124,92 @@ const VIDEO_TOOLS = {
   },
 };
 
-app.post("/video/tools", aiVideoUpload.fields([{ name: "video", maxCount: 1 }, { name: "audio", maxCount: 1 }]), (req, res) => {
+// Source videos can also come from a link (YouTube, X, Vimeo, a direct .mp4 …):
+// the server fetches them with yt-dlp. YouTube asks datacenter IPs to sign in,
+// so an optional cookies.txt (Netscape format) is passed along when present.
+const YTDLP_COOKIES = path.join(__dirname, "data", "youtube-cookies.txt");
+const VIDEO_UPLOAD_MAX_MB = 200;
+function ytDlpBin() {
+  for (const p of [process.env.YTDLP_PATH, "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp", path.join(process.env.HOME || "/root", ".local/bin/yt-dlp")]) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return "";
+}
+function downloadLinkedVideo(link, baseName) {
+  return new Promise((resolve, reject) => {
+    const bin = ytDlpBin();
+    if (!bin) return reject(new Error("yt-dlp is not installed on the server (run update.sh), so links can't be fetched. Upload the file instead."));
+    const dir = path.join(__dirname, "data", "ai-video-uploads");
+    fs.mkdirSync(dir, { recursive: true });
+    const args = [
+      "--no-playlist", "--no-progress", "--restrict-filenames",
+      "--js-runtimes", `node:${process.execPath}`,
+      "-f", "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b[height<=1080]/b",
+      "--merge-output-format", "mp4",
+      "--max-filesize", `${VIDEO_UPLOAD_MAX_MB}M`,
+      "-o", path.join(dir, `${baseName}.%(ext)s`),
+      "--print", "after_move:filepath",
+    ];
+    if (fs.existsSync(YTDLP_COOKIES)) args.push("--cookies", YTDLP_COOKIES);
+    args.push("--", link);
+    execFile(bin, args, { timeout: 900000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+      const out = String(stdout || "").trim().split("\n").filter(Boolean).pop() || "";
+      if (!err && out && fs.existsSync(out)) return resolve(out);
+      const msg = String(stderr || (err && err.message) || "");
+      if (/confirm you.?re not a bot|Sign in to confirm/i.test(msg)) {
+        return reject(new Error(fs.existsSync(YTDLP_COOKIES)
+          ? "YouTube still blocks the server download: the YouTube cookies have probably expired. Upload a fresh cookies.txt in Video Tools, or upload the video file."
+          : "YouTube blocks downloads from this server (bot check). Add a YouTube cookies.txt in Video Tools, or upload the video file."));
+      }
+      if (/larger than max-filesize|File is larger/i.test(msg) || (!err && !out)) {
+        return reject(new Error(`The linked video is larger than ${VIDEO_UPLOAD_MAX_MB} MB, even at 1080p. Use a shorter video.`));
+      }
+      const line = msg.split("\n").map(l => l.trim()).filter(l => /^ERROR/.test(l)).pop() || msg.trim().split("\n").pop() || "download failed";
+      reject(new Error("Could not fetch the video from the link: " + line.replace(/^ERROR:\s*/, "").slice(0, 250)));
+    });
+  });
+}
+
+app.get("/video/tools/youtube-cookies", (_req, res) => {
+  let updated_at = null;
+  try { updated_at = fs.statSync(YTDLP_COOKIES).mtime.toISOString(); } catch {}
+  res.json({ present: !!updated_at, updated_at, ytdlp: !!ytDlpBin() });
+});
+app.post("/video/tools/youtube-cookies", express.text({ type: "*/*", limit: "2mb" }), (req, res) => {
+  const text = String(req.body || "");
+  if (!/\t/.test(text) || !/youtube\.com|google\.com/i.test(text)) {
+    return res.status(400).json({ error: "This doesn't look like a cookies.txt export (Netscape format) with YouTube cookies." });
+  }
+  fs.writeFileSync(YTDLP_COOKIES, text, { mode: 0o600 });
+  res.json({ ok: true });
+});
+app.delete("/video/tools/youtube-cookies", (_req, res) => {
+  try { fs.unlinkSync(YTDLP_COOKIES); } catch {}
+  res.json({ ok: true });
+});
+
+// Multer throws on an oversized file, which Express turned into a bare HTML 500.
+const videoToolsUpload = (req, res, next) =>
+  aiVideoUpload.fields([{ name: "video", maxCount: 1 }, { name: "audio", maxCount: 1 }])(req, res, (err) => {
+    if (!err) return next();
+    for (const list of Object.values(req.files || {})) for (const f of list) { try { fs.unlinkSync(f.path); } catch {} }
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `File is too large (max ${VIDEO_UPLOAD_MAX_MB} MB). Compress it, or paste a link instead.` });
+    }
+    res.status(400).json({ error: "Upload failed: " + err.message });
+  });
+
+app.post("/video/tools", videoToolsUpload, (req, res) => {
   const b = req.body || {};
   const cfg = VIDEO_TOOLS[b.tool];
   if (!cfg) return res.status(400).json({ error: "Unknown tool" });
   const up = req.files || {};
+  const link = String(b.source_link || "").trim();
+  if (link && !/^https?:\/\/\S+$/i.test(link)) return res.status(400).json({ error: "The video link must start with http:// or https://" });
+  if (link && !(up.video && up.video[0]) && !ytDlpBin()) {
+    for (const list of Object.values(up)) for (const f of list) { try { fs.unlinkSync(f.path); } catch {} }
+    return res.status(400).json({ error: "yt-dlp is not installed on the server (run update.sh), so links can't be fetched. Upload the file instead." });
+  }
   const cleanup = [];
   const pick = (field, urlValue) => {
     if (up[field] && up[field][0]) { cleanup.push(up[field][0].path); return up[field][0].path; }
@@ -2140,6 +2221,9 @@ app.post("/video/tools", aiVideoUpload.fields([{ name: "video", maxCount: 1 }, {
     video: pick("video", b.video_url),
     audio: pick("audio", b.audio_url || (b.voiceover_id ? `/voiceovers/${String(b.voiceover_id).replace(/[^\w.-]/g, "")}.mp3` : "")),
   };
+  // A linked video is fetched after the response; the placeholder keeps validate() honest.
+  const fromLink = !files.video && !!link;
+  if (fromLink) files.video = link;
   if (!files.video) {
     for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
     return res.status(400).json({ error: "A source video is required." });
@@ -2167,6 +2251,11 @@ app.post("/video/tools", aiVideoUpload.fields([{ name: "video", maxCount: 1 }, {
   (async () => {
     let update;
     try {
+      if (fromLink) {
+        console.log(`[AI-VIDEO] ${cfg.label} task ${task.id}: fetching source from link`);
+        input.video = await downloadLinkedVideo(link, `link-${task.id}`);
+        cleanup.push(input.video);
+      }
       const result = await runInfshApp(cfg.app, input, { timeout: 1800000 });
       const url = infshOutputUrl(result, ["video", "output_video", "result"]);
       if (!url) throw new Error(result?.output?.description || result?.error || result?.status_text || "no video returned");
@@ -2181,6 +2270,10 @@ app.post("/video/tools", aiVideoUpload.fields([{ name: "video", maxCount: 1 }, {
       console.error(`[AI-VIDEO] ${cfg.label} failed:`, String(e.message).slice(0, 200));
     }
     for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
+    if (fromLink) { // leftovers of an aborted download (.part, separate audio/video streams)
+      const dir = path.join(__dirname, "data", "ai-video-uploads");
+      for (const f of fs.readdirSync(dir)) if (f.startsWith(`link-${task.id}`)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
+    }
     const all = readTaskFile("ai-video-tasks.json");
     const idx = all.findIndex(t => t.id === task.id);
     if (idx === -1) return;

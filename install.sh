@@ -195,6 +195,20 @@ if ! command -v convert &>/dev/null; then
 fi
 ok "ImageMagick installed"
 
+# ffmpeg + yt-dlp (Video Tools: fetch a source video from a link, merge streams, captions)
+if ! command -v ffmpeg &>/dev/null; then
+  info "Installing ffmpeg..."
+  apt-get install -y -q ffmpeg || warn "Failed to install ffmpeg — video processing features may not work until installed."
+fi
+if ! command -v yt-dlp &>/dev/null; then
+  info "Installing yt-dlp..."
+  if timeout 90 curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp; then
+    ok "yt-dlp installed"
+  else
+    warn "yt-dlp install failed — video links in Video Tools won't work (uploads still do)."
+  fi
+fi
+
 # Claude Code (optional — timeout after 60s)
 info "Installing Claude Code..."
 if timeout 60 npm install -g @anthropic-ai/claude-code 2>&1; then

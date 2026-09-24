@@ -50,6 +50,8 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .form-select:focus, .form-input:focus, .form-textarea:focus { border-color: var(--teal); }
 .form-textarea { width: 100%; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 13px; font-family: var(--font-body); outline: none; resize: vertical; min-height: 100px; transition: border-color 0.2s; }
 .btn-submit { padding: 10px 24px; background: linear-gradient(135deg, var(--teal), hsl(200 60% 40%)); border: none; border-radius: 8px; color: white; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.2s; font-family: var(--font-body); }
+.btn-mini { display: inline-block; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-body); cursor: pointer; }
+.btn-mini:hover { border-color: var(--teal); }
 .btn-submit:hover { box-shadow: 0 0 24px hsla(180 70% 45% / 0.3); transform: translateY(-1px); }
 .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -374,8 +376,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </select>
           </div>
           <div>
-            <div class="form-label">Source video (upload)</div>
+            <div class="form-label">Source video (upload, max 200 MB)</div>
             <input type="file" id="vt-video" accept="video/*" style="font-size:12px;" />
+            <div class="form-label" style="margin-top:10px;">…or a link</div>
+            <input class="form-input" id="vt-link" placeholder="YouTube, X or direct .mp4 link" oninput="syncVideoLink()" />
           </div>
         </div>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-top:16px;">
@@ -409,6 +413,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <span class="form-status" id="vt-status"></span>
         </div>
         <div style="font-size:10px;color:var(--text-dim);margin-top:8px;">Results appear in the AI video list in the Editor.</div>
+        <div id="vt-cookies" style="display:none;font-size:11px;color:var(--text-dim);margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;">
+          <span id="vt-cookies-state"></span>
+          <label class="btn-mini" style="cursor:pointer;margin-left:8px;font-size:11px;padding:3px 10px;">Upload cookies.txt<input type="file" id="vt-cookies-file" accept=".txt,text/plain" style="display:none;" onchange="uploadYtCookies(this)" /></label>
+          <button class="btn-mini" id="vt-cookies-del" style="display:none;margin-left:4px;font-size:11px;padding:3px 10px;" onclick="deleteYtCookies()">Remove</button>
+          <div style="margin-top:6px;">YouTube blocks downloads from servers unless you're signed in. Export your YouTube cookies with a browser extension such as "Get cookies.txt LOCALLY" (Netscape format, ideally from a secondary Google account) and upload the file here.</div>
+        </div>
       </div>
     </section>
 
@@ -1203,24 +1213,63 @@ async function loadVoiceoverOptions() {
 async function submitVideoTool() {
   const st = document.getElementById('vt-status');
   const video = document.getElementById('vt-video').files[0];
-  if (!video) { st.textContent = 'Pick a source video'; return; }
+  const link = document.getElementById('vt-link').value.trim();
+  if (!video && !link) { st.textContent = 'Pick a source video or paste a link'; return; }
+  if (video && video.size > 200 * 1024 * 1024) {
+    st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 200 MB. Compress it or use a link.`; return;
+  }
   const fd = new FormData();
   fd.append('tool', document.getElementById('vt-tool').value);
-  fd.append('video', video);
+  if (video) fd.append('video', video);
+  else fd.append('source_link', link);
   fd.append('mode', document.getElementById('vt-mode').value);
   fd.append('output_language', document.getElementById('vt-language').value.trim());
   fd.append('scale', document.getElementById('vt-scale').value);
   const audio = document.getElementById('vt-audio').files[0];
   if (audio) fd.append('audio', audio);
   else if (document.getElementById('vt-voiceover').value) fd.append('voiceover_id', document.getElementById('vt-voiceover').value);
-  st.textContent = 'Uploading…';
+  st.textContent = video ? 'Uploading…' : 'Starting…';
   try {
     const res = await fetch('/video/tools', { method: 'POST', body: fd });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.status); }
-    st.textContent = 'Running — the result appears in the Editor video list.';
-  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 100); }
-  setTimeout(() => { st.textContent = ''; }, 6000);
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || (res.status === 413 ? 'File is too large. Compress it or use a link.' : 'HTTP ' + res.status));
+    }
+    st.textContent = video ? 'Running — the result appears in the Editor video list.'
+      : 'Fetching the video from the link, then running — the result (or the error) appears in the Editor video list.';
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 200); }
+  setTimeout(() => { st.textContent = ''; }, 10000);
 }
+
+let ytCookiesPresent = false;
+function syncVideoLink() {
+  const link = document.getElementById('vt-link').value;
+  document.getElementById('vt-cookies').style.display = (/youtu\.?be/i.test(link) || ytCookiesPresent) ? '' : 'none';
+}
+async function loadYtCookies() {
+  try {
+    const d = await (await fetch('/video/tools/youtube-cookies')).json();
+    ytCookiesPresent = d.present;
+    document.getElementById('vt-cookies-state').textContent = !d.ytdlp
+      ? 'Links are unavailable: yt-dlp is not installed on the server (run update.sh).'
+      : d.present ? `YouTube cookies: set (${new Date(d.updated_at).toLocaleDateString()})` : 'YouTube cookies: not set';
+    document.getElementById('vt-cookies-del').style.display = d.present ? '' : 'none';
+    syncVideoLink();
+  } catch {}
+}
+async function uploadYtCookies(input) {
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  const st = document.getElementById('vt-cookies-state');
+  const res = await fetch('/video/tools/youtube-cookies', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: await f.text() });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); st.textContent = 'Failed: ' + (e.error || res.status); return; }
+  loadYtCookies();
+}
+async function deleteYtCookies() {
+  await fetch('/video/tools/youtube-cookies', { method: 'DELETE' });
+  loadYtCookies();
+}
+loadYtCookies();
 
 setUgcMode('clip');
 loadTasks();
