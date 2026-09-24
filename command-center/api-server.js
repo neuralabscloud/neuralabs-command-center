@@ -756,8 +756,14 @@ function runInfshApp(appId, inputObj, opts) {
       try { fs.unlinkSync(tmpInput); } catch {}
       apiUsage.meterInfshOutput(stdout, appId, usageFeature);
       const clean = (t) => String(t || "").replace(/\x1b\[[0-9;]*m/g, "").trim();
-      if (err) return reject(new Error(clean(stderr) || err.message));
       const stripped = clean(stdout);
+      if (err) {
+        // A failed task also exits non-zero, but its real reason is in the JSON on
+        // stdout; stderr then only holds progress lines such as "Uploading x.mp4...".
+        let taskError = "";
+        try { const j = JSON.parse(stripped.slice(stripped.indexOf("{"))); taskError = j.error || (j.status_text === "failed" ? "task failed" : ""); } catch {}
+        return reject(new Error(taskError || clean(stderr) || err.message));
+      }
       const jsonStart = stripped.indexOf("{");
       if (jsonStart < 0) return reject(new Error(stripped.replace(/^inference\.sh\s+v[\d.]+\s*/i, "").slice(0, 300) || "no JSON in output"));
       try { resolve(JSON.parse(stripped.slice(jsonStart))); }
