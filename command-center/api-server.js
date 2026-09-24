@@ -788,7 +788,8 @@ async function downloadTo(url, outFile) {
   const r = await fetch(url);
   if (!r.ok) throw new Error("download failed: HTTP " + r.status);
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
-  fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+  // Streamed: a translated source video can be close to 2 GB.
+  await require("stream/promises").pipeline(require("stream").Readable.fromWeb(r.body), fs.createWriteStream(outFile));
   return outFile;
 }
 
@@ -1626,13 +1627,14 @@ app.delete("/video/tasks/:id", (req, res) => {
 });
 
 // ── AI VIDEO GENERATION (inference.sh) ────────────────
+const VIDEO_UPLOAD_MAX_MB = 1999; // Video Tools source videos (upload and link); nginx body limit must allow it too
 const aiVideoUpload = require("multer")({
   storage: require("multer").diskStorage({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
     filename: (_req, file, cb) =>
       cb(null, Date.now() + "-" + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname || ".png")),
   }),
-  limits: { fileSize: 200 * 1024 * 1024 }, // a source video weighs a lot more than a reference image
+  limits: { fileSize: VIDEO_UPLOAD_MAX_MB * 1024 * 1024 }, // a source video weighs a lot more than a reference image
 });
 
 // Continuing an existing clip: which inference.sh apps accept a source video,
@@ -2128,7 +2130,6 @@ const VIDEO_TOOLS = {
 // the server fetches them with yt-dlp. YouTube asks datacenter IPs to sign in,
 // so an optional cookies.txt (Netscape format) is passed along when present.
 const YTDLP_COOKIES = path.join(__dirname, "data", "youtube-cookies.txt");
-const VIDEO_UPLOAD_MAX_MB = 200;
 function ytDlpBin() {
   for (const p of [process.env.YTDLP_PATH, "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp", path.join(process.env.HOME || "/root", ".local/bin/yt-dlp")]) {
     if (p && fs.existsSync(p)) return p;

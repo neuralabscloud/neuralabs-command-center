@@ -376,7 +376,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             </select>
           </div>
           <div>
-            <div class="form-label">Source video (upload, max 200 MB)</div>
+            <div class="form-label">Source video (upload, max 1999 MB)</div>
             <input type="file" id="vt-video" accept="video/*" style="font-size:12px;" />
             <div class="form-label" style="margin-top:10px;">…or a link</div>
             <input class="form-input" id="vt-link" placeholder="YouTube, X or direct .mp4 link" oninput="syncVideoLink()" />
@@ -1215,8 +1215,8 @@ async function submitVideoTool() {
   const video = document.getElementById('vt-video').files[0];
   const link = document.getElementById('vt-link').value.trim();
   if (!video && !link) { st.textContent = 'Pick a source video or paste a link'; return; }
-  if (video && video.size > 200 * 1024 * 1024) {
-    st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 200 MB. Compress it or use a link.`; return;
+  if (video && video.size > 1999 * 1024 * 1024) {
+    st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 1999 MB. Compress it or use a link.`; return;
   }
   const fd = new FormData();
   fd.append('tool', document.getElementById('vt-tool').value);
