@@ -2174,7 +2174,7 @@ async function elevenDubVideo(input, task) {
 
 const VIDEO_TOOLS = {
   dub: {
-    label: "Dub", run: elevenDubVideo,
+    app: "elevenlabs/dubbing", label: "Dub", run: elevenDubVideo,
     build: (b, files) => ({
       video: files.video,
       target_lang: String(b.target_lang || "").trim().toLowerCase(),
