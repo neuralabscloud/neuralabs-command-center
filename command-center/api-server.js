@@ -790,8 +790,8 @@ function infshOutputUrl(result, keys) {
 }
 
 // Download a remote file to disk (generator URLs expire).
-async function downloadTo(url, outFile) {
-  const r = await fetch(url);
+async function downloadTo(url, outFile, headers) {
+  const r = await fetch(url, headers ? { headers } : undefined);
   if (!r.ok) throw new Error("download failed: HTTP " + r.status);
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   // Streamed: a translated source video can be close to 2 GB.
@@ -2101,7 +2101,88 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
 const VIDEO_OUTPUT_DIR = path.join(__dirname, "data", "video-outputs");
 fs.mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true });
 app.use("/video-outputs", express.static(VIDEO_OUTPUT_DIR));
+// ElevenLabs dubbing for voice-only videos (no lip-sync): only the audio track is
+// sent (a few MB even for a 2 GB video), then the dubbed track goes back under
+// the original picture. Background music/effects are kept by ElevenLabs.
+const DUB_LANGUAGES = ["en", "nl", "de", "fr", "es", "it", "pt", "pl", "sv", "da", "no", "fi", "cs", "sk", "ro", "hu", "bg", "hr", "el", "uk", "ru", "tr", "ar", "hi", "ta", "id", "ms", "fil", "vi", "zh", "ja", "ko"];
+function execFileP(bin, args, opts) {
+  return new Promise((resolve, reject) => execFile(bin, args, { maxBuffer: 1024 * 1024 * 20, ...(opts || {}) }, (err, stdout, stderr) =>
+    err ? reject(new Error(String(stderr || err.message).trim().split("\n").slice(-3).join(" ").slice(0, 300))) : resolve(String(stdout))));
+}
+async function elevenDubVideo(input, task) {
+  const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+  if (!key) throw new Error("No ElevenLabs API key configured (Settings → API Integrations).");
+  const src = input.video;
+  const work = path.join(__dirname, "data", "ai-video-uploads", `dub-${task.id}`);
+  fs.mkdirSync(work, { recursive: true });
+  try {
+    const probe = await execFileP("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", src]);
+    const hasVideo = /video/.test(probe);
+    if (!/audio/.test(probe)) throw new Error("The source has no audio track, so there is nothing to dub.");
+
+    const audioIn = path.join(work, "source.m4a");
+    await execFileP("ffmpeg", ["-y", "-v", "error", "-i", src, "-vn", "-ac", "2", "-c:a", "aac", "-b:a", "192k", audioIn], { timeout: 1800000 });
+
+    // Plans below Starter must request a watermark. That one is visual, and only
+    // the audio is sent, so it can never end up in the result.
+    const createDub = async (watermark) => {
+      const fd = new FormData();
+      fd.append("file", await fs.openAsBlob(audioIn, { type: "audio/mp4" }), "source.m4a");
+      fd.append("target_lang", input.target_lang);
+      fd.append("source_lang", input.source_lang || "auto");
+      fd.append("num_speakers", "0");
+      fd.append("watermark", watermark ? "true" : "false");
+      fd.append("drop_background_audio", input.drop_background_audio ? "true" : "false");
+      fd.append("name", `Command Center ${task.id}`);
+      const r = await fetch("https://api.elevenlabs.io/v1/dubbing", { method: "POST", headers: { "xi-api-key": key }, body: fd });
+      return [r, await r.json().catch(() => ({}))];
+    };
+    let [cr, cj] = await createDub(false);
+    if (!cr.ok && /watermark/i.test(JSON.stringify(cj.detail || ""))) [cr, cj] = await createDub(true);
+    if (!cr.ok || !cj.dubbing_id) {
+      const d = cj.detail;
+      throw new Error("ElevenLabs: " + String((d && (d.message || (Array.isArray(d) ? d.map(x => x.msg).join("; ") : d))) || `HTTP ${cr.status}`).slice(0, 300));
+    }
+    console.log(`[AI-VIDEO] Dub task ${task.id}: ElevenLabs dubbing ${cj.dubbing_id} (expected ~${Math.round(cj.expected_duration_sec || 0)}s)`);
+
+    const deadline = Date.now() + 2 * 3600 * 1000;
+    for (;;) {
+      await new Promise(r => setTimeout(r, 10000));
+      const sr = await fetch(`https://api.elevenlabs.io/v1/dubbing/${cj.dubbing_id}`, { headers: { "xi-api-key": key } });
+      const sj = await sr.json().catch(() => ({}));
+      if (sj.status === "dubbed") break;
+      if (sj.status === "failed") throw new Error("ElevenLabs dubbing failed: " + String(sj.error || "no reason given").slice(0, 300));
+      if (Date.now() > deadline) throw new Error("ElevenLabs dubbing took longer than 2 hours.");
+    }
+    const dubbedAudio = path.join(work, "dubbed.mp3");
+    await downloadTo(`https://api.elevenlabs.io/v1/dubbing/${cj.dubbing_id}/audio/${input.target_lang}`, dubbedAudio, { "xi-api-key": key });
+    if (!hasVideo) return dubbedAudio;
+
+    // Original picture untouched (stream copy), dubbed audio under it. A codec
+    // mp4 can't hold (e.g. ProRes) falls back to re-encoding the picture.
+    const out = path.join(work, "dubbed.mp4");
+    const mux = (videoArgs) => execFileP("ffmpeg", ["-y", "-v", "error", "-i", src, "-i", dubbedAudio,
+      "-map", "0:v:0", "-map", "1:a:0", ...videoArgs, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out], { timeout: 3600000 });
+    try { await mux(["-c:v", "copy"]); }
+    catch { await mux(["-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p"]); }
+    return out;
+  } catch (e) {
+    fs.rmSync(work, { recursive: true, force: true });
+    throw e;
+  }
+}
+
 const VIDEO_TOOLS = {
+  dub: {
+    label: "Dub", run: elevenDubVideo,
+    build: (b, files) => ({
+      video: files.video,
+      target_lang: String(b.target_lang || "").trim().toLowerCase(),
+      source_lang: String(b.source_lang || "").trim().toLowerCase(),
+      drop_background_audio: b.drop_background_audio === "true" || b.drop_background_audio === true,
+    }),
+    validate: (input) => DUB_LANGUAGES.includes(input.target_lang) ? "" : "Choose a target language.",
+  },
   translate: {
     app: "heygen/video-translate", label: "Translation",
     build: (b, files) => ({
@@ -2247,7 +2328,7 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     model: cfg.app, tool: b.tool,
-    prompt: `${cfg.label}${b.output_language ? ": " + b.output_language : ""}`,
+    prompt: `${cfg.label}${b.output_language ? ": " + b.output_language : b.tool === "dub" && input.target_lang ? ": " + input.target_lang.toUpperCase() : ""}`,
     aspect_ratio: null, duration: null,
     result_url: null, error: null,
   };
@@ -2263,13 +2344,18 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
         input.video = await downloadLinkedVideo(link, `link-${task.id}`);
         cleanup.push(input.video);
       }
-      const result = await runInfshApp(cfg.app, input, { timeout: 1800000 });
-      const url = infshOutputUrl(result, ["video", "output_video", "result"]);
-      if (!url) throw new Error(result?.output?.description || result?.error || result?.status_text || "no video returned");
+      let url;
+      if (cfg.run) url = await cfg.run(input, task);
+      else {
+        const result = await runInfshApp(cfg.app, input, { timeout: 1800000 });
+        url = infshOutputUrl(result, ["video", "output_video", "result"]);
+        if (!url) throw new Error(result?.output?.description || result?.error || result?.status_text || "no video returned");
+      }
       const ext = (path.extname(String(url).split("?")[0]) || ".mp4").slice(0, 5);
       const outFile = path.join(VIDEO_OUTPUT_DIR, task.id + ext);
       if (/^https?:/i.test(url)) await downloadTo(url, outFile);
       else { fs.mkdirSync(VIDEO_OUTPUT_DIR, { recursive: true }); fs.copyFileSync(url, outFile); }
+      if (cfg.run) fs.rmSync(path.join(__dirname, "data", "ai-video-uploads", `dub-${task.id}`), { recursive: true, force: true });
       update = { status: "completed", result_url: `/video-outputs/${task.id}${ext}` };
       console.log(`[AI-VIDEO] ${cfg.label} task ${task.id} completed`);
     } catch (e) {

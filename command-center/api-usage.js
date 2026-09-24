@@ -301,6 +301,9 @@ function meterFetch(url, init, res) {
 
   if (provider === "elevenlabs") {
     if (/\/v1\/user\b/.test(u.pathname)) return; // plan/balance lookups are free
+    if (/\/v1\/dubbing\b/.test(u.pathname)) { // status polls and downloads are free
+      return method === "POST" && ok ? record("elevenlabs", {}, { feature, model: "dubbing" }) : undefined;
+    }
     if (method === "POST" && /text-to-speech|text-to-dialogue|sound-generation/.test(u.pathname) && ok) {
       const b = parseBody(init && init.body) || {};
       return record("elevenlabs", { chars: String(b.text || "").length }, { feature, model: b.model_id || "" });
