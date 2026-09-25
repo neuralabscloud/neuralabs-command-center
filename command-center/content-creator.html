@@ -420,8 +420,54 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="ja">Japanese</option>
               <option value="ko">Korean</option>
             </select>
+            <div class="form-label" style="margin-top:10px;">Spoken language (source)</div>
+            <select class="form-select" id="vt-dub-src">
+              <option value="">Detect automatically</option>
+              <option value="en">English</option>
+              <option value="nl">Dutch</option>
+              <option value="de">German</option>
+              <option value="fr">French</option>
+              <option value="es">Spanish</option>
+              <option value="it">Italian</option>
+              <option value="pt">Portuguese</option>
+              <option value="pl">Polish</option>
+              <option value="sv">Swedish</option>
+              <option value="da">Danish</option>
+              <option value="no">Norwegian</option>
+              <option value="fi">Finnish</option>
+              <option value="cs">Czech</option>
+              <option value="sk">Slovak</option>
+              <option value="ro">Romanian</option>
+              <option value="hu">Hungarian</option>
+              <option value="bg">Bulgarian</option>
+              <option value="hr">Croatian</option>
+              <option value="el">Greek</option>
+              <option value="uk">Ukrainian</option>
+              <option value="ru">Russian</option>
+              <option value="tr">Turkish</option>
+              <option value="ar">Arabic</option>
+              <option value="hi">Hindi</option>
+              <option value="ta">Tamil</option>
+              <option value="id">Indonesian</option>
+              <option value="ms">Malay</option>
+              <option value="fil">Filipino</option>
+              <option value="vi">Vietnamese</option>
+              <option value="zh">Chinese</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+            </select>
+            <div class="form-label" style="margin-top:10px;">Speakers</div>
+            <select class="form-select" id="vt-dub-speakers">
+              <option value="1">1 speaker</option>
+              <option value="2">2 speakers</option>
+              <option value="3">3 speakers</option>
+              <option value="0">Detect automatically</option>
+            </select>
             <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);margin-top:8px;cursor:pointer;">
               <input type="checkbox" id="vt-dub-drop-bg" /> Drop background music/effects
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);margin-top:6px;cursor:pointer;" title="The own voice is cloned per segment, so the accent can vary. A library voice sounds the same throughout, but is not the original voice.">
+              <input type="checkbox" id="vt-dub-no-clone" /> Fixed library voice (consistent accent, not the original voice)
             </label>
           </div>
           <div id="vt-language-field">
@@ -1269,6 +1315,9 @@ async function submitVideoTool() {
   fd.append('scale', document.getElementById('vt-scale').value);
   fd.append('target_lang', document.getElementById('vt-dub-lang').value);
   fd.append('drop_background_audio', document.getElementById('vt-dub-drop-bg').checked ? 'true' : 'false');
+  fd.append('source_lang', document.getElementById('vt-dub-src').value);
+  fd.append('num_speakers', document.getElementById('vt-dub-speakers').value);
+  fd.append('disable_voice_cloning', document.getElementById('vt-dub-no-clone').checked ? 'true' : 'false');
   const audio = document.getElementById('vt-audio').files[0];
   if (audio) fd.append('audio', audio);
   else if (document.getElementById('vt-voiceover').value) fd.append('voiceover_id', document.getElementById('vt-voiceover').value);

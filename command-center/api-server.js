@@ -2130,7 +2130,10 @@ async function elevenDubVideo(input, task) {
       fd.append("file", await fs.openAsBlob(audioIn, { type: "audio/mp4" }), "source.m4a");
       fd.append("target_lang", input.target_lang);
       fd.append("source_lang", input.source_lang || "auto");
-      fd.append("num_speakers", "0");
+      fd.append("num_speakers", String(input.num_speakers || 0));
+      // Cloning happens per segment, so the accent can drift between segments.
+      // A library voice keeps one consistent voice for the whole video.
+      if (input.disable_voice_cloning) fd.append("disable_voice_cloning", "true");
       fd.append("watermark", watermark ? "true" : "false");
       fd.append("drop_background_audio", input.drop_background_audio ? "true" : "false");
       fd.append("name", `Command Center ${task.id}`);
@@ -2180,8 +2183,11 @@ const VIDEO_TOOLS = {
       target_lang: String(b.target_lang || "").trim().toLowerCase(),
       source_lang: String(b.source_lang || "").trim().toLowerCase(),
       drop_background_audio: b.drop_background_audio === "true" || b.drop_background_audio === true,
+      num_speakers: Math.min(9, Math.max(0, parseInt(b.num_speakers, 10) || 0)),
+      disable_voice_cloning: b.disable_voice_cloning === "true" || b.disable_voice_cloning === true,
     }),
-    validate: (input) => DUB_LANGUAGES.includes(input.target_lang) ? "" : "Choose a target language.",
+    validate: (input) => !DUB_LANGUAGES.includes(input.target_lang) ? "Choose a target language."
+      : input.source_lang && !DUB_LANGUAGES.includes(input.source_lang) ? "Unknown source language." : "",
   },
   translate: {
     app: "heygen/video-translate", label: "Translation",
