@@ -310,6 +310,29 @@ function parseBody(body) {
 // Higgsfield: every POST starts a generation, except uploads and status/cancel calls.
 const HIGGSFIELD_NOT_A_JOB = /\/(files|uploads?|requests|job-sets|motions)\b|\/(cancel|status)\b/i;
 
+// Which X app made the call (OAuth 1.0a consumer key, or the bearer token);
+// X dedupes billed posts per app/project, so the seen-set is kept per app.
+function xAppKey(init) {
+  const h = (init && init.headers) || {};
+  const auth = String((typeof h.get === "function" ? h.get("authorization") : (h.Authorization || h.authorization)) || "");
+  const ck = /oauth_consumer_key="([^"]+)"/.exec(auth);
+  if (ck) return "ck:" + decodeURIComponent(ck[1]).slice(0, 12);
+  return auth ? "bearer:" + auth.slice(-12) : "unknown";
+}
+
+// True the first time an app fetches this post id on the current UTC day.
+// Kept in the usage file so a restart does not count today's posts again.
+function xFirstSeen(app, id) {
+  load();
+  const day = dayKey();
+  if (!usage.x_seen || usage.x_seen.day !== day) usage.x_seen = { day, apps: {} };
+  const list = usage.x_seen.apps[app] || (usage.x_seen.apps[app] = []);
+  if (list.includes(id)) return false;
+  list.push(id);
+  dirty = true;
+  return true;
+}
+
 function meterFetch(url, init, res) {
   let u;
   try { u = new URL(typeof url === "string" ? url : url.url || String(url)); } catch { return; }
@@ -345,12 +368,16 @@ function meterFetch(url, init, res) {
     return record("opusclip", {}, { feature, model: "other calls" });
   }
   if (provider === "x") {
+    if (/^\/(2\/usage|oauth2)\b/.test(u.pathname)) return; // usage lookups and tokens are free
     if (!ok) return record("x", {}, { feature, model: "failed" });
     if (method === "POST" && /\/2\/tweets\/?$/.test(u.pathname)) return record("x", { writes: 1 }, { feature, model: "post" });
     if (method === "GET") {
-      // X bills per resource returned: count the items in `data`.
+      // X bills per post returned, but each post only once per UTC day per
+      // app: count only the ids this app has not fetched yet today.
+      const app = xAppKey(init);
       res.clone().json().then(d => {
-        const n = Array.isArray(d && d.data) ? d.data.length : (d && d.data ? 1 : 0);
+        const items = Array.isArray(d && d.data) ? d.data : (d && d.data ? [d.data] : []);
+        const n = items.filter(it => !it || !it.id || xFirstSeen(app, String(it.id))).length;
         record("x", { reads: n }, { feature, model: /search/.test(u.pathname) ? "search" : "lookup" });
       }).catch(() => record("x", {}, { feature, model: "lookup" }));
       return;
@@ -412,6 +439,43 @@ function runJson(cmd, args) {
   }));
 }
 
+// X's own count of billed posts per project (free endpoint, app-only bearer).
+// One entry per distinct app: the .env keys plus per-channel keys.
+async function xUsage() {
+  const apps = [];
+  const env = [(process.env.TWITTER_API_KEY || "").trim(), (process.env.TWITTER_API_SECRET || "").trim()];
+  if (env[0] && env[1]) apps.push({ label: "default keys", key: env[0], secret: env[1] });
+  try {
+    const per = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "community", "x-credentials.json"), "utf8")) || {};
+    let names = {};
+    try {
+      const ch = JSON.parse(fs.readFileSync(path.join(DATA_DIR, "community", "channels.json"), "utf8"));
+      for (const c of (Array.isArray(ch) ? ch : ch.channels || [])) if (c && c.id) names[c.id] = c.name;
+    } catch {}
+    for (const [id, c] of Object.entries(per)) {
+      if (c && c.api_key && c.api_secret && !apps.some(a => a.key === c.api_key)) apps.push({ label: names[id] || "channel " + id, key: c.api_key, secret: c.api_secret });
+    }
+  } catch {}
+  const out = [];
+  await Promise.all(apps.map(async a => {
+    try {
+      const basic = Buffer.from(encodeURIComponent(a.key) + ":" + encodeURIComponent(a.secret)).toString("base64");
+      const t = await fetch("https://api.x.com/oauth2/token", {
+        method: "POST", body: "grant_type=client_credentials",
+        headers: { Authorization: "Basic " + basic, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      });
+      if (!t.ok) return;
+      const { access_token } = await t.json();
+      const r = await fetch("https://api.x.com/2/usage/tweets?days=31&usage.fields=daily_project_usage,project_usage,cap_reset_day", { headers: { Authorization: "Bearer " + access_token } });
+      if (!r.ok) return;
+      const d = (await r.json()).data || {};
+      const daily = ((d.daily_project_usage || {}).usage || []).map(x => ({ day: String(x.date).slice(0, 10), posts: Number(x.usage) || 0 }));
+      out.push({ label: a.label, project_id: d.project_id, posts_this_cycle: Number(d.project_usage) || 0, cap_reset_day: d.cap_reset_day || null, daily });
+    } catch {}
+  }));
+  return out;
+}
+
 async function liveBalances(force) {
   if (!force && liveCache.data && Date.now() - liveCache.at < 5 * 60 * 1000) return liveCache.data;
   const out = {};
@@ -429,6 +493,7 @@ async function liveBalances(force) {
         overage_usd: j.current_overage ? Number(j.current_overage.amount) || 0 : 0,
       };
     }).catch(() => {}));
+  jobs.push(xUsage().then(apps => { if (apps.length) out.x = { apps }; }).catch(() => {}));
   await Promise.all(jobs);
   liveCache = { at: Date.now(), data: out };
   return out;

@@ -1723,6 +1723,11 @@ function liveText(id, live) {
   const l = (live || {})[id];
   if (!l) return '';
   if (id === 'inference') return `Balance ${fmtUsd(l.balance_usd)}`;
+  if (id === 'x' && Array.isArray(l.apps)) {
+    // X's own count: billed posts this billing cycle, per app.
+    const per = (costData && costData.rates && costData.rates.x.per_read) || 0;
+    return 'Billed by X this cycle: ' + l.apps.map(a => `${a.label} ${fmtNum(a.posts_this_cycle)} posts${per ? ` (~${fmtUsd(a.posts_this_cycle * per)})` : ''}${a.cap_reset_day ? `, resets day ${a.cap_reset_day}` : ''}`).join(' · ');
+  }
   if (id === 'elevenlabs') {
     const reset = l.resets_at ? `, resets ${new Date(l.resets_at).toLocaleDateString()}` : '';
     return `${l.tier || ''} plan · ${fmtNum(l.used)} / ${fmtNum(l.limit)} chars${reset}${l.overage_usd ? ` · overage ${fmtUsd(l.overage_usd)}` : ''}`;

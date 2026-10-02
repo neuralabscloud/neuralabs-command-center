@@ -102,6 +102,24 @@ setTimeout(() => {
   check("clearing a higgsfield rate removes it", !JSON.parse(fs.readFileSync(path.join(tmp, "api-costs-config.json"), "utf8")).rates.higgsfield.models["kling"]);
   check("projection at least month total", s2.month.projected >= s2.month.total - 1e-9);
 
+  // ── x dedup: X bills a post once per UTC day per app ──
+  const before = u.summary({ days: 1 }).providers.find(x => x.id === "x").period.qty.reads;
+  const idRes = { ok: true, clone: () => ({ json: async () => ({ data: [{ id: "111" }, { id: "222" }] }) }) };
+  const authA = { method: "GET", headers: { Authorization: 'OAuth oauth_consumer_key="AAAAAAAAAAAAAAAA", oauth_nonce="n"' } };
+  const authB = { method: "GET", headers: { Authorization: 'OAuth oauth_consumer_key="BBBBBBBBBBBBBBBB", oauth_nonce="n"' } };
+  meterFetch("https://api.x.com/2/tweets/search/recent?query=a", authA, idRes);
+  meterFetch("https://api.x.com/2/tweets/search/recent?query=b", authA, idRes);
+  meterFetch("https://api.x.com/2/tweets/search/recent?query=a", authB, idRes);
+  meterFetch("https://api.x.com/2/usage/tweets?days=7", authA, idRes);
+  setTimeout(() => {
+    const after = u.summary({ days: 1 }).providers.find(x => x.id === "x");
+    check("x: same post twice on one app = 1 read, other app counts again", after.period.qty.reads - before === 4);
+    check("x: usage endpoint not metered", after.period.calls === 1 + 1 + 3);
+    persistence();
+  }, 20);
+}, 20);
+
+function persistence() {
   // ── persistence ──
   u.record("elevenlabs", { chars: 1 }, { feature: "x" });
   u.flush();
@@ -117,4 +135,4 @@ setTimeout(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`\n${pass} ok, ${fail} FOUT`);
   process.exit(fail ? 1 : 0);
-}, 20);
+}
