@@ -463,6 +463,10 @@ function renderAutopilot(c) {
           <textarea class="edit-textarea" style="min-height:120px" id="ch-ap-topics-${esc(c.id)}" placeholder="Bitcoin: (bitcoin OR $BTC)&#10;Ethereum: (ethereum OR $ETH)">${esc(topics)}</textarea>
         </div>
         <div class="full">
+          <label class="edit-label">Curated accounts: X handles you trust, separated by spaces or lines (searched first; topics are the fallback)</label>
+          <textarea class="edit-textarea" style="min-height:70px" id="ch-ap-accounts-${esc(c.id)}" placeholder="@glassnode @lookonchain @WatcherGuru">${esc((Array.isArray(ap.accounts) ? ap.accounts : []).map(a => '@' + a).join(' '))}</textarea>
+        </div>
+        <div class="full">
           <label class="edit-label">Account voice (optional)</label>
           <input class="edit-input" id="ch-ap-voice-${esc(c.id)}" value="${v('voice', '')}" placeholder="e.g. Confident, data-driven market commentary with a dry sense of humor">
         </div>
@@ -476,7 +480,7 @@ function renderAutopilot(c) {
         </div>
         <div>
           <label class="edit-label">Search depth (posts read per search)</label>
-          <input class="edit-input" type="number" min="10" max="100" id="ch-ap-depth-${esc(c.id)}" value="${v('search_depth', 50)}">
+          <input class="edit-input" type="number" min="10" max="100" id="ch-ap-depth-${esc(c.id)}" value="${v('search_depth', 20)}">
         </div>
         <div>
           <label class="edit-label">Max age of source post (hours)</label>
@@ -623,9 +627,10 @@ function collectAutopilot(id) {
     window_end: g('end').value.trim() || '23:00',
     min_likes: Number(g('likes').value) || 0,
     min_followers: g('followers') ? Math.max(0, Number(g('followers').value) || 0) : 1000,
-    search_depth: Number(g('depth').value) || 50,
+    search_depth: Number(g('depth').value) || 20,
     max_age_hours: Number(g('age').value) || 36,
     topics: g('topics').value.split('\n').map(t => t.trim()).filter(Boolean),
+    accounts: g('accounts') ? g('accounts').value.split(/[\s,;]+/).map(a => a.replace(/^@/, '').trim()).filter(Boolean) : [],
     voice: g('voice').value.trim(),
     style_prompt: g('style').value.trim(),
     style_refs: (apRefs[id] || []).slice(),

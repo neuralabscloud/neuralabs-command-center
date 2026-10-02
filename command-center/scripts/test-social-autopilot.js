@@ -94,5 +94,16 @@ const pick = ap.pickCandidates(pool, 6, 3);
 ok(pick.length === 6 && pick.filter(c => c.topic === "Arc").length === 3, "pickCandidates: noisy topic capped at 3");
 ok(pick.some(c => c.topic === "Ethereum") && new Set(pick.map(c => c.tweet_id)).size === 6, "pickCandidates: other topics get in, no duplicates");
 
+// curated accounts + lower default depth
+ok(ap.config({}).search_depth === 20, "config: search_depth default 20");
+ok(ap.parseAccounts("@glassnode, https://x.com/lookonchain/status/1 WatcherGuru\n@GLASSNODE bad-handle! waytoolonghandle123").join(",") === "glassnode,lookonchain,WatcherGuru", "parseAccounts: @, urls, commas, dedupe, invalid dropped");
+ok(ap.config({ autopilot: { accounts: ["@a_b"] } }).accounts[0] === "a_b", "config: accounts normalised");
+const many = Array.from({ length: 60 }, (_, i) => "account_" + String(i).padStart(4, "0"));
+const groups = ap.accountTopics(many, "me");
+ok(groups.length > 1 && groups.every(g => ap.buildQuery(g.query, "me").length <= 512), "accountTopics: split to fit 512-char query limit");
+ok(groups.flatMap(g => g.query.split(" OR ")).length === 60 && groups.every(g => g.curated), "accountTopics: every account once, marked curated");
+ok(ap.accountTopics(["a", "b"], "me").length === 1 && ap.accountTopics(["a"], "me")[0].label === "Curated", "accountTopics: one group is labelled Curated");
+ok(ap.accountTopics([], "me").length === 0, "accountTopics: none without accounts");
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

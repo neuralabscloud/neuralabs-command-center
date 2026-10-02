@@ -1,7 +1,8 @@
 // ── SOCIAL MEDIA AUTOPILOT (X) ────────────────
 // Per X channel: plan N posts per day inside a time window, and for each slot
-//   1. search X for recent, well-performing posts with an image on one of the
-//      channel's topics (rotating, least-posted topic first),
+//   1. search X for recent, well-performing posts with an image: first from the
+//      channel's curated accounts (if any), then on its topics (rotating,
+//      least-posted topic first),
 //   2. let Claude pick the best candidate and write an ORIGINAL post about it,
 //   3. redraw the image in the channel's house style via Higgsfield,
 //   4. queue it as a community task — the existing worker publishes it.
@@ -19,8 +20,9 @@ const DEFAULTS = {
   window_end: "23:00",
   topics: [],              // lines: "Label: X search query" or just a query
   min_likes: 20,
+  accounts: [],            // curated X handles; searched before the topics
   min_followers: 1000,     // shill/bot accounts are mostly small; 0 = off
-  search_depth: 50,        // posts read per search (X bills per post read)
+  search_depth: 20,        // posts read per search (X bills per post read)
   max_age_hours: 36,
   language: "English",
   voice: "",               // optional description of the account's voice
@@ -40,6 +42,8 @@ const X_IMAGE_MAX = 5 * 1024 * 1024;
 const PROMO_RE = /\b(giveaways?|airdrops?|presales?|pre-sale|whitelist|free mint|claim (now|your)|dm me|link in (bio|comments)|join (my|our)|telegram group|whatsapp|discord\.gg|referral|use (my )?code|promo code|sign ?up bonus|\d{3,}x|next (gem|100x)|to the moon|mint(ing)? (is )?(live|now)|stealth launch|fair launch|just launched|ape in|tag \d+ friends|like (and|&) (rt|retweet)|rt (and|&) follow)\b/i;
 // A contract address in the text is the clearest sign of a token shill.
 const CA_RE = /\b(CA\s*[:：]|0x[a-fA-F0-9]{40}\b|[1-9A-HJ-NP-Za-km-z]{32,44}(pump|bonk)?\b)/;
+const QUERY_MAX = 512;       // X search query length limit
+const MAX_ACCOUNTS = 100;
 const IMAGE_ASPECTS = { "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "1:1": 1, "4:5": 4 / 5 };
 
 // ── pure helpers (exported for tests) ─────────
@@ -54,6 +58,7 @@ function config(channel) {
   if (!/^\d{2}:\d{2}$/.test(c.window_end)) c.window_end = DEFAULTS.window_end;
   if (!Array.isArray(c.topics)) c.topics = String(c.topics || "").split("\n");
   c.topics = c.topics.map(t => String(t).trim()).filter(Boolean);
+  c.accounts = parseAccounts(c.accounts);
   if (!Array.isArray(c.style_refs)) c.style_refs = [];
   return c;
 }
@@ -65,6 +70,38 @@ function parseTopics(lines) {
     const m = String(line).match(/^([^():"]{1,40}):\s+(.+)$/);
     return m ? { label: m[1].trim(), query: m[2].trim() } : { label: String(line).trim(), query: String(line).trim() };
   }).filter(t => t.query);
+}
+
+// "@WatcherGuru, https://x.com/glassnode" → ["WatcherGuru", "glassnode"]
+function parseAccounts(input) {
+  const raw = Array.isArray(input) ? input.join("\n") : String(input || "");
+  const seen = new Set();
+  const out = [];
+  for (let tok of raw.split(/[\s,;]+/)) {
+    tok = tok.replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, "").replace(/^@/, "").split(/[/?#]/)[0];
+    if (!/^[A-Za-z0-9_]{1,15}$/.test(tok) || seen.has(tok.toLowerCase())) continue;
+    seen.add(tok.toLowerCase());
+    out.push(tok);
+  }
+  return out.slice(0, MAX_ACCOUNTS);
+}
+
+// Curated accounts as search "topics": as many from: clauses per query as fit
+// X's query length limit. The followers filter is off: these are hand-picked.
+function accountTopics(accounts, ownUsername) {
+  const groups = [];
+  let cur = [];
+  const fits = list => buildQuery(list.map(a => `from:${a}`).join(" OR "), ownUsername).length <= QUERY_MAX;
+  for (const a of accounts) {
+    if (cur.length && !fits([...cur, a])) { groups.push(cur); cur = []; }
+    cur.push(a);
+  }
+  if (cur.length) groups.push(cur);
+  return groups.map((g, i) => ({
+    label: groups.length > 1 ? `Curated ${i + 1}` : "Curated",
+    query: g.map(a => `from:${a}`).join(" OR "),
+    curated: true,
+  }));
 }
 
 function buildQuery(query, ownUsername) {
@@ -330,7 +367,7 @@ function createAutopilot(deps) {
     });
     const resp = await twitterApi("GET", `https://api.x.com/2/tweets/search/recent?${params}`, creds);
     return rankCandidates(resp, {
-      nowMs: Date.now(), minLikes: cfg.min_likes, maxAgeHours: cfg.max_age_hours, minFollowers: cfg.min_followers,
+      nowMs: Date.now(), minLikes: cfg.min_likes, maxAgeHours: cfg.max_age_hours, minFollowers: topic.curated ? 0 : cfg.min_followers,
       usedSources: st.used_sources || [], usedAuthors: st.authors_today || [],
     }).map(c => ({ ...c, topic: topic.label }));
   }
@@ -500,15 +537,17 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
     try {
       const cfg = config(channel);
       const topics = parseTopics(cfg.topics);
-      if (!topics.length) throw new Error("No topics configured");
+      if (!topics.length && !cfg.accounts.length) throw new Error("No topics or curated accounts configured");
       const creds = twitterCredsFor(channel);
       const me = await ownUsername(channel, creds);
       const st = loadState()[channel.id] || {};
       const counts = st.topic_counts || {};
       const rejects = st.topic_rejects || {};
       // Least posted first; a topic whose shortlist Claude rejected today goes back in the queue.
-      const queue = topics.map(t => ({ t, n: (counts[t.label] || 0) + (rejects[t.label] || 0), r: Math.random() }))
+      const order = list => list.map(t => ({ t, n: (counts[t.label] || 0) + (rejects[t.label] || 0), r: Math.random() }))
         .sort((a, b) => a.n - b.n || a.r - b.r).map(x => x.t);
+      // Curated accounts first; the topic searches are the fallback.
+      const queue = [...order(accountTopics(cfg.accounts, me)), ...order(topics)];
 
       // Search in rounds: a couple of topics, let Claude pick, and if the whole
       // shortlist is rejected move on to the next topics instead of giving up.
@@ -615,6 +654,6 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
 
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
-  config, parseTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
+  config, parseTopics, parseAccounts, accountTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
   nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots,
 };
