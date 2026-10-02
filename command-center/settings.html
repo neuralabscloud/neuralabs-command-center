@@ -1713,7 +1713,8 @@ function usageText(p) {
     case 'inference': return `${fmtNum(q.tasks)} tasks`;
     case 'elevenlabs': return `${fmtNum(q.chars)} characters`;
     case 'x': return `${fmtNum(q.reads)} reads · ${fmtNum(q.writes)} posts`;
-    case 'higgsfield': case 'opusclip': return `${fmtNum(q.jobs)} jobs`;
+    case 'higgsfield': return `${fmtNum(q.jobs)} jobs${q.secs ? ` · ${fmtNum(q.secs)}s video` : ''}`;
+    case 'opusclip': return `${fmtNum(q.jobs)} jobs`;
     default: return `${fmtNum(p.period.calls)} call${p.period.calls === 1 ? '' : 's'}`;
   }
 }
@@ -1784,6 +1785,26 @@ function renderApiCosts() {
       <td class="num dim">${fmtNum(m.in + m.cw + m.cr)} / ${fmtNum(m.out)}${m.cr ? `<div style="font-size:10px">${Math.round(m.cr / Math.max(1, m.in + m.cw + m.cr) * 100)}% from cache</div>` : ''}</td>
       <td class="num">${fmtUsd(m.cost)}</td></tr>`).join('') || '<tr><td colspan="4" class="dim">No Claude calls yet.</td></tr>';
 
+  // Higgsfield has no price API: one row per model seen, with editable USD rates.
+  const hfRates = (d.rates.higgsfield && d.rates.higgsfield.models) || {};
+  const hfRows = (d.higgsfield_models || []).map(h => {
+    const own = hfRates[String(h.model).toLowerCase()] || h.rate || {};
+    const key = escCost(String(h.model).toLowerCase());
+    return `<tr>
+      <td>${escCost(h.model || 'unknown')}${h.priced ? '' : '<span class="cost-badge warn">no rate</span>'}</td>
+      <td class="num dim">${fmtNum(h.jobs)}</td>
+      <td class="num dim">${h.secs ? fmtNum(h.secs) + 's' : '—'}</td>
+      <td class="num"><input class="cost-fixed" type="number" min="0" step="0.001" data-hf-model="${key}" data-hf-key="per_job" value="${own.per_job || ''}" placeholder="0"></td>
+      <td class="num"><input class="cost-fixed" type="number" min="0" step="0.001" data-hf-model="${key}" data-hf-key="per_sec" value="${own.per_sec || ''}" placeholder="0"></td>
+      <td class="num">${fmtUsd(h.cost)}</td></tr>`;
+  }).join('');
+  const hfPanel = hfRows ? `
+    <div class="cost-panel">
+      <div class="cost-panel-title"><span>Higgsfield per model (${d.period.days}d)</span></div>
+      <div class="cost-note">Higgsfield does not report prices through its API. Fill in what each model costs in USD (see the pricing page in your Higgsfield API console): per job, per second of video, or both. Saved with the button above; the history is recalculated.</div>
+      <table class="cost-table"><thead><tr><th>Model</th><th class="num">Jobs</th><th class="num">Video</th><th class="num">$ / job</th><th class="num">$ / second</th><th class="num">Cost</th></tr></thead><tbody>${hfRows}</tbody></table>
+    </div>` : '';
+
   const r = d.rates;
   box.innerHTML = `
     <div class="cost-stats">
@@ -1827,6 +1848,8 @@ function renderApiCosts() {
       </div>
     </div>
 
+    ${hfPanel}
+
     <div class="cost-panel">
       <div class="cost-panel-title"><span>Rates used for estimates (USD)</span></div>
       <div class="cost-note">Claude token prices follow Anthropic's list prices per model. The rates below are estimates; set them to what your plan actually charges and the history is recalculated.</div>
@@ -1834,7 +1857,7 @@ function renderApiCosts() {
         <label>ElevenLabs per 1k characters<input type="number" step="0.001" min="0" data-rate="elevenlabs.per_1k_chars" value="${r.elevenlabs.per_1k_chars}"></label>
         <label>X per read (post fetched)<input type="number" step="0.001" min="0" data-rate="x.per_read" value="${r.x.per_read}"></label>
         <label>X per post created<input type="number" step="0.001" min="0" data-rate="x.per_write" value="${r.x.per_write}"></label>
-        <label>Higgsfield per job<input type="number" step="0.01" min="0" data-rate="higgsfield.per_job" value="${r.higgsfield.per_job}"></label>
+        <label>Higgsfield per job (other models)<input type="number" step="0.01" min="0" data-rate="higgsfield.per_job" value="${r.higgsfield.per_job}"></label>
         <label>OpusClip per project<input type="number" step="0.01" min="0" data-rate="opusclip.per_job" value="${r.opusclip.per_job}"></label>
         <label>Claude web search per 1k<input type="number" step="0.5" min="0" data-rate="anthropic.web_search_per_1k" value="${r.anthropic.web_search_per_1k}"></label>
       </div>
@@ -1849,6 +1872,11 @@ async function saveCostConfig(btn) {
   document.querySelectorAll('[data-rate]').forEach(el => {
     const [g, k] = el.dataset.rate.split('.');
     (rates[g] = rates[g] || {})[k] = el.value;
+  });
+  document.querySelectorAll('[data-hf-model]').forEach(el => {
+    const hf = rates.higgsfield = rates.higgsfield || {};
+    const models = hf.models = hf.models || {};
+    (models[el.dataset.hfModel] = models[el.dataset.hfModel] || {})[el.dataset.hfKey] = el.value;
   });
   const msg = document.getElementById('cost-save-msg');
   btn.classList.add('testing');

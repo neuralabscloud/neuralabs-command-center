@@ -6,7 +6,7 @@ const path = require("path");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "api-usage-test-"));
 process.env.API_USAGE_DATA_DIR = tmp;
 const u = require("../api-usage");
-const { rowCost, effectiveRates, modelRate, meterFetch, providerForHost, recordClaudeMessage, reset } = u._internal;
+const { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, providerForHost, recordClaudeMessage, reset } = u._internal;
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -28,6 +28,16 @@ check("cache read/write priced", near(rowCost({ p: "anthropic", m: "claude-opus-
 check("1h cache write = 2x input", near(rowCost({ p: "anthropic", m: "claude-opus-5-5", cw1h: 1e6 }, rates).cost, 8));
 check("web search $10 per 1k", near(rowCost({ p: "anthropic", m: "claude-sonnet-5", searches: 100 }, rates).cost, 1));
 check("unknown model flagged unpriced", rowCost({ p: "anthropic", m: "mystery", in: 5 }, rates).priced === false);
+
+// ── higgsfield per model ──
+const hfRates = effectiveRates({ rates: { higgsfield: { per_job: 0.1, models: { "nano-banana": { per_job: 0.04 }, "seedance-2.5": { per_sec: 0.05 }, "seedance-2.5/text-to-video": { per_job: 0.2, per_sec: 0.06 } } } } });
+check("higgsfield: model rate by contained key", higgsfieldRate("text2image/nano-banana", hfRates).per_job === 0.04);
+check("higgsfield: longest key wins", higgsfieldRate("bytedance/seedance-2.5/text-to-video", hfRates).per_sec === 0.06);
+check("higgsfield: per job x jobs", near(rowCost({ p: "higgsfield", m: "text2image/nano-banana", jobs: 8 }, hfRates).cost, 0.32));
+check("higgsfield: per second x secs", near(rowCost({ p: "higgsfield", m: "bytedance/seedance-2.5/image-to-video", jobs: 3, secs: 24 }, hfRates).cost, 1.2));
+check("higgsfield: per job + per second combined", near(rowCost({ p: "higgsfield", m: "bytedance/seedance-2.5/text-to-video", jobs: 1, secs: 8 }, hfRates).cost, 0.68));
+check("higgsfield: unknown model falls back to per_job", near(rowCost({ p: "higgsfield", m: "speak/kling", jobs: 2 }, hfRates).cost, 0.2));
+check("higgsfield: no rates = unpriced", rowCost({ p: "higgsfield", m: "speak/kling", jobs: 2 }, rates).priced === false);
 check("inference uses actual charge", near(rowCost({ p: "inference", actual: 0.101, tasks: 1 }, rates).cost, 0.101));
 check("elevenlabs per 1k chars", near(rowCost({ p: "elevenlabs", chars: 2000 }, rates).cost, 0.6));
 check("x reads + writes", near(rowCost({ p: "x", reads: 100, writes: 2 }, rates).cost, 0.52));
@@ -50,7 +60,7 @@ u.tag("Unit test", () => {
   meterFetch("https://api.x.com/2/tweets", { method: "POST", body: "{}" }, okRes);
   meterFetch("https://platform.higgsfield.ai/v1/speak/higgsfield", { method: "POST", body: JSON.stringify({ params: { model: "kling" } }) }, okRes);
   meterFetch("https://platform.higgsfield.ai/requests/123/status", { method: "GET" }, okRes);
-  meterFetch("https://api.higgsfield.ai/bytedance/seedance-2.5/image-to-video", { method: "POST", body: "{}" }, okRes);
+  meterFetch("https://api.higgsfield.ai/bytedance/seedance-2.5/image-to-video", { method: "POST", body: JSON.stringify({ prompt: "x", duration: 8 }) }, okRes);
   meterFetch("https://api.higgsfield.ai/files/generate-upload-url", { method: "POST", body: "{}" }, okRes);
   meterFetch("https://api.telegram.org/botX/sendMessage", { method: "POST" }, okRes);
   meterFetch("https://api.x.com/2/tweets/search/recent?query=btc", { method: "GET" }, okRes);
@@ -66,6 +76,8 @@ setTimeout(() => {
   check("x post counted", p.x.period.qty.writes === 1);
   check("x search reads = items returned", p.x.period.qty.reads === 3);
   check("higgsfield jobs counted (platform + api), polling/upload not", p.higgsfield.period.qty.jobs === 2 && p.higgsfield.period.calls === 2);
+  check("higgsfield video seconds recorded from body", p.higgsfield.period.qty.secs === 8);
+  check("higgsfield per-model list in summary", s.higgsfield_models.length === 2 && s.higgsfield_models.every(h => h.priced === false));
   check("telegram call counted at $0", p.telegram.period.calls === 1 && p.telegram.period.cost === 0);
   check("feature tag applied", s.features.length === 1 && s.features[0].feature === "Unit test");
   check("model breakdown", s.models.length === 1 && s.models[0].model === "claude-sonnet-5");
@@ -80,6 +92,14 @@ setTimeout(() => {
   check("unknown provider ignored", !JSON.parse(fs.readFileSync(path.join(tmp, "api-costs-config.json"), "utf8")).fixed.bogus);
   check("rate change recalculates history", near(p2.x.period.cost, 3 * 0.01 + 0.01));
   check("month total = usage + fixed", near(s2.month.total, s2.month.variable + 29));
+  u.updateConfig({ rates: { higgsfield: { models: { "Bytedance/Seedance-2.5/image-to-video": { per_job: "", per_sec: "0.05" }, "kling": { per_job: "0.5" }, "junk": { per_job: "-1" } } } } });
+  const s3 = u.summary({ days: 7 });
+  const hf3 = Object.fromEntries(s3.higgsfield_models.map(h => [h.model, h]));
+  const savedCfg = JSON.parse(fs.readFileSync(path.join(tmp, "api-costs-config.json"), "utf8"));
+  check("higgsfield model rates saved (lowercased, empty/negative dropped)", savedCfg.rates.higgsfield.models["bytedance/seedance-2.5/image-to-video"].per_sec === 0.05 && !("per_job" in savedCfg.rates.higgsfield.models["bytedance/seedance-2.5/image-to-video"]) && !savedCfg.rates.higgsfield.models.junk);
+  check("higgsfield model cost in summary", near(hf3["bytedance/seedance-2.5/image-to-video"].cost, 0.4) && near(hf3["kling"].cost, 0.5) && hf3["kling"].priced);
+  u.updateConfig({ rates: { higgsfield: { models: { "kling": { per_job: "" } } } } });
+  check("clearing a higgsfield rate removes it", !JSON.parse(fs.readFileSync(path.join(tmp, "api-costs-config.json"), "utf8")).rates.higgsfield.models["kling"]);
   check("projection at least month total", s2.month.projected >= s2.month.total - 1e-9);
 
   // ── persistence ──

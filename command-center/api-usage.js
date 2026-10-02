@@ -63,7 +63,11 @@ const DEFAULT_RATES = {
   },
   elevenlabs: { per_1k_chars: 0.3 },
   x: { per_read: 0.005, per_write: 0.01 },
-  higgsfield: { per_job: 0 },
+  // Higgsfield bills per model (credits per job, video per second) and the API
+  // has no price list endpoint: the owner fills in USD per model in Settings.
+  // `models` keys match the stored model the same way as Claude ids (longest
+  // contained key wins); per_job is the fallback for models without a rate.
+  higgsfield: { per_job: 0, models: {} },
   opusclip: { per_job: 0 },
 };
 
@@ -186,7 +190,10 @@ function effectiveRates(cfg = readConfig()) {
     },
     elevenlabs: { per_1k_chars: num((o.elevenlabs || {}).per_1k_chars, DEFAULT_RATES.elevenlabs.per_1k_chars) },
     x: { per_read: num((o.x || {}).per_read, DEFAULT_RATES.x.per_read), per_write: num((o.x || {}).per_write, DEFAULT_RATES.x.per_write) },
-    higgsfield: { per_job: num((o.higgsfield || {}).per_job, DEFAULT_RATES.higgsfield.per_job) },
+    higgsfield: {
+      per_job: num((o.higgsfield || {}).per_job, DEFAULT_RATES.higgsfield.per_job),
+      models: { ...DEFAULT_RATES.higgsfield.models, ...((o.higgsfield || {}).models || {}) },
+    },
     opusclip: { per_job: num((o.opusclip || {}).per_job, DEFAULT_RATES.opusclip.per_job) },
   };
 }
@@ -199,6 +206,15 @@ function modelRate(model, rates) {
   if (rates.anthropic.models[m]) return rates.anthropic.models[m];
   const hit = Object.keys(rates.anthropic.models).sort((a, b) => b.length - a.length).find(k => m.includes(k));
   return hit ? rates.anthropic.models[hit] : null;
+}
+
+// Higgsfield rate for a stored model: exact key, else the longest key it contains.
+function higgsfieldRate(model, rates) {
+  const models = (rates.higgsfield && rates.higgsfield.models) || {};
+  const m = String(model || "").toLowerCase();
+  const hit = models[m] ? m : Object.keys(models).sort((a, b) => b.length - a.length).find(k => k && m.includes(k.toLowerCase()));
+  const r = hit ? models[hit] : null;
+  return r && ((Number(r.per_job) || 0) > 0 || (Number(r.per_sec) || 0) > 0) ? r : null;
 }
 
 // Estimated cost of one stored row. Returns { cost, priced } — priced=false
@@ -215,7 +231,11 @@ function rowCost(row, rates) {
     case "inference": return { cost: row.actual || 0, priced: true };
     case "elevenlabs": return { cost: (row.chars || 0) / 1000 * rates.elevenlabs.per_1k_chars, priced: true };
     case "x": return { cost: (row.reads || 0) * rates.x.per_read + (row.writes || 0) * rates.x.per_write, priced: true };
-    case "higgsfield": return { cost: (row.jobs || 0) * rates.higgsfield.per_job, priced: rates.higgsfield.per_job > 0 };
+    case "higgsfield": {
+      const r = higgsfieldRate(row.m, rates);
+      if (r) return { cost: (row.jobs || 0) * (Number(r.per_job) || 0) + (row.secs || 0) * (Number(r.per_sec) || 0), priced: true };
+      return { cost: (row.jobs || 0) * rates.higgsfield.per_job, priced: rates.higgsfield.per_job > 0 };
+    }
     case "opusclip": return { cost: (row.jobs || 0) * rates.opusclip.per_job, priced: rates.opusclip.per_job > 0 };
     default: return { cost: 0, priced: true };
   }
@@ -313,8 +333,10 @@ function meterFetch(url, init, res) {
   if (provider === "higgsfield") {
     if (method === "POST" && !HIGGSFIELD_NOT_A_JOB.test(u.pathname) && ok) {
       const b = parseBody(init && init.body) || {};
-      const model = (b.params && b.params.model) || b.model || u.pathname.replace(/^\/(v1\/)?/, "");
-      return record("higgsfield", { jobs: 1 }, { feature, model });
+      const params = b.params || b;
+      const model = params.model || u.pathname.replace(/^\/(v1\/)?/, "");
+      // Video is billed per second of output; the requested length is in the body.
+      return record("higgsfield", { jobs: 1, secs: Number(params.duration) || 0 }, { feature, model });
     }
     return; // polling/uploads are not billed
   }
@@ -440,6 +462,7 @@ function summary({ days = 30 } = {}) {
   const daily = {};         // day → cost
   const features = {};      // feature → { cost, calls, providers:Set }
   const models = {};        // claude model → { in, out, cw, cr, searches, cost, calls }
+  const hfModels = {};      // higgsfield model → { jobs, secs, cost, priced }
   for (const [day, rows] of Object.entries(usage.days)) {
     const inPeriod = day >= from, inMonth = day >= monthStart;
     if (!inPeriod && !inMonth) continue;
@@ -453,7 +476,7 @@ function summary({ days = 30 } = {}) {
       pr.period.calls += row.calls;
       pr.period.cost += cost;
       if (!priced && (row.jobs || row.in || row.out)) pr.unpriced = true;
-      for (const k of ["in", "out", "cw", "cw1h", "cr", "searches", "chars", "reads", "writes", "jobs", "tasks"]) {
+      for (const k of ["in", "out", "cw", "cw1h", "cr", "searches", "chars", "reads", "writes", "jobs", "secs", "tasks"]) {
         if (row[k]) pr.period.qty[k] = (pr.period.qty[k] || 0) + row[k];
       }
       daily[day] = (daily[day] || 0) + cost;
@@ -465,6 +488,11 @@ function summary({ days = 30 } = {}) {
         m.calls += row.calls; m.cost += cost;
         for (const k of ["in", "out", "cw", "cr", "searches"]) m[k] += row[k] || 0;
         m.cw += row.cw1h || 0;
+      }
+      if (row.p === "higgsfield") {
+        const h = hfModels[row.m] || (hfModels[row.m] = { model: row.m, jobs: 0, secs: 0, cost: 0, priced: true, rate: higgsfieldRate(row.m, rates) });
+        h.jobs += row.jobs || 0; h.secs += row.secs || 0; h.cost += cost;
+        if (!priced && row.jobs) h.priced = false;
       }
     }
   }
@@ -495,6 +523,7 @@ function summary({ days = 30 } = {}) {
     providers: Object.values(providers),
     features: Object.values(features).sort((a, b) => b.cost - a.cost || b.calls - a.calls),
     models: Object.values(models).sort((a, b) => b.cost - a.cost),
+    higgsfield_models: Object.values(hfModels).sort((a, b) => b.cost - a.cost || b.jobs - a.jobs),
     series,
     rates,
     defaults: DEFAULT_RATES,
@@ -530,6 +559,22 @@ function updateConfig(body) {
     for (const [group, keys] of [["elevenlabs", ["per_1k_chars"]], ["x", ["per_read", "per_write"]], ["higgsfield", ["per_job"]], ["opusclip", ["per_job"]]]) {
       if (r[group]) for (const k of keys) if (k in r[group]) setNum(group, k, r[group][k]);
     }
+    // Higgsfield per-model rates: { "<model>": { per_job, per_sec } }; empty = remove.
+    if (r.higgsfield && r.higgsfield.models && typeof r.higgsfield.models === "object") {
+      cfg.rates.higgsfield = cfg.rates.higgsfield || {};
+      const models = cfg.rates.higgsfield.models || {};
+      for (const [model, v] of Object.entries(r.higgsfield.models)) {
+        const key = String(model).trim().toLowerCase().slice(0, 120);
+        if (!key || !v || typeof v !== "object") continue;
+        const out = {};
+        for (const k of ["per_job", "per_sec"]) {
+          const n = Number(v[k]);
+          if (v[k] !== "" && v[k] != null && Number.isFinite(n) && n > 0) out[k] = n;
+        }
+        if (Object.keys(out).length) models[key] = out; else delete models[key];
+      }
+      cfg.rates.higgsfield.models = models;
+    }
     if (r.anthropic && "web_search_per_1k" in r.anthropic) setNum("anthropic", "web_search_per_1k", r.anthropic.web_search_per_1k);
   }
   writeConfig(cfg);
@@ -553,5 +598,5 @@ function install() {
 module.exports = {
   install, middleware, tag, record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
   // exported for tests
-  _internal: { rowCost, effectiveRates, modelRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; } },
+  _internal: { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; } },
 };
