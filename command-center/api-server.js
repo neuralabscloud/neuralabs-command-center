@@ -1650,6 +1650,8 @@ const VIDEO_SOURCE_FIELDS = {
   "xai/grok-extend-video": "video",
   "bytedance/seedance-2-0": "reference_videos",
   "bytedance/seedance-2-0-fast": "reference_videos",
+  "bytedance/seedance-2-0-studio": "reference_videos",
+  "bytedance/seedance-2-0-studio-fast": "reference_videos",
   // Seedance 2.5 runs on Higgsfield, where the clip is a video_url on the
   // extend / edit endpoint (see HF_VIDEO_MODELS below).
   "higgsfield/seedance-2.5": "video_url",
@@ -1678,6 +1680,8 @@ const VIDEO_IMAGE_INPUTS = {
   "klingai/video-o1":            { first: "image", refs: "reference_images", max: 7, mention: "@image_" },
   "bytedance/seedance-2-0":      { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
   "bytedance/seedance-2-0-fast": { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
+  "bytedance/seedance-2-0-studio":      { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
+  "bytedance/seedance-2-0-studio-fast": { first: "image", refs: "reference_images", max: 9, mention: "@Image" },
   "bytedance/seedance-1-5-pro":  { first: "image", max: 1 },
   "higgsfield/seedance-2.5":      { first: "image_url", refs: "image_urls", max: 30 },
   "higgsfield/seedance-2.5-edit": { refs: "image_urls", max: 30 },
@@ -1686,7 +1690,19 @@ const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
 
 // Models that reject an aspect_ratio field, or want it under another name.
 const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
-const VIDEO_ASPECT_FIELD = { "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio" };
+const VIDEO_ASPECT_FIELD = {
+  "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio",
+  "bytedance/seedance-2-0-studio": "ratio", "bytedance/seedance-2-0-studio-fast": "ratio",
+};
+// Plain Seedance 2.0 refuses input images that may show a real person (also
+// AI-generated characters: InputImageSensitiveContentDetected.PrivacyInformation).
+// The Studio apps first put the images in a BytePlus portrait library, which
+// passes that check, so a refused run is retried once on the Studio twin.
+const SEEDANCE_STUDIO_FALLBACK = {
+  "bytedance/seedance-2-0": "bytedance/seedance-2-0-studio",
+  "bytedance/seedance-2-0-fast": "bytedance/seedance-2-0-studio-fast",
+};
+const SEEDANCE_PRIVACY_RE = /PrivacyInformation|may contain real person/i;
 
 // Resize / re-encode every reference image to JPEG max 1024px to satisfy
 // provider size limits (Kling caps at 10MB, Higgsfield only takes a handful of
@@ -2007,7 +2023,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const tmpInput = path.join(__dirname, "data", `ai-vid-input-${task.id}.json`);
   fs.writeFileSync(tmpInput, JSON.stringify(inputObj));
 
-  const runVideo = (n) => apiUsage.forTask(task.id, () => execFile("infsh", ["app", "run", model, "--input", tmpInput, "--json", "--no-input"], {
+  const runVideo = (n, runModel = model) => apiUsage.forTask(task.id, () => execFile("infsh", ["app", "run", runModel, "--input", tmpInput, "--json", "--no-input"], {
     timeout: 600000,  // 10 min — video gen can be slow
     maxBuffer: 1024 * 1024 * 50,
     env: { ...process.env, HOME: "/root" },
@@ -2016,10 +2032,19 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     // and nothing was charged, so simply hand it the job a second time.
     if (err && n < 2 && infshNeverRan(stdout, stderr)) {
       console.warn("[AI-VIDEO] inference.sh CLI updated itself instead of running, retrying once.");
-      return setTimeout(() => runVideo(n + 1), 3000);
+      return setTimeout(() => runVideo(n + 1, runModel), 3000);
+    }
+    const studio = SEEDANCE_STUDIO_FALLBACK[runModel];
+    if (err && studio && SEEDANCE_PRIVACY_RE.test(String(stdout || "") + String(stderr || ""))) {
+      console.warn(`[AI-VIDEO] ${runModel} refused a reference image as a real person, retrying on ${studio}.`);
+      apiUsage.meterInfshOutput(stdout, runModel, "Content Creator (AI video)");
+      const all = readTaskFile("ai-video-tasks.json");
+      const t = all.find((x) => x.id === task.id);
+      if (t) { Object.assign(t, { model: studio, requested_model: runModel, updated_at: new Date().toISOString() }); writeTaskFile("ai-video-tasks.json", all); }
+      return runVideo(0, studio);
     }
     try { fs.unlinkSync(tmpInput); } catch {}
-    apiUsage.meterInfshOutput(stdout, model, "Content Creator (AI video)");
+    apiUsage.meterInfshOutput(stdout, runModel, "Content Creator (AI video)");
     for (const f of [...refImagePaths, ...resizedPaths]) try { fs.unlinkSync(f); } catch {}
     if (source.upload) try { fs.unlinkSync(source.upload); } catch {}
 

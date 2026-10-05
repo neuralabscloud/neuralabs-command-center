@@ -453,6 +453,8 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
                 <optgroup label="Seedance (ByteDance)">
                   <option value="bytedance/seedance-2-0">Seedance 2.0 — multimodal</option>
                   <option value="bytedance/seedance-2-0-fast">Seedance 2.0 Fast — faster</option>
+                  <option value="bytedance/seedance-2-0-studio">Seedance 2.0 Studio — people / characters in reference images</option>
+                  <option value="bytedance/seedance-2-0-studio-fast">Seedance 2.0 Studio Fast — people / characters, faster</option>
                   <option value="bytedance/seedance-1-5-pro">Seedance 1.5 Pro — up to 1080p</option>
                   <option value="higgsfield/seedance-2.5">Seedance 2.5 — newest, native audio (Higgsfield)</option>
                   <option value="higgsfield/seedance-2.5-edit">Seedance 2.5 Edit — rework an existing clip (Higgsfield)</option>
@@ -1818,6 +1820,8 @@ const REF_IMAGES_BY_MODEL = {
   'klingai/video-o1':            { max: 7, hint: '1 image = first frame. 2-7 images = reference images, addressed as @image_1, @image_2 in the prompt.' },
   'bytedance/seedance-2-0':      { max: 9, hint: '1 image = first frame. 2-9 images = reference images, addressed as @Image1, @Image2 in the prompt. With a source video every image counts as a reference.' },
   'bytedance/seedance-2-0-fast': { max: 9, hint: '1 image = first frame. 2-9 images = reference images, addressed as @Image1, @Image2 in the prompt. With a source video every image counts as a reference.' },
+  'bytedance/seedance-2-0-studio':      { max: 9, hint: '1 image = first frame. 2-9 images = reference images (@Image1, @Image2 in the prompt). Studio accepts images of people and AI characters.' },
+  'bytedance/seedance-2-0-studio-fast': { max: 9, hint: '1 image = first frame. 2-9 images = reference images (@Image1, @Image2 in the prompt). Studio accepts images of people and AI characters. 480p/720p.' },
   'bytedance/seedance-1-5-pro':  { max: 1, hint: 'One image, used as the opening frame.' },
   'higgsfield/seedance-2.5':      { max: 30, hint: '1 image = first frame. 2-30 images = reference images. With a source video every image counts as a reference.' },
   'higgsfield/seedance-2.5-edit': { max: 30, hint: 'Optional reference images (up to 30) for the rework.' },
@@ -1912,6 +1916,8 @@ const RATIOS_BY_MODEL = {
   'klingai/video-o1': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
   'bytedance/seedance-2-0': [],
   'bytedance/seedance-2-0-fast': [],
+  'bytedance/seedance-2-0-studio': [],
+  'bytedance/seedance-2-0-studio-fast': [],
   'bytedance/seedance-1-5-pro': [],
   // Seedance 2.5 only takes a ratio when nothing else sets the framing:
   // with a first frame or a source clip the server drops it again.
@@ -1934,6 +1940,8 @@ const EXTEND_MODELS = {
   'xai/grok-extend-video': 'Grok Extend continues this clip where it ends.',
   'bytedance/seedance-2-0': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
   'bytedance/seedance-2-0-fast': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
+  'bytedance/seedance-2-0-studio': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
+  'bytedance/seedance-2-0-studio-fast': 'Seedance uses this clip as a reference (@Video1 in the prompt).',
   'higgsfield/seedance-2.5': 'Seedance 2.5 continues this clip (video extend). Leave it empty to generate from scratch.',
   'higgsfield/seedance-2.5-edit': 'Seedance 2.5 Edit reworks this clip: it keeps the framing and length, and follows the prompt.',
 };
@@ -1942,6 +1950,8 @@ const DURATIONS_BY_MODEL = {
   'xai/grok-extend-video': [5, 8, 10, 15],
   'bytedance/seedance-2-0': [5, 8, 10, 15],
   'bytedance/seedance-2-0-fast': [5, 8, 10, 15],
+  'bytedance/seedance-2-0-studio': [5, 8, 10, 15],
+  'bytedance/seedance-2-0-studio-fast': [5, 8, 10, 15],
   'higgsfield/seedance-2.5': [4, 5, 8, 10, 15, 20, 30],
 };
 let aiSrcFile = null;    // uploaded source clip
