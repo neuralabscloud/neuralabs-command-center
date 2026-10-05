@@ -2396,6 +2396,16 @@ const GENJUTSU_MODES = {
 const GENJUTSU_RESOLUTIONS = ["720p", "480p", "1080p"];
 const GENJUTSU_MIN_PIXELS = 409600;
 
+function genjutsuBilledSeconds(duration) {
+  return duration ? Math.ceil(Math.min(30, duration) - 1e-6) : 0;
+}
+// $/second from the usage-meter rates, so an override in Settings counts here too.
+function genjutsuRate(mode, resolution) {
+  const m = GENJUTSU_MODES[mode];
+  const r = m && apiUsage.higgsfieldRateFor(`${m.endpoint}@${resolution}`);
+  return r && r.per_sec != null ? Number(r.per_sec) : null;
+}
+
 function probeVideo(file) {
   return new Promise((resolve, reject) => {
     execFile("ffprobe", ["-v", "error", "-select_streams", "v:0",
@@ -2431,6 +2441,15 @@ const genjutsuUpload = (req, res, next) =>
     }
     res.status(400).json({ error: "Upload failed: " + err.message });
   });
+
+app.get("/influencer/genjutsu/rates", (req, res) => {
+  const rates = {};
+  for (const mode of Object.keys(GENJUTSU_MODES)) {
+    rates[mode] = {};
+    for (const r of GENJUTSU_RESOLUTIONS) rates[mode][r] = genjutsuRate(mode, r);
+  }
+  res.json({ rates, max_secs: 30, min_secs: 4 });
+});
 
 app.get("/influencer/genjutsu", (_req, res) =>
   res.json(readTaskFile("ai-video-tasks.json").filter(t => t.tool === "genjutsu")));
@@ -2514,10 +2533,15 @@ async function runGenjutsuTask(task, mode, o) {
 
     const body = { video_url: video, image_urls: images, resolution: o.resolution };
     if (o.prompt) body.prompt = o.prompt;
-    const url = await higgsfieldGenerateVideo(mode.endpoint, body);
+    // Billed per started second of input (max 30): the body has no duration
+    // field, so hand the seconds to the usage meter out of band.
+    const secs = genjutsuBilledSeconds(info.duration);
+    const url = await apiUsage.withVideoSeconds(secs, () => higgsfieldGenerateVideo(mode.endpoint, body));
     await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4"));
+    const rate = genjutsuRate(task.genjutsu_mode, o.resolution);
     update = { status: "completed", result_url: `/video-outputs/${task.id}.mp4`, provider_url: url,
-      duration: info.duration ? Math.round(Math.min(30, info.duration)) : null };
+      duration: info.duration ? Math.round(Math.min(30, info.duration)) : null,
+      billed_secs: secs, cost_usd: rate != null ? Math.round(secs * rate * 100) / 100 : null };
     console.log(`[GENJUTSU] Task ${task.id} (${mode.label}) completed`);
   } catch (e) {
     update = { status: "failed", error: String(e.message).slice(0, 500) };

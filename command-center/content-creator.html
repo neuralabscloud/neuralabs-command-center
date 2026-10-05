@@ -413,7 +413,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <div style="margin-bottom:16px;">
           <div class="form-label">Reference video</div>
           <input type="file" id="gj-video" accept="video/*" style="font-size:12px;" onchange="previewGjVideo()" />
-          <input class="form-input" id="gj-link" placeholder="…or a link (TikTok, Instagram, X, YouTube, direct .mp4)" style="margin-top:8px;" />
+          <input class="form-input" id="gj-link" placeholder="…or a link (TikTok, Instagram, X, YouTube, direct .mp4)" style="margin-top:8px;" oninput="updateGjEstimate()" />
           <video id="gj-video-preview" controls muted style="display:none;max-width:220px;max-height:300px;border-radius:8px;border:1px solid var(--border);margin-top:8px;"></video>
           <div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="gj-video-hint">At least 4 seconds; longer than 30 seconds is cut to the first 30.</div>
         </div>
@@ -431,7 +431,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div>
             <div class="form-label">Resolution</div>
-            <select class="form-select" id="gj-resolution">
+            <select class="form-select" id="gj-resolution" onchange="updateGjEstimate()">
               <option value="720p" selected>720p</option>
               <option value="1080p">1080p</option>
               <option value="480p">480p (cheapest)</option>
@@ -440,6 +440,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         </div>
         <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
           <button class="btn-submit" id="gj-submit" onclick="submitGenjutsu()">Generate</button>
+          <span id="gj-estimate" style="font-family:var(--font-data);font-size:12px;color:hsl(270 95% 75%);white-space:nowrap;" title="Higgsfield bills each started second of the reference video (max 30)"></span>
           <span class="form-status" id="gj-status"></span>
         </div>
       </div>
@@ -761,7 +762,7 @@ function switchMode(mode) {
   document.getElementById('form-voiceover').style.display = mode === 'voiceover' ? '' : 'none';
   document.getElementById('form-tools').style.display    = mode === 'tools'    ? '' : 'none';
   document.getElementById('form-influencer').style.display = mode === 'influencer' ? '' : 'none';
-  if (mode === 'influencer') { loadGjAvatars(); loadGenjutsu(); }
+  if (mode === 'influencer') { loadGjAvatars(); loadGenjutsu(); loadGjRates(); }
   if (mode === 'avatars') loadAvatars();
   if (mode === 'voiceover') loadVoiceovers();
   if (mode === 'tools') loadVoiceoverOptions();
@@ -1476,6 +1477,32 @@ let gjMode = 'motion';
 let gjFiles = [];               // uploaded reference images (File objects)
 const gjAvatarIds = new Set();  // picked avatars from the library
 const GJ_MAX_IMAGES = 8;
+let gjVideoSecs = 0;            // duration of the uploaded reference video
+let gjRates = null;             // $/second per mode and resolution
+
+async function loadGjRates() {
+  try { gjRates = (await fetch('/influencer/genjutsu/rates').then(r => r.json())).rates; } catch { gjRates = null; }
+  updateGjEstimate();
+}
+// Higgsfield bills every started second of input, capped at 30.
+function gjBilledSecs(d) { return d ? Math.ceil(Math.min(30, d) - 1e-6) : 0; }
+function updateGjEstimate() {
+  const el = document.getElementById('gj-estimate');
+  if (!el) return;
+  const res = document.getElementById('gj-resolution').value;
+  const rate = gjRates && gjRates[gjMode] ? gjRates[gjMode][res] : null;
+  const hasFile = !!document.getElementById('gj-video').files[0];
+  const link = document.getElementById('gj-link').value.trim();
+  if (rate == null) { el.textContent = ''; return; }
+  if (hasFile && gjVideoSecs) {
+    const secs = gjBilledSecs(gjVideoSecs);
+    el.textContent = `≈ $${(secs * rate).toFixed(2)} (${secs} s × ${res})`;
+  } else if (link && !hasFile) {
+    el.textContent = `$${rate.toFixed(3)}/s at ${res} · max $${(30 * rate).toFixed(2)}`;
+  } else {
+    el.textContent = `$${rate.toFixed(3)} per second at ${res}`;
+  }
+}
 
 function setGjMode(mode) {
   gjMode = mode;
@@ -1489,16 +1516,21 @@ function setGjMode(mode) {
   document.getElementById('gj-prompt').placeholder = mode === 'swap'
     ? 'e.g. Replace the woman on the left with the person in the images, keep her outfit'
     : 'e.g. Keep the background, she wears a black hoodie with a purple logo';
+  updateGjEstimate();
 }
 
 function previewGjVideo() {
   const f = document.getElementById('gj-video').files[0];
   const v = document.getElementById('gj-video-preview');
   if (v.src) URL.revokeObjectURL(v.src);
-  if (!f) { v.style.display = 'none'; v.removeAttribute('src'); return; }
+  gjVideoSecs = 0;
+  if (!f) { v.style.display = 'none'; v.removeAttribute('src'); updateGjEstimate(); return; }
+  updateGjEstimate();
   v.src = URL.createObjectURL(f);
   v.style.display = '';
   v.onloadedmetadata = () => {
+    gjVideoSecs = isFinite(v.duration) ? v.duration : 0;
+    updateGjEstimate();
     const st = document.getElementById('gj-status');
     if (v.duration < 4) st.textContent = `This video is ${v.duration.toFixed(1)} s: Genjutsu needs at least 4 seconds.`;
     else if (gjMode === 'swap' && v.videoWidth * v.videoHeight < 409600) st.textContent = `This video is ${v.videoWidth}×${v.videoHeight}: object swap needs at least 854×480.`;
@@ -1570,6 +1602,7 @@ async function submitGenjutsu() {
     st.textContent = 'Generating: this usually takes a few minutes. The result appears below (and in the Editor).';
     document.getElementById('gj-video').value = ''; previewGjVideo();
     document.getElementById('gj-link').value = '';
+    updateGjEstimate();
     loadGenjutsu();
   } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 200); }
   btn.disabled = false;
@@ -1588,6 +1621,7 @@ async function loadGenjutsu() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
           <span class="task-type-tag" style="color:hsl(270 95% 75%);background:hsla(270 95% 65% / 0.1);">${kind}</span>
           <span class="stage-pill">${esc(t.resolution || '')}${t.duration ? ' · ' + t.duration + 's' : ''}${t.ref_images ? ' · ' + t.ref_images + ' img' : ''}</span>
+          ${t.cost_usd != null ? `<span class="stage-pill" title="Estimated Higgsfield cost (${t.billed_secs || '?'} billed seconds)">≈ $${Number(t.cost_usd).toFixed(2)}</span>` : ''}
           <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);">${time}</span>
         </div>
         <div style="font-size:12px;color:var(--text);line-height:1.4;">${esc(t.prompt || '')}</div>

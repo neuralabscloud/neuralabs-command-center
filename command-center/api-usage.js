@@ -67,7 +67,17 @@ const DEFAULT_RATES = {
   // has no price list endpoint: the owner fills in USD per model in Settings.
   // `models` keys match the stored model the same way as Claude ids (longest
   // contained key wins); per_job is the fallback for models without a rate.
-  higgsfield: { per_job: 0, models: {} },
+  // Genjutsu is the exception: its estimate endpoint publishes the price per
+  // second of input video, per resolution (the model is stored as
+  // "<endpoint>@<resolution>", the seconds come from withVideoSeconds()).
+  higgsfield: { per_job: 0, models: {
+    "genjutsu/motion-transfer/v1.0@480p":  { per_sec: 0.318 },
+    "genjutsu/motion-transfer/v1.0@720p":  { per_sec: 0.681 },
+    "genjutsu/motion-transfer/v1.0@1080p": { per_sec: 1.632 },
+    "genjutsu/object-swap/v1.0@480p":      { per_sec: 0.318 },
+    "genjutsu/object-swap/v1.0@720p":      { per_sec: 0.681 },
+    "genjutsu/object-swap/v1.0@1080p":     { per_sec: 1.632 },
+  } },
   opusclip: { per_job: 0 },
 };
 
@@ -106,6 +116,10 @@ const ROUTE_FEATURES = [
 ];
 
 function tag(feature, fn) { return als.run({ ...(als.getStore() || {}), feature }, fn); }
+
+// Some Higgsfield models bill per second of *input* video, which is not in the
+// request body: the caller knows the length and passes it along this way.
+function withVideoSeconds(secs, fn) { return als.run({ ...(als.getStore() || {}), video_secs: Number(secs) || 0 }, fn); }
 
 // Express middleware: remembers which route a call originated from.
 function middleware(req, _res, next) {
@@ -358,9 +372,13 @@ function meterFetch(url, init, res) {
     if (method === "POST" && !HIGGSFIELD_NOT_A_JOB.test(u.pathname) && ok) {
       const b = parseBody(init && init.body) || {};
       const params = b.params || b;
-      const model = params.model || u.pathname.replace(/^\/(v1\/)?/, "");
-      // Video is billed per second of output; the requested length is in the body.
-      return record("higgsfield", { jobs: 1, secs: Number(params.duration) || 0 }, { feature, model });
+      let model = params.model || u.pathname.replace(/^\/(v1\/)?/, "");
+      // Price depends on the resolution for these models (Genjutsu).
+      if (/genjutsu/.test(model) && params.resolution) model += "@" + params.resolution;
+      // Video is billed per second of output (the requested length is in the
+      // body) or, for video-to-video models, per second of the source clip.
+      const secs = Number(params.duration) || Number((als.getStore() || {}).video_secs) || 0;
+      return record("higgsfield", { jobs: 1, secs }, { feature, model });
     }
     return; // polling/uploads are not billed
   }
@@ -662,7 +680,7 @@ function install() {
 }
 
 module.exports = {
-  install, middleware, tag, record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
+  install, middleware, tag, withVideoSeconds, higgsfieldRateFor: (model) => higgsfieldRate(model, effectiveRates()), record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
   // exported for tests
   _internal: { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; } },
 };

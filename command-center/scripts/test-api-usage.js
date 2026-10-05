@@ -38,6 +38,10 @@ check("higgsfield: per second x secs", near(rowCost({ p: "higgsfield", m: "byted
 check("higgsfield: per job + per second combined", near(rowCost({ p: "higgsfield", m: "bytedance/seedance-2.5/text-to-video", jobs: 1, secs: 8 }, hfRates).cost, 0.68));
 check("higgsfield: unknown model falls back to per_job", near(rowCost({ p: "higgsfield", m: "speak/kling", jobs: 2 }, hfRates).cost, 0.2));
 check("higgsfield: no rates = unpriced", rowCost({ p: "higgsfield", m: "speak/kling", jobs: 2 }, rates).priced === false);
+const dflt = effectiveRates({});
+check("genjutsu: default 720p rate per second", higgsfieldRate("higgsfield/genjutsu/motion-transfer/v1.0@720p", dflt).per_sec === 0.681);
+check("genjutsu: 10 s at 1080p", near(rowCost({ p: "higgsfield", m: "higgsfield/genjutsu/object-swap/v1.0@1080p", jobs: 1, secs: 10 }, dflt).cost, 16.32));
+check("genjutsu: override in config wins", higgsfieldRate("higgsfield/genjutsu/object-swap/v1.0@480p", effectiveRates({ rates: { higgsfield: { models: { "genjutsu/object-swap/v1.0@480p": { per_sec: 0.2 } } } } })).per_sec === 0.2);
 check("inference uses actual charge", near(rowCost({ p: "inference", actual: 0.101, tasks: 1 }, rates).cost, 0.101));
 check("elevenlabs per 1k chars", near(rowCost({ p: "elevenlabs", chars: 2000 }, rates).cost, 0.6));
 check("x reads + writes", near(rowCost({ p: "x", reads: 100, writes: 2 }, rates).cost, 0.52));
@@ -125,6 +129,15 @@ function persistence() {
   u.flush();
   const saved = JSON.parse(fs.readFileSync(path.join(tmp, "api-usage.json"), "utf8"));
   check("flushed to disk", Object.keys(saved.days).length === 1);
+
+  // ── genjutsu: seconds handed over out of band, resolution in the model key ──
+  reset();
+  u.withVideoSeconds(11, () => meterFetch("https://api.higgsfield.ai/higgsfield/genjutsu/motion-transfer/v1.0", { method: "POST", body: JSON.stringify({ video_url: "v", image_urls: ["i"], resolution: "720p" }) }, okRes));
+  meterFetch("https://api.higgsfield.ai/higgsfield/genjutsu/object-swap/v1.0", { method: "POST", body: JSON.stringify({ video_url: "v", image_urls: ["i"], resolution: "1080p" }) }, okRes);
+  const gj = Object.fromEntries(u.summary({ days: 1 }).higgsfield_models.map(h => [h.model, h]));
+  const gjMotion = Object.values(gj).find(h => /motion-transfer.*@720p$/.test(h.model));
+  check("genjutsu: seconds from withVideoSeconds + @resolution key", gjMotion && gjMotion.secs === 11 && near(gjMotion.cost, 7.491));
+  check("genjutsu: without seconds the row is 0 s", Object.values(gj).some(h => /object-swap.*@1080p$/.test(h.model) && h.secs === 0));
 
   // ── SDK hook ──
   const { Messages } = require("@anthropic-ai/sdk/resources/messages/messages");
