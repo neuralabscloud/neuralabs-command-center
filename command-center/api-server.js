@@ -3142,6 +3142,40 @@ app.post("/ugc/avatars", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Upload an existing portrait (an AI influencer made elsewhere) straight into
+// the library. Normalised to PNG (max 2048 px) so every pipeline that reads
+// /ugc-avatars/<id>.png treats it like a generated one.
+const avatarUpload = (req, res, next) =>
+  aiVideoUpload.single("image")(req, res, (err) => {
+    if (!err) return next();
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+    res.status(400).json({ error: "Upload failed: " + err.message });
+  });
+app.post("/ugc/avatars/upload", avatarUpload, (req, res) => {
+  const f = req.file;
+  if (!f) return res.status(400).json({ error: "Choose an image first." });
+  const drop = () => { try { fs.unlinkSync(f.path); } catch {} };
+  if (!/^image\//.test(f.mimetype || "")) { drop(); return res.status(400).json({ error: "That is not an image." }); }
+  if (f.size > 25 * 1024 * 1024) { drop(); return res.status(400).json({ error: "Image is larger than 25 MB." }); }
+  const id = "av_" + Date.now().toString(36);
+  const dir = path.join(__dirname, "data", "ugc-avatars");
+  fs.mkdirSync(dir, { recursive: true });
+  const out = path.join(dir, `${id}.png`);
+  execFile("convert", [f.path + "[0]", "-auto-orient", "-resize", "2048x2048>", out], { timeout: 30000 }, (err) => {
+    drop();
+    if (err || !fs.existsSync(out)) return res.status(400).json({ error: "Could not read that image (try a JPG or PNG)." });
+    const b = req.body || {};
+    const avatar = { id, name: String(b.name || "").trim() || "Avatar", prompt: "", source: "upload",
+      status: "ready", request_id: "", image_url: `/ugc-avatars/${id}.png`, created_at: new Date().toISOString() };
+    if (b.gender === "male" || b.gender === "female") avatar.gender = b.gender;
+    const avatars = readTaskFile("ugc-avatars.json");
+    avatars.unshift(avatar);
+    if (avatars.length > 100) avatars.length = 100;
+    writeTaskFile("ugc-avatars.json", avatars);
+    res.json({ ok: true, avatar });
+  });
+});
+
 // Gender (drives the voice match) and an optional fixed voice per avatar.
 app.patch("/ugc/avatars/:id", (req, res) => {
   const avatars = readTaskFile("ugc-avatars.json");

@@ -334,6 +334,25 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <button class="btn-submit" id="av-submit" onclick="createAvatar()">Create Avatar</button>
           <span id="av-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
         </div>
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+          <div class="form-label">…or upload an existing avatar / AI influencer</div>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr;align-items:end;">
+            <div><input class="form-input" id="av-up-name" placeholder="Name" /></div>
+            <div>
+              <select class="form-select" id="av-up-gender">
+                <option value="">Gender (for the voice): auto</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </select>
+            </div>
+            <div><input type="file" id="av-up-file" accept="image/*" style="font-size:12px;" /></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+            <button class="btn-submit" onclick="uploadAvatar()">Upload Avatar</button>
+            <span id="av-up-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+          </div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:6px;">A clear, front-facing portrait works best (JPG, PNG or WebP, max 25 MB).</div>
+        </div>
         <div class="section-header" style="margin-top:28px;">Avatar Library</div>
         <div id="avatar-gallery" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;"></div>
       </div>
@@ -761,6 +780,26 @@ async function createAvatar() {
     else st.textContent = 'Failed: ' + (d.error || '').slice(0, 80);
     loadAvatars();
   } catch (e) { st.textContent = 'Failed'; }
+}
+
+async function uploadAvatar() {
+  const st = document.getElementById('av-up-status');
+  const file = document.getElementById('av-up-file').files[0];
+  if (!file) { st.textContent = 'Choose an image first'; return; }
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('name', document.getElementById('av-up-name').value.trim());
+  fd.append('gender', document.getElementById('av-up-gender').value);
+  st.textContent = 'Uploading…';
+  try {
+    const res = await fetch('/ugc/avatars/upload', { method: 'POST', body: fd });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.ok) throw new Error(d.error || 'HTTP ' + res.status);
+    st.textContent = 'Added to the library ✓';
+    document.getElementById('av-up-file').value = '';
+    document.getElementById('av-up-name').value = '';
+    loadAvatars();
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 150); }
 }
 
 let _avatarPollTimer = null;
