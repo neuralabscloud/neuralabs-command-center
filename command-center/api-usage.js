@@ -79,6 +79,7 @@ const STACK_FEATURES = [
   [/\bat (?:async )?runGrowthReport\b/, "Growth Marketeer"],
   [/\bat (?:async )?(?:runEduDesign|executeEduDesignerSchedule|deliverEduToTelegram)\b/, "Designer (edu autopilot)"],
   [/\bat (?:async )?(?:createUgcAutopilotTask|finishUgcVideo|executeUgcAutopilotSchedule)\b/, "UGC Autopilot"],
+  [/\bat (?:async )?runGenjutsuTask\b/, "AI Influencer (Genjutsu)"],
   [/\bat (?:async )?executeAdsOptimizerSchedule\b/, "Ads Optimizer"],
   [/\bat (?:async )?processDesignerTasks\b/, "Designer"],
   [/\bat (?:async )?processCommunityTasks\b/, "Post publisher"],

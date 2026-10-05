@@ -2381,6 +2381,161 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
   })();
 });
 
+// ── AI INFLUENCER: HIGGSFIELD GENJUTSU ────────────────
+// A reference video plus 1–8 images of the influencer (or the object):
+//   motion  = the person in the images copies the movement of the video
+//   swap    = one object/person in the video is replaced, the rest stays
+// docs.higgsfield.ai/docs/models/genjutsu/{motion-transfer,object-swap}
+// The source must be >= 4 s (longer than 30 s is trimmed by Higgsfield) and,
+// for a swap, at least 409,600 pixels per frame. Results land in
+// ai-video-tasks.json, so they also show up in the Editor video list.
+const GENJUTSU_MODES = {
+  motion: { label: "Motion transfer", endpoint: "higgsfield/genjutsu/motion-transfer/v1.0" },
+  swap:   { label: "Object swap",     endpoint: "higgsfield/genjutsu/object-swap/v1.0" },
+};
+const GENJUTSU_RESOLUTIONS = ["720p", "480p", "1080p"];
+const GENJUTSU_MIN_PIXELS = 409600;
+
+function probeVideo(file) {
+  return new Promise((resolve, reject) => {
+    execFile("ffprobe", ["-v", "error", "-select_streams", "v:0",
+      "-show_entries", "stream=width,height:format=duration", "-of", "json", file],
+    { timeout: 30000 }, (err, stdout) => {
+      if (err) return reject(new Error("Could not read the video (is it a valid video file?)"));
+      try {
+        const j = JSON.parse(stdout);
+        const s = (j.streams || [])[0] || {};
+        resolve({ width: Number(s.width) || 0, height: Number(s.height) || 0, duration: Number((j.format || {}).duration) || 0 });
+      } catch { reject(new Error("Could not read the video")); }
+    });
+  });
+}
+
+// Higgsfield wants an mp4 and stops at 30 s anyway: cut and re-encode locally
+// so a long or .mov source doesn't get uploaded in full.
+function prepareGenjutsuVideo(file, info, out) {
+  if (path.extname(file).toLowerCase() === ".mp4" && info.duration <= 30.5) return Promise.resolve(file);
+  return new Promise((resolve, reject) => {
+    execFile("ffmpeg", ["-y", "-i", file, "-t", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", out],
+    { timeout: 600000, maxBuffer: 1024 * 1024 * 10 }, (err) => err ? reject(new Error("Could not convert the video to mp4")) : resolve(out));
+  });
+}
+
+const genjutsuUpload = (req, res, next) =>
+  aiVideoUpload.fields([{ name: "video", maxCount: 1 }, { name: "images", maxCount: 8 }])(req, res, (err) => {
+    if (!err) return next();
+    for (const list of Object.values(req.files || {})) for (const f of list) { try { fs.unlinkSync(f.path); } catch {} }
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({ error: `File is too large (max ${VIDEO_UPLOAD_MAX_MB} MB). Compress it, or paste a link instead.` });
+    }
+    res.status(400).json({ error: "Upload failed: " + err.message });
+  });
+
+app.get("/influencer/genjutsu", (_req, res) =>
+  res.json(readTaskFile("ai-video-tasks.json").filter(t => t.tool === "genjutsu")));
+
+app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
+  const b = req.body || {};
+  const up = req.files || {};
+  const uploaded = [...(up.video || []), ...(up.images || [])].map(f => f.path);
+  const fail = (code, error) => {
+    for (const p of uploaded) { try { fs.unlinkSync(p); } catch {} }
+    return res.status(code).json({ error });
+  };
+  const mode = GENJUTSU_MODES[b.mode];
+  if (!mode) return fail(400, "Choose motion transfer or object swap.");
+  if (!(process.env.HIGGSFIELD_API_KEY || "").includes(":")) return fail(400, "Genjutsu runs on Higgsfield: set HIGGSFIELD_API_KEY (KEY_ID:KEY_SECRET) in Settings first.");
+
+  const videoFile = up.video && up.video[0] ? up.video[0].path : "";
+  const link = String(b.source_link || "").trim();
+  if (!videoFile && !link) return fail(400, "A reference video is required (upload or link).");
+  if (!videoFile && !/^https?:\/\/\S+$/i.test(link)) return fail(400, "The video link must start with http:// or https://");
+  if (!videoFile && !ytDlpBin()) return fail(400, "yt-dlp is not installed on the server (run update.sh), so links can't be fetched. Upload the file instead.");
+
+  // Reference images: uploads plus avatars from the library (stored locally).
+  const imageFiles = (up.images || []).map(f => f.path);
+  const avatarIds = String(b.avatar_ids || "").split(",").map(s => s.trim()).filter(Boolean);
+  const avatars = readTaskFile("ugc-avatars.json");
+  const avatarNames = [];
+  for (const id of avatarIds) {
+    const a = avatars.find(x => x.id === id);
+    const m = a && String(a.image_url || "").match(/^\/ugc-avatars\/([\w.-]+)$/);
+    const p = m && path.join(__dirname, "data", "ugc-avatars", m[1]);
+    if (!p || !fs.existsSync(p)) return fail(400, `Avatar ${id} has no image (yet).`);
+    imageFiles.push(p);
+    avatarNames.push(a.name || id);
+  }
+  if (!imageFiles.length) return fail(400, "Add at least one reference image (upload or pick an avatar).");
+  if (imageFiles.length > 8) return fail(400, `Genjutsu takes at most 8 reference images (received ${imageFiles.length}).`);
+
+  const prompt = String(b.prompt || "").slice(0, 10000);
+  const resolution = GENJUTSU_RESOLUTIONS.includes(b.resolution) ? b.resolution : "720p";
+  const tasks = readTaskFile("ai-video-tasks.json");
+  const task = {
+    id: genId(), status: "processing",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    model: "higgsfield/genjutsu-" + (b.mode === "swap" ? "object-swap" : "motion-transfer"),
+    tool: "genjutsu", genjutsu_mode: b.mode,
+    prompt: `${mode.label}${avatarNames.length ? " · " + avatarNames.join(", ") : ""}${prompt ? ": " + prompt : ""}`,
+    user_prompt: prompt, resolution, ref_images: imageFiles.length,
+    aspect_ratio: null, duration: null,
+    result_url: null, error: null,
+  };
+  tasks.unshift(task);
+  writeTaskFile("ai-video-tasks.json", tasks);
+  res.status(201).json(task);
+  runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution });
+});
+
+async function runGenjutsuTask(task, mode, o) {
+  const cleanup = [...o.uploaded];
+  let update;
+  try {
+    let src = o.videoFile;
+    if (!src) {
+      console.log(`[GENJUTSU] Task ${task.id}: fetching reference video from link`);
+      src = await downloadLinkedVideo(o.link, `link-${task.id}`);
+      cleanup.push(src);
+    }
+    const info = await probeVideo(src);
+    if (info.duration && info.duration < 4) throw new Error(`The reference video is ${info.duration.toFixed(1)} s; Genjutsu needs at least 4 seconds.`);
+    if (task.genjutsu_mode === "swap" && info.width * info.height < GENJUTSU_MIN_PIXELS) {
+      throw new Error(`Object swap needs at least ${GENJUTSU_MIN_PIXELS.toLocaleString("en")} pixels per frame (e.g. 854×480); this video is ${info.width}×${info.height}.`);
+    }
+    const prepared = await prepareGenjutsuVideo(src, info, path.join(__dirname, "data", "ai-video-uploads", `genjutsu-${task.id}.mp4`));
+    if (prepared !== src) cleanup.push(prepared);
+
+    const resized = [];
+    const images = [];
+    for (const p of shrinkRefImages(o.imageFiles, resized)) images.push(await higgsfieldUpload(p));
+    cleanup.push(...resized);
+    const video = await higgsfieldUpload(prepared);
+
+    const body = { video_url: video, image_urls: images, resolution: o.resolution };
+    if (o.prompt) body.prompt = o.prompt;
+    const url = await higgsfieldGenerateVideo(mode.endpoint, body);
+    await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4"));
+    update = { status: "completed", result_url: `/video-outputs/${task.id}.mp4`, provider_url: url,
+      duration: info.duration ? Math.round(Math.min(30, info.duration)) : null };
+    console.log(`[GENJUTSU] Task ${task.id} (${mode.label}) completed`);
+  } catch (e) {
+    update = { status: "failed", error: String(e.message).slice(0, 500) };
+    console.error(`[GENJUTSU] ${mode.label} failed:`, String(e.message).slice(0, 300));
+  }
+  // Never delete the avatar library images: only what this run created/uploaded.
+  for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
+  if (!o.videoFile) {
+    const dir = path.join(__dirname, "data", "ai-video-uploads");
+    for (const f of fs.readdirSync(dir)) if (f.startsWith(`link-${task.id}`)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
+  }
+  const all = readTaskFile("ai-video-tasks.json");
+  const idx = all.findIndex(t => t.id === task.id);
+  if (idx === -1) return;
+  Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+  writeTaskFile("ai-video-tasks.json", all);
+}
+
 app.delete("/video/ai-generate/:id", (req, res) => {
   writeTaskFile("ai-video-tasks.json", readTaskFile("ai-video-tasks.json").filter(t => t.id !== req.params.id));
   res.json({ ok: true });

@@ -76,6 +76,19 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .mode-tab:hover { color: var(--text); background: hsla(0 0% 100% / 0.03); }
 .mode-tab.active[data-mode="ugc"] { color: hsl(174 72% 56%); background: hsla(174 72% 56% / 0.1); border-color: hsla(174 72% 56% / 0.25); }
 .mode-tab.active[data-mode="clipper"] { color: var(--danger); background: hsla(0 72% 51% / 0.08); border-color: hsla(0 72% 51% / 0.25); }
+.mode-tab.active[data-mode="influencer"] { color: hsl(270 95% 75%); background: hsla(270 95% 65% / 0.1); border-color: hsla(270 95% 65% / 0.3); }
+.gj-mode { flex: 1; text-align: left; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: all 0.2s; }
+.gj-mode b { display: block; font-size: 13px; color: var(--text); margin-bottom: 3px; }
+.gj-mode span { font-size: 11px; line-height: 1.4; }
+.gj-mode.active { border-color: hsl(270 95% 65%); background: hsla(270 95% 65% / 0.08); }
+.gj-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.gj-thumb { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.gj-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.gj-thumb button { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; border: none; background: hsla(0 0% 0% / 0.7); color: #fff; font-size: 10px; cursor: pointer; line-height: 18px; padding: 0; }
+.gj-avatar { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; }
+.gj-avatar img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.gj-avatar.active { border-color: hsl(270 95% 65%); color: var(--text); background: hsla(270 95% 65% / 0.1); }
+.gj-result { width: 100%; max-width: 260px; max-height: 360px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-deep); margin-top: 8px; }
 .form-status { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
 .task-link { font-family: var(--font-data); font-size: 11px; color: var(--teal); text-decoration: none; border: none; background: none; cursor: pointer; }
 .task-delete { background: none; border: none; color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 4px; }
@@ -167,6 +180,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="mode-tab" data-mode="voiceover" onclick="switchMode('voiceover')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10a7 7 0 0 1-14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg>
           Voiceover
+        </button>
+        <button class="mode-tab" data-mode="influencer" onclick="switchMode('influencer')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/></svg>
+          AI Influencer
         </button>
         <button class="mode-tab" data-mode="tools" onclick="switchMode('tools')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 1-5 5L4 17v3h3l5.7-5.7a4 4 0 0 1 5-5l2.3-2.3-3-3z"/></svg>
@@ -360,6 +377,55 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
       <div class="section-header" style="margin-top:24px;">Voiceovers</div>
       <div id="vo-list"></div>
+    </section>
+
+    <!-- AI INFLUENCER (Higgsfield Genjutsu: motion transfer / object swap) -->
+    <section class="fade-up delay-2" id="form-influencer" style="display:none;">
+      <div class="section-header">AI Influencer · Genjutsu</div>
+      <div class="task-form">
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+          <button type="button" class="gj-mode active" data-gjmode="motion" onclick="setGjMode('motion')">
+            <b>Motion transfer</b><span>Your influencer copies the movement, gestures and camera of the reference video.</span>
+          </button>
+          <button type="button" class="gj-mode" data-gjmode="swap" onclick="setGjMode('swap')">
+            <b>Object swap</b><span>Replaces one person or object in the reference video; everything else stays the same.</span>
+          </button>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="form-label">Reference video</div>
+          <input type="file" id="gj-video" accept="video/*" style="font-size:12px;" onchange="previewGjVideo()" />
+          <input class="form-input" id="gj-link" placeholder="…or a link (TikTok, Instagram, X, YouTube, direct .mp4)" style="margin-top:8px;" />
+          <video id="gj-video-preview" controls muted style="display:none;max-width:220px;max-height:300px;border-radius:8px;border:1px solid var(--border);margin-top:8px;"></video>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="gj-video-hint">At least 4 seconds; longer than 30 seconds is cut to the first 30.</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="form-label" id="gj-images-label">Influencer (1–8 reference images)</div>
+          <div id="gj-avatars" class="gj-thumbs" style="margin-top:0;"></div>
+          <input type="file" id="gj-images" accept="image/*" multiple style="font-size:12px;margin-top:10px;" onchange="addGjImages()" />
+          <div id="gj-image-thumbs" class="gj-thumbs"></div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:4px;" id="gj-images-hint">Pick avatars from the Avatar Creator library and/or upload photos. Several angles of the same face give the best likeness.</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div class="form-label">Prompt (optional)</div>
+          <textarea class="form-textarea" id="gj-prompt" placeholder="e.g. Keep the background, she wears a black hoodie with a purple logo"></textarea>
+        </div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div>
+            <div class="form-label">Resolution</div>
+            <select class="form-select" id="gj-resolution">
+              <option value="720p" selected>720p</option>
+              <option value="1080p">1080p</option>
+              <option value="480p">480p (cheapest)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+          <button class="btn-submit" id="gj-submit" onclick="submitGenjutsu()">Generate</button>
+          <span class="form-status" id="gj-status"></span>
+        </div>
+      </div>
+      <div class="section-header" style="margin-top:24px;">AI Influencer videos</div>
+      <div id="gj-list"></div>
     </section>
 
     <!-- VIDEO TOOLS (translate / lipsync / upscale) -->
@@ -675,6 +741,8 @@ function switchMode(mode) {
   document.getElementById('form-clipper').style.display = mode === 'clipper' ? '' : 'none';
   document.getElementById('form-voiceover').style.display = mode === 'voiceover' ? '' : 'none';
   document.getElementById('form-tools').style.display    = mode === 'tools'    ? '' : 'none';
+  document.getElementById('form-influencer').style.display = mode === 'influencer' ? '' : 'none';
+  if (mode === 'influencer') { loadGjAvatars(); loadGenjutsu(); }
   if (mode === 'avatars') loadAvatars();
   if (mode === 'voiceover') loadVoiceovers();
   if (mode === 'tools') loadVoiceoverOptions();
@@ -1363,6 +1431,145 @@ async function deleteYtCookies() {
   loadYtCookies();
 }
 loadYtCookies();
+
+// ── AI Influencer (Higgsfield Genjutsu) ───────────────────────────
+let gjMode = 'motion';
+let gjFiles = [];               // uploaded reference images (File objects)
+const gjAvatarIds = new Set();  // picked avatars from the library
+const GJ_MAX_IMAGES = 8;
+
+function setGjMode(mode) {
+  gjMode = mode;
+  document.querySelectorAll('.gj-mode').forEach(b => b.classList.toggle('active', b.dataset.gjmode === mode));
+  document.getElementById('gj-images-label').textContent = mode === 'swap'
+    ? 'Replacement (1–8 reference images of the new person or object)'
+    : 'Influencer (1–8 reference images)';
+  document.getElementById('gj-video-hint').textContent = mode === 'swap'
+    ? 'At least 4 seconds and at least 854×480 (or 640×640); longer than 30 seconds is cut to the first 30.'
+    : 'At least 4 seconds; longer than 30 seconds is cut to the first 30.';
+  document.getElementById('gj-prompt').placeholder = mode === 'swap'
+    ? 'e.g. Replace the woman on the left with the person in the images, keep her outfit'
+    : 'e.g. Keep the background, she wears a black hoodie with a purple logo';
+}
+
+function previewGjVideo() {
+  const f = document.getElementById('gj-video').files[0];
+  const v = document.getElementById('gj-video-preview');
+  if (v.src) URL.revokeObjectURL(v.src);
+  if (!f) { v.style.display = 'none'; v.removeAttribute('src'); return; }
+  v.src = URL.createObjectURL(f);
+  v.style.display = '';
+  v.onloadedmetadata = () => {
+    const st = document.getElementById('gj-status');
+    if (v.duration < 4) st.textContent = `This video is ${v.duration.toFixed(1)} s: Genjutsu needs at least 4 seconds.`;
+    else if (gjMode === 'swap' && v.videoWidth * v.videoHeight < 409600) st.textContent = `This video is ${v.videoWidth}×${v.videoHeight}: object swap needs at least 854×480.`;
+    else st.textContent = '';
+  };
+}
+
+function gjImageCount() { return gjFiles.length + gjAvatarIds.size; }
+
+function addGjImages() {
+  const input = document.getElementById('gj-images');
+  const st = document.getElementById('gj-status');
+  for (const f of input.files) {
+    if (gjImageCount() >= GJ_MAX_IMAGES) { st.textContent = `Max ${GJ_MAX_IMAGES} reference images.`; break; }
+    gjFiles.push(f);
+  }
+  input.value = '';
+  renderGjThumbs();
+}
+function removeGjImage(i) {
+  gjFiles.splice(i, 1);
+  renderGjThumbs();
+}
+function renderGjThumbs() {
+  const el = document.getElementById('gj-image-thumbs');
+  el.querySelectorAll('img').forEach(img => URL.revokeObjectURL(img.src));
+  el.innerHTML = gjFiles.map((f, i) => `<div class="gj-thumb"><img src="${URL.createObjectURL(f)}" alt=""><button onclick="removeGjImage(${i})" title="Remove">&#x2715;</button></div>`).join('');
+}
+
+async function loadGjAvatars() {
+  const el = document.getElementById('gj-avatars');
+  let avatars = [];
+  try { avatars = await fetch('/ugc/avatars').then(r => r.json()); } catch { return; }
+  const ready = avatars.filter(a => a.status === 'ready' && a.image_url);
+  for (const id of [...gjAvatarIds]) if (!ready.some(a => a.id === id)) gjAvatarIds.delete(id);
+  el.innerHTML = ready.length ? ready.map(a => `<button type="button" class="gj-avatar${gjAvatarIds.has(a.id) ? ' active' : ''}" data-av="${a.id}" onclick="toggleGjAvatar('${a.id}')">
+      <img src="${esc(a.image_url)}" alt="">${esc(a.name || 'Avatar')}</button>`).join('')
+    : '<span style="font-size:11px;color:var(--text-dim);">No avatars yet: create one in the Avatar Creator tab, or upload photos below.</span>';
+}
+function toggleGjAvatar(id) {
+  const st = document.getElementById('gj-status');
+  if (gjAvatarIds.has(id)) gjAvatarIds.delete(id);
+  else if (gjImageCount() >= GJ_MAX_IMAGES) { st.textContent = `Max ${GJ_MAX_IMAGES} reference images.`; return; }
+  else gjAvatarIds.add(id);
+  document.querySelectorAll('.gj-avatar').forEach(b => b.classList.toggle('active', gjAvatarIds.has(b.dataset.av)));
+}
+
+async function submitGenjutsu() {
+  const st = document.getElementById('gj-status');
+  const btn = document.getElementById('gj-submit');
+  const video = document.getElementById('gj-video').files[0];
+  const link = document.getElementById('gj-link').value.trim();
+  if (!video && !link) { st.textContent = 'Add a reference video (upload or link).'; return; }
+  if (!gjImageCount()) { st.textContent = 'Add at least one reference image or pick an avatar.'; return; }
+  if (video && video.size > 1999 * 1024 * 1024) { st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 1999 MB.`; return; }
+  const fd = new FormData();
+  fd.append('mode', gjMode);
+  if (video) fd.append('video', video); else fd.append('source_link', link);
+  gjFiles.forEach(f => fd.append('images', f));
+  fd.append('avatar_ids', [...gjAvatarIds].join(','));
+  fd.append('prompt', document.getElementById('gj-prompt').value.trim());
+  fd.append('resolution', document.getElementById('gj-resolution').value);
+  btn.disabled = true;
+  st.textContent = video ? 'Uploading…' : 'Starting…';
+  try {
+    const res = await fetch('/influencer/genjutsu', { method: 'POST', body: fd });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || (res.status === 413 ? 'File is too large.' : 'HTTP ' + res.status));
+    st.textContent = 'Generating: this usually takes a few minutes. The result appears below (and in the Editor).';
+    document.getElementById('gj-video').value = ''; previewGjVideo();
+    document.getElementById('gj-link').value = '';
+    loadGenjutsu();
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 200); }
+  btn.disabled = false;
+}
+
+let _gjPollTimer = null;
+async function loadGenjutsu() {
+  const el = document.getElementById('gj-list');
+  let items = [];
+  try { items = await fetch('/influencer/genjutsu').then(r => r.json()); } catch { return; }
+  el.innerHTML = items.length ? items.map(t => {
+    const time = new Date(t.created_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const kind = t.genjutsu_mode === 'swap' ? 'Object swap' : 'Motion transfer';
+    return `<div class="task-card" style="align-items:flex-start;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+          <span class="task-type-tag" style="color:hsl(270 95% 75%);background:hsla(270 95% 65% / 0.1);">${kind}</span>
+          <span class="stage-pill">${esc(t.resolution || '')}${t.duration ? ' · ' + t.duration + 's' : ''}${t.ref_images ? ' · ' + t.ref_images + ' img' : ''}</span>
+          <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);">${time}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text);line-height:1.4;">${esc(t.prompt || '')}</div>
+        ${t.error ? `<div style="font-size:11px;color:var(--danger);margin-top:4px;font-family:var(--font-data);">${esc(t.error)}</div>` : ''}
+        ${t.result_url ? `<video class="gj-result" src="${esc(t.result_url)}" controls playsinline></video>
+          <div><a class="task-link" href="${esc(t.result_url)}" download>Download video</a></div>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <span class="task-badge ${esc(t.status)}">${esc(t.status)}</span>
+        <button class="task-delete" onclick="deleteGenjutsu('${t.id}')" title="Delete">&#x2715;</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty-state">No AI influencer videos yet.</div>';
+  clearTimeout(_gjPollTimer);
+  if (items.some(t => t.status === 'processing') && currentMode === 'influencer') _gjPollTimer = setTimeout(loadGenjutsu, 8000);
+}
+async function deleteGenjutsu(id) {
+  if (!confirm('Delete this video?')) return;
+  await fetch('/video/ai-generate/' + id, { method: 'DELETE' });
+  loadGenjutsu();
+}
 
 setUgcMode('clip');
 loadTasks();
