@@ -2413,7 +2413,7 @@ function genjutsuRate(mode, resolution) {
   return r && r.per_sec != null ? Number(r.per_sec) : null;
 }
 
-function probeVideo(file) {
+function probeVideoStrict(file) {
   return new Promise((resolve, reject) => {
     execFile("ffprobe", ["-v", "error", "-select_streams", "v:0",
       "-show_entries", "stream=width,height:format=duration", "-of", "json", file],
@@ -2524,7 +2524,7 @@ async function runGenjutsuTask(task, mode, o) {
       src = await downloadLinkedVideo(o.link, `link-${task.id}`);
       cleanup.push(src);
     }
-    const info = await probeVideo(src);
+    const info = await probeVideoStrict(src);
     if (info.duration && info.duration < 4) throw new Error(`The reference video is ${info.duration.toFixed(1)} s; Genjutsu needs at least 4 seconds.`);
     if (task.genjutsu_mode === "swap" && info.width * info.height < GENJUTSU_MIN_PIXELS) {
       throw new Error(`Object swap needs at least ${GENJUTSU_MIN_PIXELS.toLocaleString("en")} pixels per frame (e.g. 854×480); this video is ${info.width}×${info.height}.`);
