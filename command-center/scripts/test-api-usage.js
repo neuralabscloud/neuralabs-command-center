@@ -30,7 +30,7 @@ check("web search $10 per 1k", near(rowCost({ p: "anthropic", m: "claude-sonnet-
 check("unknown model flagged unpriced", rowCost({ p: "anthropic", m: "mystery", in: 5 }, rates).priced === false);
 
 // ── higgsfield per model ──
-const hfRates = effectiveRates({ rates: { higgsfield: { per_job: 0.1, models: { "nano-banana": { per_job: 0.04 }, "seedance-2.5": { per_sec: 0.05 }, "seedance-2.5/text-to-video": { per_job: 0.2, per_sec: 0.06 } } } } });
+const hfRates = effectiveRates({ rates: { higgsfield: { per_job: 0.1, models: { "nano-banana": { per_job: 0.04 }, "bytedance/seedance-2.5": { per_sec: 0.05 }, "seedance-2.5/text-to-video": { per_job: 0.2, per_sec: 0.06 } } } } });
 check("higgsfield: model rate by contained key", higgsfieldRate("text2image/nano-banana", hfRates).per_job === 0.04);
 check("higgsfield: longest key wins", higgsfieldRate("bytedance/seedance-2.5/text-to-video", hfRates).per_sec === 0.06);
 check("higgsfield: per job x jobs", near(rowCost({ p: "higgsfield", m: "text2image/nano-banana", jobs: 8 }, hfRates).cost, 0.32));
@@ -81,7 +81,9 @@ setTimeout(() => {
   check("x search reads = items returned", p.x.period.qty.reads === 3);
   check("higgsfield jobs counted (platform + api), polling/upload not", p.higgsfield.period.qty.jobs === 2 && p.higgsfield.period.calls === 2);
   check("higgsfield video seconds recorded from body", p.higgsfield.period.qty.secs === 8);
-  check("higgsfield per-model list in summary", s.higgsfield_models.length === 2 && s.higgsfield_models.every(h => h.priced === false));
+  check("higgsfield per-model list in summary", s.higgsfield_models.length === 2
+    && s.higgsfield_models.find(h => h.model === "kling").priced === false
+    && s.higgsfield_models.find(h => /seedance-2\.5/.test(h.model)).priced === true);
   check("telegram call counted at $0", p.telegram.period.calls === 1 && p.telegram.period.cost === 0);
   check("feature tag applied", s.features.length === 1 && s.features[0].feature === "Unit test");
   check("model breakdown", s.models.length === 1 && s.models[0].model === "claude-sonnet-5");
@@ -138,6 +140,46 @@ function persistence() {
   const gjMotion = Object.values(gj).find(h => /motion-transfer.*@720p$/.test(h.model));
   check("genjutsu: seconds from withVideoSeconds + @resolution key", gjMotion && gjMotion.secs === 11 && near(gjMotion.cost, 7.491));
   check("genjutsu: without seconds the row is 0 s", Object.values(gj).some(h => /object-swap.*@1080p$/.test(h.model) && h.secs === 0));
+
+
+  // ── per-task ledger: forTask books usage on the task id ──
+  reset();
+  u.forTask("task_a", () => meterFetch("https://api.higgsfield.ai/bytedance/seedance-2.5/text-to-video", { method: "POST", body: JSON.stringify({ prompt: "p", duration: 5, resolution: "720p" }) }, okRes));
+  u.forTask("task_a", () => u.record("elevenlabs", { chars: 1000 }, { feature: "t" }));
+  u.forTask("task_b", () => meterFetch("https://api.higgsfield.ai/v1/speak/kling", { method: "POST", body: JSON.stringify({ params: { duration: 5 } }) }, okRes));
+  meterFetch("https://api.higgsfield.ai/v1/image2video/dop", { method: "POST", body: JSON.stringify({ params: { model: "dop-lite" } }) }, okRes);
+  const tc = u.taskCosts(["task_a", "task_b", "nope"]);
+  check("forTask: seedance 5 s @720p + 1k chars on task_a", tc.task_a && tc.task_a.priced && near(tc.task_a.usd, 5 * 0.4622 + 0.3));
+  check("forTask: unknown rate flagged (kling speak)", tc.task_b && tc.task_b.priced === false);
+  check("forTask: ids without usage are absent", !("nope" in tc));
+  check("forTask: untagged usage not on any task", Object.keys(u._internal.getUsage().tasks || {}).length === 2);
+  const withCost = u.attachCosts([{ id: "task_a" }, { id: "x" }]);
+  check("attachCosts adds cost only where booked", withCost[0].cost && withCost[0].cost.usd > 2 && !withCost[1].cost);
+
+  // ── seedance edit/extend bills source + output seconds ──
+  reset();
+  u.forTask("ext", () => u.withVideoSeconds(6, () => meterFetch("https://api.higgsfield.ai/bytedance/seedance-2.5/video-extend", { method: "POST", body: JSON.stringify({ prompt: "p", duration: 5, resolution: "480p", video_url: "v" }) }, okRes)));
+  u.forTask("edit", () => u.withVideoSeconds(6, () => meterFetch("https://api.higgsfield.ai/bytedance/seedance-2.5/video-edit", { method: "POST", body: JSON.stringify({ prompt: "p", resolution: "480p", video_url: "v" }) }, okRes)));
+  const se = u.taskCosts(["ext", "edit"]);
+  check("seedance extend: 6 s source + 5 s new @480p", near(se.ext.usd, 11 * 0.2056));
+  check("seedance edit: 2 × source seconds", near(se.edit.usd, 12 * 0.2056));
+
+  // ── dubbing: minutes of audio ──
+  reset();
+  u.forTask("dub", () => u.withVideoSeconds(90, () => meterFetch("https://api.elevenlabs.io/v1/dubbing", { method: "POST", body: "{}" }, okRes)));
+  check("dubbing: 90 s at $0.60/min", near(u.taskCosts(["dub"]).dub.usd, 0.9));
+
+  // ── rowsCost on synthetic rows (estimate route) ──
+  const est = u.rowsCost([{ p: "higgsfield", m: "speak/higgsfield", jobs: 1, secs: 10 }, { p: "higgsfield", m: "text2image/soul", jobs: 1 }]);
+  check("rowsCost: speak 10 s + soul", est.priced && near(est.usd, 2.25 + 0.094));
+
+  // ── task ledger pruning ──
+  reset();
+  const ug = u._internal.getUsage();
+  ug.tasks = {};
+  for (let i = 0; i < u._internal.KEEP_TASKS + 5; i++) ug.tasks["t" + i] = { at: i, rows: {} };
+  u._internal.pruneTasks();
+  check("pruneTasks keeps the newest KEEP_TASKS", Object.keys(ug.tasks).length === u._internal.KEEP_TASKS && !ug.tasks.t0 && ug.tasks["t" + (u._internal.KEEP_TASKS + 4)]);
 
   // ── SDK hook ──
   const { Messages } = require("@anthropic-ai/sdk/resources/messages/messages");

@@ -1860,6 +1860,7 @@ function renderApiCosts() {
       <div class="cost-note">Claude token prices follow Anthropic's list prices per model. The rates below are estimates; set them to what your plan actually charges and the history is recalculated.</div>
       <div class="cost-rates">
         <label>ElevenLabs per 1k characters<input type="number" step="0.001" min="0" data-rate="elevenlabs.per_1k_chars" value="${r.elevenlabs.per_1k_chars}"></label>
+        <label>ElevenLabs dubbing per minute<input type="number" step="0.01" min="0" data-rate="elevenlabs.dubbing_per_min" value="${r.elevenlabs.dubbing_per_min ?? 0.6}"></label>
         <label>X per read (post fetched)<input type="number" step="0.001" min="0" data-rate="x.per_read" value="${r.x.per_read}"></label>
         <label>X per post created<input type="number" step="0.001" min="0" data-rate="x.per_write" value="${r.x.per_write}"></label>
         <label>Higgsfield per job (other models)<input type="number" step="0.01" min="0" data-rate="higgsfield.per_job" value="${r.higgsfield.per_job}"></label>

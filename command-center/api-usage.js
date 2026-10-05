@@ -61,7 +61,9 @@ const DEFAULT_RATES = {
     },
     web_search_per_1k: 10,
   },
-  elevenlabs: { per_1k_chars: 0.3 },
+  // Dubbing is billed per minute of source audio (~2,000 credits/min with a
+  // watermark on pay-as-you-go), not per character: an estimate, editable.
+  elevenlabs: { per_1k_chars: 0.3, dubbing_per_min: 0.6 },
   x: { per_read: 0.005, per_write: 0.01 },
   // Higgsfield bills per model (credits per job, video per second) and the API
   // has no price list endpoint: the owner fills in USD per model in Settings.
@@ -77,9 +79,29 @@ const DEFAULT_RATES = {
     "genjutsu/object-swap/v1.0@480p":      { per_sec: 0.318 },
     "genjutsu/object-swap/v1.0@720p":      { per_sec: 0.681 },
     "genjutsu/object-swap/v1.0@1080p":     { per_sec: 1.632 },
+    // Seedance 2.5 (api.higgsfield.ai estimate, 16:9): per second of input +
+    // generated video. Stored as "<endpoint>@<resolution>"; the bare key is the
+    // fallback for runs from before the resolution was recorded (720p default).
+    "bytedance/seedance-2.5": { per_sec: 0.4622 },
+    ...seedanceRates({ "480p": 0.2056, "720p": 0.4622, "1080p": 1.1372 }),
+    // Platform (v1) models used by UGC/avatars, priced via their api.higgsfield.ai
+    // equivalents (higgsfield-ai/speak, /dop/*, /soul/standard), $0.0625/credit.
+    "speak/higgsfield": { per_sec: 0.225 },
+    "dop-lite":    { per_job: 0.125 },
+    "dop-turbo":   { per_job: 0.407 },
+    "dop-preview": { per_job: 0.563 },
+    "text2image/soul": { per_job: 0.094 },
   } },
   opusclip: { per_job: 0 },
 };
+
+function seedanceRates(perRes) {
+  const out = {};
+  for (const ep of ["text-to-video", "image-to-video", "reference-to-video", "video-edit", "video-extend"]) {
+    for (const [res, perSec] of Object.entries(perRes)) out[`seedance-2.5/${ep}@${res}`] = { per_sec: perSec };
+  }
+  return out;
+}
 
 // ── Feature attribution ──────────────────────────────────
 const als = new AsyncLocalStorage();
@@ -121,6 +143,11 @@ function tag(feature, fn) { return als.run({ ...(als.getStore() || {}), feature 
 // request body: the caller knows the length and passes it along this way.
 function withVideoSeconds(secs, fn) { return als.run({ ...(als.getStore() || {}), video_secs: Number(secs) || 0 }, fn); }
 
+// Everything recorded inside fn is also booked on this task (cost per item in
+// the Content Creator). Async continuations keep the id, so a worker only has
+// to wrap the call that starts the paid work.
+function forTask(id, fn) { return als.run({ ...(als.getStore() || {}), task: id ? String(id) : undefined }, fn); }
+
 // Express middleware: remembers which route a call originated from.
 function middleware(req, _res, next) {
   const internal = req.headers["x-internal"];
@@ -158,6 +185,7 @@ function load() {
 function flush() {
   if (!dirty || !usage) return;
   dirty = false;
+  pruneTasks();
   const days = Object.keys(usage.days).sort();
   while (days.length > KEEP_DAYS) delete usage.days[days.shift()];
   try {
@@ -183,7 +211,85 @@ function record(provider, qty, opts = {}) {
     const n = Number(v);
     if (Number.isFinite(n) && n) row[k] = (row[k] || 0) + n;
   }
+  const task = opts.task !== undefined ? opts.task : (als.getStore() || {}).task;
+  if (task) bookOnTask(task, provider, model, qty, opts.calls == null ? 1 : opts.calls);
   dirty = true;
+}
+
+// ── Per-task ledger ──────────────────────────────────────
+// usage.tasks = { "<task id>": { at, rows: { "<provider>\t<model>": row } } }
+const KEEP_TASKS = 3000;
+function bookOnTask(id, provider, model, qty, calls) {
+  if (!usage.tasks || typeof usage.tasks !== "object") usage.tasks = {};
+  const t = usage.tasks[id] || (usage.tasks[id] = { at: new Date().toISOString(), rows: {} });
+  const key = `${provider}\t${model}`;
+  const row = t.rows[key] || (t.rows[key] = { p: provider, m: model, calls: 0 });
+  row.calls += calls;
+  for (const [k, v] of Object.entries(qty || {})) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n) row[k] = (row[k] || 0) + n;
+  }
+}
+
+function pruneTasks() {
+  const ids = Object.keys(usage.tasks || {});
+  if (ids.length <= KEEP_TASKS) return;
+  ids.sort((a, b) => String(usage.tasks[a].at).localeCompare(String(usage.tasks[b].at)));
+  for (const id of ids.slice(0, ids.length - KEEP_TASKS)) delete usage.tasks[id];
+}
+
+// Sum of a list of rows at today's rates. priced=false when any paid row has
+// no known rate (the UI then shows the cost as incomplete).
+function rowsCost(rows, rates = effectiveRates()) {
+  let usd = 0, priced = true;
+  const parts = [];
+  for (const row of rows) {
+    const c = rowCost(row, rates);
+    usd += c.cost;
+    if (!c.priced) priced = false;
+    parts.push({ provider: row.p, model: row.m, usd: Math.round(c.cost * 10000) / 10000, priced: c.priced });
+  }
+  return { usd: Math.round(usd * 10000) / 10000, priced, parts };
+}
+
+// { id: { usd, priced, parts } } for the ids that have anything booked.
+function taskCosts(ids) {
+  load();
+  const rates = effectiveRates();
+  const out = {};
+  for (const id of ids || []) {
+    const t = usage.tasks && usage.tasks[id];
+    if (t) out[id] = rowsCost(Object.values(t.rows), rates);
+  }
+  return out;
+}
+
+// Adds `cost` to every task object that has metered usage (non-destructive).
+function attachCosts(tasks) {
+  if (!Array.isArray(tasks)) return tasks;
+  const costs = taskCosts(tasks.map(t => t && t.id).filter(Boolean));
+  return tasks.map(t => (t && costs[t.id] ? { ...t, cost: costs[t.id] } : t));
+}
+
+// inference.sh price for a planned run (exact for most apps), cached 10 min.
+const infshEstimateCache = new Map();
+function infshEstimate(appId, input) {
+  const key = appId + "\n" + JSON.stringify(input || {});
+  const hit = infshEstimateCache.get(key);
+  if (hit && Date.now() - hit.at < 600000) return Promise.resolve(hit.value);
+  return new Promise(resolve => execFile("infsh", ["app", "estimate", appId, "--input", JSON.stringify(input || {}), "--json", "--no-input"],
+    { timeout: 30000, env: { ...process.env, HOME: process.env.HOME || "/root" } }, (err, stdout) => {
+      let value = null;
+      try {
+        const s = String(stdout || "").replace(/\x1b\[[0-9;]*m/g, "");
+        const j = JSON.parse(s.slice(s.indexOf("{")));
+        if (j.microcents != null) value = { usd: Number(j.microcents) / 1e8, exact: j.confidence === "exact", note: j.pricing_description || "" };
+        else if (j.min != null) value = { usd: Number(j.min) / 1e8, max: Number(j.max) / 1e8, exact: false, note: j.pricing_description || "" };
+        else value = { usd: null, note: j.pricing_description || j.error || "" };
+      } catch { value = { usd: null, note: err ? "no estimate available" : "" }; }
+      infshEstimateCache.set(key, { at: Date.now(), value });
+      resolve(value);
+    }));
 }
 
 // ── Rates ────────────────────────────────────────────────
@@ -203,7 +309,10 @@ function effectiveRates(cfg = readConfig()) {
       models: { ...DEFAULT_RATES.anthropic.models, ...((o.anthropic || {}).models || {}) },
       web_search_per_1k: num((o.anthropic || {}).web_search_per_1k, DEFAULT_RATES.anthropic.web_search_per_1k),
     },
-    elevenlabs: { per_1k_chars: num((o.elevenlabs || {}).per_1k_chars, DEFAULT_RATES.elevenlabs.per_1k_chars) },
+    elevenlabs: {
+      per_1k_chars: num((o.elevenlabs || {}).per_1k_chars, DEFAULT_RATES.elevenlabs.per_1k_chars),
+      dubbing_per_min: num((o.elevenlabs || {}).dubbing_per_min, DEFAULT_RATES.elevenlabs.dubbing_per_min),
+    },
     x: { per_read: num((o.x || {}).per_read, DEFAULT_RATES.x.per_read), per_write: num((o.x || {}).per_write, DEFAULT_RATES.x.per_write) },
     higgsfield: {
       per_job: num((o.higgsfield || {}).per_job, DEFAULT_RATES.higgsfield.per_job),
@@ -244,7 +353,7 @@ function rowCost(row, rates) {
       return { cost: tok + search, priced: true };
     }
     case "inference": return { cost: row.actual || 0, priced: true };
-    case "elevenlabs": return { cost: (row.chars || 0) / 1000 * rates.elevenlabs.per_1k_chars, priced: true };
+    case "elevenlabs": return { cost: (row.chars || 0) / 1000 * rates.elevenlabs.per_1k_chars + (row.secs || 0) / 60 * (rates.elevenlabs.dubbing_per_min || 0), priced: true };
     case "x": return { cost: (row.reads || 0) * rates.x.per_read + (row.writes || 0) * rates.x.per_write, priced: true };
     case "higgsfield": {
       const r = higgsfieldRate(row.m, rates);
@@ -360,7 +469,8 @@ function meterFetch(url, init, res) {
   if (provider === "elevenlabs") {
     if (/\/v1\/user\b/.test(u.pathname)) return; // plan/balance lookups are free
     if (/\/v1\/dubbing\b/.test(u.pathname)) { // status polls and downloads are free
-      return method === "POST" && ok ? record("elevenlabs", {}, { feature, model: "dubbing" }) : undefined;
+      // Billed per minute of source audio; the caller passes the length along.
+      return method === "POST" && ok ? record("elevenlabs", { secs: Number((als.getStore() || {}).video_secs) || 0 }, { feature, model: "dubbing" }) : undefined;
     }
     if (method === "POST" && /text-to-speech|text-to-dialogue|sound-generation/.test(u.pathname) && ok) {
       const b = parseBody(init && init.body) || {};
@@ -374,10 +484,13 @@ function meterFetch(url, init, res) {
       const params = b.params || b;
       let model = params.model || u.pathname.replace(/^\/(v1\/)?/, "");
       // Price depends on the resolution for these models (Genjutsu).
-      if (/genjutsu/.test(model) && params.resolution) model += "@" + params.resolution;
+      if (/genjutsu|seedance-2\.5/.test(model) && params.resolution) model += "@" + params.resolution;
       // Video is billed per second of output (the requested length is in the
       // body) or, for video-to-video models, per second of the source clip.
-      const secs = Number(params.duration) || Number((als.getStore() || {}).video_secs) || 0;
+      // Seedance 2.5 bills input + generated seconds (an edit is as long as its source).
+      const srcSecs = Number((als.getStore() || {}).video_secs) || 0;
+      let secs = Number(params.duration) || srcSecs;
+      if (/seedance-2\.5/.test(model) && params.video_url) secs += srcSecs;
       return record("higgsfield", { jobs: 1, secs }, { feature, model });
     }
     return; // polling/uploads are not billed
@@ -423,8 +536,9 @@ function patchFetch() {
 // amount in 1e-8 dollars. Looked up async so the caller is never slowed down.
 function recordInfshTask(result, appId, feature) {
   feature = feature || currentFeature();
+  const task = (als.getStore() || {}).task;
   const id = result && (result.id || result.task_id);
-  if (!id) return record("inference", { tasks: 1 }, { feature, model: appId });
+  if (!id) return record("inference", { tasks: 1 }, { feature, model: appId, task });
   execFile("infsh", ["task", "cost", String(id), "--json", "--no-input"], { timeout: 30000, env: { ...process.env, HOME: process.env.HOME || "/root" } }, (err, stdout) => {
     let actual = 0;
     if (!err) {
@@ -434,7 +548,7 @@ function recordInfshTask(result, appId, feature) {
         actual = (Number(j.charged ?? j.total) || 0) / 1e8;
       } catch {}
     }
-    record("inference", { tasks: 1, actual }, { feature, model: appId });
+    record("inference", { tasks: 1, actual }, { feature, model: appId, task });
   });
 }
 
@@ -640,7 +754,7 @@ function updateConfig(body) {
       const n = Number(v);
       if (v === "" || v == null || !Number.isFinite(n) || n < 0) delete cfg.rates[group][key]; else cfg.rates[group][key] = n;
     };
-    for (const [group, keys] of [["elevenlabs", ["per_1k_chars"]], ["x", ["per_read", "per_write"]], ["higgsfield", ["per_job"]], ["opusclip", ["per_job"]]]) {
+    for (const [group, keys] of [["elevenlabs", ["per_1k_chars", "dubbing_per_min"]], ["x", ["per_read", "per_write"]], ["higgsfield", ["per_job"]], ["opusclip", ["per_job"]]]) {
       if (r[group]) for (const k of keys) if (k in r[group]) setNum(group, k, r[group][k]);
     }
     // Higgsfield per-model rates: { "<model>": { per_job, per_sec } }; empty = remove.
@@ -680,7 +794,7 @@ function install() {
 }
 
 module.exports = {
-  install, middleware, tag, withVideoSeconds, higgsfieldRateFor: (model) => higgsfieldRate(model, effectiveRates()), record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
+  install, middleware, tag, withVideoSeconds, forTask, taskCosts, attachCosts, rowsCost, infshEstimate, effectiveRates: () => effectiveRates(), higgsfieldRateFor: (model) => higgsfieldRate(model, effectiveRates()), record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
   // exported for tests
-  _internal: { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; } },
+  _internal: { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; }, getUsage: () => usage, pruneTasks, KEEP_TASKS },
 };

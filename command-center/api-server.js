@@ -1854,7 +1854,11 @@ async function runHiggsfieldVideoTask(task, cfg, o) {
       video = /^https?:\/\//i.test(o.source.file) ? o.source.file : await higgsfieldUpload(o.source.file);
     }
     const endpoint = cfg.endpoint({ images, video });
-    const url = await higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video }));
+    // Seedance 2.5 also bills the seconds of the source clip (edit/extend).
+    let srcSecs = 0;
+    if (o.source.file) { try { srcSecs = (await probeVideo(o.source.file)).duration; } catch {} }
+    const url = await apiUsage.withVideoSeconds(srcSecs, () =>
+      higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video })));
     // Keep our own copy: Higgsfield's URLs expire, and a clip still on disk can
     // be fed straight back in as the source of the next run.
     let localUrl = "";
@@ -1879,7 +1883,7 @@ async function runHiggsfieldVideoTask(task, cfg, o) {
   writeTaskFile("ai-video-tasks.json", all);
 }
 
-app.get("/video/ai-generate", (_req, res) => res.json(readTaskFile("ai-video-tasks.json")));
+app.get("/video/ai-generate", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("ai-video-tasks.json"))));
 
 app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 9 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
   const tasks = readTaskFile("ai-video-tasks.json");
@@ -1951,10 +1955,10 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   // Seedance 2.5 is not on inference.sh: that one runs against the Higgsfield
   // API, which uploads its own inputs and polls for the result.
   if (hfModel) {
-    runHiggsfieldVideoTask(task, hfModel, {
+    apiUsage.forTask(task.id, () => runHiggsfieldVideoTask(task, hfModel, {
       prompt, aspectRatio, duration, resolution, generateAudio,
       refImagePaths, source,
-    });
+    }));
     return;
   }
 
@@ -2003,7 +2007,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const tmpInput = path.join(__dirname, "data", `ai-vid-input-${task.id}.json`);
   fs.writeFileSync(tmpInput, JSON.stringify(inputObj));
 
-  const runVideo = (n) => execFile("infsh", ["app", "run", model, "--input", tmpInput, "--json", "--no-input"], {
+  const runVideo = (n) => apiUsage.forTask(task.id, () => execFile("infsh", ["app", "run", model, "--input", tmpInput, "--json", "--no-input"], {
     timeout: 600000,  // 10 min — video gen can be slow
     maxBuffer: 1024 * 1024 * 50,
     env: { ...process.env, HOME: "/root" },
@@ -2090,7 +2094,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     if (idx === -1) return;
     Object.assign(allTasks[idx], update, { updated_at: new Date().toISOString() });
     writeTaskFile("ai-video-tasks.json", allTasks);
-  });
+  }));
   runVideo(1);
 });
 
@@ -2140,8 +2144,11 @@ async function elevenDubVideo(input, task) {
       const r = await fetch("https://api.elevenlabs.io/v1/dubbing", { method: "POST", headers: { "xi-api-key": key }, body: fd });
       return [r, await r.json().catch(() => ({}))];
     };
-    let [cr, cj] = await createDub(false);
-    if (!cr.ok && /watermark/i.test(JSON.stringify(cj.detail || ""))) [cr, cj] = await createDub(true);
+    // ElevenLabs bills dubbing per minute of audio: pass the length to the meter.
+    let audioSecs = 0;
+    try { audioSecs = Number(await execFileP("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audioIn])) || 0; } catch {}
+    let [cr, cj] = await apiUsage.withVideoSeconds(audioSecs, () => createDub(false));
+    if (!cr.ok && /watermark/i.test(JSON.stringify(cj.detail || ""))) [cr, cj] = await apiUsage.withVideoSeconds(audioSecs, () => createDub(true));
     if (!cr.ok || !cj.dubbing_id) {
       const d = cj.detail;
       throw new Error("ElevenLabs: " + String((d && (d.message || (Array.isArray(d) ? d.map(x => x.msg).join("; ") : d))) || `HTTP ${cr.status}`).slice(0, 300));
@@ -2342,7 +2349,7 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
   writeTaskFile("ai-video-tasks.json", tasks);
   res.status(201).json(task);
 
-  (async () => {
+  apiUsage.forTask(task.id, async () => {
     let update;
     try {
       if (fromLink) {
@@ -2378,7 +2385,7 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
     if (idx === -1) return;
     Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
     writeTaskFile("ai-video-tasks.json", all);
-  })();
+  });
 });
 
 // ── AI INFLUENCER: HIGGSFIELD GENJUTSU ────────────────
@@ -2452,7 +2459,7 @@ app.get("/influencer/genjutsu/rates", (req, res) => {
 });
 
 app.get("/influencer/genjutsu", (_req, res) =>
-  res.json(readTaskFile("ai-video-tasks.json").filter(t => t.tool === "genjutsu")));
+  res.json(apiUsage.attachCosts(readTaskFile("ai-video-tasks.json").filter(t => t.tool === "genjutsu"))));
 
 app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
   const b = req.body || {};
@@ -2504,7 +2511,7 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
   tasks.unshift(task);
   writeTaskFile("ai-video-tasks.json", tasks);
   res.status(201).json(task);
-  runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution });
+  apiUsage.forTask(task.id, () => runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution }));
 });
 
 async function runGenjutsuTask(task, mode, o) {
@@ -2763,7 +2770,7 @@ app.post("/community/send-review", async (req, res) => {
 const INSTALL_DIR = process.env.INSTALL_DIR || path.join(__dirname, "..");
 
 // ── OPUSCLIP TASKS ────────────────────────────
-app.get("/opusclip/tasks", (_req, res) => res.json(readTaskFile("opusclip-tasks.json")));
+app.get("/opusclip/tasks", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("opusclip-tasks.json"))));
 
 app.post("/opusclip/tasks", (req, res) => {
   const rawUrl = (req.body.video_url || req.body.url || "").trim();
@@ -2973,7 +2980,7 @@ app.post("/opusclip/tasks/:id/clips/:clipId/to-community", (req, res) => {
 });
 
 // ── UGC TASKS (Higgsfield) ───────────────────────────────────────────
-app.get("/ugc/tasks", (_req, res) => res.json(readTaskFile("ugc-tasks.json")));
+app.get("/ugc/tasks", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("ugc-tasks.json"))));
 
 app.post("/ugc/tasks", (req, res) => {
   const b = req.body || {};
@@ -3083,7 +3090,7 @@ app.get("/ugc/video-engines", (_req, res) => {
 // deliverable: voiceovers for videos, ads and social clips.
 const VOICEOVER_DIR = path.join(__dirname, "data", "voiceovers");
 fs.mkdirSync(VOICEOVER_DIR, { recursive: true });
-app.get("/audio/voiceovers", (_req, res) => res.json(readTaskFile("voiceover-tasks.json")));
+app.get("/audio/voiceovers", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("voiceover-tasks.json"))));
 
 app.post("/audio/voiceovers", (req, res) => {
   const b = req.body || {};
@@ -3106,7 +3113,7 @@ app.post("/audio/voiceovers", (req, res) => {
   writeTaskFile("voiceover-tasks.json", tasks);
   res.status(201).json(task);
 
-  (async () => {
+  apiUsage.forTask(task.id, async () => {
     let update;
     try {
       const outFile = path.join(VOICEOVER_DIR, task.id + ".mp3");
@@ -3127,7 +3134,7 @@ app.post("/audio/voiceovers", (req, res) => {
     if (idx === -1) return;
     Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
     writeTaskFile("voiceover-tasks.json", all);
-  })();
+  });
 });
 
 app.delete("/audio/voiceovers/:id", (req, res) => {
@@ -3141,23 +3148,24 @@ app.delete("/audio/voiceovers/:id", (req, res) => {
 // ── UGC AVATAR LIBRARY (Higgsfield Soul portraits) ──────────────────
 // Create reusable avatar portraits from a prompt; the Talking Avatar mode
 // selects them by their generated image URL.
-app.get("/ugc/avatars", (_req, res) => res.json(readTaskFile("ugc-avatars.json").map(a => ({ ...a, gender_resolved: ugcAuto.inferGender(a) }))));
+app.get("/ugc/avatars", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("ugc-avatars.json")).map(a => ({ ...a, gender_resolved: ugcAuto.inferGender(a) }))));
 
 app.post("/ugc/avatars", async (req, res) => {
   const b = req.body || {};
   const prompt = (b.prompt || "").trim();
   if (!prompt) return res.status(400).json({ error: "prompt required" });
+  const avatarId = "av_" + Date.now().toString(36);
   try {
-    const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+    const r = await apiUsage.forTask(avatarId, () => fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
       method: "POST", headers: higgsfieldHeaders(),
       body: JSON.stringify({ params: { prompt, width_and_height: HIGGSFIELD.avatarSize } }),
-    });
+    }));
     const data = await r.json().catch(() => ({}));
     if (!r.ok) return res.status(502).json({ error: (data && data.detail ? JSON.stringify(data.detail) : JSON.stringify(data)).slice(0, 300) });
     const request_id = data.id || data.job_set_id || (data.job_set && data.job_set.id) || "";
     if (!request_id) return res.status(502).json({ error: "no job-set id: " + JSON.stringify(data).slice(0, 200) });
     const avatars = readTaskFile("ugc-avatars.json");
-    const avatar = { id: "av_" + Date.now().toString(36), name: b.name || "Avatar", prompt, status: "processing", request_id, image_url: "", created_at: new Date().toISOString() };
+    const avatar = { id: avatarId, name: b.name || "Avatar", prompt, status: "processing", request_id, image_url: "", created_at: new Date().toISOString() };
     if (b.gender === "male" || b.gender === "female") avatar.gender = b.gender;
     avatars.unshift(avatar);
     if (avatars.length > 100) avatars.length = 100;
@@ -3418,6 +3426,94 @@ app.get("/settings/integrations", (_req, res) => {
 });
 
 // API usage & costs: measured usage × rates, plus live balances where the provider exposes one.
+// ── COST ESTIMATES (Content Creator) ─────────────────────
+// What a generation will roughly cost before you press the button. Metered
+// providers go through the same rate table as the usage ledger (so a rate
+// override in Settings counts here too); inference.sh apps are asked for
+// their own estimate. Unknown rates come back as priced:false.
+const INFSH_LIST_PRICES = {
+  // $/second of video (inference.sh list price; precision mode costs double)
+  "heygen/video-translate": { speed: 0.033, precision: 0.067 },
+  "heygen/lipsync": { speed: 0.033, precision: 0.067 },
+};
+const INFSH_TTS_PER_MCHAR = 60; // minimax/speech-2-8-turbo: $60 per million characters
+const SPEAK_CHARS_PER_SEC = 15; // a voice reads ~15 characters per second
+
+async function estimateCost(b) {
+  const kind = String(b.kind || "");
+  const rows = [];
+  const notes = [];
+  let extra = 0, extraMax = 0, extraUnknown = false;
+  const secs = Math.max(0, Number(b.secs) || 0);
+  const chars = Math.max(0, String(b.text || "").length || Number(b.chars) || 0);
+  const tts = (n) => {
+    if (!n) return;
+    if (ttsProvider(b.voice_provider) === "elevenlabs") rows.push({ p: "elevenlabs", m: "tts", chars: n });
+    else extra += n / 1e6 * INFSH_TTS_PER_MCHAR;
+  };
+  if (kind === "aigen") {
+    const model = String(b.model || "");
+    const hf = HF_VIDEO_MODELS[model];
+    if (hf) {
+      const res = HF_SEEDANCE_RESOLUTIONS.includes(b.resolution) ? b.resolution : HF_SEEDANCE_RESOLUTIONS[0];
+      const imgs = Number(b.images) || 0;
+      const ep = hf.endpoint({ images: Array(imgs).fill(1), video: secs > 0 });
+      const out = ep.endsWith("/video-edit") ? 0 : Math.min(30, Math.max(4, Number(b.duration) || 5));
+      const billed = out + secs * (ep.endsWith("/video-edit") ? 2 : 1);
+      if (b.has_source && !secs) notes.push("source length unknown: only the new seconds are counted");
+      rows.push({ p: "higgsfield", m: ep + "@" + res, jobs: 1, secs: billed });
+    } else {
+      const input = { prompt: String(b.prompt || "a video") };
+      if (b.duration) input.duration = Number(b.duration) || undefined;
+      if (b.aspect_ratio) input.aspect_ratio = b.aspect_ratio;
+      const e = await apiUsage.infshEstimate(model, input);
+      if (e.usd == null) { extraUnknown = true; if (e.note) notes.push(e.note); }
+      else { extra += e.usd; if (e.max) extraMax = e.max - e.usd; if (!e.exact && e.note) notes.push(e.note); }
+    }
+  } else if (kind === "ugc") {
+    if (b.avatar_prompt) rows.push({ p: "higgsfield", m: "text2image/soul", jobs: 1 });
+    if (b.mode === "speak") {
+      tts(chars);
+      const audio = secs || chars / SPEAK_CHARS_PER_SEC;
+      const model = b.speak_model === "kling" ? "kling" : "higgsfield";
+      const bucket = audio > 10 ? 15 : audio > 5 ? 10 : 5;
+      rows.push({ p: "higgsfield", m: "speak/" + model, jobs: 1, secs: model === "higgsfield" ? bucket : Math.ceil(audio) });
+    } else {
+      const engine = HIGGSFIELD_VIDEO[b.engine] ? b.engine : "dop";
+      const p = HIGGSFIELD_VIDEO[engine].build({ model: b.model, duration: b.duration, resolution: b.resolution });
+      rows.push({ p: "higgsfield", m: p.model || "image2video/" + engine, jobs: 1, secs: Number(p.duration) || 0 });
+    }
+  } else if (kind === "avatar") {
+    rows.push({ p: "higgsfield", m: "text2image/soul", jobs: Math.max(1, Number(b.count) || 1) });
+  } else if (kind === "voiceover") {
+    tts(chars);
+  } else if (kind === "tools") {
+    const tool = String(b.tool || "dub");
+    if (tool === "dub") rows.push({ p: "elevenlabs", m: "dubbing", secs });
+    else if (INFSH_LIST_PRICES[VIDEO_TOOLS[tool] && VIDEO_TOOLS[tool].app]) {
+      const r = INFSH_LIST_PRICES[VIDEO_TOOLS[tool].app];
+      extra += secs * (b.mode === "precision" ? r.precision : r.speed);
+    } else extraUnknown = true;
+    if (!secs) notes.push("pick a video to see the price for its length");
+  } else if (kind === "clipper") {
+    rows.push({ p: "opusclip", m: "clip project", jobs: 1 });
+    notes.push("OpusClip runs on your subscription");
+  } else {
+    throw new Error("unknown kind");
+  }
+  const c = apiUsage.rowsCost(rows);
+  const usd = Math.round((c.usd + extra) * 10000) / 10000;
+  return {
+    usd, ...(extraMax ? { max: Math.round((usd + extraMax) * 10000) / 10000 } : {}),
+    priced: c.priced && !extraUnknown, parts: c.parts, note: notes.join(" · "),
+  };
+}
+
+app.post("/costs/estimate", async (req, res) => {
+  try { res.json(await estimateCost(req.body || {})); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/settings/api-costs", async (req, res) => {
   try {
     apiUsage.flush();
@@ -7031,12 +7127,12 @@ async function processUgcTasks() {
       if (isSpeak) {
         // 1. Voice from the script (ElevenLabs), hosted publicly for Higgsfield.
         if (!t.audio_url) {
-          t.audio_url = await generateUgcAudio(t);
+          t.audio_url = await apiUsage.forTask(t.id, () => generateUgcAudio(t));
           // A length cap (autopilot: 30 s) gets one retry at a faster pace.
           const cap = Number(t.max_seconds) || 0;
           if (cap && t.audio_duration > cap && (Number(t.voice_speed) || 1) < 1.1 && ttsProvider(t.voice_provider) === "elevenlabs") {
             t.voice_speed = Math.min(1.15, +((t.audio_duration / cap) * (Number(t.voice_speed) || 1)).toFixed(2));
-            t.audio_url = await generateUgcAudio(t);
+            t.audio_url = await apiUsage.forTask(t.id, () => generateUgcAudio(t));
           }
           changed = true;
           writeTaskFile("ugc-tasks.json", tasks);
@@ -7045,10 +7141,10 @@ async function processUgcTasks() {
         //    avatar portrait via Higgsfield Soul first. It's async, so set the
         //    gen_avatar state; pollUgcStatus stores the image and resumes.
         if (!t.image_url && t.avatar_prompt) {
-          const ar = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
+          const ar = await apiUsage.forTask(t.id, () => fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.text2image, {
             method: "POST", headers: higgsfieldHeaders(),
             body: JSON.stringify({ params: { prompt: t.avatar_prompt, width_and_height: HIGGSFIELD.avatarSize } }),
-          });
+          }));
           const ad = await ar.json().catch(() => ({}));
           if (!ar.ok) {
             t.status = "failed";
@@ -7097,7 +7193,7 @@ async function processUgcTasks() {
           ...cfg.build(t),
         };
       }
-      const r = await fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ params }) });
+      const r = await apiUsage.forTask(t.id, () => fetch(HIGGSFIELD.base + ep, { method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify({ params }) }));
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
         t.status = "failed";
@@ -7425,7 +7521,7 @@ async function processOpusclipTasks() {
     try {
       console.log(`[WORKER] OpusClip submitting ${task.video_url}`);
       const publicBase = (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
-      const proj = await opusclip.createProject({
+      const proj = await apiUsage.forTask(task.id, () => opusclip.createProject({
         videoUrl: task.video_url,
         minDuration: task.min_duration,
         maxDuration: task.max_duration,
@@ -7436,7 +7532,7 @@ async function processOpusclipTasks() {
         brandTemplateId: task.brand_template_id || undefined,
         aspectRatio: task.aspect_ratio || undefined,
         webhookUrl: publicBase ? `${publicBase}/opusclip/webhook` : undefined,
-      });
+      }));
       task.project_id = proj.projectId || proj.id;
       task.stage = proj.stage || "QUEUED";
       task.status = "processing";
@@ -9607,10 +9703,11 @@ async function createUgcAutopilotTask(p = {}) {
     brandKnowledge: brandKnowledgeBlock(brand),
   });
   const model = (process.env.UGC_AUTOPILOT_MODEL || "claude-opus-5-5").trim();
+  const taskId = "ugc_" + Date.now().toString(36);
   let script = null, lastErr = "";
   const messages = [{ role: "user", content: prompt }];
   for (let attempt = 0; attempt < 3 && !script; attempt++) {
-    const resp = await anthropic.messages.create({ model, max_tokens: 2000, messages });
+    const resp = await apiUsage.forTask(taskId, () => anthropic.messages.create({ model, max_tokens: 2000, messages }));
     const text = (resp.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     try {
       const s = ugcAuto.parseScriptJson(text);
@@ -9628,7 +9725,7 @@ async function createUgcAutopilotTask(p = {}) {
   if (!script) throw new Error("Marketeer could not write a usable script: " + lastErr);
 
   const task = {
-    id: "ugc_" + Date.now().toString(36),
+    id: taskId,
     status: "pending",
     mode: "speak",
     image_url: avatar.image_url,
