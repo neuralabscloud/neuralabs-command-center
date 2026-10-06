@@ -2539,9 +2539,34 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
   apiUsage.forTask(task.id, () => runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution }));
 });
 
+const GENJUTSU_KEEP_FAILED = 5;
+// Moves this run's own files into data/ai-video-uploads/failed/<taskId>/ and
+// trims that folder to the newest GENJUTSU_KEEP_FAILED runs.
+function keepFailedGenjutsuInputs(taskId, files) {
+  const root = path.join(__dirname, "data", "ai-video-uploads", "failed");
+  const dest = path.join(root, taskId);
+  let moved = 0;
+  try {
+    fs.mkdirSync(dest, { recursive: true });
+    for (const p of files) {
+      if (!fs.existsSync(p)) continue;
+      try { fs.renameSync(p, path.join(dest, path.basename(p))); moved++; }
+      catch { try { fs.copyFileSync(p, path.join(dest, path.basename(p))); moved++; } catch {} }
+    }
+    const runs = fs.readdirSync(root).map(f => path.join(root, f))
+      .filter(f => fs.statSync(f).isDirectory())
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    for (const old of runs.slice(GENJUTSU_KEEP_FAILED)) fs.rmSync(old, { recursive: true, force: true });
+  } catch (e) {
+    console.error("[GENJUTSU] Could not keep failed inputs:", e.message);
+  }
+  if (!moved) { try { fs.rmdirSync(dest); } catch {} return null; }
+  return dest;
+}
+
 async function runGenjutsuTask(task, mode, o) {
   const cleanup = [...o.uploaded];
-  let update;
+  let update, info = null;
   try {
     let src = o.videoFile;
     if (!src) {
@@ -2549,7 +2574,7 @@ async function runGenjutsuTask(task, mode, o) {
       src = await downloadLinkedVideo(o.link, `link-${task.id}`);
       cleanup.push(src);
     }
-    const info = await probeVideoStrict(src);
+    info = await probeVideoStrict(src);
     if (info.duration && info.duration < 4) throw new Error(`The reference video is ${info.duration.toFixed(1)} s; Genjutsu needs at least 4 seconds.`);
     if (task.genjutsu_mode === "swap" && info.width * info.height < GENJUTSU_MIN_PIXELS) {
       throw new Error(`Object swap needs at least ${GENJUTSU_MIN_PIXELS.toLocaleString("en")} pixels per frame (e.g. 854×480); this video is ${info.width}×${info.height}.`);
@@ -2579,12 +2604,20 @@ async function runGenjutsuTask(task, mode, o) {
     update = { status: "failed", error: String(e.message).slice(0, 500) };
     console.error(`[GENJUTSU] ${mode.label} failed:`, String(e.message).slice(0, 300));
   }
+  if (info) update.source_info = info;
+  const dir = path.join(__dirname, "data", "ai-video-uploads");
+  if (!o.videoFile) {
+    for (const f of fs.readdirSync(dir)) if (f.startsWith(`link-${task.id}`)) cleanup.push(path.join(dir, f));
+  }
+  // A failed run keeps its inputs (source video, converted mp4, uploaded
+  // images) so the cause can be inspected afterwards; Higgsfield itself
+  // often only says "Generation failed".
+  if (update.status === "failed") {
+    const kept = keepFailedGenjutsuInputs(task.id, cleanup);
+    if (kept) { update.kept_input = path.relative(__dirname, kept); console.log(`[GENJUTSU] Task ${task.id}: inputs kept in ${update.kept_input}`); }
+  }
   // Never delete the avatar library images: only what this run created/uploaded.
   for (const p of cleanup) { try { fs.unlinkSync(p); } catch {} }
-  if (!o.videoFile) {
-    const dir = path.join(__dirname, "data", "ai-video-uploads");
-    for (const f of fs.readdirSync(dir)) if (f.startsWith(`link-${task.id}`)) { try { fs.unlinkSync(path.join(dir, f)); } catch {} }
-  }
   const all = readTaskFile("ai-video-tasks.json");
   const idx = all.findIndex(t => t.id === task.id);
   if (idx === -1) return;
