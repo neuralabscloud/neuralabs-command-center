@@ -47,6 +47,10 @@ check("unused avatar first", ["c"].includes(u.pickAvatar(avatars, ["a", "b"]).id
 check("least recent when all used", u.pickAvatar(avatars, ["c", "a", "b"]).id === "b");
 check("preferred id wins", u.pickAvatar(avatars, [], "a").id === "a");
 check("not-ready and genderless skipped", !["d", "e"].includes(u.pickAvatar(avatars, ["a", "b", "c"]).id));
+const withExcluded = avatars.map(a => a.id === "c" ? { ...a, autopilot_exclude: true } : a);
+check("excluded avatar skipped in rotation", u.pickAvatar(withExcluded, ["a", "b"]).id !== "c");
+check("excluded avatar still picked when preferred", u.pickAvatar(withExcluded, [], "c").id === "c");
+check("all excluded gives null", u.pickAvatar(avatars.map(a => ({ ...a, autopilot_exclude: true })), []) === null);
 
 // ── script parsing ──
 const reply = 'Sure!\n{"angle":"late entries fixed","hook":"I used to buy every top — honestly.","on_screen_hook":"Stop buying the top","script":"I used to buy every top — honestly. Then I found [this] tool.","caption":"This changed my entries – for real 👀","hashtags":["#trading","crypto tools","btc"]}';

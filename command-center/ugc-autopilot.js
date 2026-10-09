@@ -57,15 +57,17 @@ function pickVoice(voices, { gender, age, seed = "" } = {}) {
   return top[hashString(seed) % top.length];
 }
 
-// Ready avatars with a known gender. A preferred id wins; otherwise the avatar
-// used least recently (recentIds: newest first) so the feed rotates faces.
+// Ready avatars with a known gender. A preferred id wins (even when excluded);
+// otherwise the avatar used least recently (recentIds: newest first) so the feed
+// rotates faces. Avatars with autopilot_exclude never enter the rotation.
 function pickAvatar(avatars, recentIds = [], preferredId = "") {
-  const usable = (avatars || []).filter(a => a.status === "ready" && a.image_url && inferGender(a));
-  if (!usable.length) return null;
+  const ready = (avatars || []).filter(a => a.status === "ready" && a.image_url && inferGender(a));
   if (preferredId) {
-    const hit = usable.find(a => a.id === preferredId);
+    const hit = ready.find(a => a.id === preferredId);
     if (hit) return hit;
   }
+  const usable = ready.filter(a => !a.autopilot_exclude);
+  if (!usable.length) return null;
   const rank = (a) => { const i = recentIds.indexOf(a.id); return i === -1 ? Infinity : i; };
   return usable.slice().sort((a, b) => rank(b) - rank(a))[0];
 }

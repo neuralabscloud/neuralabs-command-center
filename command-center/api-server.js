@@ -3085,6 +3085,7 @@ app.patch("/ugc/avatars/:id", (req, res) => {
   if ("gender" in b) { if (b.gender === "male" || b.gender === "female") a.gender = b.gender; else delete a.gender; }
   if ("voice_id" in b) { if (b.voice_id) a.voice_id = String(b.voice_id); else delete a.voice_id; }
   if (typeof b.name === "string" && b.name.trim()) a.name = b.name.trim();
+  if ("autopilot_exclude" in b) { if (b.autopilot_exclude) a.autopilot_exclude = true; else delete a.autopilot_exclude; }
   writeTaskFile("ugc-avatars.json", avatars);
   res.json({ ok: true, avatar: { ...a, gender_resolved: ugcAuto.inferGender(a) } });
 });
