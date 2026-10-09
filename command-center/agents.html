@@ -294,7 +294,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div class="header-title">SCHEDULER</div>
           <div class="header-sub">Scheduled & autonomous agent tasks, and what they delivered</div>
         </div>
-        <div id="canva-status"></div>
       </div>
     </div>
 
@@ -501,60 +500,6 @@ async function cancelTask(api, taskId, btn) {
     btn.textContent = 'Cancel';
     alert('Failed to cancel: ' + e.message);
   }
-}
-
-// ── CANVA OAUTH POPUP ──
-async function canvaOAuthPopup() {
-  // Confirm the customer has configured Client ID + Secret before opening
-  // the popup, otherwise Canva responds with a confusing error page.
-  try {
-    const s = await (await fetch('/canva/status')).json();
-    if (!s.configured) {
-      alert('Add Canva Client ID + Secret in Settings first.\n\nThe callback URI to enter in your Canva integration is shown there.');
-      return;
-    }
-  } catch {}
-  const w = window.open('/canva/connect', '_blank', 'width=820,height=720');
-  if (!w) {
-    alert('Popup was blocked. Allow popups for this page and try again.');
-    return;
-  }
-  // Poll status until the callback page closes the popup or the user gives up.
-  const start = Date.now();
-  const iv = setInterval(async () => {
-    if (Date.now() - start > 5 * 60 * 1000) { clearInterval(iv); checkCanvaStatus(); return; }
-    try {
-      const r = await (await fetch('/canva/status')).json();
-      if (r.connected) {
-        clearInterval(iv);
-        try { w.close(); } catch {}
-        checkCanvaStatus();
-      } else if (w.closed) {
-        clearInterval(iv);
-        checkCanvaStatus();
-      }
-    } catch {}
-  }, 2000);
-}
-
-// ── CANVA DISCONNECT ──
-async function disconnectCanva() {
-  if (!confirm('Disconnect Canva?')) return;
-  await fetch('/canva/disconnect', { method: 'POST' });
-  checkCanvaStatus();
-}
-
-// ── CANVA STATUS ──
-async function checkCanvaStatus() {
-  const el = document.getElementById('canva-status');
-  try {
-    const res = await (await fetch('/canva/status')).json();
-    if (res.connected) {
-      el.innerHTML = '<span style="font-family:var(--font-data);font-size:10px;display:flex;align-items:center;gap:8px"><span style="color:var(--success);display:flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid hsla(142 76% 36%/0.3);border-radius:6px;background:hsla(142 76% 36%/0.06)"><span style="width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse-glow 2s infinite"></span>CANVA CONNECTED</span><a href="#" onclick="disconnectCanva(); return false;" style="color:var(--muted-foreground);text-decoration:none;padding:6px 10px;border:1px solid hsla(0 0% 100%/0.1);border-radius:6px;transition:all 0.2s" onmouseover="this.style.borderColor=\'var(--danger)\';this.style.color=\'var(--danger)\'" onmouseout="this.style.borderColor=\'hsla(0 0% 100%/0.1)\';this.style.color=\'var(--muted-foreground)\'">Disconnect</a></span>';
-    } else {
-      el.innerHTML = '<a href="#" onclick="canvaOAuthPopup(); return false;" style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-decoration:none;display:flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid hsla(264 65% 49%/0.3);border-radius:6px;background:hsla(264 65% 49%/0.06);transition:all 0.2s;cursor:pointer" onmouseover="this.style.borderColor=\'var(--primary)\'" onmouseout="this.style.borderColor=\'hsla(264 65% 49%/0.3)\'">Connect Canva</a>';
-    }
-  } catch { el.innerHTML = ''; }
 }
 
 // ── SCHEDULED TASKS ──
@@ -1002,9 +947,7 @@ async function loadAll() {
 }
 loadAll();
 loadSchedules();
-checkCanvaStatus();
 setInterval(loadAll, 8000);
-setInterval(checkCanvaStatus, 30000);
 setInterval(loadSchedules, 30000);
 loadAutonomous();
 setInterval(loadAutonomous, 30000);

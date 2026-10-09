@@ -37,7 +37,6 @@ const PROVIDERS = {
   meta:       { label: "Meta Graph API", billing: "free", env: ["META_APP_ID"], unit: "calls" },
   youtube:    { label: "YouTube / Google APIs", billing: "free", env: ["YOUTUBE_API_KEY"], unit: "calls" },
   composio:   { label: "Composio", billing: "plan", env: ["COMPOSIO_API_KEY"], unit: "calls" },
-  canva:      { label: "Canva Connect", billing: "free", env: ["CANVA_CLIENT_ID"], unit: "calls" },
   telegram:   { label: "Telegram Bot API", billing: "free", env: ["TELEGRAM_BOT_TOKEN"], unit: "calls" },
 };
 
@@ -421,7 +420,6 @@ function providerForHost(host) {
   if (host === "graph.facebook.com" || host === "graph.instagram.com") return "meta";
   if (host.endsWith("googleapis.com")) return "youtube";
   if (host.endsWith("composio.dev")) return "composio";
-  if (host.endsWith("canva.com")) return "canva";
   if (host === "api.telegram.org") return "telegram";
   return null;
 }

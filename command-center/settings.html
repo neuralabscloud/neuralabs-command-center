@@ -464,38 +464,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           </div>
         </div>
 
-        <!-- Canva -->
-        <div class="cfg-card">
-          <div class="cfg-card-head">
-            <div class="cfg-card-icon" style="background:hsla(180 80% 45%/0.12);border:1px solid hsla(180 80% 45%/0.3);color:hsl(180 80% 55%)">C</div>
-            <div class="cfg-card-meta">
-              <div class="cfg-card-title-row">
-                <div class="cfg-card-title">Canva</div>
-                <span class="cfg-pill optional">Optional</span>
-              </div>
-              <div class="cfg-card-desc">Brand templates for the Designer agent. Requires a public domain.</div>
-            </div>
-            <span class="cfg-pill empty" id="cfg-status-canva">Not set</span>
-          </div>
-          <div class="cfg-fields">
-            <div class="cfg-field">
-              <div class="cfg-field-label">Client ID</div>
-              <input type="text" id="cfg-canva-client-id" class="cfg-input" placeholder="Current kept if empty">
-              <div class="cfg-field-hint">Create an Integration at <a href="https://www.canva.com/developers" target="_blank">canva.com/developers</a> and copy its Client ID.</div>
-            </div>
-            <div class="cfg-field">
-              <div class="cfg-field-label">Client Secret</div>
-              <input type="password" id="cfg-canva-client-secret" class="cfg-input" placeholder="Current kept if empty">
-              <div class="cfg-field-hint">Generate under <em>Authentication → Generate secret</em>. Keep it private.</div>
-            </div>
-            <div class="cfg-field">
-              <div class="cfg-field-label">Redirect URI</div>
-              <input type="text" id="cfg-canva-redirect" class="cfg-input" placeholder="Auto-derived from public domain">
-              <div class="cfg-field-hint">Paste under <em>Authentication → Authentication URLs</em> in your Canva integration. Leave empty to auto-derive.<span id="cfg-canva-callback-hint" class="cfg-callback-hint">—</span></div>
-            </div>
-          </div>
-        </div>
-
         <!-- Composio -->
         <div class="cfg-card">
           <div class="cfg-card-head">
@@ -773,7 +741,6 @@ function iconBg(color) {
 const SERVICE_META = {
   anthropic: { icon: '🧠', color: '264 65% 49%', label: 'Anthropic / Claude', desc: 'AI chat, agents, design generation' },
   higgsfield: { icon: '🎬', color: '264 65% 49%', label: 'Higgsfield', desc: 'AI UGC video generation' },
-  canva: { icon: '🎨', color: '142 70% 40%', label: 'Canva', desc: 'Brand templates via Canva Connect API' },
   telegram: { icon: '📨', color: '210 90% 55%', label: 'Telegram Bot', desc: 'Task completion notifications' },
   inference: { icon: '🍌', color: '45 93% 55%', label: 'Inference.sh (Nano Banana)', desc: 'Gemini image generation & AI video via infsh CLI' },
   composio: { icon: '🔌', color: '270 95% 65%', label: 'Composio', desc: 'Tool integrations — GitHub, Slack, Gmail, Calendar & more' },
@@ -950,9 +917,7 @@ async function loadConfig() {
       const s = d.server;
       const notice = document.getElementById('domain-notice');
       const metaHint = document.getElementById('cfg-meta-callback-hint');
-      const canvaHint = document.getElementById('cfg-canva-callback-hint');
       if (metaHint && s.meta_callback) metaHint.textContent = 'Callback URI: ' + s.meta_callback;
-      if (canvaHint && s.canva_callback) canvaHint.textContent = 'Callback URI: ' + s.canva_callback;
       if (notice) {
         if (s.looks_public) {
           notice.style.display = 'block';
@@ -961,7 +926,7 @@ async function loadConfig() {
           notice.style.color = 'var(--text)';
           notice.innerHTML = '<strong style="color:var(--success)">Public domain detected</strong> — '
             + 'reachable on <code style="color:var(--primary)">' + s.origin + '</code>. '
-            + 'Use this for Meta Ads + Canva OAuth callbacks.';
+            + 'Use this for Meta Ads OAuth callbacks.';
         } else {
           notice.style.display = 'block';
           notice.style.background = 'hsla(45 93% 55%/0.08)';
@@ -969,7 +934,7 @@ async function loadConfig() {
           notice.style.color = 'var(--text)';
           notice.innerHTML = '<strong style="color:var(--warning,#facc15)">No public domain detected</strong> — '
             + 'currently reached on <code style="color:var(--text-dim)">' + (s.origin || '—') + '</code>. '
-            + 'Meta Ads and Canva require a public domain (with HTTPS) bound to this Command Center before you can connect them. '
+            + 'Meta Ads requires a public domain (with HTTPS) bound to this Command Center before you can connect them. '
             + 'Point an A-record at this server, set up a reverse proxy (Nginx/Caddy) with TLS, then reload this page — the callback URIs below will update automatically.';
         }
       }
@@ -1029,22 +994,6 @@ async function loadConfig() {
         metaRedirect.value = m.redirect_uri || '';
         if (!m.redirect_uri) metaRedirect.placeholder = 'https://yourdomain.com/social/meta/callback';
       }
-      if (d.integrations.canva) {
-        const c = d.integrations.canva;
-        const cId = document.getElementById('cfg-canva-client-id');
-        const cSecret = document.getElementById('cfg-canva-client-secret');
-        const cRedirect = document.getElementById('cfg-canva-redirect');
-        cId.value = '';
-        cSecret.value = '';
-        if (c.has_client_id && c.client_id_masked) {
-          cId.placeholder = c.client_id_masked + '  —  leave empty to keep';
-        } else {
-          cId.placeholder = 'Not configured';
-        }
-        cSecret.placeholder = c.has_secret ? 'Configured  —  leave empty to keep' : 'Not configured';
-        cRedirect.value = c.redirect_uri || '';
-        if (!c.redirect_uri) cRedirect.placeholder = 'https://yourdomain.com/canva/callback';
-      }
       if (d.integrations.telegram) {
         const tgToken = document.getElementById('cfg-tg-token');
         const tgChat = document.getElementById('cfg-tg-chatid');
@@ -1081,10 +1030,6 @@ async function loadConfig() {
         ig.meta && ig.meta.has_app_id,
         ig.meta && ig.meta.has_secret,
       ]));
-      setStatus('cfg-status-canva', ...triState([
-        ig.canva && ig.canva.has_client_id,
-        ig.canva && ig.canva.has_secret,
-      ]));
       setStatus('cfg-status-composio', ...triState([ig.composio && ig.composio.has_key]));
       setStatus('cfg-status-youtube', ...triState([ig.youtube && ig.youtube.has_key]));
       setStatus('cfg-status-inference', ...triState([ig.inference && ig.inference.has_key]));
@@ -1116,7 +1061,6 @@ async function saveConfig() {
     anthropic_key: 'cfg-anthropic', telegram_token: 'cfg-tg-token', telegram_chat_id: 'cfg-tg-chatid',
     higgsfield_key_id: 'cfg-higgsfield-id', higgsfield_secret: 'cfg-higgsfield-secret',  inference_key: 'cfg-inference', composio_key: 'cfg-composio',
     meta_app_id: 'cfg-meta-app-id', meta_app_secret: 'cfg-meta-app-secret', meta_redirect_uri: 'cfg-meta-redirect',
-    canva_client_id: 'cfg-canva-client-id', canva_client_secret: 'cfg-canva-client-secret', canva_redirect_uri: 'cfg-canva-redirect',
     youtube_api_key: 'cfg-youtube',
     opusclip_key: 'cfg-opusclip',
     elevenlabs_key: 'cfg-elevenlabs',
@@ -1149,7 +1093,7 @@ const SKILLS = [
     command: '/ugc', tags: ['Higgsfield', 'Video'] },
   { icon: '🎨', color: '142 70% 40%', name: 'Designer', cat: 'media',
     desc: 'Create carousels, thumbnails, banners & infographics for social media',
-    command: '/designer', tags: ['Canva', 'Nano Banana', 'Playwright'] },
+    command: '/designer', tags: ['Nano Banana', 'Higgsfield', 'Playwright'] },
   { icon: '🍌', color: '45 93% 55%', name: 'Nano Banana 2', cat: 'media',
     desc: 'Generate images with Google Gemini 3.1 Flash via inference.sh',
     command: '/nano-banana-2', tags: ['Gemini', 'Image Gen'] },

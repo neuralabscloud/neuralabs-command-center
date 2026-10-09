@@ -239,7 +239,6 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="nanobanana">Nano Banana (Gemini)</option>
               <option value="higgsfield">Higgsfield (Soul)</option>
               <option value="playwright">Playwright (instant)</option>
-              <option value="claude">Claude AI (Canva MCP)</option>
             </select>
           </div>
           <div class="form-field">
@@ -419,13 +418,8 @@ function renderTasks(tasks) {
     const time = new Date(t.created_at).toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return `<div class="task-card">
       <div class="task-thumb">
-        ${t.result_thumbnail && !t.result_thumbnail.includes('canva.com/d/')
-          ? `<img src="${t.result_thumbnail}" alt="Design preview" onclick="openPreview('${t.result_url && !t.result_url.includes('canva.com') ? t.result_url : t.result_thumbnail}')" />`
-          : t.result_url && t.result_url.includes('canva.com')
-            ? `<a href="${t.result_url}" target="_blank" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;text-decoration:none;flex-direction:column;gap:6px">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M15 9.5a3.5 3.5 0 11-5.2 3.8"/><circle cx="12" cy="12" r="1.5" fill="var(--primary)"/></svg>
-                <span style="font-size:10px;color:var(--text-dim)">Open in Canva</span>
-              </a>`
+        ${t.result_thumbnail
+          ? `<img src="${t.result_thumbnail}" alt="Design preview" onclick="openPreview('${t.result_url || t.result_thumbnail}')" />`
             : t.status === 'processing'
               ? '<span style="animation:pulse-glow 1.5s infinite">Generating...</span>'
               : t.status === 'pending'
@@ -443,8 +437,8 @@ function renderTasks(tasks) {
           <span class="task-time">${time}</span>
         </div>
         <div class="task-actions">
-          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${/^\/(generated|media)\//.test(t.result_url) ? 'download' : ''}>${['playwright','edu','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : t.engine === 'claude' ? 'Open design' : 'Open in Canva'}</a>` : ''}
-          ${t.result_url && !t.result_url.includes('canva.com') && ['nanobanana','higgsfield','enhance'].includes(t.engine) ? `
+          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${/^\/(generated|media)\//.test(t.result_url) ? 'download' : ''}>${['playwright','edu','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : 'Open'}</a>` : ''}
+          ${t.result_url && ['nanobanana','higgsfield','enhance'].includes(t.engine) ? `
             <button class="task-btn" onclick="useAsEditSource('${t.id}')" title="Rework this image with a prompt">Edit</button>
             <button class="task-btn" onclick="enhanceTask('${t.id}', 'rmbg')" title="Cut out the background">Cut out</button>
             <button class="task-btn" onclick="enhanceTask('${t.id}', 'upscale')" title="Upscale 2x">Upscale</button>` : ''}

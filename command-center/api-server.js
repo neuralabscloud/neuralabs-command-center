@@ -298,7 +298,7 @@ function readEnvFile() {
     }
   } catch {}
   // Merge from process.env (picks up vars from other sources like dotenv loading)
-  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "ELEVENLABS_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
+  const envKeys = ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "HIGGSFIELD_API_KEY", "COMPOSIO_API_KEY", "INFERENCE_API_KEY", "META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI", "YOUTUBE_API_KEY", "OPUSCLIP_API_KEY", "ELEVENLABS_API_KEY", "COMPANY_NAME", "ASSISTANT_NAME", "TAGLINE", "PRIMARY_COLOR_HUE", "PRIMARY_COLOR_SAT", "PRIMARY_COLOR_LIT"];
   for (const key of envKeys) {
     if (!env[key] && process.env[key]) env[key] = process.env[key];
   }
@@ -342,7 +342,7 @@ function maskKey(val) {
 }
 
 // Detect the public origin the Command Center is currently being reached on,
-// so OAuth integrations (Meta Ads, Canva) can show the customer the exact
+// so OAuth integrations (Meta Ads) can show the customer the exact
 // callback URI to paste into the third-party developer dashboard.
 function detectPublicOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "http";
@@ -372,7 +372,6 @@ app.get("/api/settings", (req, res) => {
       host: pub.host,
       looks_public: looksPublicHost(pub.host),
       meta_callback: env.META_REDIRECT_URI || (pub.origin ? `${pub.origin}/social/meta/callback` : ""),
-      canva_callback: env.CANVA_REDIRECT_URI || (pub.origin ? `${pub.origin}/canva/callback` : ""),
     },
     branding: {
       company_name: brand.company_name || env.COMPANY_NAME || "",
@@ -389,7 +388,6 @@ app.get("/api/settings", (req, res) => {
       inference: { has_key: !!env.INFERENCE_API_KEY, masked: maskKey(env.INFERENCE_API_KEY) },
       composio: { has_key: !!env.COMPOSIO_API_KEY, masked: maskKey(env.COMPOSIO_API_KEY) },
       meta: { has_app_id: !!env.META_APP_ID, app_id_masked: maskKey(env.META_APP_ID), has_secret: !!env.META_APP_SECRET, redirect_uri: env.META_REDIRECT_URI || "" },
-      canva: { has_client_id: !!env.CANVA_CLIENT_ID, client_id_masked: maskKey(env.CANVA_CLIENT_ID), has_secret: !!env.CANVA_CLIENT_SECRET, redirect_uri: env.CANVA_REDIRECT_URI || "" },
       youtube: { has_key: !!env.YOUTUBE_API_KEY, masked: maskKey(env.YOUTUBE_API_KEY) },
       opusclip: { has_key: !!env.OPUSCLIP_API_KEY, masked: maskKey(env.OPUSCLIP_API_KEY) },
       elevenlabs: { has_key: !!env.ELEVENLABS_API_KEY, masked: maskKey(env.ELEVENLABS_API_KEY) },
@@ -420,9 +418,6 @@ app.post("/api/settings", (req, res) => {
       meta_app_id: "META_APP_ID",
       meta_app_secret: "META_APP_SECRET",
       meta_redirect_uri: "META_REDIRECT_URI",
-      canva_client_id: "CANVA_CLIENT_ID",
-      canva_client_secret: "CANVA_CLIENT_SECRET",
-      canva_redirect_uri: "CANVA_REDIRECT_URI",
       youtube_api_key: "YOUTUBE_API_KEY",
       opusclip_key: "OPUSCLIP_API_KEY",
       elevenlabs_key: "ELEVENLABS_API_KEY",
@@ -843,7 +838,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   }
   // Label only — the designer no longer styles anything from the brand config.
   const brand = (loadBrand().company_name || "DEFAULT").toUpperCase();
-  const engine = req.body.engine || "nanobanana"; // nanobanana | higgsfield | playwright | claude | canva
+  const engine = req.body.engine || "nanobanana"; // nanobanana | higgsfield | playwright
   const designStyle = readDesignStyle(req.body);
   const requestedSlideCount = req.body.slide_count || null;
   // Edit mode reworks an existing image instead of generating a new one. The
@@ -984,6 +979,11 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     }
     return { slide, slideDesc };
   };
+
+  if (!["nanobanana", "higgsfield", "playwright"].includes(engine)) {
+    for (const rp of refImagePaths) { try { fs.unlinkSync(rp); } catch {} }
+    return res.status(400).json({ error: `Unknown engine "${engine}". Use nanobanana, higgsfield or playwright.` });
+  }
 
   if (mode === "edit") {
     if (!editSources.length) {
@@ -1336,196 +1336,6 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
     return;
   }
 
-  if (engine === "claude") {
-    // Determine how many slides are needed
-    const isCarousel = designType === "instagram_carousel" || slides.length > 1;
-    const slideCount = slides.length > 1 ? slides.length : (requestedSlideCount || (isCarousel ? 3 : 1));
-
-    // Style block from the design settings (no brand data is injected)
-    const styleLines = ["Visual style: " + styleSentence(designStyle)];
-    if (designStyle.negative_prompt) styleLines.push("Avoid: " + designStyle.negative_prompt);
-    const styleBlock = styleLines.join("\n");
-
-    // Build the prompt
-    let prompt;
-    if (isCarousel && slideCount > 1) {
-      const slideDescs = slides.length > 1
-        ? slides.map(s => `Slide ${s.num}: ${s.title ? s.title + " — " : ""}${s.body}`).join("\n")
-        : "";
-      prompt = `Create ${slideCount} Instagram carousel slides as SEPARATE Canva designs.
-
-You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
-- NEVER call request-outline-review
-- NEVER ask the user to choose or approve anything
-- ALWAYS pick the first candidate yourself and call create-design-from-candidate immediately
-- Complete ALL ${slideCount} slides before stopping
-
-## Style\n${styleBlock}\n
-## Slide Content
-${slideDescs || desc}
-
-## For EACH slide, do these 3 steps:
-Step 1: Call generate-design with design_type "instagram_post" and a detailed query describing the visual style above and the text content for that slide.
-Step 2: Immediately call create-design-from-candidate with the FIRST candidate. Do NOT present options. Do NOT ask the user.
-Step 3: Edit text — call start-editing-transaction, then get-design-content, then perform-editing-operations to set the correct text, then commit-editing-transaction.
-
-After ALL ${slideCount} slides are done, output each design URL on its own line like:
-DESIGN_URL: https://...`;
-    } else {
-      // Canva's generate-design takes a design type from its own list, so a free
-      // format asks for the closest type plus the exact size in the brief.
-      const canvaType = designType === "custom" ? "poster" : designType;
-      const canvasNote = canvas ? `\n\nIMPORTANT: the design must be ${canvas.width} x ${canvas.height} pixels. Use resize-design if the generated design has another size.` : "";
-      prompt = `Create a ${canvas ? `${canvas.width}x${canvas.height} px` : designType} design in Canva.
-
-You are running NON-INTERACTIVELY. There is NO user to respond. You MUST:
-- NEVER call request-outline-review
-- NEVER ask the user to choose or approve anything
-- ALWAYS pick the first candidate yourself and call create-design-from-candidate immediately
-
-## Style\n${styleBlock}\n
-## Content
-${desc}
-
-## Steps:
-Step 1: Call generate-design with design_type "${canvaType}" and a detailed query describing the visual style above and the text content.${canvasNote}
-Step 2: Immediately call create-design-from-candidate with the FIRST candidate. Do NOT present options.
-Step 3: Edit text — call start-editing-transaction, then get-design-content, then perform-editing-operations to set the correct text, then commit-editing-transaction.
-
-Output the final design URL like:
-DESIGN_URL: https://...`;
-    }
-
-    // Create task(s)
-    const parentId = isCarousel ? genId() : null;
-    const createdTasks = [];
-    for (let i = 0; i < slideCount; i++) {
-      createdTasks.push({
-        id: genId(), status: "processing",
-        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        design_type: designType, brand, engine: "claude", design_style: designStyle,
-        custom_width: canvas ? canvas.width : null,
-        custom_height: canvas ? canvas.height : null,
-        carousel_parent: parentId,
-        carousel_slide: isCarousel ? i + 1 : null,
-        carousel_total: isCarousel ? slideCount : null,
-        description: slides.length > 1 ? `Slide ${slides[i]?.num || i + 1}${slides[i]?.title ? " — " + slides[i].title : ""}: ${slides[i]?.body || desc}` : desc,
-        result_url: null, result_thumbnail: null, result_design_id: null, error: null,
-      });
-    }
-    tasks.unshift(...createdTasks);
-    writeTaskFile("designer-tasks.json", tasks);
-    res.status(201).json(createdTasks);
-
-    // Run Claude Code in background
-    const child = execFile("/root/.local/bin/claude", ["-p", prompt, "--output-format", "json", "--allowedTools", "mcp__claude_ai_Canva__*"], {
-      timeout: 600000,
-      maxBuffer: 1024 * 1024 * 10,
-      env: { ...process.env, HOME: "/root" },
-    }, (err, stdout, stderr) => {
-      const allTasks = readTaskFile("designer-tasks.json");
-      const taskIds = createdTasks.map(t => t.id);
-
-      if (err) {
-        console.error("[DESIGNER] Claude engine failed:", err.message);
-        for (const tid of taskIds) {
-          const idx = allTasks.findIndex(t => t.id === tid);
-          if (idx !== -1) {
-            allTasks[idx].status = "failed";
-            allTasks[idx].error = err.message.slice(0, 500);
-          }
-        }
-        writeTaskFile("designer-tasks.json", allTasks);
-        return;
-      }
-
-      // Extract design URLs from output
-      const allUrls = [];
-      let fullText = stdout;
-      try {
-        const parsed = JSON.parse(stdout);
-        fullText = String(parsed.result || parsed.content || stdout);
-      } catch {}
-
-      // First try explicit DESIGN_URL: markers
-      const markerMatches = fullText.match(/DESIGN_URL:\s*(https:\/\/[^\s"')\\]+)/gi);
-      if (markerMatches && markerMatches.length > 0) {
-        for (const m of markerMatches) {
-          const url = m.replace(/^DESIGN_URL:\s*/i, '').trim();
-          if (!allUrls.includes(url)) allUrls.push(url);
-        }
-      }
-
-      // Fallback: extract all unique Canva URLs from the full output (including tool results)
-      if (allUrls.length === 0) {
-        const canvaMatches = fullText.match(/https:\/\/www\.canva\.com\/design\/[^\s"')\\]+/gi)
-          || fullText.match(/https:\/\/[^\s"')\\]*canva[^\s"')\\]*/gi)
-          || [];
-        for (const url of [...new Set(canvaMatches)]) {
-          if (!allUrls.includes(url)) allUrls.push(url);
-        }
-      }
-
-      // Also scan the raw stdout for URLs in tool result blocks (they may contain the actual design URLs)
-      if (allUrls.length === 0) {
-        const rawMatches = stdout.match(/https:\/\/www\.canva\.com\/design\/[^\s"')\\]+/gi)
-          || stdout.match(/https:\/\/[^\s"')\\]*canva[^\s"')\\]*/gi)
-          || [];
-        for (const url of [...new Set(rawMatches)]) {
-          if (!allUrls.includes(url)) allUrls.push(url);
-        }
-      }
-
-      console.log(`[DESIGNER] Claude output URLs found: ${allUrls.length}`, allUrls);
-
-      // Assign URLs to tasks
-      for (let i = 0; i < taskIds.length; i++) {
-        const idx = allTasks.findIndex(t => t.id === taskIds[i]);
-        if (idx === -1) continue;
-        const url = allUrls[i] || (allUrls.length === 1 ? allUrls[0] : null);
-        allTasks[idx].status = "completed";
-        allTasks[idx].result_url = url;
-        allTasks[idx].updated_at = new Date().toISOString();
-      }
-      // Store full output on first task for debugging
-      const firstIdx = allTasks.findIndex(t => t.id === taskIds[0]);
-      if (firstIdx !== -1) allTasks[firstIdx].claude_output = stdout.slice(0, 3000);
-
-      writeTaskFile("designer-tasks.json", allTasks);
-      console.log(`[DESIGNER] Claude engine completed ${taskIds.length} task(s), found ${allUrls.length} URL(s)`);
-    });
-    return;
-  }
-
-  // Canva engine: carousel split or single task (async via worker)
-  if (slides.length > 1) {
-    const parentId = genId();
-    const globalStyle = desc.substring(0, desc.search(/\*\*\d{1,2}/) || 0).trim();
-    const createdTasks = slides.map((s, i) => ({
-      id: genId(), status: "pending",
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      design_type: designType, brand, engine: "canva", design_style: designStyle,
-      carousel_parent: parentId,
-      carousel_slide: parseInt(s.num) || (i + 1),
-      carousel_total: slides.length,
-      description: `${globalStyle ? globalStyle + "\n\n" : ""}Slide ${s.num}/${slides.length}${s.title ? " — " + s.title : ""}:\n${s.body || s.title}`,
-      result_url: null, result_thumbnail: null, result_design_id: null, error: null,
-    }));
-    tasks.unshift(...createdTasks);
-    writeTaskFile("designer-tasks.json", tasks);
-    return res.status(201).json(createdTasks);
-  }
-
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    design_type: designType, brand, engine: "canva", design_style: designStyle,
-    description: desc,
-    result_url: null, result_thumbnail: null, result_design_id: null, error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("designer-tasks.json", tasks);
-  res.status(201).json(task);
 });
 
 app.patch("/designer/tasks/:id", (req, res) => {
@@ -3346,41 +3156,6 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
-  // 4. Canva (Connect API via customer's Canva Developer App)
-  const canvaClientId = process.env.CANVA_CLIENT_ID || "";
-  const canvaClientSecret = process.env.CANVA_CLIENT_SECRET || "";
-  let canvaStatus = "not-configured";
-  let canvaDetails = [
-    { label: "Client ID", value: canvaClientId || "—", secret: !!canvaClientId },
-    { label: "Client Secret", value: canvaClientSecret ? "•••" : "—" },
-    { label: "OAuth", value: canvaClientId && canvaClientSecret ? "Awaiting authorization" : "Not configured" },
-    { label: "Used by", value: "Designer (brand templates lookup)" },
-  ];
-  let canvaActions = [];
-  if (canvaClientId && canvaClientSecret) {
-    let hasToken = false, expired = false, expiresAt = null;
-    try {
-      const canvaTokens = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "canva-oauth.json"), "utf8"));
-      hasToken = !!canvaTokens.access_token;
-      expired = !!(canvaTokens.expires_at && canvaTokens.expires_at < Date.now());
-      expiresAt = canvaTokens.expires_at || null;
-    } catch {}
-    canvaStatus = hasToken && !expired ? "connected" : "not-configured";
-    canvaDetails = [
-      { label: "Client ID", value: canvaClientId, secret: true },
-      { label: "Client Secret", value: "•••" },
-      { label: "OAuth", value: hasToken ? (expired ? "Expired — re-authorize" : "Authorized") : "Not authorized" },
-      { label: "Expires", value: expiresAt ? new Date(expiresAt).toLocaleString() : "—" },
-      { label: "Used by", value: "Designer (brand templates lookup)" },
-    ];
-    canvaActions.push({
-      type: "oauth-popup",
-      url: "/canva/connect",
-      label: hasToken && !expired ? "Reconnect Canva" : "Connect Canva",
-    });
-  }
-  integrations.push({ id: "canva", status: canvaStatus, details: canvaDetails, actions: canvaActions });
-
   // 5. Telegram
   integrations.push({
     id: "telegram", status: TG_TOKEN ? "connected" : "not-configured",
@@ -3601,16 +3376,6 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
       const client = new Anthropic();
       const msg = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
       res.json({ ok: true, message: `Model responded (${msg.usage.input_tokens + msg.usage.output_tokens} tokens)` });
-    } else if (id === "canva") {
-      if (!process.env.CANVA_CLIENT_ID || !process.env.CANVA_CLIENT_SECRET) {
-        return res.json({ ok: false, message: "Client ID/Secret not configured" });
-      }
-      const token = await getCanvaAccessToken();
-      if (!token) return res.json({ ok: false, message: "Not authorized — click Connect Canva" });
-      const r = await fetch("https://api.canva.com/rest/v1/users/me", { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) return res.json({ ok: false, message: `API call failed (${r.status})` });
-      const d = await r.json();
-      res.json({ ok: true, message: d?.team_user?.user_id ? `Authorized as ${d.team_user.user_id}` : "Authorized" });
     } else if (id === "telegram") {
       if (!TG_TOKEN) return res.json({ ok: false, message: "TELEGRAM_BOT_TOKEN not set in .env" });
       const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getMe`);
@@ -5308,7 +5073,7 @@ You help the user orchestrate agents and answer questions about the system.
 You are the central brain of the Command Center — you have access to ALL agents and ALL skills.
 
 COMMAND CENTER AGENTS:
-- Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
+- Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Higgsfield, Playwright)
 - Video Editor — video editing via Remotion
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Analyst — performance analyses, risk reports, daily reports
@@ -5323,7 +5088,7 @@ You can:
 4. Propose content ideas
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
-   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Default engine is nanobanana. Free format: design_type="custom" + width and height in pixels (e.g. 1500x500). Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
+   - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML). Default engine is nanobanana. Free format: design_type="custom" + width and height in pixels (e.g. 1500x500). Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: edit a video via Remotion (Video Editor)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
@@ -5346,7 +5111,7 @@ Je helpt de gebruiker met het aansturen van agents, het monitoren van bots, en h
 Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE agents en ALLE skills.
 
 COMMAND CENTER AGENTS:
-- Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Playwright, Canva)
+- Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Higgsfield, Playwright)
 - Video Editor — Video editing via Remotion (React-based video)
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
@@ -5421,7 +5186,7 @@ Je kunt:
 5. Content ideeën voorstellen
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
-   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML), "claude" (Canva). Standaard engine is nanobanana. Vrij formaat: design_type="custom" + width en height in pixels (bijv. 1500x500). Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
+   - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML). Standaard engine is nanobanana. Vrij formaat: design_type="custom" + width en height in pixels (bijv. 1500x500). Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
    - create_video_edit: Video laten editen via Remotion (Video Editor)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
@@ -5510,7 +5275,7 @@ app.post("/ctrl/chat", async (req, res) => {
             design_type: { type: "string", enum: ["instagram_post", "instagram_carousel", "instagram_story", "youtube_thumbnail", "youtube_banner", "twitter_post", "facebook_post", "ad_creative", "infographic", "poster", "presentation", "logo", "custom"], description: "Type design. Standaard: instagram_post. Gebruik instagram_carousel voor meerdere slides. Gebruik ad_creative voor advertentie creatives (combineer met aspect_ratio). Gebruik custom voor een vrij formaat en geef dan width en height mee." },
             width: { type: "number", description: "Vrij formaat: breedte in pixels (64-4096). Samen met height; overschrijft het formaat van het design_type." },
             height: { type: "number", description: "Vrij formaat: hoogte in pixels (64-4096). Samen met width." },
-            engine: { type: "string", enum: ["nanobanana", "higgsfield", "playwright", "claude", "canva"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image (Gemini), Higgsfield = AI image (Soul), Playwright = instant HTML-to-image, Claude = Canva MCP" },
+            engine: { type: "string", enum: ["nanobanana", "higgsfield", "playwright"], description: "Rendering engine. Standaard: nanobanana. Nano Banana = AI image (Gemini), Higgsfield = AI image (Soul), Playwright = instant HTML-to-image" },
             slide_count: { type: "integer", description: "Aantal slides voor carousels (2-10). Alleen nodig bij instagram_carousel." },
             aspect_ratio: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"], description: "Aspect ratio override (single). Alleen nodig bij ad_creative (of om de auto-mapping te overschrijven). Gebruik aspect_ratios voor meerdere varianten." },
             aspect_ratios: { type: "array", items: { type: "string", enum: ["1:1", "4:5", "9:16", "16:9", "1.91:1"] }, description: "Meerdere aspect ratios voor ad_creative — er wordt 1 creative per ratio gegenereerd." },
@@ -6767,219 +6532,6 @@ app.post("/marketeer/chat", async (req, res) => {
   }
 });
 
-// ── CANVA OAUTH (Connect API via customer's own Canva Developer App) ──
-// Customer registers an Integration in https://www.canva.com/developers,
-// puts Client ID + Secret in Settings, and the displayed callback URI in
-// the Canva integration's Authentication tab. The callback URI uses the
-// Command Center's public host (x-forwarded headers) — Canva no longer
-// accepts only localhost like the old MCP DCR flow did.
-const CANVA_TOKENS_FILE = path.join(__dirname, "data", "canva-oauth.json");
-const CANVA_AUTH_URL = "https://www.canva.com/api/oauth/authorize";
-const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
-const CANVA_API_BASE = "https://api.canva.com/rest/v1";
-const CANVA_SCOPES = [
-  "profile:read",
-  "design:meta:read",
-  "design:content:read",
-  "brandtemplate:meta:read",
-  "brandtemplate:content:read",
-  "asset:read",
-].join(" ");
-
-function readCanvaTokens() {
-  try { return JSON.parse(fs.readFileSync(CANVA_TOKENS_FILE, "utf8")); }
-  catch { return null; }
-}
-function writeCanvaTokens(data) {
-  fs.writeFileSync(CANVA_TOKENS_FILE, JSON.stringify(data, null, 2));
-}
-
-// Generate PKCE code verifier + challenge
-function generatePKCE() {
-  const verifier = crypto.randomBytes(32).toString("base64url");
-  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-  return { verifier, challenge };
-}
-
-function canvaCallbackUri(req) {
-  if (process.env.CANVA_REDIRECT_URI) return process.env.CANVA_REDIRECT_URI;
-  const proto = req.headers["x-forwarded-proto"] || req.protocol;
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
-  return `${proto}://${host}/canva/callback`;
-}
-
-// In-memory OAuth state for pending flows
-let canvaOAuthState = null;
-let canvaBrandKitsCache = null; // { at, kits }
-
-// Start OAuth flow
-app.get("/canva/connect", async (req, res) => {
-  try {
-    const clientId = process.env.CANVA_CLIENT_ID;
-    if (!clientId) {
-      return res.status(400).send('<html><body style="background:#000;color:#ef4444;font-family:Inter,sans-serif;padding:40px"><h1>Canva not configured</h1><p>Add Canva Client ID + Secret in Settings first.</p></body></html>');
-    }
-    const callbackUri = canvaCallbackUri(req);
-    const pkce = generatePKCE();
-    const state = crypto.randomBytes(16).toString("hex");
-    canvaOAuthState = { verifier: pkce.verifier, state, callbackUri };
-
-    const authUrl = `${CANVA_AUTH_URL}?` + new URLSearchParams({
-      response_type: "code",
-      client_id: clientId,
-      redirect_uri: callbackUri,
-      scope: CANVA_SCOPES,
-      state,
-      code_challenge: pkce.challenge,
-      code_challenge_method: "S256",
-    });
-
-    console.log("[CANVA] redirecting to authorize, callback:", callbackUri);
-    res.redirect(authUrl);
-  } catch (e) {
-    console.error("[CANVA] OAuth start failed:", e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// OAuth callback — Canva redirects here after authorization
-app.get("/canva/callback", async (req, res) => {
-  try {
-    const clientId = process.env.CANVA_CLIENT_ID;
-    const clientSecret = process.env.CANVA_CLIENT_SECRET;
-    if (!clientId || !clientSecret) throw new Error("Canva not configured");
-    if (!canvaOAuthState) throw new Error("No pending OAuth flow");
-    if (req.query.state !== canvaOAuthState.state) throw new Error("State mismatch");
-    if (req.query.error) throw new Error(req.query.error_description || req.query.error);
-
-    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const tokenRes = await fetch(CANVA_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${basic}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code: req.query.code,
-        redirect_uri: canvaOAuthState.callbackUri,
-        code_verifier: canvaOAuthState.verifier,
-      }),
-    });
-
-    if (!tokenRes.ok) throw new Error(`Token exchange failed: ${await tokenRes.text()}`);
-    const tokens = await tokenRes.json();
-
-    writeCanvaTokens({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: Date.now() + (tokens.expires_in || 14400) * 1000,
-    });
-
-    canvaOAuthState = null;
-    canvaBrandKitsCache = null;
-    console.log("[CANVA] OAuth connected successfully");
-    res.send('<html><body style="background:#000;color:#fff;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><h1 style="color:#7C3AED">Canva Connected</h1><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script></div></body></html>');
-  } catch (e) {
-    console.error("[CANVA] OAuth callback failed:", e.message);
-    canvaOAuthState = null;
-    res.status(500).send(`<html><body style="background:#000;color:#ef4444;font-family:Inter,sans-serif;padding:40px"><h1>Connection Failed</h1><p>${e.message}</p></body></html>`);
-  }
-});
-
-// Auto-refresh token
-async function getCanvaAccessToken() {
-  const data = readCanvaTokens();
-  if (!data) return null;
-
-  // Token still valid (with 5 min buffer)
-  if (data.expires_at && Date.now() < data.expires_at - 300000) {
-    return data.access_token;
-  }
-
-  // Refresh
-  if (!data.refresh_token) return null;
-  const clientId = process.env.CANVA_CLIENT_ID;
-  const clientSecret = process.env.CANVA_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-  try {
-    const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const res = await fetch(CANVA_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${basic}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: data.refresh_token,
-      }),
-    });
-    if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
-    const tokens = await res.json();
-    data.access_token = tokens.access_token;
-    if (tokens.refresh_token) data.refresh_token = tokens.refresh_token;
-    data.expires_at = Date.now() + (tokens.expires_in || 14400) * 1000;
-    writeCanvaTokens(data);
-    console.log("[CANVA] Token refreshed");
-    return data.access_token;
-  } catch (e) {
-    console.error("[CANVA] Token refresh failed:", e.message);
-    return null;
-  }
-}
-
-// Status endpoint — returns config + connection state + the callback URI
-// the customer needs to paste in their Canva developer dashboard.
-app.get("/canva/status", async (req, res) => {
-  const configured = !!(process.env.CANVA_CLIENT_ID && process.env.CANVA_CLIENT_SECRET);
-  const token = configured ? await getCanvaAccessToken() : null;
-  res.json({
-    configured,
-    connected: !!token,
-    callback_uri: canvaCallbackUri(req),
-  });
-});
-
-app.post("/canva/disconnect", async (_req, res) => {
-  try {
-    if (fs.existsSync(CANVA_TOKENS_FILE)) fs.unlinkSync(CANVA_TOKENS_FILE);
-    canvaBrandKitsCache = null;
-    console.log("[CANVA] Disconnected");
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// List brand templates from the connected Canva account.
-// Surfaced as "brand kits" in the UI. Returns { kits: [{id, name}] },
-// or { kits: [] } when not connected / on error.
-app.get("/canva/brand-kits", async (_req, res) => {
-  const token = await getCanvaAccessToken();
-  if (!token) return res.json({ kits: [] });
-  if (canvaBrandKitsCache && Date.now() - canvaBrandKitsCache.at < 5 * 60 * 1000) {
-    return res.json({ kits: canvaBrandKitsCache.kits });
-  }
-  try {
-    const r = await fetch(`${CANVA_API_BASE}/brand-templates`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
-    if (!r.ok) throw new Error(`brand-templates ${r.status}`);
-    const data = await r.json();
-    const items = data?.items || data?.brand_templates || [];
-    const kits = items.map(t => ({
-      id: t.id,
-      name: t.title || t.name || t.id,
-    }));
-    canvaBrandKitsCache = { at: Date.now(), kits };
-    res.json({ kits });
-  } catch (e) {
-    console.error("[CANVA] brand-templates failed:", e.message);
-    res.json({ kits: [] });
-  }
-});
-
 // ── TASK WORKERS (auto-execute pending tasks) ─────────
 
 // ── HIGGSFIELD CONFIG ────────────────────────────────────────────────
@@ -7531,7 +7083,6 @@ async function pollAvatarCreator() {
   if (changed) writeTaskFile("ugc-avatars.json", avatars);
 }
 
-// ── DESIGNER WORKER (Canva via Anthropic MCP Connector) ──
 // ── OPUSCLIP WORKER ──
 const opusclip = require("./opusclip-agent");
 const OPUSCLIP_MEDIA_DIR = path.join(__dirname, "public", "media", "opusclip");
@@ -7654,140 +7205,6 @@ async function processOpusclipTasks() {
   }
 
   if (changed) writeTaskFile("opusclip-tasks.json", tasks);
-}
-
-async function processDesignerTasks() {
-  const canvaToken = await getCanvaAccessToken();
-  if (!canvaToken) return; // Skip if Canva not connected
-  const tasks = readTaskFile("designer-tasks.json");
-  for (const task of tasks) {
-    if (task.status !== "pending" || processingTasks.has(task.id)) continue;
-    processingTasks.add(task.id);
-    console.log(`[WORKER] Processing designer task ${task.id} via Canva MCP`);
-
-    try {
-      task.status = "processing";
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("designer-tasks.json", tasks);
-
-      const designType = task.design_type || "instagram_post";
-      const isCarouselSlide = task.carousel_parent ? `\nThis is slide ${task.carousel_slide} of ${task.carousel_total} in a carousel set. Keep the visual style consistent: same color scheme, same layout structure, same typography.` : "";
-
-      // Style comes from the design settings the user picked — nothing is baked in.
-      const ds = task.design_style || { text_mode: "auto" };
-      const styleLines = ["- Visual style: " + styleSentence(ds)];
-      if (ds.negative_prompt) styleLines.push("- Avoid: " + ds.negative_prompt);
-
-      const prompt = `You are a world-class social media designer. Create ONE ${designType} design in Canva.
-
-## Style
-${styleLines.join("\n")}${isCarouselSlide}
-
-## Content for this design
-${task.description}
-
-## Steps
-1. Call generate-design with design_type "${designType}" and a detailed query. The query must describe the VISUAL design in the style above + include the actual text content.
-2. Pick the best candidate. Call create-design-from-candidate with that candidate_id.
-3. Customize the text:
-   a. Call start-editing-transaction with the design ID
-   b. Call get-design-content to see current elements
-   c. Call perform-editing-operations to update text elements with the EXACT text from the content above
-   d. Call commit-editing-transaction to save
-
-Return the final design URL when done.`;
-
-      const response = await anthropic.beta.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16384,
-        betas: ["mcp-client-2025-11-20"],
-        mcp_servers: [{
-          type: "url",
-          url: CANVA_MCP_BASE + "/mcp",
-          name: "canva",
-          authorization_token: canvaToken,
-        }],
-        tools: [{
-          type: "mcp_toolset",
-          mcp_server_name: "canva",
-        }],
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      // Log full response for debugging
-      console.log(`[WORKER] Designer response stop_reason: ${response.stop_reason}`);
-      console.log(`[WORKER] Designer response content types: ${response.content.map(b => b.type).join(", ")}`);
-      for (const block of response.content) {
-        if (block.type === "text") console.log(`[WORKER] Designer text: ${block.text.substring(0, 500)}`);
-        if (block.type === "mcp_tool_use") console.log(`[WORKER] Designer tool_use: ${block.name}`);
-        if (block.type === "mcp_tool_result") console.log(`[WORKER] Designer tool_result: ${JSON.stringify(block).substring(0, 500)}`);
-      }
-
-      // Extract ALL text — from text blocks AND mcp_tool_result blocks
-      const allText = response.content.map(b => {
-        if (b.type === "text") return b.text;
-        if (b.type === "mcp_tool_result") return JSON.stringify(b);
-        return "";
-      }).join("\n");
-      const textBlocks = response.content.filter(b => b.type === "text");
-      const resultText = textBlocks.map(b => b.text).join("\n");
-
-      // Try to extract design info from mcp_tool_result (create-design-from-candidate response)
-      let parsed = null;
-      for (const block of response.content) {
-        if (block.type === "mcp_tool_result" && !block.is_error) {
-          const raw = JSON.stringify(block);
-          const viewUrlMatch = raw.match(/"view_url"\s*:\s*"(https:\/\/www\.canva\.com\/d\/[^"]+)"/);
-          const editUrlMatch = raw.match(/"edit_url"\s*:\s*"(https:\/\/www\.canva\.com\/d\/[^"]+)"/);
-          const designIdMatch = raw.match(/"id"\s*:\s*"([^"]+)"/);
-          const thumbMatch = raw.match(/https:\/\/design\.canva\.ai\/[^\s"')\\]+/);
-          if (viewUrlMatch || editUrlMatch) {
-            parsed = {
-              result_url: viewUrlMatch?.[1] || editUrlMatch?.[1] || null,
-              result_design_id: designIdMatch?.[1] || null,
-              result_thumbnail: thumbMatch?.[0] || null,
-            };
-            break;
-          }
-        }
-      }
-
-      // Fallback: try text blocks
-      if (!parsed) {
-        const jsonMatch = resultText.match(/\{[^{}]*"result_url"[^{}]*\}/s);
-        if (jsonMatch) {
-          try { parsed = JSON.parse(jsonMatch[0]); } catch {}
-        }
-      }
-
-      // Fallback: regex across all content
-      if (!parsed) {
-        const urlMatch = allText.match(/https:\/\/www\.canva\.com\/d\/[^\s"')\\]+/);
-        const thumbMatch = allText.match(/https:\/\/design\.canva\.ai\/[^\s"')\\]+/);
-        parsed = {
-          result_url: urlMatch?.[0] || null,
-          result_design_id: null,
-          result_thumbnail: thumbMatch?.[0] || null,
-        };
-      }
-
-      task.status = "completed";
-      task.result_url = parsed.result_url;
-      task.result_design_id = parsed.result_design_id;
-      task.result_thumbnail = parsed.result_thumbnail;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("designer-tasks.json", tasks);
-      processingTasks.delete(task.id);
-      console.log(`[WORKER] Designer task ${task.id} completed: ${task.result_url}`);
-    } catch (e) {
-      console.error(`[WORKER] Designer task ${task.id} failed:`, e.message);
-      task.status = "failed";
-      task.error = e.message;
-      task.updated_at = new Date().toISOString();
-      writeTaskFile("designer-tasks.json", tasks);
-      processingTasks.delete(task.id);
-    }
-  }
 }
 
 // ── COMMUNITY MANAGER PUBLISHER ──
@@ -8192,7 +7609,6 @@ function escapeHtmlTg(s) {
 // Run workers every 15 seconds
 setInterval(() => {
   processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
-  processDesignerTasks().catch(e => console.error("[WORKER] Designer error:", e.message));
   processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
   processUgcTasks().catch(e => console.error("[WORKER] UGC error:", e.message));
 }, 15_000);
@@ -8205,7 +7621,6 @@ setInterval(pollAvatarCreator, 30_000);
 // Run once on startup
 setTimeout(() => {
   processOpusclipTasks().catch(() => {});
-  processDesignerTasks().catch(() => {});
   processCommunityTasks().catch(() => {});
   processUgcTasks().catch(() => {});
   pollUgcStatus().catch(() => {});
@@ -8361,8 +7776,8 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
 // One place that describes the agents and derives their live status from the task files.
 // Sprites are optional: drop public/agents/<id>.png and the card picks it up.
 const AGENT_DEFS = [
-  { id: "designer", nickname: "Vince", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "canva connect",
-    role: "Creates visual assets and social graphics in Canva.", files: ["designer-tasks.json"], needs: ["CANVA_CLIENT_ID"] },
+  { id: "designer", nickname: "Vince", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "nano banana + playwright",
+    role: "Creates visual assets and social graphics.", files: ["designer-tasks.json"], needs: ["INFERENCE_API_KEY"] },
   { id: "video-editor", nickname: "Cam", name: "Video editor", hsl: "0 72% 51%", href: "editor.html", model: "remotion + higgsfield",
     role: "Edits and generates videos with Remotion and AI models.", files: ["video-tasks.json", "ai-video-tasks.json"], needs: [] },
   { id: "content-creator", nickname: "Boo", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
@@ -9215,7 +8630,7 @@ function getConnectedYoutubeChannel() {
 function getApiReferer() {
   const explicit = (process.env.PUBLIC_ORIGIN || "").trim();
   if (explicit) return explicit.replace(/\/+$/, "") + "/";
-  for (const v of [process.env.META_REDIRECT_URI, process.env.CANVA_REDIRECT_URI]) {
+  for (const v of [process.env.META_REDIRECT_URI]) {
     try { if (v) return new URL(v).origin + "/"; } catch {}
   }
   return "";

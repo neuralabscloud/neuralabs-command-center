@@ -11,9 +11,8 @@ This skill creates professional visual content using the Command Center designer
 
 Available engines (user selects via dropdown):
 - **Nano Banana (Gemini)** — Google Gemini Flash Image Preview via inference.sh
+- **Higgsfield (Soul)** — AI image generation via Higgsfield
 - **Playwright** — Instant HTML-to-image rendering
-- **Claude AI** — Claude Code with Canva MCP tools
-- **Canva** — Direct Canva API
 
 Supported content types:
 1. **Banners** — Hero images, announcements, promo headers

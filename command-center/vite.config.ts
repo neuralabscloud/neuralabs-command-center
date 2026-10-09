@@ -8,7 +8,7 @@ function authMiddleware(): Connect.NextHandleFunction {
     const url = req.url || "";
     const apiPrefixes = ["/auth/", "/api/", "/designer/", "/video/", "/avatar/",
       "/media/", "/notifications", "/ctrl/", "/video-agent/",
-      "/heygen/", "/system/", "/canva/", "/settings/", "/brands", "/brand-assets",
+      "/heygen/", "/system/", "/settings/", "/brands", "/brand-assets",
       "/generated-images", "/video-projects", "/video-projects-static",
       "/social/", "/ads/", "/community/"];
     if (
@@ -66,7 +66,6 @@ export default defineConfig({
       "/video-agent/tasks": "http://localhost:3004",
       "/heygen/avatars": "http://localhost:3004",
       "/system": "http://localhost:3004",
-      "/canva": "http://localhost:3004",
       "/settings/integrations": "http://localhost:3004",
       "/settings/services": "http://localhost:3004",
       "/video/ai-generate": "http://localhost:3004",

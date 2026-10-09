@@ -37,7 +37,6 @@
 - HeyGen API key (for AI avatar videos)
 - Composio API key (for Google Calendar integration)
 - Meta Developer App (for Instagram performance tracking via Graph API — connect via Settings → Social Connections)
-- Canva account (for design generation via the Designer agent)
 
 ---
 
@@ -269,17 +268,6 @@ All fields are optional. Click **Finish** or **Skip** to continue.
 
 > **Social media accounts** (Instagram, TikTok, X, YouTube) are connected later via **Settings → Social Connections** using OAuth — no API keys needed.
 
-### After the wizard: Connect Canva (optional)
-
-Canva is used by the Designer agent for design generation. Canva uses OAuth (no API key):
-
-1. Go to **Settings** in the Command Center
-2. Find **Canva** in the integrations list
-3. Click **Connect** and log in with your Canva account
-4. Authorize the connection
-
-Once connected, the Designer agent can create and edit designs directly in Canva.
-
 > **That's it!** Your Command Center is now ready to use.
 
 ---
@@ -295,7 +283,7 @@ After the setup wizard you arrive at the Command Center dashboard. In the sideba
 | **Overview** | Dashboard with an overview of all agents, recent tasks, and quick actions |
 | **Agents** | Overview and management of all AI agents and their tasks |
 | **Video Editor** | Edit, cut, merge, and export videos via Remotion |
-| **Designer** | Create social media content: carousels, thumbnails, banners, infographics. Uses Claude AI, Canva, and Nano Banana (Inference.sh) |
+| **Designer** | Create social media content: carousels, thumbnails, banners, infographics. Uses Nano Banana (Inference.sh), Higgsfield, and Playwright |
 | **Content Creator** | Generate AI avatar videos via HeyGen |
 | **Community Manager** | Plan and publish community posts (Telegram / Discord) |
 | **Marketeer** | Marketing strategy, campaign planning, and content calendar |
@@ -331,9 +319,9 @@ Go to the Designer page and create a new task. You can choose from:
 - **Infographic** — Data visualizations
 
 Provide a description of what you want (e.g. "5-slide carousel about AI trends in 2026") and choose an engine:
-- **Claude AI** — Generates design via code (always available with Anthropic key)
 - **Nano Banana** — Generates images via Google Gemini (requires Inference.sh key)
-- **Canva** — Creates designs in Canva (requires Canva connection)
+- **Higgsfield** — Generates images via Higgsfield Soul (requires Higgsfield key)
+- **Playwright** — Instant HTML-to-image rendering (no key needed)
 
 **Content Creator — AI Videos**
 
