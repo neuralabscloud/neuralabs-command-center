@@ -1758,8 +1758,10 @@ async function runHiggsfieldVideoTask(task, cfg, o) {
     // Seedance 2.5 also bills the seconds of the source clip (edit/extend).
     let srcSecs = 0;
     if (o.source.file) { try { srcSecs = (await probeVideo(o.source.file)).duration; } catch {} }
+    // The request id goes on the task, so a restart can pick up the poll again.
     const url = await apiUsage.withVideoSeconds(srcSecs, () =>
-      higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video })));
+      higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video }),
+        { onQueued: (id) => patchAiVideoTask(task.id, { hf_request_id: id, endpoint }) }));
     // Keep our own copy: Higgsfield's URLs expire, and a clip still on disk can
     // be fed straight back in as the source of the next run.
     let localUrl = "";
@@ -1783,6 +1785,43 @@ async function runHiggsfieldVideoTask(task, cfg, o) {
   Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
   writeTaskFile("ai-video-tasks.json", all);
 }
+
+function patchAiVideoTask(id, update) {
+  const all = readTaskFile("ai-video-tasks.json");
+  const t = all.find((x) => x.id === id);
+  if (!t) return;
+  Object.assign(t, update, { updated_at: new Date().toISOString() });
+  writeTaskFile("ai-video-tasks.json", all);
+}
+
+// A restart kills the in-memory poll, while Higgsfield keeps rendering (and
+// billing). Resume every Higgsfield task that was still processing.
+async function resumeHiggsfieldVideoTasks() {
+  const open = readTaskFile("ai-video-tasks.json").filter((t) => t.status === "processing" && t.hf_request_id);
+  for (const t of open) {
+    console.log(`[AI-VIDEO] Resuming poll for task ${t.id} (Higgsfield request ${t.hf_request_id})`);
+    (async () => {
+      let update;
+      try {
+        const url = await higgsfieldPollVideo(t.hf_request_id, { timeout: 30 * 60 * 1000 });
+        let localUrl = "";
+        try {
+          await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, t.id + ".mp4"));
+          localUrl = `/video-outputs/${t.id}.mp4`;
+        } catch (dlErr) {
+          console.error("[AI-VIDEO] Could not store the video locally:", dlErr.message);
+        }
+        update = { status: "completed", result_url: localUrl || url, provider_url: url };
+        console.log(`[AI-VIDEO] Task ${t.id} completed via Higgsfield (resumed): ${update.result_url}`);
+      } catch (e) {
+        update = { status: "failed", error: String(e.message).slice(0, 500) };
+        console.error(`[AI-VIDEO] Resumed task ${t.id} failed:`, String(e.message).slice(0, 300));
+      }
+      patchAiVideoTask(t.id, update);
+    })();
+  }
+}
+setTimeout(() => resumeHiggsfieldVideoTasks().catch((e) => console.error("[AI-VIDEO] resume:", e.message)), 5000);
 
 app.get("/video/ai-generate", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("ai-video-tasks.json"))));
 
