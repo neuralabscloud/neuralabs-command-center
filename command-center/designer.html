@@ -190,6 +190,20 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .nav-item { width: 33px; height: 33px; }
   .nav-item svg { width: 15px; height: 15px; }
 }
+.reflib { margin-top:10px; border:1px solid var(--border); border-radius:10px; padding:10px; background:var(--bg-surface); }
+.reflib-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.reflib-title { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; font-family:var(--font-data); }
+.reflib-btn { padding:5px 12px; background:hsla(264 65% 49% / 0.06); color:var(--primary); border:1px solid hsla(264 65% 49% / 0.15); border-radius:8px; cursor:pointer; font-family:var(--font-data); font-size:11px; }
+.reflib-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; max-height:300px; overflow-y:auto; }
+.reflib-item { position:relative; border:2px solid var(--border); border-radius:8px; overflow:hidden; cursor:pointer; aspect-ratio:1; background:hsl(0 0% 3%); }
+.reflib-item img { width:100%; height:100%; object-fit:cover; display:block; }
+.reflib-item.selected { border-color:var(--primary); box-shadow:0 0 12px hsla(264 65% 49% / 0.5); }
+.reflib-item .reflib-num { position:absolute; left:4px; top:4px; background:var(--primary); color:var(--text); border-radius:5px; padding:0 6px; font-family:var(--font-data); font-size:10px; display:none; }
+.reflib-item.selected .reflib-num { display:block; }
+.reflib-item .reflib-del { position:absolute; right:3px; top:3px; width:18px; height:18px; border-radius:50%; border:none; background:hsla(0 0% 0% / 0.7); color:var(--danger); font-size:10px; cursor:pointer; line-height:18px; padding:0; opacity:0; transition:opacity 0.2s; }
+.reflib-item:hover .reflib-del { opacity:1; }
+.reflib-item .reflib-name { position:absolute; left:0; right:0; bottom:0; padding:2px 5px; background:hsla(0 0% 0% / 0.65); color:var(--text); font-size:9px; font-family:var(--font-data); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (hover: none) { .reflib-item .reflib-del { opacity:1; } }
 </style>
 </head>
 <body>
@@ -344,6 +358,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div class="form-field" style="grid-column: 1 / -1">
             <label class="form-label">Reference Images <span style="font-weight:400;color:var(--text-dim)">(optional — used by Nano Banana and Higgsfield; ignored by the other engines. In edit mode this is the image to rework.)</span></label>
             <input type="file" id="design-ref-image" accept="image/*" multiple style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);margin-top:4px">
+            <div class="reflib">
+              <div class="reflib-head">
+                <span class="reflib-title">Reference library <span id="reflib-count" style="text-transform:none;letter-spacing:0"></span></span>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                  <button type="button" class="reflib-btn" id="reflib-clear" style="display:none" onclick="clearRefLibSelection()">Clear selection</button>
+                  <label class="reflib-btn">+ Add to library<input type="file" id="reflib-upload" accept="image/*" multiple style="display:none" onchange="uploadRefLib(this)"></label>
+                </div>
+              </div>
+              <div id="reflib-grid" class="reflib-grid"></div>
+              <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-top:6px">Click to select (numbers = order, after any uploaded files). Double-click a name to rename.</div>
+            </div>
             <div id="edit-source-note" style="display:none;margin-top:6px;font-size:11px;color:var(--text-dim);font-family:var(--font-data)">
               Editing: <span id="edit-source-label"></span>
               <button type="button" onclick="clearEditSource()" style="margin-left:6px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px">clear</button>
@@ -614,11 +639,12 @@ async function submitTask() {
 
   try {
     const refImageInput = document.getElementById('design-ref-image');
-    const hasRefImage = refImageInput.files && refImageInput.files.length > 0;
+    const refFiles = Array.from(refImageInput.files || []).concat(await refLibSelectedFiles());
+    const hasRefImage = refFiles.length > 0;
 
     const MAX_REF_MB = 50;
     if (hasRefImage) {
-      const tooBig = Array.from(refImageInput.files).find(f => f.size > MAX_REF_MB * 1024 * 1024);
+      const tooBig = refFiles.find(f => f.size > MAX_REF_MB * 1024 * 1024);
       if (tooBig) {
         const mb = (tooBig.size / (1024 * 1024)).toFixed(1);
         throw new Error(`"${tooBig.name}" is ${mb}MB — max ${MAX_REF_MB}MB per reference image.`);
@@ -639,7 +665,7 @@ async function submitTask() {
         for (const ar of aspectRatios) fd.append('aspect_ratios', ar);
       }
       fd.append('description', desc);
-      for (const file of refImageInput.files) {
+      for (const file of refFiles) {
         fd.append('ref_image', file);
       }
       res = await fetch(API, { method: 'POST', body: fd });
@@ -668,6 +694,7 @@ async function submitTask() {
     }
     document.getElementById('design-desc').value = '';
     document.getElementById('design-ref-image').value = '';
+    clearRefLibSelection();
     status.textContent = mode === 'edit' ? 'Edit submitted!' : 'Task submitted!';
     if (mode === 'edit') clearEditSource();
     loadTasks();
@@ -680,6 +707,91 @@ async function submitTask() {
 }
 
 // ── Educational posts (edu autopilot) ──
+// ── Reference library: saved standard reference images ──
+let refLib = [];
+let refLibSel = [];   // selected ids, in click order
+
+async function loadRefLib() {
+  try { refLib = await fetch('/designer/ref-library').then(r => r.json()); } catch { refLib = []; }
+  refLibSel = refLibSel.filter(id => refLib.some(r => r.id === id));
+  renderRefLib();
+}
+
+function renderRefLib() {
+  const grid = document.getElementById('reflib-grid');
+  if (!grid) return;
+  document.getElementById('reflib-count').textContent = refLib.length ? `· ${refLibSel.length ? refLibSel.length + ' selected of ' : ''}${refLib.length}` : '';
+  document.getElementById('reflib-clear').style.display = refLibSel.length ? '' : 'none';
+  if (!refLib.length) {
+    grid.innerHTML = '<span style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);grid-column:1/-1">No saved references yet. Add faces, outfits, products or logos you use often.</span>';
+    return;
+  }
+  grid.innerHTML = refLib.map(r => {
+    const n = refLibSel.indexOf(r.id);
+    return `<div class="reflib-item${n >= 0 ? ' selected' : ''}" onclick="toggleRefLib('${r.id}')" title="${escH(r.name)}">
+      <img src="${escH(r.url)}" loading="lazy" alt="">
+      <span class="reflib-num">${n + 1}</span>
+      <button type="button" class="reflib-del" title="Delete from library" onclick="event.stopPropagation();deleteRefLib('${r.id}')">&#x2715;</button>
+      <span class="reflib-name" ondblclick="event.stopPropagation();renameRefLib('${r.id}')">${escH(r.name)}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleRefLib(id) {
+  const i = refLibSel.indexOf(id);
+  if (i >= 0) refLibSel.splice(i, 1); else refLibSel.push(id);
+  renderRefLib();
+}
+
+function clearRefLibSelection() { refLibSel = []; renderRefLib(); }
+
+async function uploadRefLib(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  const status = document.getElementById('form-status');
+  const fd = new FormData();
+  files.forEach(f => fd.append('image', f));
+  try {
+    const res = await fetch('/designer/ref-library', { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+    await loadRefLib();
+  } catch (e) {
+    if (status) { status.textContent = 'Error: ' + e.message; setTimeout(() => { status.textContent = ''; }, 4000); }
+  }
+}
+
+async function renameRefLib(id) {
+  const r = refLib.find(x => x.id === id);
+  if (!r) return;
+  const name = prompt('Name for this reference', r.name);
+  if (!name || !name.trim() || name.trim() === r.name) return;
+  await fetch(`/designer/ref-library/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) });
+  loadRefLib();
+}
+
+async function deleteRefLib(id) {
+  const r = refLib.find(x => x.id === id);
+  if (!r || !confirm(`Delete "${r.name}" from the library?`)) return;
+  await fetch(`/designer/ref-library/${id}`, { method: 'DELETE' });
+  loadRefLib();
+}
+
+// Selected library images as Files, so they share the normal upload path.
+async function refLibSelectedFiles() {
+  const out = [];
+  for (const id of refLibSel) {
+    const r = refLib.find(x => x.id === id);
+    if (!r) continue;
+    const res = await fetch(r.url);
+    if (!res.ok) throw new Error(`Could not load library image "${r.name}"`);
+    const blob = await res.blob();
+    out.push(new File([blob], r.file, { type: blob.type || 'image/png' }));
+  }
+  return out;
+}
+
 function escH(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function eduExtras(t) {
@@ -774,6 +886,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview
 syncTypeFields();
 syncFormFields();
 loadTasks();
+loadRefLib();
 setInterval(loadTasks, 10000);
 </script>
 <script src="/auth-guard.js"></script>

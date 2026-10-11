@@ -697,6 +697,70 @@ function designerUploadMw(req, res, next) {
   });
 }
 
+// ── REFERENCE LIBRARY ─────────────────────────
+// Standard reference images (faces, outfits, products, logos) kept on the
+// server so the Designer can pick them instead of re-uploading every time.
+// Files in data/ref-library/, index in data/ref-library.json.
+const REF_LIBRARY_DIR = path.join(__dirname, "data", "ref-library");
+const REF_LIBRARY_MAX_MB = 25;
+function readRefLibrary() {
+  try { const l = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "ref-library.json"), "utf8")); return Array.isArray(l) ? l : []; }
+  catch { return []; }
+}
+function writeRefLibrary(list) {
+  fs.writeFileSync(path.join(__dirname, "data", "ref-library.json"), JSON.stringify(list, null, 2));
+}
+app.get("/designer/ref-library", (_req, res) => {
+  res.json(readRefLibrary().filter(r => fs.existsSync(path.join(REF_LIBRARY_DIR, r.file))));
+});
+app.get("/designer/ref-library/file/:file", (req, res) => {
+  const file = path.basename(req.params.file);
+  const full = path.join(REF_LIBRARY_DIR, file);
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.sendFile(full);
+});
+app.post("/designer/ref-library", (req, res) => {
+  designerUpload.array("image", 20)(req, res, (err) => {
+    const files = req.files || [];
+    const drop = () => files.forEach(f => { try { fs.unlinkSync(f.path); } catch {} });
+    if (err) { drop(); return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? `Image too large (max ${REF_LIBRARY_MAX_MB}MB)` : "Upload failed: " + err.message }); }
+    if (!files.length) return res.status(400).json({ error: "Choose an image first." });
+    const bad = files.find(f => !/^image\//.test(f.mimetype || "") || f.size > REF_LIBRARY_MAX_MB * 1024 * 1024);
+    if (bad) { drop(); return res.status(400).json({ error: `"${bad.originalname}" is not an image or is larger than ${REF_LIBRARY_MAX_MB}MB.` }); }
+    fs.mkdirSync(REF_LIBRARY_DIR, { recursive: true });
+    const list = readRefLibrary();
+    const name = String((req.body || {}).name || "").trim().slice(0, 80);
+    const added = files.map((f, i) => {
+      const id = "ref_" + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 5);
+      const ext = (path.extname(f.originalname || "").toLowerCase().match(/^\.(png|jpe?g|webp|gif)$/) || [".png"])[0];
+      const file = id + ext;
+      fs.renameSync(f.path, path.join(REF_LIBRARY_DIR, file));
+      const label = name ? (files.length > 1 ? `${name} ${i + 1}` : name)
+        : path.basename(f.originalname || "image", path.extname(f.originalname || "")).slice(0, 80);
+      return { id, name: label, file, url: `/designer/ref-library/file/${file}`, created_at: new Date().toISOString() };
+    });
+    writeRefLibrary(added.concat(list));
+    res.json({ ok: true, added });
+  });
+});
+app.patch("/designer/ref-library/:id", (req, res) => {
+  const list = readRefLibrary();
+  const item = list.find(r => r.id === req.params.id);
+  if (!item) return res.status(404).json({ error: "Not found" });
+  const name = String((req.body || {}).name || "").trim().slice(0, 80);
+  if (name) item.name = name;
+  writeRefLibrary(list);
+  res.json({ ok: true, item });
+});
+app.delete("/designer/ref-library/:id", (req, res) => {
+  const list = readRefLibrary();
+  const item = list.find(r => r.id === req.params.id);
+  if (!item) return res.status(404).json({ error: "Not found" });
+  try { fs.unlinkSync(path.join(REF_LIBRARY_DIR, path.basename(item.file))); } catch {}
+  writeRefLibrary(list.filter(r => r.id !== item.id));
+  res.json({ ok: true });
+});
+
 function loadBrandContext(brandName) {
   const brand = String(brandName || (loadBrand().company_name || "DEFAULT")).toUpperCase();
   let brandConfig = { colors: [], fonts: [] };

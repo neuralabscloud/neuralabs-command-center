@@ -69,6 +69,8 @@ trading-dashboard/
 .DS_Store
 Thumbs.db
 command-center/data/brand-knowledge/
+command-center/data/ref-library/
+command-center/data/ref-library.json
 
 # Growth Marketeer weekly reports (customer research + ideas)
 command-center/data/growth-reports.json
