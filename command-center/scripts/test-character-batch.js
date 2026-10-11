@@ -15,7 +15,7 @@ function check(name, cond) {
   check("coming week ends Sunday", w[6].date === "2026-10-18" && w[6].day === "Sunday" && w.length === 7);
   check("run on a Monday plans next Monday", cb.comingWeek(new Date("2026-10-12T10:00:00Z"), "Europe/Madrid")[0].date === "2026-10-19");
   check("iso week", cb.isoWeek("2026-10-12") === "2026-W42" && cb.isoWeek("2027-01-01") === "2026-W53");
-  check("batch id", cb.batchId("gh0st", "2026-10-12") === "gh0st-2026-W42");
+  check("batch id", cb.batchId("nova", "2026-10-12") === "nova-2026-W42");
   const s = { enabled: true, tz: "Europe/Madrid", hour: 10, minute: 0, days: ["sun"], catchup_min: 120 };
   check("due at 10:00 Madrid in summer (08:00 UTC)", cb.scheduleDue(s, sunMadridSummer));
   check("not due at 10:00 UTC in summer", !cb.scheduleDue(s, new Date("2026-10-11T12:30:00Z")));
@@ -47,7 +47,7 @@ function check(name, cond) {
 
 // ── concepts ──
 const payload = {
-  character: { name: "gh0st", face: "violet purple hair swept to one side, a cyber eyepatch over his right eye" },
+  character: { name: "nova", face: "short silver hair and a small scar over his left eyebrow" },
   forbidden_names: ["BrandX"],
 };
 const week = cb.comingWeek(new Date("2026-10-11T08:00:00Z"), "Europe/Madrid");
@@ -69,7 +69,7 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   const c = concepts[0], r = cb.rulesFor(payload);
   check("still prompt starts with the fixed prefix", c.start_frame_prompt.startsWith(r.still_prefix));
   check("still prompt ends with the fixed suffix", c.start_frame_prompt.endsWith(r.still_suffix));
-  check("still prompt repeats the face + outfit sentence", c.start_frame_prompt.includes("He has violet purple hair") && c.start_frame_prompt.includes(r.outfit_phrase));
+  check("still prompt repeats the face + outfit sentence", c.start_frame_prompt.includes("He has short silver hair") && c.start_frame_prompt.includes(r.outfit_phrase));
   check("phone rule added", c.start_frame_prompt.includes(r.phone) && c.video_prompt.includes(r.phone));
   check("laptop rule only when a laptop is in shot", !c.start_frame_prompt.includes(r.laptop));
   check("laptop detected from the text", cb.normalizeConcept(raw(0, { devices: [], still_scene: "He sits at a laptop in a cafe." }), 0, ctx).devices.includes("laptop"));
@@ -135,7 +135,7 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
 
   // ── manifest + telegram ──
   const m = {
-    batch_id: "gh0st-2026-W42", title: "gh0stlayer weekly batch", week_start: "2026-10-12", week_end: "2026-10-18",
+    batch_id: "nova-2026-W42", title: "Weekly character batch", week_start: "2026-10-12", week_end: "2026-10-18",
     concepts_cost: { usd: 0.4, priced: true }, stopped: "Higgsfield balance too low: no video for slot 7.",
     slots: [
       { slot: 1, day: "Monday", city: "Tokyo", status: "done", video_url: "/video-outputs/a.mp4", still_cost: { usd: 0.15 }, video_cost: { usd: 3.7 } },
