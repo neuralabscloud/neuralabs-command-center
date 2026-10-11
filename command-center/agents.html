@@ -333,15 +333,17 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="ugc_autopilot">UGC Video (Marketeer → Content Creator)</option>
               <option value="growth_marketeer">Growth Marketeer (weekly research + ideas)</option>
               <option value="edu_designer">Designer: educational post (daily, ready to post)</option>
+              <option value="character_video_batch">Weekly character video batch (7 stills + 7 videos)</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
           <div>
-            <label class="sched-label">Time (UTC)</label>
+            <label class="sched-label">Time</label>
             <div style="display:flex;gap:4px">
               <input class="sched-input" id="sched-hour" type="number" min="0" max="23" value="9" style="width:60px">
               <span style="color:var(--text-dim);line-height:32px">:</span>
               <input class="sched-input" id="sched-minute" type="number" min="0" max="59" value="0" style="width:60px">
+              <input class="sched-input" id="sched-tz" placeholder="UTC" title="Time zone (IANA name, e.g. Europe/Madrid). Empty = UTC. Summer/winter time is handled automatically." style="width:130px">
             </div>
           </div>
         </div>
@@ -503,7 +505,7 @@ async function cancelTask(api, taskId, btn) {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU', character_video_batch: 'DESIGNER → CONTENT CREATOR · VIDEO BATCH' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -514,6 +516,7 @@ const AGENT_STYLES = {
   ugc_autopilot: 'color:hsl(180 70% 45%)',
   growth_marketeer: 'color:hsl(340 80% 55%)',
   edu_designer: 'color:hsl(38 92% 55%)',
+  character_video_batch: 'color:hsl(264 65% 65%)',
 };
 const AGENT_DESCRIPTIONS = {
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
@@ -523,6 +526,7 @@ const AGENT_DESCRIPTIONS = {
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
   ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
   edu_designer: 'Scouts X, Instagram, TikTok and the web for educational trading and crypto posts (term lists, cheat sheets, step by step), extracts the lesson and designs it in your house style without any logos. Delivers the image plus a ready-to-post caption on the Designer page and via Telegram.',
+  character_video_batch: 'Once a week: Claude writes 7 cinematic concepts (one per day of the coming week) for one recurring character, the Designer renders a 9:16 start frame per day (face + rotating outfit from the reference library) and Seedance 2.5 turns each frame into an 8 s clip with music and sound effects. Stills land in the Designer gallery, videos in Content Creator, a summary goes to Telegram. Nothing is posted.',
   growth_marketeer: 'Acts as your growth marketer: researches your product online, competitors, gaps in the market and buzz opportunities, then delivers a report with concrete growth ideas (newsletter, ads, UGC, community actions and more) on the Marketing page.',
 };
 
@@ -557,6 +561,10 @@ function buildScheduleSummary(s) {
       const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Trading & crypto education';
       return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${p.language || 'English'} · X: ${p.x_post === 'auto' ? 'auto post' : p.x_post === 'review' ? 'draft' : 'off'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
     }
+    case 'character_video_batch': {
+      const n = (p.outfits || []).length;
+      return `${escHtml((p.character && p.character.name) || 'character')} · ${n} outfit${n === 1 ? '' : 's'} · Seedance 2.5 ${escHtml(p.resolution || '720p')} · stills in the <a href="designer.html" style="color:inherit">Designer</a>, videos in <a href="content-creator.html" style="color:inherit">Content Creator</a>`;
+    }
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
     default:
@@ -573,7 +581,12 @@ async function loadSchedules() {
     if (!scheds.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No scheduled tasks yet</span>'; return; }
     el.innerHTML = scheds.map(s => {
       const days = (s.days || []).map(d => d.substring(0,2).toUpperCase()).join(' ');
-      const time = `${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} UTC`;
+      const time = `${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} ${escHtml(s.tz || 'UTC')}`;
+      const runBtns = s.agent === 'character_video_batch'
+        ? `<div style="display:flex;gap:6px;margin-top:8px">
+             <button class="sched-btn" onclick="runCharBatch('${s.id}',false,this)">▶ Run ${escHtml(s.name)}</button>
+             <button class="sched-btn" onclick="runCharBatch('${s.id}',true,this)">Dry run</button>
+           </div><div class="sched-last" id="cb-status-${s.id}"></div>` : '';
       const summary = buildScheduleSummary(s);
       const lastRun = s.last_run ? new Date(s.last_run).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'never';
       return `
@@ -587,7 +600,7 @@ async function loadSchedules() {
           <div class="sched-agent" style="${AGENT_STYLES[s.agent] || ''}">${AGENT_LABELS[s.agent] || s.agent}</div>
           <div class="sched-time"><span class="sched-badge ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'active' : 'paused'}</span>${time} &middot; ${days}</div>
           <div class="sched-details">${summary}</div>
-          <div class="sched-last">Last run: ${lastRun}</div>
+          <div class="sched-last">Last run: ${lastRun}</div>${runBtns}
         </div>`;
     }).join('');
   } catch { document.getElementById('sched-grid').innerHTML = ''; }
@@ -641,6 +654,42 @@ async function toggleSchedule(id, enabled) {
   loadSchedules();
 }
 
+// Weekly video batch: manual run (full) or dry run (concepts only, nothing generated).
+async function runCharBatch(id, dry, btn) {
+  const st = document.getElementById('cb-status-' + id);
+  if (!dry && !confirm('Start the full batch now? This generates 7 stills and 7 videos (paid).')) return;
+  btn.disabled = true;
+  st.textContent = dry ? 'Writing concepts…' : 'Starting…';
+  try {
+    const r = await fetch('/character-batch/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ schedule_id: id, dry_run: dry }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    if (dry) {
+      st.innerHTML = `Dry run ${escHtml(d.batch_id)}: ` + (d.slots || []).map(x => `${escHtml(x.day.slice(0,3))} ${escHtml(x.city)}${x.onscreen_text ? ' (text)' : ''}`).join(' · ')
+        + (d.error ? ` · <span style="color:hsl(0 72% 51%)">${escHtml(d.error)}</span>` : '');
+    } else {
+      st.textContent = 'Running. Progress below, result via Telegram.';
+      pollCharBatch(id);
+    }
+  } catch (e) { st.textContent = 'Failed: ' + e.message; }
+  btn.disabled = false;
+}
+
+async function pollCharBatch(id) {
+  const st = document.getElementById('cb-status-' + id);
+  if (!st) return;
+  try {
+    const d = await fetch('/character-batch/status').then(r => r.json());
+    if (d.running) {
+      st.textContent = `${d.running.batch_id} · ${d.running.stage} · ${(d.running.log || []).slice(-1)[0] || ''}`;
+      return setTimeout(() => pollCharBatch(id), 10000);
+    }
+    const all = await fetch('/character-batch').then(r => r.json());
+    const m = (all.batches || [])[0];
+    if (m) st.textContent = `${m.batch_id}: ${m.status} · ${(m.slots || []).filter(x => x.status === 'done').length} video(s) · $${(m.total_cost?.usd || 0).toFixed(2)}`;
+  } catch {}
+}
+
 async function deleteSchedule(id) {
   if (!confirm('Delete this schedule?')) return;
   await fetch('/scheduled-tasks/' + id, { method: 'DELETE' });
@@ -649,6 +698,20 @@ async function deleteSchedule(id) {
 
 // ── PAYLOAD FIELDS PER AGENT ──
 const PAYLOAD_FIELDS = {
+  character_video_batch: `
+    <div style="background:hsla(264 65% 49%/0.06);border:1px solid hsla(264 65% 49%/0.2);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text);font-weight:500;margin-bottom:6px">Configuration (JSON)</div>
+      <ul style="font-size:10px;color:var(--text-dim);line-height:1.6;margin:0;padding-left:16px">
+        <li><code>batch_prefix</code>, <code>title</code>, <code>character</code> {name, description, face}, <code>style</code>, <code>forbidden_names</code></li>
+        <li><code>face_ref</code> and <code>outfits</code> [{ref, label, description}]: ids from the Designer reference library</li>
+        <li>Optional: <code>resolution</code> (720p default, 1080p), <code>context</code>, <code>rules</code> (override fixed sentences)</li>
+      </ul>
+    </div>
+    <textarea class="sched-input" id="sp-config" rows="14" style="width:100%;font-family:monospace;font-size:11px" placeholder='{"batch_prefix":"hero","character":{"name":"...","face":"..."},"face_ref":"","outfits":[]}'></textarea>
+    <div class="sched-form-row" style="margin-top:8px">
+      <div><label class="sched-label">Notify via Telegram</label>
+        <select class="sched-select" id="sp-notify"><option value="true">Yes</option><option value="false">No</option></select></div>
+    </div>`,
   designer: `
     <div class="sched-form-row">
       <div><label class="sched-label">Engine</label>
@@ -869,6 +932,7 @@ function openScheduleModal(data) {
   document.getElementById('sched-agent').value = data?.agent || 'designer';
   document.getElementById('sched-hour').value = data?.hour ?? 9;
   document.getElementById('sched-minute').value = data?.minute ?? 0;
+  document.getElementById('sched-tz').value = data?.tz || '';
   // Days
   document.querySelectorAll('.sched-day-btn').forEach(b => {
     const active = data?.days ? data.days.includes(b.dataset.day) : true;
@@ -878,6 +942,14 @@ function openScheduleModal(data) {
   // Fill payload fields after DOM is ready
   if (data?.payload) {
     setTimeout(() => {
+      if (data.agent === 'character_video_batch') {
+        const { notify, ...cfg } = data.payload;
+        const ta = document.getElementById('sp-config');
+        if (ta) ta.value = JSON.stringify(cfg, null, 2);
+        const n = document.getElementById('sp-notify');
+        if (n && notify) n.value = notify;
+        return;
+      }
       for (const [k, v] of Object.entries(data.payload)) {
         const el = document.getElementById('sp-' + k);
         if (!el) continue;
@@ -905,6 +977,11 @@ document.querySelectorAll('.sched-day-btn').forEach(b => {
 function collectPayload() {
   const agent = document.getElementById('sched-agent').value;
   const payload = {};
+  if (agent === 'character_video_batch') {
+    const raw = (document.getElementById('sp-config')?.value || '').trim();
+    const cfg = raw ? JSON.parse(raw) : {};
+    return { ...cfg, notify: document.getElementById('sp-notify')?.value || 'true' };
+  }
   const fields = document.getElementById('sched-payload').querySelectorAll('[id^="sp-"]');
   fields.forEach(el => {
     const key = el.id.replace('sp-', '');
@@ -924,8 +1001,16 @@ async function saveSchedule() {
     hour: parseInt(document.getElementById('sched-hour').value) || 0,
     minute: parseInt(document.getElementById('sched-minute').value) || 0,
     days,
-    payload: collectPayload(),
+    tz: document.getElementById('sched-tz').value.trim(),
   };
+  if (body.tz) {
+    try { new Intl.DateTimeFormat('en', { timeZone: body.tz }); }
+    catch { alert('Unknown time zone: ' + body.tz); return; }
+  }
+  // A weekly run that is missed by a restart may still start within 2 hours.
+  if (body.agent === 'character_video_batch') body.catchup_min = 120;
+  try { body.payload = collectPayload(); }
+  catch (e) { alert('Configuration is not valid JSON: ' + e.message); return; }
   if (id) {
     await fetch('/scheduled-tasks/' + id, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
   } else {

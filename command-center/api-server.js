@@ -1632,7 +1632,7 @@ function resolveSourceVideo(body, files) {
 //   GET  /requests/{id}/status
 const HIGGSFIELD_API = "https://api.higgsfield.ai";
 const HF_SEEDANCE_ASPECTS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
-const HF_SEEDANCE_RESOLUTIONS = ["720p", "480p"];
+const HF_SEEDANCE_RESOLUTIONS = ["720p", "480p", "1080p"];
 // Which endpoint a run lands on is decided by what the user supplied, the same
 // way the model page splits its workflows.
 const HF_VIDEO_MODELS = {
@@ -1694,8 +1694,8 @@ function higgsfieldVideoBody(endpoint, o) {
   return body;
 }
 
-// Submit and poll until the request reaches a state it never leaves again.
-async function higgsfieldGenerateVideo(endpoint, body, opts = {}) {
+// Submit one request; resolves with the request id.
+async function higgsfieldSubmitVideo(endpoint, body) {
   const r = await fetch(`${HIGGSFIELD_API}/${endpoint}`, {
     method: "POST", headers: higgsfieldHeaders(), body: JSON.stringify(body),
   });
@@ -1704,6 +1704,17 @@ async function higgsfieldGenerateVideo(endpoint, body, opts = {}) {
   const id = queued.request_id;
   if (!id) throw new Error("Higgsfield returned no request_id");
   console.log(`[AI-VIDEO] Higgsfield ${endpoint} queued as ${id}`);
+  return id;
+}
+
+// Submit and poll until the request reaches a state it never leaves again.
+async function higgsfieldGenerateVideo(endpoint, body, opts = {}) {
+  const id = await higgsfieldSubmitVideo(endpoint, body);
+  if (opts.onQueued) opts.onQueued(id);
+  return higgsfieldPollVideo(id, opts);
+}
+
+async function higgsfieldPollVideo(id, opts = {}) {
   const deadline = Date.now() + (opts.timeout || 30 * 60 * 1000);
   let misses = 0;
   while (Date.now() < deadline) {
@@ -8574,6 +8585,8 @@ app.post("/scheduled-tasks", (req, res) => {
     minute: parseInt(req.body.minute) || 0,     // UTC minute
     days: req.body.days || ["mon","tue","wed","thu","fri","sat","sun"], // which days
     payload: req.body.payload || {},            // agent-specific task payload
+    tz: req.body.tz || "",                      // IANA zone for hour/minute/days; empty = UTC
+    catchup_min: parseInt(req.body.catchup_min) || 0,
     last_run: null,
     last_task_id: null,
   };
@@ -8631,6 +8644,8 @@ async function executeSchedule(schedule) {
       await executeGrowthMarketeerSchedule(schedule);
     } else if (schedule.agent === "edu_designer") {
       await executeEduDesignerSchedule(schedule);
+    } else if (schedule.agent === "character_video_batch") {
+      await executeCharacterBatchSchedule(schedule);
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -9197,6 +9212,421 @@ app.delete("/growth/reports/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── WEEKLY CHARACTER VIDEO BATCH ─────────────────────────────────────
+// Claude writes 7 concepts (one per day of the coming week) → the Designer's
+// Nano Banana engine renders a 9:16 start frame per day (face + rotating outfit
+// from the reference library) → Seedance 2.5 on Higgsfield turns every frame
+// into a clip. Manifest in data/character-batches.json + one JSON per batch in
+// data/character-batches/. Nothing is posted anywhere: publishing stays manual.
+const charBatch = require("./character-batch");
+const CHAR_BATCH_FILE = "character-batches.json";
+const CHAR_BATCH_DIR = path.join(__dirname, "data", "character-batches");
+let charBatchRun = null;
+
+function readCharBatches() { const l = readTaskFile(CHAR_BATCH_FILE); return Array.isArray(l) ? l : []; }
+
+function saveCharBatchManifest(m) {
+  if (!fs.existsSync(CHAR_BATCH_DIR)) fs.mkdirSync(CHAR_BATCH_DIR, { recursive: true });
+  m.updated_at = new Date().toISOString();
+  fs.writeFileSync(path.join(CHAR_BATCH_DIR, `${m.batch_id}${m.dry_run ? ".dry-run" : ""}.json`), JSON.stringify(m, null, 2));
+  if (m.dry_run) return;
+  const list = readCharBatches().filter(x => x.batch_id !== m.batch_id);
+  list.unshift(m);
+  writeTaskFile(CHAR_BATCH_FILE, list.slice(0, 60));
+}
+
+function charLog(m, msg) {
+  const line = `[CHAR-BATCH] ${m ? m.batch_id + " " : ""}${msg}`;
+  console.log(line);
+  if (charBatchRun) { charBatchRun.log.push(`${new Date().toISOString().slice(11, 19)} ${msg}`); if (charBatchRun.log.length > 200) charBatchRun.log.shift(); }
+}
+
+// A reference-library item (by id) as a file on disk.
+function refLibraryFile(id) {
+  const item = readRefLibrary().find(x => x.id === id);
+  if (!item) throw new Error(`Reference image "${id}" is not in the reference library`);
+  const file = path.join(REF_LIBRARY_DIR, path.basename(item.file));
+  if (!fs.existsSync(file)) throw new Error(`Reference image "${item.name || id}" is missing on disk`);
+  return { file, name: item.name || id };
+}
+
+// One Nano Banana run on inference.sh (the Designer's engine), with the same
+// retries the Designer uses: empty answers and transient errors get up to 3 tries.
+function nanoBananaRun(inputObj, tmpName) {
+  const NB_APP = "google/gemini-3-1-flash-image-preview";
+  const tmpInput = path.join(__dirname, "data", `nb-input-${tmpName}.json`);
+  return new Promise((resolve, reject) => {
+    const attempt = (n) => {
+      const input = { ...inputObj };
+      if (n > 1 && !input.prompt.startsWith("Generate an image:")) input.prompt = "Generate an image: " + input.prompt;
+      fs.writeFileSync(tmpInput, JSON.stringify(input));
+      execFile("infsh", ["app", "run", NB_APP, "--input", tmpInput, "--json", "--no-input"], {
+        timeout: 180000, maxBuffer: 1024 * 1024 * 50, env: { ...process.env, HOME: "/root" },
+      }, (err, stdout, stderr) => {
+        apiUsage.meterInfshOutput(stdout, NB_APP);
+        let result = null, images = [], why = "";
+        const out = String(stdout || "").replace(/\x1b\[[0-9;]*m/g, "");
+        if (!err) {
+          const j = out.indexOf("{");
+          if (j < 0) why = out.replace(/^inference\.sh\s+v[\d.]+\s*/i, "").trim().slice(0, 300) || "No JSON in output";
+          else {
+            try { result = JSON.parse(out.slice(j)); images = result.output?.images || result.images || []; }
+            catch (e) { why = "Unreadable output: " + e.message; }
+            if (!images.length && !why) why = result?.output?.description || result?.error || "No image returned (text-only answer)";
+          }
+        } else {
+          why = (String(stderr || "").replace(/\x1b\[[0-9;]*m/g, "").trim() || out.trim() || err.message).slice(0, 400);
+        }
+        const infshId = result && (result.id || result.task_id) || null;
+        if (images.length) { try { fs.unlinkSync(tmpInput); } catch {} return resolve({ url: images[0], infshId }); }
+        if (n < 3 && !charBatch.isInsufficientBalance(why)) {
+          const wait = 5000 * 2 ** (n - 1);
+          console.warn(`[CHAR-BATCH] Nano Banana attempt ${n} failed (${why.slice(0, 160)}), retrying in ${wait / 1000}s`);
+          return setTimeout(() => attempt(n + 1), wait);
+        }
+        try { fs.unlinkSync(tmpInput); } catch {}
+        const e = new Error(why || "Nano Banana failed");
+        e.infshId = infshId;
+        reject(e);
+      });
+    };
+    attempt(1);
+  });
+}
+
+function patchTaskFile(file, id, patch) {
+  const all = readTaskFile(file);
+  const i = all.findIndex(t => t.id === id);
+  if (i < 0) return null;
+  Object.assign(all[i], patch, { updated_at: new Date().toISOString() });
+  writeTaskFile(file, all);
+  return all[i];
+}
+
+// Step B for one slot: a designer task in the gallery, tagged batch_id + slot.
+async function charBatchStill(m, slot, concept, refs, opts) {
+  const now = new Date().toISOString();
+  const task = {
+    id: genId(), status: "processing", created_at: now, updated_at: now,
+    design_type: "your_story", brand: opts.brand || "", engine: "nanobanana", design_style: "",
+    aspect_ratio: "9:16", custom_width: null, custom_height: null,
+    description: `${m.title || "Weekly batch"} · ${concept.day} · ${concept.city}`,
+    prompt: concept.start_frame_prompt, batch_id: m.batch_id, slot: slot.slot, autopilot: true,
+    result_url: null, result_thumbnail: null, result_design_id: null, error: null,
+  };
+  writeTaskFile("designer-tasks.json", [task, ...readTaskFile("designer-tasks.json")]);
+  slot.still_task_id = task.id;
+  const input = { prompt: concept.start_frame_prompt, aspect_ratio: "9:16", resolution: "2K", num_images: 1, images: [refs.face, refs.outfits[concept.outfit_index]].filter(Boolean) };
+  let run, lastErr;
+  for (let job = 1; job <= 2 && !run; job++) {          // a failed job is retried once
+    try {
+      charLog(m, `slot ${slot.slot} still: submitting Nano Banana job ${job} (designer task ${task.id})`);
+      run = await apiUsage.forTask(task.id, () => nanoBananaRun(input, task.id));
+    } catch (e) {
+      lastErr = e;
+      charLog(m, `slot ${slot.slot} still job ${job} failed${e.infshId ? ` (infsh ${e.infshId})` : ""}: ${e.message.slice(0, 200)}`);
+      if (charBatch.isInsufficientBalance(e.message)) break;
+    }
+  }
+  if (!run) {
+    patchTaskFile("designer-tasks.json", task.id, { status: "failed", error: String(lastErr?.message || "failed").slice(0, 500) });
+    slot.status = "still_failed"; slot.error = lastErr?.message?.slice(0, 300) || "still failed";
+    if (charBatch.isInsufficientBalance(lastErr?.message)) slot.balance = true;
+    return;
+  }
+  slot.still_job_id = run.infshId;
+  const imgDir = path.join(__dirname, "data", "generated-images");
+  if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true });
+  const outFile = path.join(imgDir, `nanobanana-${task.id}.png`);
+  let local = false;
+  try { await downloadTo(run.url, outFile); local = fs.existsSync(outFile); } catch (e) { charLog(m, `slot ${slot.slot} still download failed: ${e.message}`); }
+  const url = local ? `/generated-images/nanobanana-${task.id}.png` : run.url;
+  patchTaskFile("designer-tasks.json", task.id, { status: "completed", result_url: url, result_thumbnail: url, infsh_task_id: run.infshId });
+  slot.still_url = url;
+  slot.status = "still_done";
+  charLog(m, `slot ${slot.slot} still done: infsh ${run.infshId || "?"} → ${url}`);
+}
+
+// Step C input: the stills of this batch by slot, else the newest designer stills.
+function charBatchStillsFor(batchId, slots) {
+  const done = readTaskFile("designer-tasks.json").filter(t => t.status === "completed" && String(t.result_url || "").startsWith("/generated-images/"));
+  const tagged = new Map(done.filter(t => t.batch_id === batchId && t.slot).map(t => [Number(t.slot), t]));
+  if (tagged.size) return { stills: tagged, fallback: false };
+  const recent = done.filter(t => !t.carousel_parent).slice(0, charBatch.SLOTS).reverse();
+  return { stills: new Map(slots.map((s, i) => [s, recent[i]]).filter(([, t]) => t)), fallback: true };
+}
+
+async function charBatchRewrite(prompt, reason) {
+  const msg = await anthropic.messages.create({
+    model: charBatch.MODEL, max_tokens: 4000,
+    messages: [{ role: "user", content: charBatch.neutralRewritePrompt(prompt, reason) }],
+  });
+  const text = charBatch.textOf(msg.content).trim();
+  return text.length > 80 ? text : prompt;
+}
+
+// Step C for one slot. Resolves when the clip is stored (or failed).
+async function charBatchVideo(m, slot, still, opts) {
+  const cfg = HF_VIDEO_MODELS["higgsfield/seedance-2.5"];
+  const now = new Date().toISOString();
+  const task = {
+    id: genId(), status: "processing", created_at: now, updated_at: now,
+    model: "higgsfield/seedance-2.5", prompt: slot.video_prompt, aspect_ratio: m.aspect_ratio, duration: m.duration,
+    resolution: m.resolution, generate_audio: true, brand: opts.brand || "",
+    ref_image: true, ref_images: 1, source_video: false, extends_task: null,
+    batch_id: m.batch_id, slot: slot.slot, still_task_id: still.id, autopilot: true,
+    result_url: null, error: null,
+  };
+  writeTaskFile("ai-video-tasks.json", [task, ...readTaskFile("ai-video-tasks.json")]);
+  slot.video_task_id = task.id;
+  const srcPng = path.join(__dirname, "data", "generated-images", path.basename(still.result_url));
+  const tmpJpg = path.join(__dirname, "data", "ai-video-uploads", `batch-${task.id}.jpg`);
+  try {
+    // Full-size start frame (no 1024 px shrink: the clip is 1080p), as a JPEG to keep the upload small.
+    await new Promise((ok, no) => execFile("convert", [srcPng, "-quality", "92", tmpJpg], { timeout: 30000 }, e => e ? no(e) : ok()));
+    const imageUrl = await charBatch.withBackoff(() => higgsfieldUpload(tmpJpg), { onRetry: (e, n, w) => charLog(m, `slot ${slot.slot} upload retry ${n} in ${w / 1000}s: ${e.message.slice(0, 120)}`) });
+    const endpoint = cfg.endpoint({ images: [imageUrl], video: "" });
+    let prompt = slot.video_prompt;
+    let rewritten = false;
+    for (;;) {
+      const body = higgsfieldVideoBody(endpoint, { prompt, resolution: m.resolution, duration: m.duration, generateAudio: true, images: [imageUrl], aspectRatio: m.aspect_ratio });
+      try {
+        const id = await apiUsage.forTask(task.id, () => charBatch.withBackoff(() => higgsfieldSubmitVideo(endpoint, body),
+          { onRetry: (e, n, w) => charLog(m, `slot ${slot.slot} submit retry ${n} in ${w / 1000}s: ${e.message.slice(0, 120)}`) }));
+        slot.video_job_id = id;
+        patchTaskFile("ai-video-tasks.json", task.id, { request_id: id, prompt, endpoint });
+        charLog(m, `slot ${slot.slot} video: Higgsfield request ${id} (${endpoint}, ${m.resolution}, ${m.duration}s)`);
+        if (opts.onSubmitted) opts.onSubmitted();
+        const url = await higgsfieldPollVideo(id, { timeout: 25 * 60 * 1000 });
+        let local = "";
+        try { await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4")); local = `/video-outputs/${task.id}.mp4`; }
+        catch (e) { charLog(m, `slot ${slot.slot} video download failed: ${e.message}`); }
+        patchTaskFile("ai-video-tasks.json", task.id, { status: "completed", result_url: local || url, provider_url: url });
+        Object.assign(slot, { status: "done", video_url: local || url, provider_url: url, error: null });
+        if (rewritten) slot.video_prompt_used = prompt;
+        charLog(m, `slot ${slot.slot} video done: request ${id} → ${local || url}`);
+        return;
+      } catch (e) {
+        if (charBatch.isInsufficientBalance(e.message)) { e.balance = true; throw e; }
+        if (!rewritten && charBatch.isModeration(e.message)) {
+          charLog(m, `slot ${slot.slot} moderation flag (${e.message.slice(0, 120)}), rewriting the prompt more neutrally`);
+          prompt = await charBatchRewrite(prompt, e.message.slice(0, 120));
+          rewritten = true;
+          continue;
+        }
+        throw e;
+      }
+    }
+  } catch (e) {
+    patchTaskFile("ai-video-tasks.json", task.id, { status: "failed", error: String(e.message).slice(0, 500) });
+    if (e.balance) {
+      slot.status = "skipped_balance"; slot.error = "Higgsfield balance too low: " + e.message.slice(0, 200);
+      throw e;
+    }
+    slot.status = "video_failed"; slot.error = e.message.slice(0, 300);
+    charLog(m, `slot ${slot.slot} video failed: ${e.message.slice(0, 300)}`);
+  } finally {
+    try { fs.unlinkSync(tmpJpg); } catch {}
+  }
+}
+
+// Step A: concepts, validated, regenerated once when invalid.
+async function charBatchConcepts(m, payload, ctx) {
+  const usage = { input_tokens: 0, output_tokens: 0 };
+  let errors = [], concepts = null;
+  for (let round = 1; round <= 2; round++) {
+    const msg = await apiUsage.forTask(m.batch_id, () => anthropic.messages.stream({
+      model: charBatch.MODEL, max_tokens: 20000, thinking: { type: "adaptive" },
+      system: charBatch.systemPrompt(payload),
+      messages: [{ role: "user", content: charBatch.userPrompt({ ...ctx, context: payload.context || "", errors }) }],
+    }).finalMessage());
+    usage.input_tokens += msg.usage?.input_tokens || 0;
+    usage.output_tokens += msg.usage?.output_tokens || 0;
+    if (msg.stop_reason === "refusal") throw new Error("Claude refused to write the concepts");
+    try {
+      const raw = charBatch.extractJson(charBatch.textOf(msg.content)).concepts;
+      concepts = raw.slice(0, charBatch.SLOTS).map((c, i) => charBatch.normalizeConcept(c, i, { ...ctx, payload }));
+      errors = charBatch.validateConcepts(concepts, { recent: ctx.recent, forbidden: payload.forbidden_names || [], payload });
+      if (raw.length !== charBatch.SLOTS) errors.unshift(`Expected exactly ${charBatch.SLOTS} concepts, got ${raw.length}.`);
+    } catch (e) { errors = [e.message]; concepts = null; }
+    charLog(m, `concepts round ${round}: ${errors.length ? errors.length + " problem(s): " + errors.slice(0, 3).join(" | ") : "valid"}`);
+    if (!errors.length) break;
+  }
+  if (!concepts) throw new Error("No usable concepts: " + errors.join(" | "));
+  return { concepts, errors, usage };
+}
+
+async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, trigger = "manual", scheduleId = null } = {}) {
+  if (charBatchRun) throw new Error("A video batch is already running");
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
+  const tz = payload.tz || TIMEZONE;
+  const week = charBatch.comingWeek(new Date(), tz);
+  const id = charBatch.batchId(payload.batch_prefix, week[0].date);
+  charBatchRun = { batch_id: id, dry_run: dryRun, started_at: new Date().toISOString(), stage: "concepts", log: [] };
+  const all = readCharBatches();
+  const m = {
+    batch_id: id, title: payload.title || "Weekly video batch", dry_run: dryRun, trigger, schedule_id: scheduleId,
+    created_at: new Date().toISOString(), week_start: week[0].date, week_end: week[6].date, tz,
+    model: charBatch.MODEL, aspect_ratio: charBatch.DEFAULTS.aspect_ratio, duration: Number(payload.duration) || charBatch.DEFAULTS.duration,
+    resolution: payload.resolution || charBatch.DEFAULTS.resolution, video_model: "higgsfield/seedance-2.5", still_model: "nanobanana (gemini-3-1-flash-image, 2K)",
+    status: "running", stopped: null, slots: [],
+  };
+  try {
+    return await apiUsage.tag("Weekly video batch", async () => {
+      // References come from the reference library, by id, from the payload.
+      const outfitsCfg = (Array.isArray(payload.outfits) ? payload.outfits : []).filter(o => o && o.ref);
+      let refs = { face: null, outfits: [] };
+      if (!dryRun) {
+        if (!payload.face_ref) throw new Error("payload.face_ref (reference library id of the face) is missing");
+        if (!outfitsCfg.length) throw new Error("payload.outfits (reference library ids) is empty");
+        refs = { face: refLibraryFile(payload.face_ref).file, outfits: outfitsCfg.map(o => refLibraryFile(o.ref).file) };
+      }
+      const recent = charBatch.recentCities(all.filter(x => x.batch_id !== id), week[0].date);
+      const outfitStart = charBatch.nextOutfitStart(all.filter(x => x.batch_id !== id), outfitsCfg.length);
+      m.outfit_start = outfitStart;
+      m.next_outfit = outfitsCfg.length ? (outfitStart + charBatch.SLOTS) % outfitsCfg.length : 0;
+      m.recent_cities = recent;
+      charLog(m, `start (${dryRun ? "dry run" : trigger}) · week ${week[0].date}..${week[6].date} · outfit start ${outfitStart} · ${recent.length} recent cities excluded`);
+
+      const { concepts, errors, usage } = await charBatchConcepts(m, payload, { week, outfits: outfitsCfg, outfitStart, recent });
+      m.concepts_usage = usage;
+      m.concept_errors = errors;
+      const wanted = Array.isArray(slots) && slots.length ? new Set(slots.map(Number)) : null;
+      m.slots = concepts.map(c => ({
+        slot: c.slot, date: c.date, day: c.day, city: c.city, scene_type: c.scene_type, devices: c.devices,
+        outfit_index: c.outfit_index, outfit: c.outfit,
+        start_frame_prompt: c.start_frame_prompt, video_prompt: c.video_prompt,
+        onscreen_text: c.onscreen_text, caption_line: c.caption_line, caption: c.caption, music_sfx: c.music_sfx,
+        status: dryRun ? "dry_run" : wanted && !wanted.has(c.slot) ? "skipped" : "pending",
+        still_task_id: null, still_job_id: null, still_url: null,
+        video_task_id: null, video_job_id: null, video_url: null, error: null,
+      }));
+      if (errors.length) charLog(m, `concepts still have ${errors.length} problem(s) after the retry; continuing: ${errors.join(" | ")}`);
+      saveCharBatchManifest(m);
+      if (dryRun) { m.status = "dry_run"; return m; }
+
+      // Step B: stills in parallel (3 at a time, Gemini rate limits).
+      charBatchRun.stage = "stills";
+      const todo = m.slots.filter(s => s.status === "pending");
+      const conceptBySlot = new Map(concepts.map(c => [c.slot, c]));
+      for (let i = 0; i < todo.length; i += 3) {
+        await Promise.all(todo.slice(i, i + 3).map(s => charBatchStill(m, s, conceptBySlot.get(s.slot), refs, payload)));
+        saveCharBatchManifest(m);
+        if (m.slots.some(s => s.balance)) break;
+      }
+      if (m.slots.some(s => s.balance)) {
+        m.stopped = "inference.sh balance too low: stopped before the videos. Top up and run the batch again.";
+        for (const s of m.slots) if (s.status === "pending") s.status = "skipped_balance";
+        throw Object.assign(new Error(m.stopped), { handled: true });
+      }
+
+      // Step C: videos, submitted in slot order, polled side by side.
+      charBatchRun.stage = "videos";
+      const wantedSlots = m.slots.filter(s => s.status === "still_done").map(s => s.slot);
+      const { stills, fallback } = charBatchStillsFor(id, wantedSlots);
+      if (fallback) { m.still_fallback = true; charLog(m, "no tagged stills found, falling back to the newest designer stills"); }
+      const running = [];
+      let balanceHit = null;
+      for (const s of m.slots) {
+        if (s.status !== "still_done") continue;
+        if (balanceHit) { s.status = "skipped_balance"; continue; }
+        const still = stills.get(s.slot);
+        if (!still) { s.status = "video_failed"; s.error = "no still found for this slot"; continue; }
+        // Submit this one before moving to the next slot, so the order holds.
+        await new Promise((submitted) => {
+          const p = charBatchVideo(m, s, still, { ...payload, onSubmitted: submitted })
+            .catch(e => { if (e.balance) balanceHit = e; })
+            .finally(() => { submitted(); saveCharBatchManifest(m); });
+          running.push(p);
+        });
+      }
+      await Promise.all(running);
+      if (balanceHit) {
+        const missing = m.slots.filter(s => s.status === "skipped_balance").map(s => s.slot);
+        m.stopped = `Higgsfield balance too low: no video for slot ${missing.join(", ")}. No other model was used.`;
+      }
+      m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
+      return m;
+    });
+  } catch (e) {
+    m.status = "failed";
+    m.error = e.message.slice(0, 500);
+    if (!e.handled) charLog(m, `failed: ${e.message}`);
+    return m;
+  } finally {
+    // inference.sh costs are looked up asynchronously; give them a moment.
+    if (!dryRun) await new Promise(r => setTimeout(r, 8000));
+    const costs = apiUsage.taskCosts([id, ...m.slots.flatMap(s => [s.still_task_id, s.video_task_id]).filter(Boolean)]);
+    m.concepts_cost = costs[id] || null;
+    for (const s of m.slots) {
+      s.still_cost = costs[s.still_task_id] || null;
+      s.video_cost = costs[s.video_task_id] || null;
+      s.cost_usd = Math.round(((s.still_cost?.usd || 0) + (s.video_cost?.usd || 0)) * 100) / 100;
+    }
+    m.total_cost = charBatch.totalCost(m);
+    m.finished_at = new Date().toISOString();
+    saveCharBatchManifest(m);
+    charLog(m, `finished: ${m.status} · ${m.slots.filter(s => s.status === "done").length} video(s) · $${m.total_cost.usd.toFixed(2)}`);
+    charBatchRun = null;
+  }
+}
+
+async function deliverCharBatchToTelegram(m) {
+  if (!TG_TOKEN || !TG_CHAT) return;
+  const text = m.status === "failed" && !m.slots.length
+    ? `🎬 <b>${escTg(m.title)}</b> · ${escTg(m.batch_id)}\n❌ ${escTg(m.error || "failed")}`
+    : charBatch.telegramSummary(m, knownPublicOrigin());
+  const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: "HTML", disable_web_page_preview: true }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) throw new Error(d.description || "sendMessage failed");
+}
+
+async function executeCharacterBatchSchedule(schedule) {
+  const p = schedule.payload || {};
+  const schedules = readTaskFile("scheduled-tasks.json");
+  const idx = schedules.findIndex(s => s.id === schedule.id);
+  if (idx >= 0) { schedules[idx].last_run = new Date().toISOString(); writeTaskFile("scheduled-tasks.json", schedules); }
+  const m = await runCharacterBatch(p, { trigger: "schedule", scheduleId: schedule.id });
+  const fresh = readTaskFile("scheduled-tasks.json");
+  const j = fresh.findIndex(s => s.id === schedule.id);
+  if (j >= 0) { fresh[j].last_task_id = m.batch_id; writeTaskFile("scheduled-tasks.json", fresh); }
+  if (p.notify !== "false") await deliverCharBatchToTelegram(m).catch(e => console.error(`[CHAR-BATCH] Telegram failed: ${e.message}`));
+}
+
+app.get("/character-batch", (_req, res) => {
+  const scheds = readTaskFile("scheduled-tasks.json").filter?.(s => s.agent === "character_video_batch") || [];
+  res.json({ running: charBatchRun, schedules: scheds.map(s => ({ id: s.id, name: s.name, enabled: s.enabled })), batches: readCharBatches() });
+});
+
+app.get("/character-batch/status", (_req, res) => res.json({ running: charBatchRun }));
+
+app.get("/character-batch/:id", (req, res) => {
+  const name = path.basename(String(req.params.id)).replace(/[^\w.-]/g, "");
+  const file = path.join(CHAR_BATCH_DIR, name + ".json");
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
+  res.json(JSON.parse(fs.readFileSync(file, "utf8")));
+});
+
+// Manual trigger (dashboard button + scripts/character-batch.js).
+// Body: { schedule_id?, dry_run?, slots?: [1..7], notify? }. Dry runs answer
+// with the manifest; real runs answer at once and report via Telegram.
+app.post("/character-batch/run", async (req, res) => {
+  if (charBatchRun) return res.status(409).json({ error: "Already running", running: charBatchRun });
+  const scheds = readTaskFile("scheduled-tasks.json").filter?.(s => s.agent === "character_video_batch") || [];
+  const sched = req.body?.schedule_id ? scheds.find(s => s.id === req.body.schedule_id) : scheds[0];
+  if (!sched) return res.status(404).json({ error: "No character_video_batch schedule found" });
+  const dryRun = req.body?.dry_run === true || req.body?.dry_run === "true";
+  const slots = Array.isArray(req.body?.slots) ? req.body.slots.map(Number).filter(n => n >= 1 && n <= charBatch.SLOTS) : null;
+  const notify = req.body?.notify !== false && req.body?.notify !== "false" && (sched.payload || {}).notify !== "false";
+  const job = runCharacterBatch(sched.payload || {}, { dryRun, slots, trigger: dryRun ? "dry_run" : slots ? "test" : "manual", scheduleId: sched.id });
+  if (dryRun) return res.json(await job);
+  job.then(m => notify && deliverCharBatchToTelegram(m)).catch(e => console.error(`[CHAR-BATCH] Manual run failed: ${e.message}`));
+  res.json({ ok: true, started: true, schedule: sched.name });
+});
+
 // ── UGC AUTOPILOT: Marketeer writes, Content Creator renders ────────
 // 1. pick an avatar from the library (rotating) + a voice of the same gender
 // 2. the Marketeer writes a 15-30 s testimonial script + post caption (JSON)
@@ -9673,19 +10103,19 @@ Analyseer de data en voer acties uit. Geef een kort rapport.` + brandKnowledgeBl
 }
 
 // ── SCHEDULER LOOP (checks every 60s) ──
+// A schedule's hour/minute/days are UTC unless it has a `tz` (IANA name, DST
+// handled by Intl). `catchup_min` lets a run that was missed (restart at the
+// exact minute) still fire within that many minutes; once per local day.
 setInterval(() => {
   const now = new Date();
-  const hour = now.getUTCHours();
-  const min = now.getUTCMinutes();
-  const dayKey = DAY_MAP[now.getUTCDay()];
-  const today = now.toISOString().slice(0, 10);
-
   const schedules = readTaskFile("scheduled-tasks.json");
   for (const sched of schedules) {
-    if (!sched.enabled) continue;
-    if (sched.hour !== hour || sched.minute !== min) continue;
-    if (sched.days && !sched.days.includes(dayKey)) continue;
-    if (sched.last_run && sched.last_run.startsWith(today)) continue; // already ran today
+    let due = false;
+    try { due = charBatch.scheduleDue(sched, now); } catch (e) { console.error(`[SCHEDULER] ${sched.name}: ${e.message}`); }
+    if (!due) continue;
+    // Mark the run first, so a long job is not started again by the next tick.
+    sched.last_run = now.toISOString();
+    writeTaskFile("scheduled-tasks.json", schedules);
     executeSchedule(sched);
   }
 }, 60_000);
