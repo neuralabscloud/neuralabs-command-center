@@ -509,10 +509,19 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
                 <span id="ai-ref-btn-label">Upload Images</span>
                 <input type="file" id="ai-ref-image" style="display:none" accept="image/*" multiple onchange="addRefImages(this)">
               </label>
+              <button type="button" id="ai-ref-designer-btn" onclick="toggleDesignerPicker()" style="padding:8px 16px;background:hsla(264 65% 49% / 0.06);color:var(--primary);border:1px solid hsla(264 65% 49% / 0.15);border-radius:8px;cursor:pointer;font-family:var(--font-data);font-size:11px;transition:all 0.2s;">From Designer</button>
               <span id="ai-ref-name" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
               <button id="ai-ref-clear" style="display:none;background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;" onclick="clearRefImage()">&#x2715; Remove all</button>
             </div>
             <div id="ai-ref-hint" style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-top:6px;"></div>
+            <div id="ai-designer-picker" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg-surface);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;">
+                <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);">Designer images — click to add</span>
+                <button type="button" onclick="toggleDesignerPicker(false)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;">&#x2715;</button>
+              </div>
+              <div id="ai-designer-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;max-height:320px;overflow-y:auto;"></div>
+              <button type="button" id="ai-designer-more" onclick="renderDesignerPicker(true)" style="display:none;margin-top:8px;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-dim);cursor:pointer;font-family:var(--font-data);font-size:11px;padding:6px 12px;">Show more</button>
+            </div>
             <div id="ai-ref-preview" style="margin-top:8px;display:none;flex-wrap:wrap;gap:8px;"></div>
           </div>
           <div id="ai-source-wrap" style="margin-bottom:12px;display:none;">
@@ -1863,6 +1872,70 @@ function clearRefImage() {
   aiRefFiles = [];
   document.getElementById('ai-ref-image').value = '';
   renderRefImages();
+}
+
+// Designer results as reference images: fetched as a File so they go through
+// the same upload path as a picked file.
+let designerImages = null;   // completed designer tasks with an image, newest first
+let designerShown = 0;
+const DESIGNER_PAGE = 40;
+
+async function toggleDesignerPicker(force) {
+  const box = document.getElementById('ai-designer-picker');
+  const open = force === undefined ? box.style.display === 'none' : force;
+  box.style.display = open ? '' : 'none';
+  if (!open) return;
+  const grid = document.getElementById('ai-designer-grid');
+  grid.innerHTML = '<span style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);">Loading…</span>';
+  try {
+    const tasks = await fetch('/designer/tasks').then(r => r.json());
+    designerImages = (Array.isArray(tasks) ? tasks : [])
+      .filter(t => t.status === 'completed' && typeof t.result_url === 'string' && t.result_url.startsWith('/'))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    designerShown = 0;
+    renderDesignerPicker(true);
+  } catch (e) {
+    grid.innerHTML = `<span style="font-size:11px;color:var(--danger);">Could not load designer images: ${esc(e.message)}</span>`;
+  }
+}
+
+function renderDesignerPicker(more) {
+  const grid = document.getElementById('ai-designer-grid');
+  if (!designerImages) return;
+  if (!designerImages.length) {
+    grid.innerHTML = '<span style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);">No designer images yet.</span>';
+    return;
+  }
+  if (more) designerShown = Math.min(designerImages.length, designerShown + DESIGNER_PAGE);
+  grid.innerHTML = designerImages.slice(0, designerShown).map((t, i) => `
+    <button type="button" onclick="addDesignerRef(${i}, this)" title="${esc((t.description || t.design_type || '').slice(0, 160))}"
+      style="position:relative;padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg);aspect-ratio:1;">
+      <img src="${esc(t.result_thumbnail || t.result_url)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
+    </button>`).join('');
+  document.getElementById('ai-designer-more').style.display = designerShown < designerImages.length ? '' : 'none';
+}
+
+async function addDesignerRef(i, btn) {
+  const t = designerImages && designerImages[i];
+  if (!t) return;
+  const st = document.getElementById('ai-status');
+  const max = refImageRule().max;
+  if (aiRefFiles.length >= max) { st.textContent = `This model takes ${max} reference image${max > 1 ? 's' : ''}.`; return; }
+  btn.style.opacity = '0.4';
+  try {
+    const res = await fetch(t.result_url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+    aiRefFiles.push(new File([blob], `designer-${t.id}.${ext}`, { type: blob.type || 'image/png' }));
+    st.textContent = '';
+    renderRefImages();
+    btn.style.borderColor = 'hsl(270 95% 65%)';
+  } catch (e) {
+    st.textContent = 'Could not add designer image: ' + e.message;
+  } finally {
+    btn.style.opacity = '';
+  }
 }
 
 // Thumbnail strip: numbered the way the model addresses them in the prompt.
