@@ -1564,6 +1564,15 @@ const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
 
 // Models that reject an aspect_ratio field, or want it under another name.
 const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
+// What the inference.sh app schemas allow (`infsh app get <model>`), for models
+// whose limits are narrower than the UI defaults. A clip length outside the list
+// snaps to the nearest one; an unknown aspect ratio is refused with a clear message.
+const VIDEO_LIMITS = {
+  "klingai/video-v3":   { ratios: ["16:9", "9:16", "1:1"], durations: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  "klingai/video-v2-6": { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
+  "klingai/video-v2-5": { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
+  "klingai/video-o1":   { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
+};
 const VIDEO_ASPECT_FIELD = {
   "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio",
   "bytedance/seedance-2-0-studio": "ratio", "bytedance/seedance-2-0-studio-fast": "ratio",
@@ -1832,7 +1841,11 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   // aspect_ratio is optional — some providers (e.g. Seedance) don't accept it.
   // Front-end omits the field when the model has no supported ratios.
   const aspectRatio = (req.body.aspect_ratio || "").trim() || null;
-  const duration = parseInt(req.body.duration) || 8;
+  const limits = VIDEO_LIMITS[model];
+  let duration = parseInt(req.body.duration) || 8;
+  if (limits && !limits.durations.includes(duration)) {
+    duration = limits.durations.reduce((best, d) => Math.abs(d - duration) < Math.abs(best - duration) ? d : best);
+  }
   const refImagePaths = ((req.files && req.files.ref_image) || []).map((f) => f.path);
   const imageSpec = VIDEO_IMAGE_INPUTS[model] || VIDEO_IMAGE_DEFAULT;
   const maxRefImages = imageSpec.max || 0;
@@ -1842,6 +1855,10 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const dropUploads = () => {
     for (const f of [...refImagePaths, source.upload]) if (f) { try { fs.unlinkSync(f); } catch {} }
   };
+  if (limits && aspectRatio && !limits.ratios.includes(aspectRatio)) {
+    dropUploads();
+    return res.status(400).json({ error: `This model supports aspect ratio ${limits.ratios.join(", ")} only (received ${aspectRatio}).` });
+  }
   if (refImagePaths.length > maxRefImages) {
     dropUploads();
     return res.status(400).json({ error: maxRefImages === 0

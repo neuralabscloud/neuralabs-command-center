@@ -1992,10 +1992,10 @@ const RATIOS_BY_MODEL = {
   'xai/grok-imagine-video': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
   'xai/grok-extend-video': [],
   'xai/grok-reference-video': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
-  'klingai/video-v3': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
-  'klingai/video-v2-6': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
-  'klingai/video-v2-5': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
-  'klingai/video-o1': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3','21:9'],
+  'klingai/video-v3': ['16:9','9:16','1:1'],
+  'klingai/video-v2-6': ['16:9','9:16','1:1'],
+  'klingai/video-v2-5': ['16:9','9:16','1:1'],
+  'klingai/video-o1': ['16:9','9:16','1:1'],
   'bytedance/seedance-2-0': [],
   'bytedance/seedance-2-0-fast': [],
   'bytedance/seedance-2-0-studio': [],
@@ -2035,6 +2035,11 @@ const DURATIONS_BY_MODEL = {
   'bytedance/seedance-2-0-studio': [5, 8, 10, 15],
   'bytedance/seedance-2-0-studio-fast': [5, 8, 10, 15],
   'higgsfield/seedance-2.5': [4, 5, 8, 10, 15, 20, 30],
+  // Kling: V3 takes 3-15 s, the others only 5 or 10 (infsh app schemas).
+  'klingai/video-v3': [5, 8, 10, 15],
+  'klingai/video-v2-6': [5, 10],
+  'klingai/video-v2-5': [5, 10],
+  'klingai/video-o1': [5, 10],
 };
 let aiSrcFile = null;    // uploaded source clip
 let aiSrcUrl = '';       // or the URL of an earlier generation
