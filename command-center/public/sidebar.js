@@ -34,14 +34,32 @@
       @media (min-width: 1025px) {
         html:root { --sidebar-w: 214px; }
         html .sidebar { align-items: stretch; padding: 16px 12px; overflow-y: auto; }
-        html .sidebar-logo { text-align: center; }
+        html .sidebar-logo { text-align: center; font-size: 13px; letter-spacing: 0.16em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        html .sidebar-logo .logo-short { display: none; }
+        html .sidebar-logo .logo-full { display: inline; }
         html .sidebar .nav-item { width: auto; height: 38px; justify-content: flex-start; gap: 11px; padding: 0 11px; flex-shrink: 0; }
         html .sidebar .nav-item svg { flex-shrink: 0; }
         html .sidebar .nav-item .tooltip { position: static; transform: none; opacity: 1; background: none; border: 0; padding: 0; font-size: 13px; font-weight: 500; color: inherit; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
         html .sidebar .nav-external .tooltip::after { content: ' \\2197'; opacity: 0.5; }
         html .sidebar .notif-badge { left: auto; right: 10px; top: 50%; transform: translateY(-50%); }
-      }`;
+      }
+      .sidebar-logo .logo-full { display: none; }`;
     document.head.appendChild(st);
+  }
+
+  // Logo = company name from /brand (full on the wide sidebar, initials on the icon bar).
+  let brandName = '';
+  const LOGO = '<div class="sidebar-logo"><span class="logo-short"></span><span class="logo-full"></span></div>';
+  function paintLogo() {
+    if (!brandName) return;
+    const words = brandName.split(/[\s_-]+/).filter(Boolean);
+    let short = words.length > 1 ? words.map(w => w[0]).join('') : (brandName.match(/[A-Z]/g) || []).join('');
+    if (short.length < 2 || short.length > 3) short = brandName.slice(0, 2);
+    sidebar.querySelectorAll('.sidebar-logo').forEach(el => {
+      el.title = brandName;
+      el.querySelector('.logo-short').textContent = short.toUpperCase();
+      el.querySelector('.logo-full').textContent = brandName.toUpperCase();
+    });
   }
 
   const currentPage = location.pathname.split('/').pop() || 'index.html';
@@ -50,7 +68,7 @@
   if (!sidebar) return;
 
   sidebar.innerHTML = `
-    <div class="sidebar-logo">NL</div>
+    ${LOGO}
     <nav class="sidebar-nav">
       ${NAV_ITEMS.map(item => {
         const active = item.href === currentPage ? ' active' : '';
@@ -85,15 +103,17 @@
       const u = d && d.user;
       if (!u || u.role !== 'user') return;
       document.documentElement.classList.add('cc-team-user');
-      const pages = (u.tools || []).map(t => String(t.page || '').replace(/^\//, ''));
+      const pages = (u.tools || []).map(t => String(t.page || '').replace(/^\//, ''))
+      pages.unshift('index.html');
       const items = NAV_ITEMS.filter(i => pages.includes(i.href));
       sidebar.innerHTML = `
-        <div class="sidebar-logo">NL</div>
+        ${LOGO}
         <nav class="sidebar-nav">
           ${items.map(item => `<a class="nav-item${item.href === currentPage ? ' active' : ''}" href="${item.href}">${svg(item.icon)}<span class="tooltip">${item.label}</span></a>`).join('')}
         </nav>
         <a class="nav-item cc-logout" href="#" style="margin-top:auto">${svg(LOGOUT_ICON)}<span class="tooltip">Log out</span></a>`;
       bindLogout();
+      paintLogo();
     })
     .catch(() => {})
     .finally(() => { clearTimeout(reveal); sidebar.style.visibility = ''; });
@@ -105,9 +125,19 @@
     document.head.appendChild(st);
   }
 
+  // Explain mode switch + guides under the page title (explain-mode.js)
+  if (!document.getElementById('cc-explain-js')) {
+    const xs = document.createElement('script');
+    xs.id = 'cc-explain-js';
+    xs.src = '/explain-mode.js';
+    document.head.appendChild(xs);
+  }
+
   fetch('/brand', { credentials: 'same-origin' })
     .then(r => (r.ok ? r.json() : null))
     .then(brand => {
+      brandName = String((brand && (brand.company_name || brand.name)) || '').trim();
+      paintLogo();
       const links = (brand && brand.links) || {};
       const nav = sidebar.querySelector('.sidebar-nav');
       EXTERNAL_TOOLS.forEach(tool => {

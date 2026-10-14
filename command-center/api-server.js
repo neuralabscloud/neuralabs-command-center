@@ -346,6 +346,11 @@ app.use((req, res, next) => {
   switch (rule.kind) {
     case "allow": return next();
     case "stub": return res.json(rule.body);
+    case "agents": {
+      const json = res.json.bind(res);
+      res.json = body => json(Array.isArray(body) ? body.filter(a => tools.includes(a.id)) : body);
+      return next();
+    }
     case "brand": {
       const json = res.json.bind(res);
       res.json = body => json(body && typeof body === "object" ? { ...body, links: {} } : body);
@@ -1627,6 +1632,11 @@ const VIDEO_IMAGE_INPUTS = {
   "google/veo-3-fast":           { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
   "google/veo-3-1":              { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
   "google/veo-2":                { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "google/veo-3-1-fast":         { first: "image", end: "last_frame", refs: "reference_images", max: 3 },
+  "google/veo-3-1-lite":         { first: "image", end: "last_frame", max: 2 },
+  "xai/grok-imagine-video-1-5":  { first: "image", refs: "reference_images", max: 7 },
+  "alibaba/wan-2-7-t2v":         { max: 0 },
+  "alibaba/wan-2-7-i2v":         { first: "first_frame", end: "last_frame", max: 2, required: true },
   "xai/grok-imagine-video":      { first: "image", max: 1 },
   "xai/grok-extend-video":       { max: 0 },
   "xai/grok-reference-video":    { refs: "reference_images", max: 6, required: true },
@@ -1648,7 +1658,7 @@ const VIDEO_IMAGE_INPUTS = {
 const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
 
 // Models that reject an aspect_ratio field, or want it under another name.
-const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video"]);
+const VIDEO_NO_ASPECT = new Set(["xai/grok-extend-video", "alibaba/wan-2-7-t2v", "alibaba/wan-2-7-i2v"]);
 // What the inference.sh app schemas allow (`infsh app get <model>`), for models
 // whose limits are narrower than the UI defaults. A clip length outside the list
 // snaps to the nearest one; an unknown aspect ratio is refused with a clear message.
@@ -1657,6 +1667,28 @@ const VIDEO_LIMITS = {
   "klingai/video-v2-6": { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
   "klingai/video-v2-5": { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
   "klingai/video-o1":   { ratios: ["16:9", "9:16", "1:1"], durations: [5, 10] },
+  "google/veo-3-1":      { ratios: ["16:9", "9:16"], durations: [4, 6, 8] },
+  "google/veo-3-1-fast": { ratios: ["16:9", "9:16"], durations: [4, 6, 8] },
+  "google/veo-3-1-lite": { ratios: ["16:9", "9:16"], durations: [4, 6, 8] },
+  "xai/grok-imagine-video-1-5": { ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"], durations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  "alibaba/wan-2-7-t2v": { ratios: [], durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  "alibaba/wan-2-7-i2v": { ratios: [], durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+};
+// Resolution and audio switches of inference.sh models. Without these the apps
+// fall back to their own defaults: Veo 3.1 renders silent, Grok 1.5 at 480p.
+// resolutions[0] is the default; audio = the boolean field that turns sound on
+// (Veo 3.1 Lite always has sound); full8 = this resolution needs an 8 s clip.
+// The old Veo ids resolve to Veo 3.1 on inference.sh, so they get the same.
+const VEO31_EXTRAS = { resolutions: ["720p", "1080p"], audio: "generate_audio" };
+const VIDEO_EXTRAS = {
+  "google/veo-3-1": VEO31_EXTRAS, "google/veo-3-1-fast": VEO31_EXTRAS,
+  "google/veo-3": VEO31_EXTRAS, "google/veo-3-fast": VEO31_EXTRAS, "google/veo-2": VEO31_EXTRAS,
+  "google/veo-3-1-lite": { resolutions: ["720p", "1080p"], full8: "1080p" },
+  "xai/grok-imagine-video-1-5": { resolutions: ["720p", "480p", "1080p"], audio: "generate_audio" },
+  "klingai/video-v3": { resolutions: ["1080p", "720p"], audio: "sound" },
+  "klingai/video-v2-6": { resolutions: ["1080p", "720p"], audio: "sound" },
+  "alibaba/wan-2-7-t2v": { resolutions: ["1080P", "720P"] },
+  "alibaba/wan-2-7-i2v": { resolutions: ["1080P", "720P"] },
 };
 const VIDEO_ASPECT_FIELD = {
   "bytedance/seedance-2-0": "ratio", "bytedance/seedance-2-0-fast": "ratio",
@@ -1921,7 +1953,7 @@ app.get("/video/ai-generate", (_req, res) => res.json(apiUsage.attachCosts(readT
 
 app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 9 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
   const tasks = readTaskFile("ai-video-tasks.json");
-  const model = req.body.model || "google/veo-3";
+  const model = req.body.model || "google/veo-3-1";
   const prompt = req.body.prompt || "";
   // aspect_ratio is optional — some providers (e.g. Seedance) don't accept it.
   // Front-end omits the field when the model has no supported ratios.
@@ -1940,7 +1972,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const dropUploads = () => {
     for (const f of [...refImagePaths, source.upload]) if (f) { try { fs.unlinkSync(f); } catch {} }
   };
-  if (limits && aspectRatio && !limits.ratios.includes(aspectRatio)) {
+  if (limits && aspectRatio && !VIDEO_NO_ASPECT.has(model) && !limits.ratios.includes(aspectRatio)) {
     dropUploads();
     return res.status(400).json({ error: `This model supports aspect ratio ${limits.ratios.join(", ")} only (received ${aspectRatio}).` });
   }
@@ -1972,16 +2004,21 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   }
   const brandContext = loadBrandContext(req.body.brand);
   // Higgsfield-only settings: 480p halves the bill, audio is generated along
-  // with the picture. Both are ignored by every inference.sh model.
+  // with the picture. inference.sh models take theirs from VIDEO_EXTRAS.
   const hfModel = HF_VIDEO_MODELS[model];
-  const resolution = HF_SEEDANCE_RESOLUTIONS.includes(req.body.resolution) ? req.body.resolution : HF_SEEDANCE_RESOLUTIONS[0];
+  const extras = VIDEO_EXTRAS[model];
+  const wantRes = String(req.body.resolution || "").toLowerCase();
+  const resolution = extras
+    ? (extras.resolutions.find(r => r.toLowerCase() === wantRes) || extras.resolutions[0])
+    : HF_SEEDANCE_RESOLUTIONS.includes(req.body.resolution) ? req.body.resolution : HF_SEEDANCE_RESOLUTIONS[0];
   const generateAudio = !(req.body.generate_audio === "false" || req.body.generate_audio === false);
+  if (extras && extras.full8 === resolution) duration = 8;
 
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     model, prompt, aspect_ratio: aspectRatio, duration,
-    ...(hfModel ? { resolution, generate_audio: generateAudio } : {}),
+    ...(hfModel || extras ? { resolution, generate_audio: hfModel || (extras && extras.audio) ? generateAudio : true } : {}),
     brand: brandContext.name,
     brand_context: brandContext,
     ref_image: refImagePaths.length > 0,
@@ -2011,6 +2048,10 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const inputObj = { prompt };
   if (aspectRatio && !VIDEO_NO_ASPECT.has(model)) inputObj[VIDEO_ASPECT_FIELD[model] || "aspect_ratio"] = aspectRatio;
   if (duration) inputObj.duration = duration;
+  if (extras) {
+    inputObj.resolution = resolution;
+    if (extras.audio) inputObj[extras.audio] = generateAudio;
+  }
   if (source.file) {
     if (sourceField === "reference_videos") {
       inputObj.reference_videos = [source.file];
@@ -3515,7 +3556,13 @@ async function estimateCost(b) {
     } else {
       const input = { prompt: String(b.prompt || "a video") };
       if (b.duration) input.duration = Number(b.duration) || undefined;
-      if (b.aspect_ratio) input.aspect_ratio = b.aspect_ratio;
+      if (b.aspect_ratio && !VIDEO_NO_ASPECT.has(model)) input.aspect_ratio = b.aspect_ratio;
+      const ex = VIDEO_EXTRAS[model];
+      if (ex) {
+        input.resolution = ex.resolutions.find(r => r.toLowerCase() === String(b.resolution || "").toLowerCase()) || ex.resolutions[0];
+        if (ex.audio) input[ex.audio] = !(b.generate_audio === "false" || b.generate_audio === false);
+        if (ex.full8 === input.resolution) input.duration = 8;
+      }
       const e = await apiUsage.infshEstimate(model, input);
       if (e.usd == null) { extraUnknown = true; if (e.note) notes.push(e.note); }
       else { extra += e.usd; if (e.max) extraMax = e.max - e.usd; if (!e.exact && e.note) notes.push(e.note); }
@@ -3591,7 +3638,7 @@ app.post("/settings/integrations/:id/test", async (req, res) => {
     if (id === "anthropic") {
       const Anthropic = require("@anthropic-ai/sdk");
       const client = new Anthropic();
-      const msg = await client.messages.create({ model: "claude-sonnet-4-6", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
+      const msg = await client.messages.create({ model: "claude-sonnet-5-5", max_tokens: 10, messages: [{ role: "user", content: "ping" }] });
       res.json({ ok: true, message: `Model responded (${msg.usage.input_tokens + msg.usage.output_tokens} tokens)` });
     } else if (id === "telegram") {
       if (!TG_TOKEN) return res.json({ ok: false, message: "TELEGRAM_BOT_TOKEN not set in .env" });
@@ -5943,7 +5990,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
     };
 
     const apiParams = {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       max_tokens: 8192,
       system: systemWithContext,
       messages: history,
@@ -6125,7 +6172,7 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
               : `You are ${brand.assistant_name}, the AI assistant for ${brand.company_name}.\n\n${skillContent}\n\nIMPORTANT: Follow the instructions in the skill above exactly. Generate ALL requested sections. Reply in the user's language.`
             const skillSystemFull = skillSystem + brandKnowledgeBlock();
             const skillResponse = await skillClient.messages.create({
-              model: "claude-sonnet-4-6",
+              model: "claude-sonnet-5-5",
               max_tokens: 8192,
               system: skillSystemFull,
               messages: [{ role: "user", content: prompt }],
@@ -6429,7 +6476,7 @@ app.post("/calendar/chat", async (req, res) => {
       loopCount++;
 
       const response = await client.messages.create({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5-5",
         max_tokens: 2048,
         system: CALENDAR_SYSTEM,
         tools,
@@ -6645,7 +6692,7 @@ app.post("/marketeer/chat", async (req, res) => {
       loopCount++;
 
       const response = await client.messages.create({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5-5",
         max_tokens: 4096,
         system: buildMarketeerSystem(),
         tools: MARKETEER_TOOLS,
@@ -7975,7 +8022,7 @@ const AGENT_DEFS = [
     role: "Creates visual assets and social graphics.", files: ["designer-tasks.json"], needs: ["INFERENCE_API_KEY"] },
   { id: "scheduler", nickname: "Bubbles", name: "Scheduler", hsl: "0 72% 51%", href: "agents.html", model: "schedules + autopilots", kind: "scheduler",
     role: "Runs the scheduled tasks and keeps every autopilot on time." },
-  { id: "content-creator", nickname: "Cam", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
+  { id: "content-creator", nickname: "Reel", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
     role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json", "ai-video-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
   { id: "social-media-manager", nickname: "Boo", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
     role: "Writes, schedules and publishes posts to X and Telegram." },
@@ -7991,7 +8038,9 @@ function agentLastFailed(tasks) {
   return !!last && last.status === "failed" && Date.now() - stamp(last) < 24 * 3600e3;
 }
 
-app.get("/agents/overview", (_req, res) => {
+app.get("/agents/overview", (req, res) => {
+  // A team user's cards count only their own tasks.
+  const uid = req.ccUser && req.ccUser.id;
   const today = agentDay(new Date().toISOString());
   const out = AGENT_DEFS.map(def => {
     const base = {
@@ -8033,7 +8082,8 @@ app.get("/agents/overview", (_req, res) => {
         ? [{ label: "Skills", value: 25 }, { label: "Engine", value: ok ? "Claude" : "Not set" }]
         : [{ label: "Calendar", value: ok ? "Connected" : "Not set" }, { label: "Channel", value: "Chat" }] };
     }
-    const tasks = def.files.flatMap(f => { const t = readTaskFile(f); return Array.isArray(t) ? t : []; });
+    const tasks = def.files.flatMap(f => { const t = readTaskFile(f); return Array.isArray(t) ? t : []; })
+      .filter(t => !uid || ccUsers.isOwnedBy(t, uid));
     const status = tasks.some(t => AGENT_BUSY.has(t.status)) ? "running"
       : agentLastFailed(tasks) ? "error" : agentHasKeys(def.needs) ? "ready" : "idle";
     return { ...base, status, stats: [
@@ -9676,7 +9726,7 @@ Analyseer de data en voer acties uit. Geef een kort rapport.` + brandKnowledgeBl
     }];
 
     let response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5-5",
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userMsg }],
@@ -9729,7 +9779,7 @@ Analyseer de data en voer acties uit. Geef een kort rapport.` + brandKnowledgeBl
       }
 
       response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5-5",
         max_tokens: 4096,
         system: systemPrompt,
         messages: [

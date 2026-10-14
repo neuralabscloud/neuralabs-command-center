@@ -205,7 +205,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 1-5 5L4 17v3h3l5.7-5.7a4 4 0 0 1 5-5l2.3-2.3-3-3z"/></svg>
           Video Tools
         </button>
-        <button class="mode-tab" data-mode="clipper" onclick="switchMode('clipper')">
+        <button class="mode-tab" data-mode="clipper" data-owner-only onclick="switchMode('clipper')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           Clipper
         </button>
@@ -429,15 +429,19 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--font-data);margin-bottom:4px;">Model</div>
               <select id="ai-model" style="width:100%;background:var(--bg-surface);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font-body);outline:none;">
                 <optgroup label="Google">
-                  <option value="google/veo-3" selected>Veo 3 — best quality + audio</option>
-                  <option value="google/veo-3-fast">Veo 3 Fast — faster</option>
-                  <option value="google/veo-3-1">Veo 3.1 — newest</option>
-                  <option value="google/veo-2">Veo 2 — solid quality</option>
+                  <option value="google/veo-3-1" selected>Veo 3.1 — best quality + audio</option>
+                  <option value="google/veo-3-1-fast">Veo 3.1 Fast — faster, cheaper</option>
+                  <option value="google/veo-3-1-lite">Veo 3.1 Lite — cheapest, always with audio</option>
                 </optgroup>
                 <optgroup label="xAI">
+                  <option value="xai/grok-imagine-video-1-5">Grok Imagine 1.5 — newest, up to 15 s + audio</option>
                   <option value="xai/grok-imagine-video">Grok Video — generation + editing</option>
                   <option value="xai/grok-extend-video">Grok Extend — extend a video</option>
                   <option value="xai/grok-reference-video">Grok Reference — from an image</option>
+                </optgroup>
+                <optgroup label="Wan (Alibaba)">
+                  <option value="alibaba/wan-2-7-t2v">Wan 2.7 Text-to-Video — up to 15 s, landscape</option>
+                  <option value="alibaba/wan-2-7-i2v">Wan 2.7 Image-to-Video — start (+ end) frame</option>
                 </optgroup>
                 <optgroup label="Wan (Pruna)">
                   <option value="pruna/wan-t2v">Wan Text-to-Video</option>
@@ -1826,6 +1830,11 @@ const REF_IMAGES_BY_MODEL = {
   'google/veo-3-fast':           { max: 3, hint: '1 image = first frame. 2-3 images = reference subjects.' },
   'google/veo-3-1':              { max: 3, hint: '1 image = first frame. 2-3 images = reference subjects.' },
   'google/veo-2':                { max: 3, hint: '1 image = first frame. 2-3 images = reference subjects.' },
+  'google/veo-3-1-fast':         { max: 3, hint: '1 image = first frame. 2-3 images = reference subjects.' },
+  'google/veo-3-1-lite':         { max: 2, hint: 'First image = start frame, second = end frame.' },
+  'xai/grok-imagine-video-1-5':  { max: 7, hint: '1 image = opening frame. 2-7 images = reference images.' },
+  'alibaba/wan-2-7-t2v':         { max: 0, hint: '' },
+  'alibaba/wan-2-7-i2v':         { max: 2, required: true, hint: 'First image = start frame (required), second = end frame.' },
   'xai/grok-imagine-video':      { max: 1, hint: 'One image, used as the opening frame.' },
   'xai/grok-extend-video':       { max: 0, hint: '' },
   'xai/grok-reference-video':    { max: 6, required: true, hint: 'This model generates from reference images: upload 1 to 6.' },
@@ -1986,6 +1995,11 @@ const RATIOS_BY_MODEL = {
   'google/veo-3-fast': ['16:9','9:16'],
   'google/veo-3-1': ['16:9','9:16'],
   'google/veo-2': ['16:9','9:16'],
+  'google/veo-3-1-fast': ['16:9','9:16'],
+  'google/veo-3-1-lite': ['16:9','9:16'],
+  'xai/grok-imagine-video-1-5': ['16:9','9:16','1:1','4:3','3:4','3:2','2:3'],
+  'alibaba/wan-2-7-t2v': [],
+  'alibaba/wan-2-7-i2v': [],
   'pruna/wan-t2v': ['16:9','9:16','1:1'],
   'pruna/wan-i2v': ['16:9','9:16','1:1'],
   'pruna/p-video': ['16:9','9:16','1:1'],
@@ -2040,7 +2054,30 @@ const DURATIONS_BY_MODEL = {
   'klingai/video-v2-6': [5, 10],
   'klingai/video-v2-5': [5, 10],
   'klingai/video-o1': [5, 10],
+  'google/veo-3-1': [4, 6, 8],
+  'google/veo-3-1-fast': [4, 6, 8],
+  'google/veo-3-1-lite': [4, 6, 8],
+  'xai/grok-imagine-video-1-5': [5, 8, 10, 15],
+  'alibaba/wan-2-7-t2v': [5, 8, 10, 15],
+  'alibaba/wan-2-7-i2v': [5, 8, 10, 15],
 };
+// Resolution + audio pickers per model (Higgsfield models and the inference.sh
+// models in VIDEO_EXTRAS on the server). First resolution = default.
+// audio: false = the model has no switch (Lite always has sound, Wan never).
+const VEO31_OPTS = { res: ['720p', '1080p'], audio: true };
+const HF_OPTS = { res: ['720p', '480p', '1080p'], audio: true };
+const VIDEO_OPTS_BY_MODEL = {
+  'google/veo-3-1': VEO31_OPTS, 'google/veo-3-1-fast': VEO31_OPTS,
+  'google/veo-3': VEO31_OPTS, 'google/veo-3-fast': VEO31_OPTS, 'google/veo-2': VEO31_OPTS,
+  'google/veo-3-1-lite': { res: ['720p', '1080p'], audio: false, note: { '1080p': '1080p (8 s only)' } },
+  'xai/grok-imagine-video-1-5': { res: ['720p', '480p', '1080p'], audio: true },
+  'klingai/video-v3': { res: ['1080p', '720p'], audio: true },
+  'klingai/video-v2-6': { res: ['1080p', '720p'], audio: true },
+  'alibaba/wan-2-7-t2v': { res: ['1080p', '720p'], audio: false },
+  'alibaba/wan-2-7-i2v': { res: ['1080p', '720p'], audio: false },
+  'higgsfield/seedance-2.5': HF_OPTS, 'higgsfield/seedance-2.5-edit': HF_OPTS,
+};
+const RES_LABELS = { '480p': '480p (cheaper)', '720p': '720p', '1080p': '1080p (sharper, costs more)' };
 let aiSrcFile = null;    // uploaded source clip
 let aiSrcUrl = '';       // or the URL of an earlier generation
 let aiSrcTaskId = '';
@@ -2097,13 +2134,23 @@ function syncSourceField() {
     : 'Generate Video';
 }
 
-// Resolution and audio exist on the Higgsfield models only; video-edit
-// takes its length from the source clip, so the duration picker goes away.
+// Resolution and audio pickers for the models that have them (VIDEO_OPTS_BY_MODEL);
+// video-edit takes its length from the source clip, so the duration picker goes away.
 function syncHiggsfieldFields() {
   const model = document.getElementById('ai-model').value;
   const wrap = document.getElementById('ai-hf-wrap');
   const durWrap = document.getElementById('ai-duration-wrap');
-  if (wrap) wrap.style.display = model.startsWith('higgsfield/') ? 'grid' : 'none';
+  const opts = VIDEO_OPTS_BY_MODEL[model];
+  if (wrap) wrap.style.display = opts ? 'grid' : 'none';
+  if (opts) {
+    const resSel = document.getElementById('ai-resolution');
+    const prev = resSel.value;
+    resSel.innerHTML = opts.res.map(r => `<option value="${r}">${(opts.note && opts.note[r]) || RES_LABELS[r] || r}</option>`).join('');
+    resSel.value = opts.res.includes(prev) ? prev : opts.res[0];
+    const audioSel = document.getElementById('ai-audio');
+    audioSel.parentElement.style.display = opts.audio ? '' : 'none';
+    audioSel.value = 'true';
+  }
   if (durWrap) durWrap.style.display = model === 'higgsfield/seedance-2.5-edit' ? 'none' : '';
 }
 
@@ -2374,7 +2421,7 @@ async function updateAiEstimate() {
   const secs = hasSource ? await mediaSecs(aiSrcFile || aiSrcUrl) : 0;
   estimateInto('ai-est', { kind: 'aigen', model: val('ai-model'), prompt: val('ai-prompt').trim() || 'a video',
     duration: val('ai-duration'), aspect_ratio: ratioWrap && ratioWrap.style.display !== 'none' ? val('ai-ratio') : '',
-    resolution: hf && hf.display !== 'none' ? val('ai-resolution') : '', images: aiRefFiles.length,
+    resolution: hf && hf.display !== 'none' ? val('ai-resolution') : '', generate_audio: val('ai-audio'), images: aiRefFiles.length,
     has_source: hasSource, secs: Math.ceil(secs) }, 600);
 }
 async function updateVtEstimate() {

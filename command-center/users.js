@@ -115,6 +115,7 @@ function publicUser(u) {
 //   media  – GET of a file; must be referenced by one of the user's own items
 //   stub   – answer with `body` instead of the real route
 //   brand  – /brand without the owner's external links
+//   agents – /agents/overview with only the agent cards of the user's tools
 // Anything not matched is denied.
 const ANY = Object.keys(TOOLS);
 const CC = ["content-creator"];
@@ -126,6 +127,10 @@ const RULES = [
   ["PATCH", /^\/notifications\/[^/]+\/read$/, ANY, { kind: "stub", body: { ok: true } }],
   ["POST", /^\/notifications\/read-all$/, ANY, { kind: "stub", body: { ok: true } }],
   ["POST", /^\/costs\/estimate$/, ANY, { kind: "allow" }],
+  // Overview page (the landing page): own agent cards + server stats
+  ["GET", /^\/agents\/overview$/, ANY, { kind: "agents" }],
+  ["GET", /^\/system\/health$/, ANY, { kind: "allow" }],
+  ["GET", /^\/settings\/services$/, ANY, { kind: "allow" }],
 
   // Designer (the Content Creator's "From Designer" picker reads the list too)
   ["GET", /^\/designer\/tasks$/, ANY, { kind: "list", file: "designer-tasks.json" }],
@@ -148,11 +153,10 @@ const RULES = [
   ["GET", /^\/influencer\/genjutsu\/rates$/, CC, { kind: "allow" }],
   ["GET", /^\/influencer\/genjutsu$/, CC, { kind: "list", file: "ai-video-tasks.json" }],
   ["POST", /^\/influencer\/genjutsu$/, CC, { kind: "allow" }],
-  ["GET", /^\/opusclip\/brand-templates$/, CC, { kind: "allow" }],
+  // Clipper (OpusClip) is owner-only: the page still asks for these, so answer empty.
+  ["GET", /^\/opusclip\/brand-templates$/, CC, { kind: "stub", body: [] }],
   ["GET", /^\/opusclip\/social-accounts$/, CC, { kind: "stub", body: [] }],
-  ["GET", /^\/opusclip\/tasks$/, CC, { kind: "list", file: "opusclip-tasks.json" }],
-  ["POST", /^\/opusclip\/tasks$/, CC, { kind: "allow" }],
-  ["DELETE", /^\/opusclip\/tasks\/([^/]+)$/, CC, { kind: "own", file: "opusclip-tasks.json" }],
+  ["GET", /^\/opusclip\/tasks$/, CC, { kind: "stub", body: [] }],
   ["GET", /^\/ugc\/avatars$/, CC, { kind: "list", file: "ugc-avatars.json" }],
   ["POST", /^\/ugc\/avatars$/, CC, { kind: "allow" }],
   ["POST", /^\/ugc\/avatars\/upload$/, CC, { kind: "allow" }],
@@ -186,11 +190,14 @@ function routeRule(method, p, tools) {
   return { kind: "deny" };
 }
 
-// HTML pages: only the pages of the user's tools. Anything else goes to the first one.
+// HTML pages: the overview (landing page) plus the pages of the user's tools.
+// Anything else goes to the overview.
+const OVERVIEW_PAGES = ["/", "/index.html"];
 function pageFor(p, tools) {
+  if (OVERVIEW_PAGES.includes(p)) return { ok: true };
   const allowed = (tools || []).map(t => TOOLS[t] && TOOLS[t].page).filter(Boolean);
   if (allowed.includes(p)) return { ok: true };
-  return { ok: false, redirect: allowed[0] || null };
+  return { ok: false, redirect: "/index.html" };
 }
 
 function isOwnedBy(item, userId) { return !!item && item.owner_user === userId; }

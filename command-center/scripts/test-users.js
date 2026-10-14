@@ -68,10 +68,13 @@ ok(r("GET", "/video/tools/youtube-cookies") === "allow", "cookie status allowed"
 ok(r("POST", "/opusclip/tasks/x/clips/y/publish") === "deny", "OpusClip publish denied");
 ok(r("POST", "/opusclip/tasks/x/clips/y/to-community") === "deny", "OpusClip to community denied");
 ok(r("GET", "/opusclip/social-accounts") === "stub", "social accounts stubbed");
+ok(r("GET", "/opusclip/tasks") === "stub", "clipper tasks stubbed (owner-only)");
+ok(r("POST", "/opusclip/tasks") === "deny", "clipper job denied for team");
+ok(r("DELETE", "/opusclip/tasks/x") === "deny", "clipper delete denied for team");
 ok(r("GET", "/brands") === "stub", "owner brands stubbed");
 ok(r("GET", "/brand") === "brand", "brand without links");
 ok(r("GET", "/notifications") === "stub", "notifications stubbed");
-for (const p of ["/users", "/settings", "/scheduled-tasks", "/community/tasks", "/agents/overview", "/growth/reports", "/media/list", "/settings/api-costs"]) {
+for (const p of ["/users", "/settings", "/scheduled-tasks", "/community/tasks", "/growth/reports", "/media/list", "/settings/api-costs"]) {
   ok(r("GET", p) !== "allow" && r("GET", p) !== "list", "not open: GET " + p);
 }
 ok(r("GET", "/media/ugc/x.mp4") === "media", "media needs ownership");
@@ -82,8 +85,9 @@ ok(r("GET", "/ugc/tasks", []) === "deny", "no tools: nothing");
 // Pages
 ok(U.pageFor("/designer.html", ["designer"]).ok, "own tool page allowed");
 ok(!U.pageFor("/settings.html", ["designer"]).ok, "settings page blocked");
-ok(U.pageFor("/", ["content-creator"]).redirect === "/content-creator.html", "root redirects to first tool");
-ok(U.pageFor("/index.html", []).redirect === null, "no tools: no redirect target");
+ok(U.pageFor("/", ["content-creator"]).ok && U.pageFor("/index.html", []).ok, "overview is the landing page");
+ok(U.pageFor("/settings.html", ["designer"]).redirect === "/index.html", "blocked page goes to the overview");
+ok(r("GET", "/agents/overview") === "agents" && r("GET", "/system/health") === "allow", "overview data allowed");
 
 // Ownership + media paths
 ok(U.isOwnedBy({ owner_user: "u1" }, "u1") && !U.isOwnedBy({}, "u1") && !U.isOwnedBy(null, "u1"), "isOwnedBy");

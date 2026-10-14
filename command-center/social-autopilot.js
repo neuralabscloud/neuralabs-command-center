@@ -30,7 +30,7 @@ const DEFAULTS = {
   style_refs: [],          // /media/... images that show the house style
 };
 
-const MODEL = process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5";
+const MODEL = process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5";
 const MAX_CANDIDATES = 6;
 const PER_TOPIC = 3;        // one noisy topic may not fill the whole shortlist
 const TOPICS_PER_ROUND = 2; // topics searched before Claude picks

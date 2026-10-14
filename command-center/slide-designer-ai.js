@@ -80,7 +80,7 @@ For each slide, determine the optimal visual layout and styling. Return a JSON a
 Return ONLY the JSON array, no markdown, no explanation.`;
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5-5",
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
   });
