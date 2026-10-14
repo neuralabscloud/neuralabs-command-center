@@ -620,7 +620,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
     <section class="fade-up delay-3" id="community-manager-section">
       <div class="section-header">Social Media Manager</div>
       <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
-        Configure which Telegram chats/topics and X accounts your assistant can post to. Each channel has its own archetype set, review schedule, and enabled flag. Full configuration lives on the <a href="community-manager.html" style="color:var(--primary)">Social Media Manager page</a>.
+        Configure which Telegram chats/topics and X accounts your assistant can post to. Each channel has its own autopilot, review schedule, and enabled flag. Full configuration lives on the <a href="community-manager.html" style="color:var(--primary)">Social Media Manager page</a>.
       </p>
       <div id="cm-summary" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
       <a href="community-manager.html" style="display:inline-block;padding:8px 16px;border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-family:var(--font-body);font-size:11px;text-transform:uppercase;letter-spacing:0.06em">Open Social Media Manager →</a>
@@ -1893,10 +1893,7 @@ async function loadCommunitySummary() {
     return r.json();
   };
   try {
-    const [channels, sets] = await Promise.all([
-      fetchJson('/community/channels'),
-      fetchJson('/community/archetype-sets'),
-    ]);
+    const channels = await fetchJson('/community/channels');
     if (!channels.length) {
       box.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:10px 12px;border:1px dashed var(--border);border-radius:6px">No channels configured yet. Open the Social Media Manager to add one.</div>';
       return;
@@ -1904,15 +1901,14 @@ async function loadCommunitySummary() {
     const rows = channels.map(c => {
       const dotColor = c.enabled === false ? 'var(--text-dim)' : (c.platform === 'discord' ? 'hsl(227 58% 65%)' : 'var(--success)');
       const info = c.platform === 'telegram' ? `${c.chat_id || '—'}${c.topic_id ? ' · topic ' + c.topic_id : ''}` : (c.chat_id || c.guild_id || 'not configured');
-      const archInfo = c.archetype_set ? ` · set: ${c.archetype_set}` : '';
       return `<div style="display:flex;gap:10px;align-items:center;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text-dim);font-family:var(--font-body)">
         <span style="width:8px;height:8px;border-radius:50%;background:${dotColor}"></span>
         <span style="color:var(--text);font-weight:500">${escapeHtmlCm(c.name)}</span>
         <span style="text-transform:uppercase;font-size:9px;letter-spacing:0.06em">${escapeHtmlCm(c.platform)}</span>
-        <span style="font-size:11px">${escapeHtmlCm(info)}${escapeHtmlCm(archInfo)}</span>
+        <span style="font-size:11px">${escapeHtmlCm(info)}</span>
       </div>`;
     }).join('');
-    box.innerHTML = rows + `<div style="font-size:11px;color:var(--text-dim);margin-top:4px">${channels.length} channel${channels.length === 1 ? '' : 's'} · ${sets.length} archetype set${sets.length === 1 ? '' : 's'}</div>`;
+    box.innerHTML = rows + `<div style="font-size:11px;color:var(--text-dim);margin-top:4px">${channels.length} channel${channels.length === 1 ? '' : 's'}</div>`;
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:var(--danger)">Load error: ${escapeHtmlCm(e.message)}</div>`;
   }
