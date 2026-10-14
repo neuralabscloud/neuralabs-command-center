@@ -7803,6 +7803,8 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
 const AGENT_DEFS = [
   { id: "designer", nickname: "Vince", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "nano banana + playwright",
     role: "Creates visual assets and social graphics.", files: ["designer-tasks.json"], needs: ["INFERENCE_API_KEY"] },
+  { id: "scheduler", nickname: "Cam", name: "Scheduler", hsl: "0 72% 51%", href: "agents.html", model: "schedules + autopilots", kind: "scheduler",
+    role: "Runs the scheduled tasks and keeps every autopilot on time." },
   { id: "content-creator", nickname: "Boo", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
     role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json", "ai-video-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
   { id: "social-media-manager", nickname: "Bubbles", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
@@ -7837,6 +7839,13 @@ app.get("/agents/overview", (_req, res) => {
       return { ...base, model: require("./social-autopilot").MODEL, status, stats: [
         { label: "Posts today", value: tasks.filter(t => t.status === "published" && agentDay(t.published_at || t.updated_at) === today).length },
         { label: "In queue", value: tasks.filter(t => t.status === "scheduled").length },
+      ] };
+    }
+    if (def.kind === "scheduler") {
+      const schedules = readTaskFile("scheduled-tasks.json").filter(x => x.enabled);
+      return { ...base, status: schedules.length ? "ready" : "idle", stats: [
+        { label: "Active schedules", value: schedules.length },
+        { label: "Ran today", value: schedules.filter(x => agentDay(x.last_run) === today).length },
       ] };
     }
     if (def.kind === "growth") {
