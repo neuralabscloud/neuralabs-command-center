@@ -46,7 +46,6 @@ const cookieParser = require("cookie-parser");
 const { renderSlide, renderCarousel, fitImage } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
 const { execFile, spawn } = require("child_process");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 const {
   BROWSER_TOOLS,
   handleBrowserTool,
@@ -231,53 +230,6 @@ app.use((req, res, next) => {
   if (isValidSession(req.cookies?.cc_session)) return next();
   if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
-});
-
-// ── Remotion Studio reverse proxy ────────────────────────────────────────
-// Studio runs as a child process bound to 127.0.0.1:3150. We proxy it through
-// /remotion-studio/* so customers don't need an extra reverse proxy / port.
-// Also catches absolute asset paths (e.g. "/static/x.js") by inspecting the
-// Referer header, since Studio's HTML emits root-relative URLs.
-const REMOTION_STUDIO_PORT = 3150;
-const remotionStudioProxy = createProxyMiddleware({
-  target: `http://127.0.0.1:${REMOTION_STUDIO_PORT}`,
-  changeOrigin: true,
-  ws: true,
-  logLevel: "warn",
-  pathRewrite: (p) => p.replace(/^\/remotion-studio\/?/, "/"),
-});
-
-// Asset interceptor: Studio's Assets panel + composition preview request media
-// files at raw paths (e.g. "/logo.png") because it expects fingerprinted paths
-// like "/static-<hash>/logo.png". Vite then returns the Studio SPA HTML as
-// fallback instead of the actual file. We catch these and serve the asset
-// directly from the active project's public/ directory.
-const STUDIO_MEDIA_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|ico|bmp|mp4|webm|mov|m4v|mp3|wav|ogg|flac|m4a|woff2?|ttf|otf|eot|json|lottie)$/i;
-app.use((req, res, next) => {
-  const ref = req.headers.referer || "";
-  if (!ref.includes("/remotion-studio")) return next();
-  if (req.path.startsWith("/remotion-studio")) return next();
-  if (!STUDIO_MEDIA_EXT_RE.test(req.path)) return next();
-  if (!currentStudio) return next();
-  try {
-    const meta = readProjectMeta(currentStudio.projectId);
-    if (!meta || !meta.entry) return next();
-    const projectDir = path.join(VIDEO_PROJECTS_DIR, currentStudio.projectId);
-    const { root: remotionRoot } = resolveRemotionRoot(projectDir, meta.entry);
-    const publicDir = path.join(remotionRoot, "public");
-    const safeRel = decodeURIComponent(req.path).replace(/^\/+/, "").replace(/\.\./g, "");
-    const filePath = path.resolve(publicDir, safeRel);
-    if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) return next();
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return next();
-    return res.sendFile(filePath);
-  } catch { return next(); }
-});
-
-app.use((req, res, next) => {
-  if (req.path.startsWith("/remotion-studio")) return remotionStudioProxy(req, res, next);
-  const ref = req.headers.referer || "";
-  if (ref.includes("/remotion-studio")) return remotionStudioProxy(req, res, next);
-  next();
 });
 
 // Serve all static files (HTML, JS, CSS) — protected by auth middleware above
@@ -1469,43 +1421,6 @@ app.delete("/designer/tasks/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── VIDEO TASKS ──────────────────────────────
-app.get("/video/tasks", (_req, res) => res.json(readTaskFile("video-tasks.json")));
-
-app.post("/video/tasks", (req, res) => {
-  const tasks = readTaskFile("video-tasks.json");
-  const brandContext = loadBrandContext(req.body.brand);
-  const task = {
-    id: genId(), status: "pending",
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    template: req.body.template || "social-clip",
-    aspect_ratio: req.body.aspect_ratio || "9:16",
-    brand: brandContext.name,
-    brand_context: brandContext,
-    description: req.body.description || "",
-    scenes_override: req.body.scenes_override || null,
-    media_files: req.body.media_files || [],
-    result_url: null, error: null,
-  };
-  tasks.unshift(task);
-  writeTaskFile("video-tasks.json", tasks);
-  res.status(201).json(task);
-});
-
-app.patch("/video/tasks/:id", (req, res) => {
-  const tasks = readTaskFile("video-tasks.json");
-  const idx = tasks.findIndex((t) => t.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: "Not found" });
-  Object.assign(tasks[idx], req.body, { updated_at: new Date().toISOString() });
-  writeTaskFile("video-tasks.json", tasks);
-  res.json(tasks[idx]);
-});
-
-app.delete("/video/tasks/:id", (req, res) => {
-  writeTaskFile("video-tasks.json", readTaskFile("video-tasks.json").filter((t) => t.id !== req.params.id));
-  res.json({ ok: true });
-});
-
 // ── AI VIDEO GENERATION (inference.sh) ────────────────
 const VIDEO_UPLOAD_MAX_MB = 1999; // Video Tools source videos (upload and link); nginx body limit must allow it too
 const aiVideoUpload = require("multer")({
@@ -2361,7 +2276,7 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
 // docs.higgsfield.ai/docs/models/genjutsu/{motion-transfer,object-swap}
 // The source must be >= 4 s (longer than 30 s is trimmed by Higgsfield) and,
 // for a swap, at least 409,600 pixels per frame. Results land in
-// ai-video-tasks.json, so they also show up in the Editor video list.
+// ai-video-tasks.json, so they also show up in the AI Generate list.
 const GENJUTSU_MODES = {
   motion: { label: "Motion transfer", endpoint: "higgsfield/genjutsu/motion-transfer/v1.0" },
   swap:   { label: "Object swap",     endpoint: "higgsfield/genjutsu/object-swap/v1.0" },
@@ -5080,7 +4995,6 @@ app.delete("/notifications/:id", (req, res) => {
 // ── TASK COMPLETION WATCHER ───────────────────
 const WATCHED_TASKS = {
   Designer: "designer-tasks.json",
-  "Video Editor": "video-tasks.json",
   "UGC Video": "ugc-tasks.json",
 };
 
@@ -5192,6 +5106,7 @@ app.get("/brand", (_req, res) => {
   // Optional external tools shown in the sidebar (e.g. a self-hosted photo editor)
   brand.links = {
     photo_editor: /^https?:\/\//.test(process.env.PHOTO_EDITOR_URL || "") ? process.env.PHOTO_EDITOR_URL : "",
+    video_editor: /^https?:\/\//.test(process.env.VIDEO_EDITOR_URL || "") ? process.env.VIDEO_EDITOR_URL : "",
   };
   res.json(brand);
 });
@@ -5210,7 +5125,6 @@ You are the central brain of the Command Center — you have access to ALL agent
 
 COMMAND CENTER AGENTS:
 - Designer — social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Higgsfield, Playwright)
-- Video Editor — video editing via Remotion
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Analyst — performance analyses, risk reports, daily reports
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategy, and more
@@ -5225,7 +5139,6 @@ You can:
 5. Search the web for current news, market data, and real-time information
 6. ORCHESTRATE AGENTS — create tasks for any agent via tools:
    - create_design: create a design (Designer). For carousels: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML). Default engine is nanobanana. Free format: design_type="custom" + width and height in pixels (e.g. 1500x500). Optional look: style, color_scheme, custom_colors, text_mode, negative_prompt.
-   - create_video_edit: edit a video via Remotion (Video Editor)
    - calendar_query: manage Google Calendar — view, create, delete events, find free slots
    - marketeer_query: marketing STRATEGY & advice — content planning, copywriting, SEO, CRO, launch/ad strategy. This agent has NO access to your live ad accounts.
    - ads_query: read LIVE Meta Ads data from the connected ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Use this for any question about campaign status, performance, spend or results.
@@ -5248,7 +5161,6 @@ Je bent het centrale brein van het Command Center — je hebt toegang tot ALLE a
 
 COMMAND CENTER AGENTS:
 - Designer — Social media designs, carousels, thumbnails, banners, infographics (engines: Nano Banana, Higgsfield, Playwright)
-- Video Editor — Video editing via Remotion (React-based video)
 - Content Creator — Higgsfield UGC videos + OpusClip clipper
 - Marketeer — 25 marketing skills: copywriting, SEO, CRO, ads, email sequences, pricing, launch strategie, en meer
 - Calendar — Google Calendar beheer (events, vrije slots, planning)
@@ -5323,7 +5235,6 @@ Je kunt:
 6. Het web doorzoeken voor actueel nieuws, marktdata, crypto events en andere real-time informatie
 7. AGENTS AANSTUREN — je kunt taken aanmaken bij alle agents via tools:
    - create_design: Design laten maken (Designer) — BELANGRIJK: gebruik altijd de juiste parameters! Bij carousel: design_type="instagram_carousel" + slide_count. Engine: "nanobanana" (AI image), "higgsfield" (AI image), "playwright" (HTML). Standaard engine is nanobanana. Vrij formaat: design_type="custom" + width en height in pixels (bijv. 1500x500). Optioneel voor de look: style, color_scheme, custom_colors, text_mode, negative_prompt.
-   - create_video_edit: Video laten editen via Remotion (Video Editor)
    - calendar_query: Google Calendar beheren — events bekijken, aanmaken, verwijderen, vrije slots vinden
    - marketeer_query: Marketing STRATEGIE & advies — content planning, copywriting, SEO, CRO, launch/ad-strategie. Deze agent heeft GEEN toegang tot je live ad accounts.
    - ads_query: LIVE Meta Ads data ophalen uit de gekoppelde ad accounts — accounts, campaigns, adsets, ads, insights/ROAS/spend, pixels. Gebruik dit voor elke vraag over campagne-status, performance, spend of resultaten.
@@ -5420,20 +5331,6 @@ app.post("/ctrl/chat", async (req, res) => {
             custom_colors: { type: "string", description: "Specifieke kleuren, bv. '#0F172A, warm oranje'." },
             text_mode: { type: "string", enum: ["auto", "text", "no-text"], description: "Tekst op de afbeelding renderen. Standaard: auto." },
             negative_prompt: { type: "string", description: "Wat het design NIET moet bevatten." },
-          },
-          required: ["description"],
-        },
-      },
-      {
-        type: "custom",
-        name: "create_video_edit",
-        description: "Maak een video editing task aan bij de Video Editor agent (Remotion).",
-        input_schema: {
-          type: "object",
-          properties: {
-            description: { type: "string", description: "Beschrijving van de video edit" },
-            template: { type: "string", enum: ["social-clip", "recap", "tutorial", "promo"], description: "Template. Standaard: social-clip" },
-            aspect_ratio: { type: "string", enum: ["9:16", "16:9", "1:1"], description: "Aspect ratio. Standaard: 9:16" },
           },
           required: ["description"],
         },
@@ -5662,14 +5559,6 @@ KRITIEK: De 'output' van deze tool is al volledig geformatteerd voor de eindgebr
           custom_colors: input.custom_colors || "",
           text_mode: input.text_mode || "auto",
           negative_prompt: input.negative_prompt || "",
-        },
-      }),
-      create_video_edit: (input) => ({
-        url: "http://localhost:3004/video/tasks",
-        body: {
-          description: input.description,
-          template: input.template || "social-clip",
-          aspect_ratio: input.aspect_ratio || "9:16",
         },
       }),
       calendar_query: (input) => ({
@@ -7914,10 +7803,8 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
 const AGENT_DEFS = [
   { id: "designer", nickname: "Vince", name: "Designer", hsl: "45 93% 55%", href: "designer.html", model: "nano banana + playwright",
     role: "Creates visual assets and social graphics.", files: ["designer-tasks.json"], needs: ["INFERENCE_API_KEY"] },
-  { id: "video-editor", nickname: "Cam", name: "Video editor", hsl: "0 72% 51%", href: "editor.html", model: "remotion + higgsfield",
-    role: "Edits and generates videos with Remotion and AI models.", files: ["video-tasks.json", "ai-video-tasks.json"], needs: [] },
   { id: "content-creator", nickname: "Boo", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
-    role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
+    role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json", "ai-video-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
   { id: "social-media-manager", nickname: "Bubbles", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
     role: "Writes, schedules and publishes posts to X and Telegram." },
   { id: "marketeer", nickname: "Buzz", name: "Marketeer", hsl: "340 80% 55%", href: "marketing.html", kind: "growth",
@@ -7976,453 +7863,6 @@ app.get("/agents/overview", (_req, res) => {
     ] };
   });
   res.json(out);
-});
-
-// ── REMOTION VIDEO PROJECTS ──
-const VIDEO_PROJECTS_DIR = path.join(__dirname, "data", "video-projects");
-if (!fs.existsSync(VIDEO_PROJECTS_DIR)) fs.mkdirSync(VIDEO_PROJECTS_DIR, { recursive: true });
-app.use("/video-projects-static", express.static(VIDEO_PROJECTS_DIR));
-
-const STUDIO_PORT = REMOTION_STUDIO_PORT;
-// Same-origin path proxied to the Studio subprocess. Customers can override
-// with STUDIO_URL=https://… if they prefer their own reverse proxy / domain.
-const STUDIO_URL = process.env.STUDIO_URL || "/remotion-studio/";
-let currentStudio = null; // { projectId, process, startedAt }
-
-function readProjectMeta(id) {
-  try { return JSON.parse(fs.readFileSync(path.join(VIDEO_PROJECTS_DIR, id, "meta.json"), "utf8")); }
-  catch { return null; }
-}
-function writeProjectMeta(id, meta) {
-  fs.writeFileSync(path.join(VIDEO_PROJECTS_DIR, id, "meta.json"), JSON.stringify(meta, null, 2));
-}
-
-function detectEntryPoint(projectDir) {
-  const candidates = [
-    "src/index.ts", "src/index.tsx", "src/index.js", "src/index.jsx",
-    "src/Root.ts", "src/Root.tsx",
-    "remotion/index.ts", "remotion/index.tsx",
-    "index.ts", "index.tsx", "index.js", "index.jsx",
-    "Root.tsx",
-  ];
-  // First check direct candidates
-  for (const c of candidates) {
-    const p = path.join(projectDir, c);
-    if (fs.existsSync(p)) return p;
-  }
-  // Walk one level deep — sometimes zips have a wrapper dir
-  try {
-    const entries = fs.readdirSync(projectDir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !["node_modules", ".git", "_bundle", "renders"].includes(e.name));
-    for (const e of entries) {
-      const sub = path.join(projectDir, e.name);
-      for (const c of candidates) {
-        const p = path.join(sub, c);
-        if (fs.existsSync(p)) return p;
-      }
-    }
-  } catch {}
-  return null;
-}
-
-function linkNodeModules(projectDir) {
-  const target = path.join(projectDir, "node_modules");
-  if (fs.existsSync(target)) return;
-  try { fs.symlinkSync(path.join(__dirname, "node_modules"), target, "dir"); }
-  catch (e) { console.warn("[VIDEO-PROJECT] node_modules symlink failed:", e.message); }
-}
-
-// Walk a project dir, transcode any .mov/.mkv/.webm/.avi videos in-place to H.264+AAC
-// so browsers (and Remotion's <OffthreadVideo>) can play them. Keeps the same filename
-// so user code doesn't need to change references. Skips files already marked .transcoded.
-function transcodeProjectVideos(projectDir) {
-  const results = { transcoded: [], failed: [], skipped: [] };
-  const walk = (dir, depth = 0) => {
-    if (depth > 6) return;
-    let entries = [];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    for (const e of entries) {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        if (["node_modules", ".git", "_bundle", "renders", "_incoming"].includes(e.name)) continue;
-        walk(p, depth + 1);
-      } else if (e.isFile()) {
-        const ext = path.extname(e.name).toLowerCase();
-        if (![".mov", ".mkv", ".webm", ".avi"].includes(ext)) continue;
-        const marker = p + ".transcoded";
-        if (fs.existsSync(marker)) { results.skipped.push(p); continue; }
-        const tmpOut = p + ".tmp.mp4";
-        try {
-          console.log(`[VIDEO-PROJECT] Transcoding ${p}...`);
-          // NOTE: stderr must be 'ignore' not 'pipe' — ffmpeg writes MBs of progress
-          // to stderr on long renders and buffering would silently kill the process
-          // via Node's default 1MB maxBuffer, leaving a truncated output file behind.
-          const result = require("child_process").spawnSync("ffmpeg", [
-            "-y", "-i", p,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            "-c:a", "aac", "-b:a", "128k",
-            "-max_muxing_queue_size", "1024",
-            tmpOut,
-          ], { stdio: "ignore", timeout: 60 * 60 * 1000 });
-          if (result.error) throw result.error;
-          if (result.status !== 0) throw new Error(`ffmpeg exited with code ${result.status}${result.signal ? " (signal " + result.signal + ")" : ""}`);
-          if (!fs.existsSync(tmpOut) || fs.statSync(tmpOut).size < 1024) throw new Error("ffmpeg produced empty output");
-          // Replace original in place (keeping filename/extension)
-          fs.renameSync(tmpOut, p);
-          fs.writeFileSync(marker, new Date().toISOString());
-          results.transcoded.push(p);
-          console.log(`[VIDEO-PROJECT] Transcoded ${p} (${fs.statSync(p).size} bytes)`);
-        } catch (err) {
-          console.error(`[VIDEO-PROJECT] Transcode failed for ${p}:`, err.message);
-          try { fs.unlinkSync(tmpOut); } catch {}
-          results.failed.push({ path: p, error: err.message });
-        }
-      }
-    }
-  };
-  walk(projectDir);
-  return results;
-}
-
-app.get("/video-projects", (_req, res) => {
-  try {
-    const projects = fs.readdirSync(VIDEO_PROJECTS_DIR)
-      .map(id => readProjectMeta(id))
-      .filter(Boolean)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    res.json({
-      projects,
-      studio: currentStudio ? { projectId: currentStudio.projectId, url: STUDIO_URL, startedAt: currentStudio.startedAt } : null,
-    });
-  } catch (e) { res.json({ projects: [], studio: null }); }
-});
-
-app.get("/video-projects/:id", (req, res) => {
-  const meta = readProjectMeta(req.params.id);
-  if (!meta) return res.status(404).json({ error: "Not found" });
-  res.json(meta);
-});
-
-const videoProjectUpload = require("multer")({
-  storage: require("multer").diskStorage({
-    destination: (req, _file, cb) => {
-      if (!req._projectId) req._projectId = genId();
-      const dir = path.join(VIDEO_PROJECTS_DIR, req._projectId, "_incoming");
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (_req, file, cb) => {
-      // Use webkitRelativePath if browser provided it (folder upload), else original
-      const rel = file.originalname;
-      cb(null, rel.replace(/[^a-zA-Z0-9._/-]/g, "_"));
-    },
-  }),
-  limits: { fileSize: 500 * 1024 * 1024 },
-});
-
-app.post("/video-projects", (req, res) => {
-  videoProjectUpload.array("files", 500)(req, res, async (err) => {
-    if (err) {
-      console.error("[VIDEO-PROJECT] Upload error:", err.message);
-      return res.status(400).json({ error: err.message });
-    }
-    try {
-      const id = req._projectId || genId();
-      const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
-      const incoming = path.join(projectDir, "_incoming");
-      fs.mkdirSync(projectDir, { recursive: true });
-
-      // Handle uploaded files. Supports: (a) one or more zip files, (b) loose files with paths
-      // We support relative paths passed as form-data field `paths[]` in same order as files
-      const paths = req.body && req.body.paths;
-      const pathArr = Array.isArray(paths) ? paths : (paths ? [paths] : []);
-      const uploadedNames = (req.files || []).map(f => f.originalname);
-      let fileIdx = 0;
-      for (const f of req.files || []) {
-        const ext = path.extname(f.originalname).toLowerCase();
-        if (ext === ".zip") {
-          const unzipper = require("unzipper");
-          await new Promise((resolve, reject) => {
-            fs.createReadStream(f.path)
-              .pipe(unzipper.Extract({ path: projectDir }))
-              .on("close", resolve)
-              .on("error", reject);
-          });
-          try { fs.unlinkSync(f.path); } catch {}
-        } else {
-          // Place file at its intended relative path if provided
-          const rel = pathArr[fileIdx] || f.originalname;
-          const safeRel = rel.replace(/\.\./g, "").replace(/^\/+/, "");
-          const destPath = path.join(projectDir, safeRel);
-          fs.mkdirSync(path.dirname(destPath), { recursive: true });
-          fs.renameSync(f.path, destPath);
-        }
-        fileIdx++;
-      }
-      try { fs.rmSync(incoming, { recursive: true, force: true }); } catch {}
-
-      // Symlink node_modules so Remotion deps resolve
-      linkNodeModules(projectDir);
-
-      const entry = detectEntryPoint(projectDir);
-      const meta = {
-        id,
-        name: (req.body && req.body.name) || uploadedNames[0]?.replace(/\.zip$/i, "") || `Project ${id}`,
-        created_at: new Date().toISOString(),
-        entry: entry ? path.relative(projectDir, entry) : null,
-        status: entry ? "ready" : "missing-entry",
-        compositions: [],
-        renders: [],
-        transcode_status: "running",
-        transcode_started_at: new Date().toISOString(),
-      };
-      writeProjectMeta(id, meta);
-      console.log(`[VIDEO-PROJECT] Created ${id} (${meta.name}), entry=${meta.entry} — transcoding in background`);
-      res.json(meta);
-
-      // Run transcoding in background — does not block upload response
-      setImmediate(() => {
-        try {
-          const results = transcodeProjectVideos(projectDir);
-          const latest = readProjectMeta(id);
-          if (latest) {
-            latest.transcoded = results.transcoded.map(p => path.relative(projectDir, p));
-            latest.transcode_failures = results.failed.map(f => ({ path: path.relative(projectDir, f.path), error: f.error }));
-            latest.transcode_status = "done";
-            latest.transcode_finished_at = new Date().toISOString();
-            writeProjectMeta(id, latest);
-          }
-          console.log(`[VIDEO-PROJECT] Background transcode done for ${id}: ${results.transcoded.length} ok, ${results.failed.length} failed`);
-        } catch (e) {
-          console.error(`[VIDEO-PROJECT] Background transcode failed for ${id}:`, e);
-          const latest = readProjectMeta(id);
-          if (latest) {
-            latest.transcode_status = "failed";
-            latest.transcode_error = e.message;
-            writeProjectMeta(id, latest);
-          }
-        }
-      });
-    } catch (e) {
-      console.error("[VIDEO-PROJECT] Create failed:", e);
-      res.status(500).json({ error: e.message });
-    }
-  });
-});
-
-app.delete("/video-projects/:id", (req, res) => {
-  const id = req.params.id;
-  if (currentStudio && currentStudio.projectId === id) {
-    try { currentStudio.process.kill("SIGTERM"); } catch {}
-    currentStudio = null;
-  }
-  try { fs.rmSync(path.join(VIDEO_PROJECTS_DIR, id), { recursive: true, force: true }); }
-  catch (e) { return res.status(500).json({ error: e.message }); }
-  res.json({ ok: true });
-});
-
-// Given a project dir and its relative entry path, return the "Remotion project root"
-// (the nearest ancestor of the entry file that contains a package.json) plus the entry
-// path relative to that root. Falls back to projectDir if no package.json is found.
-function resolveRemotionRoot(projectDir, entryRel) {
-  const entryAbs = path.join(projectDir, entryRel);
-  let dir = path.dirname(entryAbs);
-  while (dir.startsWith(projectDir) && dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, "package.json"))) {
-      return { root: dir, entry: path.relative(dir, entryAbs) };
-    }
-    dir = path.dirname(dir);
-  }
-  return { root: projectDir, entry: entryRel };
-}
-
-// ── Remotion Studio subprocess (one at a time) ──
-app.post("/video-projects/:id/studio", (req, res) => {
-  const id = req.params.id;
-  const meta = readProjectMeta(id);
-  if (!meta) return res.status(404).json({ error: "Project not found" });
-  if (!meta.entry) return res.status(400).json({ error: "No Remotion entry point detected in project" });
-  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
-  const entryAbs = path.join(projectDir, meta.entry);
-  if (!fs.existsSync(entryAbs)) return res.status(400).json({ error: "Entry file missing: " + meta.entry });
-
-  // Kill any existing studio
-  if (currentStudio && currentStudio.process) {
-    try { currentStudio.process.kill("SIGTERM"); } catch {}
-    currentStudio = null;
-  }
-
-  linkNodeModules(projectDir);
-  // Resolve to the nearest package.json so public/ and project root are correct
-  const { root: remotionRoot, entry: entryRel } = resolveRemotionRoot(projectDir, meta.entry);
-  // Also ensure node_modules is accessible from the inner project root
-  linkNodeModules(remotionRoot);
-  console.log(`[VIDEO-PROJECT] Starting Studio cwd=${remotionRoot} entry=${entryRel}`);
-  const remotionBin = path.join(__dirname, "node_modules", ".bin", "remotion");
-  const { spawn } = require("child_process");
-  const child = spawn(remotionBin, ["studio", entryRel, `--port=${STUDIO_PORT}`, "--host=127.0.0.1", "--no-open"], {
-    cwd: remotionRoot,
-    env: { ...process.env, BROWSER: "none" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout.on("data", d => process.stdout.write(`[STUDIO ${id}] ${d}`));
-  child.stderr.on("data", d => process.stderr.write(`[STUDIO ${id} ERR] ${d}`));
-  child.on("exit", (code) => {
-    console.log(`[STUDIO ${id}] exited with code ${code}`);
-    if (currentStudio && currentStudio.process === child) currentStudio = null;
-  });
-
-  currentStudio = { projectId: id, process: child, startedAt: new Date().toISOString() };
-  console.log(`[VIDEO-PROJECT] Starting Studio for ${id}`);
-  res.json({ ok: true, url: STUDIO_URL, projectId: id, startedAt: currentStudio.startedAt });
-});
-
-// Re-transcode video assets async — returns immediately, runs in background
-app.post("/video-projects/:id/transcode", (req, res) => {
-  const id = req.params.id;
-  const meta = readProjectMeta(id);
-  if (!meta) return res.status(404).json({ error: "Not found" });
-  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
-
-  if (meta.transcode_status === "running") return res.json({ ok: true, status: "already-running" });
-
-  // Clear markers if force=true
-  if (req.body && req.body.force) {
-    const walk = (dir, depth = 0) => {
-      if (depth > 6) return;
-      try {
-        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-          if (e.isDirectory() && !["node_modules", ".git"].includes(e.name)) walk(path.join(dir, e.name), depth + 1);
-          else if (e.isFile() && e.name.endsWith(".transcoded")) { try { fs.unlinkSync(path.join(dir, e.name)); } catch {} }
-        }
-      } catch {}
-    };
-    walk(projectDir);
-  }
-
-  meta.transcode_status = "running";
-  meta.transcode_started_at = new Date().toISOString();
-  writeProjectMeta(id, meta);
-
-  res.json({ ok: true, status: "running" });
-
-  setImmediate(() => {
-    try {
-      const results = transcodeProjectVideos(projectDir);
-      const latest = readProjectMeta(id);
-      if (latest) {
-        latest.transcoded = [...new Set([...(latest.transcoded || []), ...results.transcoded.map(p => path.relative(projectDir, p))])];
-        latest.transcode_failures = results.failed.map(f => ({ path: path.relative(projectDir, f.path), error: f.error }));
-        latest.transcode_status = "done";
-        latest.transcode_finished_at = new Date().toISOString();
-        writeProjectMeta(id, latest);
-      }
-      console.log(`[VIDEO-PROJECT] Transcode done for ${id}: ${results.transcoded.length} ok, ${results.failed.length} failed`);
-    } catch (e) {
-      console.error(`[VIDEO-PROJECT] Background transcode failed:`, e);
-      const latest = readProjectMeta(id);
-      if (latest) {
-        latest.transcode_status = "failed";
-        latest.transcode_error = e.message;
-        writeProjectMeta(id, latest);
-      }
-    }
-  });
-});
-
-app.post("/video-projects/studio/stop", (_req, res) => {
-  if (currentStudio && currentStudio.process) {
-    try { currentStudio.process.kill("SIGTERM"); } catch {}
-    currentStudio = null;
-  }
-  res.json({ ok: true });
-});
-
-app.get("/video-projects/studio/status", (_req, res) => {
-  if (!currentStudio) return res.json({ running: false });
-  res.json({ running: true, projectId: currentStudio.projectId, url: STUDIO_URL, startedAt: currentStudio.startedAt });
-});
-
-// ── Render to MP4 ──
-app.post("/video-projects/:id/render", async (req, res) => {
-  const id = req.params.id;
-  const meta = readProjectMeta(id);
-  if (!meta) return res.status(404).json({ error: "Not found" });
-  if (!meta.entry) return res.status(400).json({ error: "No entry point" });
-  const projectDir = path.join(VIDEO_PROJECTS_DIR, id);
-  const bundleDir = path.join(projectDir, "_bundle");
-  const rendersDir = path.join(projectDir, "renders");
-  fs.mkdirSync(rendersDir, { recursive: true });
-  const renderId = genId();
-  const outPath = path.join(rendersDir, `${renderId}.mp4`);
-
-  // Respond immediately — render runs async
-  res.json({ ok: true, render_id: renderId, status: "processing" });
-
-  const renderRecord = {
-    id: renderId,
-    composition: req.body?.composition_id || null,
-    status: "processing",
-    started_at: new Date().toISOString(),
-  };
-  meta.renders = [renderRecord, ...(meta.renders || [])].slice(0, 20);
-  writeProjectMeta(id, meta);
-
-  try {
-    linkNodeModules(projectDir);
-    const { root: remotionRoot, entry: entryRel } = resolveRemotionRoot(projectDir, meta.entry);
-    linkNodeModules(remotionRoot);
-    const { bundle } = require("@remotion/bundler");
-    const { selectComposition, renderMedia } = require("@remotion/renderer");
-    console.log(`[VIDEO-PROJECT] Bundling ${id} (root=${remotionRoot})...`);
-    const serveUrl = await bundle({
-      entryPoint: path.join(remotionRoot, entryRel),
-      outDir: bundleDir,
-      publicDir: path.join(remotionRoot, "public"),
-      webpackOverride: (c) => c,
-    });
-    let compositionId = req.body?.composition_id;
-    if (!compositionId) {
-      const { getCompositions } = require("@remotion/renderer");
-      const comps = await getCompositions(serveUrl);
-      if (!comps.length) throw new Error("No compositions found in project");
-      compositionId = comps[0].id;
-      meta.compositions = comps.map(c => ({ id: c.id, width: c.width, height: c.height, fps: c.fps, durationInFrames: c.durationInFrames }));
-    }
-    console.log(`[VIDEO-PROJECT] Rendering ${id} composition=${compositionId}`);
-    const composition = await selectComposition({ serveUrl, id: compositionId });
-    await renderMedia({
-      composition,
-      serveUrl,
-      codec: "h264",
-      outputLocation: outPath,
-      inputProps: req.body?.input_props || {},
-    });
-    const latest = readProjectMeta(id);
-    const idx = (latest.renders || []).findIndex(r => r.id === renderId);
-    if (idx >= 0) {
-      latest.renders[idx] = {
-        ...latest.renders[idx],
-        status: "completed",
-        composition: compositionId,
-        path: `/video-projects-static/${id}/renders/${renderId}.mp4`,
-        completed_at: new Date().toISOString(),
-      };
-      latest.compositions = meta.compositions;
-      writeProjectMeta(id, latest);
-    }
-    console.log(`[VIDEO-PROJECT] Render complete ${id}/${renderId}`);
-  } catch (e) {
-    console.error(`[VIDEO-PROJECT] Render failed ${id}/${renderId}:`, e.message);
-    const latest = readProjectMeta(id);
-    const idx = (latest.renders || []).findIndex(r => r.id === renderId);
-    if (idx >= 0) {
-      latest.renders[idx] = { ...latest.renders[idx], status: "failed", error: e.message, completed_at: new Date().toISOString() };
-      writeProjectMeta(id, latest);
-    }
-  }
 });
 
 // ── CRON JOBS ENDPOINT ──
@@ -10186,21 +9626,4 @@ const httpServer = app.listen(PORT, "0.0.0.0", () => {
   const schedules = readTaskFile("scheduled-tasks.json");
   const active = schedules.filter(s => s.enabled).length;
   console.log(`[SCHEDULER] ${active} active scheduled task(s) loaded`);
-});
-
-// Forward WebSocket upgrade requests for the Remotion Studio iframe (hot reload).
-// Requires a valid cc_session cookie — Studio is bound to localhost so only
-// proxied traffic can reach it.
-httpServer.on("upgrade", (req, socket, head) => {
-  const url = req.url || "";
-  const ref = req.headers.referer || "";
-  const isStudio = url.startsWith("/remotion-studio") || ref.includes("/remotion-studio");
-  if (!isStudio) return;
-  const cookieHeader = req.headers.cookie || "";
-  const m = cookieHeader.match(/(?:^|;\s*)cc_session=([^;]+)/);
-  if (!m || !isValidSession(decodeURIComponent(m[1]))) {
-    socket.destroy();
-    return;
-  }
-  remotionStudioProxy.upgrade(req, socket, head);
 });

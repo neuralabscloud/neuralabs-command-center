@@ -2,7 +2,6 @@
   const NAV_ITEMS = [
     { href: 'index.html', label: 'Overview', icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>' },
     { href: 'agents.html', label: 'Scheduler', icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-    { href: 'editor.html', label: 'Video Editor', icon: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/>' },
     { href: 'designer.html', label: 'Designer', icon: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>' },
     { href: 'content-creator.html', label: 'Content Creator', icon: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>' },
     { href: 'marketing.html', label: 'Marketing', icon: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>' },
@@ -14,6 +13,25 @@
 
   function svg(inner) {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${inner}</svg>`;
+  }
+
+  // Wide sidebar with visible labels on desktop. Every page sizes .main via --sidebar-w,
+  // so overriding it here is enough. Below 1025px the pages' own icon/mobile layout applies.
+  if (!document.getElementById('sidebar-wide-style')) {
+    const st = document.createElement('style');
+    st.id = 'sidebar-wide-style';
+    st.textContent = `
+      @media (min-width: 1025px) {
+        html:root { --sidebar-w: 214px; }
+        html .sidebar { align-items: stretch; padding: 16px 12px; overflow-y: auto; }
+        html .sidebar-logo { text-align: center; }
+        html .sidebar .nav-item { width: auto; height: 38px; justify-content: flex-start; gap: 11px; padding: 0 11px; flex-shrink: 0; }
+        html .sidebar .nav-item svg { flex-shrink: 0; }
+        html .sidebar .nav-item .tooltip { position: static; transform: none; opacity: 1; background: none; border: 0; padding: 0; font-size: 13px; font-weight: 500; color: inherit; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+        html .sidebar .nav-external .tooltip::after { content: ' \\2197'; opacity: 0.5; }
+        html .sidebar .notif-badge { left: auto; right: 10px; top: 50%; transform: translateY(-50%); }
+      }`;
+    document.head.appendChild(st);
   }
 
   const currentPage = location.pathname.split('/').pop() || 'index.html';
@@ -41,20 +59,27 @@
     </a>
   `;
 
-  // Optional external tools, only when configured in .env (PHOTO_EDITOR_URL)
-  const PHOTO_ICON = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>';
+  // Optional external tools, only when configured in .env (PHOTO_EDITOR_URL, VIDEO_EDITOR_URL)
+  const EXTERNAL_TOOLS = [
+    { key: 'photo_editor', label: 'Photo Editor', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>' },
+    { key: 'video_editor', label: 'Video Editor', icon: '<rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>' },
+  ];
   fetch('/brand', { credentials: 'same-origin' })
     .then(r => (r.ok ? r.json() : null))
     .then(brand => {
-      const url = brand && brand.links && brand.links.photo_editor;
-      if (!url || !/^https?:\/\//.test(url)) return;
-      const a = document.createElement('a');
-      a.className = 'nav-item';
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.innerHTML = `${svg(PHOTO_ICON)}<span class="tooltip">Photo Editor</span>`;
-      sidebar.querySelector('.sidebar-nav').appendChild(a);
+      const links = (brand && brand.links) || {};
+      const nav = sidebar.querySelector('.sidebar-nav');
+      EXTERNAL_TOOLS.forEach(tool => {
+        const url = links[tool.key];
+        if (!url || !/^https?:\/\//.test(url)) return;
+        const a = document.createElement('a');
+        a.className = 'nav-item nav-external';
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.innerHTML = `${svg(tool.icon)}<span class="tooltip">${tool.label}</span>`;
+        nav.appendChild(a);
+      });
     })
     .catch(() => {});
 })();

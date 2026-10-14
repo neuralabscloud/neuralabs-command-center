@@ -282,7 +282,6 @@ After the setup wizard you arrive at the Command Center dashboard. In the sideba
 |------|----------------|
 | **Overview** | Dashboard with an overview of all agents, recent tasks, and quick actions |
 | **Agents** | Overview and management of all AI agents and their tasks |
-| **Video Editor** | Edit, cut, merge, and export videos via Remotion |
 | **Designer** | Create social media content: carousels, thumbnails, banners, infographics. Uses Nano Banana (Inference.sh), Higgsfield, and Playwright |
 | **Content Creator** | Generate AI avatar videos via HeyGen |
 | **Community Manager** | Plan and publish community posts (Telegram / Discord) |
@@ -297,7 +296,6 @@ Each agent is a specialized AI that performs tasks independently:
 | Agent | What it does | Requires |
 |-------|-------------|---------|
 | **Designer** | Creates social media content: carousels, thumbnails, banners | Anthropic API key |
-| **Video Editor** | Create and edit videos via Remotion (React-based video framework) | — (built-in) |
 | **Content Creator** | Create AI avatar videos | HeyGen API key |
 | **Marketeer** | Marketing strategy and campaign planning | Anthropic API key |
 | **Calendar** | Google Calendar management | Composio API key |

@@ -417,8 +417,7 @@ async function loadAllTasks() {
   const sources = [
     { api: '/ugc/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'UGC' },
     { api: '/designer/tasks', agent: 'DESIGNER', type: 'DESIGN' },
-    { api: '/video/tasks', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'Remotion' },
-    { api: '/video/ai-generate', agent: 'VIDEO EDITOR', type: 'VIDEO', subtype: 'AI Generate' },
+    { api: '/video/ai-generate', agent: 'CONTENT CREATOR', type: 'VIDEO', subtype: 'AI Generate' },
     { api: '/opusclip/tasks', agent: 'CONTENT CREATOR', type: 'CONTENT', subtype: 'Clipper' },
     { api: '/community-manager/tasks', agent: 'SOCIAL MEDIA MANAGER', type: 'COMMUNITY' },
   ];
