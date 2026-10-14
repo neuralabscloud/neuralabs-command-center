@@ -152,11 +152,11 @@
         },
         influencer: {
           title: 'AI Influencer',
-          intro: 'Takes an existing video and puts your AI influencer in it: copy the motion of the video, or swap a person/object.',
+          intro: 'Takes an existing video and puts your AI influencer in it: copy the motion of the video, swap a person/object, or restyle the whole video.',
           steps: [
-            'Choose Motion (your influencer performs the movement of the reference video) or Swap (replace someone or something in the video).',
+            'Choose Motion (your influencer performs the movement of the reference video), Swap (replace someone or something in the video) or Restyle (redraw the whole video in a style such as anime or clay; pick the style from the gallery).',
             'Upload the reference video or paste a link (TikTok, Instagram, X, YouTube). At least 4 seconds; only the first 30 seconds are used.',
-            'Add 1 to 8 images of your influencer, or pick saved avatars.',
+            'Add 1 to 8 images of your influencer, or pick saved avatars. For Restyle images are optional (max 5) and only steer the look.',
             'Optionally write a prompt (e.g. "keep the background, she wears a black hoodie"), choose a resolution and press Generate.',
           ],
           tips: [

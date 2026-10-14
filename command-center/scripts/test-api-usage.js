@@ -42,6 +42,7 @@ const dflt = effectiveRates({});
 check("genjutsu: default 720p rate per second", higgsfieldRate("higgsfield/genjutsu/motion-transfer/v1.0@720p", dflt).per_sec === 0.681);
 check("genjutsu: 10 s at 1080p", near(rowCost({ p: "higgsfield", m: "higgsfield/genjutsu/object-swap/v1.0@1080p", jobs: 1, secs: 10 }, dflt).cost, 16.32));
 check("genjutsu: override in config wins", higgsfieldRate("higgsfield/genjutsu/object-swap/v1.0@480p", effectiveRates({ rates: { higgsfield: { models: { "genjutsu/object-swap/v1.0@480p": { per_sec: 0.2 } } } } })).per_sec === 0.2);
+check("genjutsu: restyle has its own rate (480p)", higgsfieldRate("higgsfield/genjutsu/restyle/v1.0@480p", dflt).per_sec === 0.318);
 check("inference uses actual charge", near(rowCost({ p: "inference", actual: 0.101, tasks: 1 }, rates).cost, 0.101));
 check("elevenlabs per 1k chars", near(rowCost({ p: "elevenlabs", chars: 2000 }, rates).cost, 0.6));
 check("x reads + writes", near(rowCost({ p: "x", reads: 100, writes: 2 }, rates).cost, 0.52));

@@ -135,6 +135,7 @@ const RULES = [
   // Designer (the Content Creator's "From Designer" picker reads the list too)
   ["GET", /^\/designer\/tasks$/, ANY, { kind: "list", file: "designer-tasks.json" }],
   ["POST", /^\/designer\/tasks$/, DS, { kind: "allow" }],
+  ["GET", /^\/designer\/image-models$/, DS, { kind: "allow" }],
   ["PATCH", /^\/designer\/tasks\/([^/]+)$/, DS, { kind: "own", file: "designer-tasks.json" }],
   ["DELETE", /^\/designer\/tasks\/([^/]+)$/, DS, { kind: "own", file: "designer-tasks.json" }],
   ["POST", /^\/designer\/tasks\/([^/]+)\/enhance$/, DS, { kind: "own", file: "designer-tasks.json" }],
@@ -151,6 +152,7 @@ const RULES = [
   ["POST", /^\/audio\/voiceovers$/, CC, { kind: "allow" }],
   ["DELETE", /^\/audio\/voiceovers\/([^/]+)$/, CC, { kind: "own", file: "voiceover-tasks.json" }],
   ["GET", /^\/influencer\/genjutsu\/rates$/, CC, { kind: "allow" }],
+  ["GET", /^\/influencer\/genjutsu\/restyle-presets$/, CC, { kind: "allow" }],
   ["GET", /^\/influencer\/genjutsu$/, CC, { kind: "list", file: "ai-video-tasks.json" }],
   ["POST", /^\/influencer\/genjutsu$/, CC, { kind: "allow" }],
   // Clipper (OpusClip) is owner-only: the page still asks for these, so answer empty.

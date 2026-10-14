@@ -98,6 +98,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .gj-avatar { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; }
 .gj-avatar img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
 .gj-avatar.active { border-color: hsl(270 95% 65%); color: var(--text); background: hsla(270 95% 65% / 0.1); }
+.gj-preset { width: 96px; padding: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 10px; cursor: pointer; text-align: center; }
+.gj-preset img { display: block; width: 100%; height: 96px; object-fit: cover; }
+.gj-preset span { display: block; padding: 4px; line-height: 1.3; }
+.gj-preset.active { border-color: hsl(270 95% 65%); color: var(--text); box-shadow: 0 0 0 1px hsl(270 95% 65%); }
 .gj-result { width: 100%; max-width: 260px; max-height: 360px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-deep); margin-top: 8px; }
 .form-status { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
 .task-link { font-family: var(--font-data); font-size: 11px; color: var(--teal); text-decoration: none; border: none; background: none; cursor: pointer; }
@@ -236,7 +240,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <div class="form-label">Engine</div>
               <select class="form-select" id="ugc-engine">
                 <option value="dop" selected>DoP (motions)</option>
-                <option value="kling">Kling</option>
+                <option value="kling3">Kling 3.0</option>
                 <option value="minimax">MiniMax</option>
                 <option value="seedance">Seedance</option>
               </select>
@@ -291,6 +295,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <select class="form-select" id="ugc-voice">
                 <option value="">Default voice</option>
               </select>
+            </div>
+            <div id="ugc-tts-model-field" style="display:none;">
+              <div class="form-label">Voice model</div>
+              <select class="form-select" id="ugc-tts-model"></select>
             </div>
             <div>
               <div class="form-label">Emotion</div>
@@ -392,6 +400,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <div>
             <div class="form-label">Voice</div>
             <select class="form-select" id="vo-voice"></select>
+          </div>
+          <div id="vo-model-field" style="display:none;">
+            <div class="form-label">Voice model</div>
+            <select class="form-select" id="vo-model"></select>
           </div>
           <div id="vo-emotion-field">
             <div class="form-label">Emotion</div>
@@ -571,6 +583,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
           <button type="button" class="gj-mode" data-gjmode="swap" onclick="setGjMode('swap')">
             <b>Object swap</b><span>Replaces one person or object in the reference video; everything else stays the same.</span>
           </button>
+          <button type="button" class="gj-mode" data-gjmode="restyle" onclick="setGjMode('restyle')">
+            <b>Restyle</b><span>Redraws the whole video in a style (anime, clay, toy, comic…); motion and timing stay the same.</span>
+          </button>
+        </div>
+        <div style="margin-bottom:16px;display:none;" id="gj-preset-field">
+          <div class="form-label">Style</div>
+          <div id="gj-presets" class="gj-thumbs" style="margin-top:0;"></div>
         </div>
         <div style="margin-bottom:16px;">
           <div class="form-label">Reference video</div>
@@ -734,6 +753,24 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
             <select class="form-select" id="vt-voiceover"><option value="">— upload below —</option></select>
             <input type="file" id="vt-audio" accept="audio/*" style="font-size:12px;margin-top:8px;" />
           </div>
+          <div id="vt-upscale-model-field" style="display:none;">
+            <div class="form-label">Upscale model</div>
+            <select class="form-select" id="vt-upscale-model">
+              <option value="proteus" selected>Proteus (classic, fast)</option>
+              <option value="starlight-precise">Starlight Precise 2.5 (best detail)</option>
+              <option value="starlight-hq">Starlight HQ</option>
+              <option value="starlight-mini">Starlight Mini (lighter)</option>
+              <option value="astra">Astra (creative, adds detail)</option>
+            </select>
+          </div>
+          <div id="vt-astra-field" style="display:none;">
+            <div class="form-label">Creativity (Astra)</div>
+            <select class="form-select" id="vt-creativity">
+              <option value="0.2">Low</option>
+              <option value="0.5" selected>Medium</option>
+              <option value="0.8">High</option>
+            </select>
+          </div>
           <div id="vt-scale-field" style="display:none;">
             <div class="form-label">Scale</div>
             <select class="form-select" id="vt-scale">
@@ -893,6 +930,7 @@ async function submitUgcTask() {
     voice_id: document.getElementById('ugc-voice').value,
     voice_provider: document.getElementById('ugc-voice-provider').value,
     voice_emotion: document.getElementById('ugc-voice-emotion').value,
+    tts_model: document.getElementById('ugc-tts-model').value,
     speak_model: document.getElementById('ugc-speak-model').value,
     avatar_prompt: document.getElementById('ugc-avatar-prompt').value.trim(),
     description: document.getElementById('ugc-desc').value.trim(),
@@ -1443,6 +1481,13 @@ async function loadUgcVoices() {
 
 // Voice engines: MiniMax through inference.sh always works, ElevenLabs only
 // with a key. Emotions apply to MiniMax.
+// ElevenLabs model picker (v4, v4 Turbo, …), shown only when ElevenLabs is the engine.
+function fillTtsModels(id, d) {
+  const m = document.getElementById(id);
+  if (!m) return;
+  m.innerHTML = (d.eleven_models || []).map(x => `<option value="${x.id}">${x.label}</option>`).join('');
+  if (d.eleven_default) m.value = d.eleven_default;
+}
 async function loadVoiceProviders() {
   const sel = document.getElementById('ugc-voice-provider');
   if (!sel) return;
@@ -1452,7 +1497,11 @@ async function loadVoiceProviders() {
     sel.value = d.default;
     const em = document.getElementById('ugc-voice-emotion');
     em.innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${e}">${e}</option>`).join('');
-    const syncEmotion = () => { em.closest('div').style.display = sel.value === 'inference' ? '' : 'none'; };
+    fillTtsModels('ugc-tts-model', d);
+    const syncEmotion = () => {
+      em.closest('div').style.display = sel.value === 'inference' ? '' : 'none';
+      document.getElementById('ugc-tts-model-field').style.display = sel.value === 'elevenlabs' ? '' : 'none';
+    };
     sel.addEventListener('change', () => { syncEmotion(); loadUgcVoices(); });
     syncEmotion();
   } catch {}
@@ -1495,7 +1544,11 @@ async function loadVoiceoverProviders() {
     sel.innerHTML = d.providers.filter(p => p.available).map(p => `<option value="${p.id}">${p.label}</option>`).join('');
     sel.value = d.default;
     document.getElementById('vo-emotion').innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${e}">${e}</option>`).join('');
-    const sync = () => { document.getElementById('vo-emotion-field').style.display = sel.value === 'inference' ? '' : 'none'; };
+    fillTtsModels('vo-model', d);
+    const sync = () => {
+      document.getElementById('vo-emotion-field').style.display = sel.value === 'inference' ? '' : 'none';
+      document.getElementById('vo-model-field').style.display = sel.value === 'elevenlabs' ? '' : 'none';
+    };
     sel.addEventListener('change', () => { sync(); loadVoiceoverVoices(); });
     sync();
   } catch {}
@@ -1525,6 +1578,7 @@ async function submitVoiceover() {
         provider: document.getElementById('vo-provider').value,
         voice_id: document.getElementById('vo-voice').value,
         emotion: document.getElementById('vo-emotion').value,
+        tts_model: document.getElementById('vo-model').value,
         speed: parseFloat(document.getElementById('vo-speed').value) || 1,
       }),
     });
@@ -1568,7 +1622,10 @@ function syncVideoTool() {
   document.getElementById('vt-mode-field').style.display     = tool === 'upscale' || tool === 'dub' ? 'none' : '';
   document.getElementById('vt-audio-field').style.display    = tool === 'lipsync'   ? '' : 'none';
   document.getElementById('vt-scale-field').style.display    = tool === 'upscale'   ? '' : 'none';
+  document.getElementById('vt-upscale-model-field').style.display = tool === 'upscale' ? '' : 'none';
+  document.getElementById('vt-astra-field').style.display = tool === 'upscale' && document.getElementById('vt-upscale-model').value === 'astra' ? '' : 'none';
 }
+document.getElementById('vt-upscale-model').addEventListener('change', syncVideoTool);
 syncVideoTool();
 
 async function loadVoiceoverOptions() {
@@ -1596,6 +1653,8 @@ async function submitVideoTool() {
   fd.append('mode', document.getElementById('vt-mode').value);
   fd.append('output_language', document.getElementById('vt-language').value.trim());
   fd.append('scale', document.getElementById('vt-scale').value);
+  fd.append('upscale_model', document.getElementById('vt-upscale-model').value);
+  fd.append('creativity', document.getElementById('vt-creativity').value);
   fd.append('target_lang', document.getElementById('vt-dub-lang').value);
   fd.append('drop_background_audio', document.getElementById('vt-dub-drop-bg').checked ? 'true' : 'false');
   fd.append('source_lang', document.getElementById('vt-dub-src').value);
@@ -1651,7 +1710,9 @@ loadYtCookies();
 let gjMode = 'motion';
 let gjFiles = [];               // uploaded reference images (File objects)
 const gjAvatarIds = new Set();  // picked avatars from the library
-const GJ_MAX_IMAGES = 8;
+let GJ_MAX_IMAGES = 8;          // 5 for restyle
+let gjPresetId = '';            // chosen restyle style
+let gjPresetsLoaded = false;
 let gjVideoSecs = 0;            // duration of the uploaded reference video
 let gjRates = null;             // $/second per mode and resolution
 
@@ -1682,16 +1743,38 @@ function updateGjEstimate() {
 function setGjMode(mode) {
   gjMode = mode;
   document.querySelectorAll('.gj-mode').forEach(b => b.classList.toggle('active', b.dataset.gjmode === mode));
+  GJ_MAX_IMAGES = mode === 'restyle' ? 5 : 8;
+  document.getElementById('gj-preset-field').style.display = mode === 'restyle' ? '' : 'none';
+  if (mode === 'restyle' && !gjPresetsLoaded) loadGjPresets();
   document.getElementById('gj-images-label').textContent = mode === 'swap'
     ? 'Replacement (1–8 reference images of the new person or object)'
-    : 'Influencer (1–8 reference images)';
+    : mode === 'restyle' ? 'Extra style references (optional, max 5)' : 'Influencer (1–8 reference images)';
+  if (gjImageCount() > GJ_MAX_IMAGES) document.getElementById('gj-status').textContent = `Restyle takes at most ${GJ_MAX_IMAGES} images: remove a few first.`;
   document.getElementById('gj-video-hint').textContent = mode === 'swap'
     ? 'At least 4 seconds and at least 854×480 (or 640×640); longer than 30 seconds is cut to the first 30.'
     : 'At least 4 seconds; longer than 30 seconds is cut to the first 30.';
   document.getElementById('gj-prompt').placeholder = mode === 'swap'
     ? 'e.g. Replace the woman on the left with the person in the images, keep her outfit'
+    : mode === 'restyle' ? 'e.g. Neon night colours, keep the logo on the shirt readable'
     : 'e.g. Keep the background, she wears a black hoodie with a purple logo';
   updateGjEstimate();
+}
+
+async function loadGjPresets() {
+  const el = document.getElementById('gj-presets');
+  el.innerHTML = '<span style="font-size:11px;color:var(--text-dim);">Loading styles…</span>';
+  let d = {};
+  try { d = await fetch('/influencer/genjutsu/restyle-presets').then(r => r.json()); } catch {}
+  const items = d.presets || [];
+  if (!items.length) { el.innerHTML = `<span style="font-size:11px;color:var(--danger);">${esc(d.error || 'No styles available.')}</span>`; return; }
+  gjPresetsLoaded = true;
+  if (!items.some(p => p.id === gjPresetId)) gjPresetId = items[0].id;
+  el.innerHTML = items.map(p => `<button type="button" class="gj-preset${p.id === gjPresetId ? ' active' : ''}" data-preset="${esc(p.id)}" onclick="pickGjPreset('${esc(p.id)}')" title="${esc(p.name)}">
+      ${p.preview_url ? `<img src="${esc(p.preview_url)}" alt="" loading="lazy">` : ''}<span>${esc(p.name)}</span></button>`).join('');
+}
+function pickGjPreset(id) {
+  gjPresetId = id;
+  document.querySelectorAll('.gj-preset').forEach(b => b.classList.toggle('active', b.dataset.preset === id));
 }
 
 function previewGjVideo() {
@@ -1759,10 +1842,13 @@ async function submitGenjutsu() {
   const video = document.getElementById('gj-video').files[0];
   const link = document.getElementById('gj-link').value.trim();
   if (!video && !link) { st.textContent = 'Add a reference video (upload or link).'; return; }
-  if (!gjImageCount()) { st.textContent = 'Add at least one reference image or pick an avatar.'; return; }
+  if (gjMode === 'restyle' && !gjPresetId) { st.textContent = 'Pick a style first.'; return; }
+  if (gjMode !== 'restyle' && !gjImageCount()) { st.textContent = 'Add at least one reference image or pick an avatar.'; return; }
+  if (gjImageCount() > GJ_MAX_IMAGES) { st.textContent = `Max ${GJ_MAX_IMAGES} reference images for this mode.`; return; }
   if (video && video.size > 1999 * 1024 * 1024) { st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 1999 MB.`; return; }
   const fd = new FormData();
   fd.append('mode', gjMode);
+  if (gjMode === 'restyle') fd.append('preset_id', gjPresetId);
   if (video) fd.append('video', video); else fd.append('source_link', link);
   gjFiles.forEach(f => fd.append('images', f));
   fd.append('avatar_ids', [...gjAvatarIds].join(','));
@@ -1790,7 +1876,7 @@ async function loadGenjutsu() {
   try { items = await fetch('/influencer/genjutsu').then(r => r.json()); } catch { return; }
   el.innerHTML = items.length ? items.map(t => {
     const time = new Date(t.created_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const kind = t.genjutsu_mode === 'swap' ? 'Object swap' : 'Motion transfer';
+    const kind = { swap: 'Object swap', restyle: 'Restyle' }[t.genjutsu_mode] || 'Motion transfer';
     return `<div class="task-card" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
@@ -2065,9 +2151,10 @@ const DURATIONS_BY_MODEL = {
 // models in VIDEO_EXTRAS on the server). First resolution = default.
 // audio: false = the model has no switch (Lite always has sound, Wan never).
 const VEO31_OPTS = { res: ['720p', '1080p'], audio: true };
+const VEO31_4K_OPTS = { res: ['720p', '1080p', '4k'], audio: true, note: { '4k': '4K (8 s only, ~2x price)' } };
 const HF_OPTS = { res: ['720p', '480p', '1080p'], audio: true };
 const VIDEO_OPTS_BY_MODEL = {
-  'google/veo-3-1': VEO31_OPTS, 'google/veo-3-1-fast': VEO31_OPTS,
+  'google/veo-3-1': VEO31_4K_OPTS, 'google/veo-3-1-fast': VEO31_4K_OPTS,
   'google/veo-3': VEO31_OPTS, 'google/veo-3-fast': VEO31_OPTS, 'google/veo-2': VEO31_OPTS,
   'google/veo-3-1-lite': { res: ['720p', '1080p'], audio: false, note: { '1080p': '1080p (8 s only)' } },
   'xai/grok-imagine-video-1-5': { res: ['720p', '480p', '1080p'], audio: true },
@@ -2403,7 +2490,7 @@ function updateUgcEstimate() {
     const script = val('ugc-script').trim();
     if (!script) return estimateInto('ugc-est', null);
     estimateInto('ugc-est', { kind: 'ugc', mode: 'speak', text: script, speak_model: val('ugc-speak-model'),
-      voice_provider: val('ugc-voice-provider'), avatar_prompt: savedAvatar ? '' : val('ugc-avatar-prompt').trim() });
+      voice_provider: val('ugc-voice-provider'), tts_model: val('ugc-tts-model'), avatar_prompt: savedAvatar ? '' : val('ugc-avatar-prompt').trim() });
   } else {
     estimateInto('ugc-est', { kind: 'ugc', mode: 'clip', engine: val('ugc-engine'), model: val('ugc-model'),
       duration: val('ugc-duration'), resolution: val('ugc-resolution') });
@@ -2412,7 +2499,7 @@ function updateUgcEstimate() {
 function updateAvatarEstimate() { estimateInto('av-est', { kind: 'avatar' }, 0); }
 function updateVoEstimate() {
   const text = val('vo-text').trim();
-  estimateInto('vo-est', text ? { kind: 'voiceover', text, voice_provider: val('vo-provider') } : null);
+  estimateInto('vo-est', text ? { kind: 'voiceover', text, voice_provider: val('vo-provider'), tts_model: val('vo-model') } : null);
 }
 async function updateAiEstimate() {
   const hf = (document.getElementById('ai-hf-wrap') || {}).style;

@@ -1015,6 +1015,23 @@ function localFileForResultUrl(url) {
   return fs.existsSync(p) ? p : "";
 }
 
+// Designer image models on inference.sh (Nano Banana engine). Flash stays the default.
+const DESIGNER_IMAGE_MODELS = [
+  { id: "google/gemini-3-1-flash-image-preview", label: "Gemini 3.1 Flash (default)" },
+  { id: "google/gemini-nano-banana-2-1", label: "Nano Banana 2.1 (cheaper, sharp text)" },
+  { id: "google/gemini-3-pro-image", label: "Gemini 3 Pro (best quality, ~$0.13)" },
+  { id: "google/gemini-3-1-flash-lite-image", label: "Gemini 3.1 Flash Lite (cheapest, 1K)" },
+];
+function designerImageModel(requested) {
+  const ok = id => DESIGNER_IMAGE_MODELS.some(m => m.id === id);
+  if (ok(requested)) return requested;
+  if (ok(process.env.DESIGNER_IMAGE_MODEL)) return process.env.DESIGNER_IMAGE_MODEL;
+  return DESIGNER_IMAGE_MODELS[0].id;
+}
+app.get("/designer/image-models", (_req, res) => {
+  res.json({ models: DESIGNER_IMAGE_MODELS, default: designerImageModel() });
+});
+
 app.post("/designer/tasks", designerUploadMw, async (req, res) => {
   const tasks = readTaskFile("designer-tasks.json");
   const desc = req.body.description || "";
@@ -1131,6 +1148,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         id: genId(), status: "processing",
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
         design_type: designType, brand, engine: engineName, design_style: designStyle,
+        ...(engineName === "nanobanana" ? { image_model: designerImageModel(req.body.image_model) } : {}),
         aspect_ratio: thisAspect,
         custom_width: canvas && !isAdVariantMode ? canvas.width : null,
         custom_height: canvas && !isAdVariantMode ? canvas.height : null,
@@ -1299,7 +1317,9 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         structured: !!slide || /\*\*\d|slide|headline/i.test(slideDesc),
       });
 
-      const inputObj = { prompt, aspect_ratio: task.aspect_ratio || aspect, resolution: "2K", num_images: 1 };
+      const nbModel = designerImageModel(task.image_model);
+      // Flash Lite is priced for 1K; the others render at 2K.
+      const inputObj = { prompt, aspect_ratio: task.aspect_ratio || aspect, resolution: /flash-lite/.test(nbModel) ? "1K" : "2K", num_images: 1 };
       const validRefPaths = mode === "edit" ? editSources : refImagePaths.filter(p => p && fs.existsSync(p));
       if (validRefPaths.length > 0) inputObj.images = validRefPaths;
       const input = JSON.stringify(inputObj);
@@ -1320,12 +1340,12 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
             }
           } catch {}
         }
-        execFile("infsh", ["app", "run", "google/gemini-3-1-flash-image-preview", "--input", tmpInput, "--json", "--no-input"], {
+        execFile("infsh", ["app", "run", nbModel, "--input", tmpInput, "--json", "--no-input"], {
           timeout: 120000,
           maxBuffer: 1024 * 1024 * 50,
           env: { ...process.env, HOME: "/root" },
         }, (err, stdout, stderr) => {
-          apiUsage.meterInfshOutput(stdout, "google/gemini-3-1-flash-image-preview", "Designer");
+          apiUsage.meterInfshOutput(stdout, nbModel, "Designer");
           if (err && attempt < 3) {
             console.warn(`[DESIGNER] Nano Banana attempt ${attempt} failed, retrying in 5s:`, (stderr || err.message).slice(0, 200));
             return setTimeout(() => runInfsh(attempt + 1), 5000);
@@ -1680,8 +1700,10 @@ const VIDEO_LIMITS = {
 // (Veo 3.1 Lite always has sound); full8 = this resolution needs an 8 s clip.
 // The old Veo ids resolve to Veo 3.1 on inference.sh, so they get the same.
 const VEO31_EXTRAS = { resolutions: ["720p", "1080p"], audio: "generate_audio" };
+// Veo 3.1 (+ Fast) also render 4K: $0.40/s silent, $0.60/s with sound, 8 s clips only.
+const VEO31_4K_EXTRAS = { resolutions: ["720p", "1080p", "4k"], audio: "generate_audio", full8: "4k" };
 const VIDEO_EXTRAS = {
-  "google/veo-3-1": VEO31_EXTRAS, "google/veo-3-1-fast": VEO31_EXTRAS,
+  "google/veo-3-1": VEO31_4K_EXTRAS, "google/veo-3-1-fast": VEO31_4K_EXTRAS,
   "google/veo-3": VEO31_EXTRAS, "google/veo-3-fast": VEO31_EXTRAS, "google/veo-2": VEO31_EXTRAS,
   "google/veo-3-1-lite": { resolutions: ["720p", "1080p"], full8: "1080p" },
   "xai/grok-imagine-video-1-5": { resolutions: ["720p", "480p", "1080p"], audio: "generate_audio" },
@@ -2308,12 +2330,26 @@ const VIDEO_TOOLS = {
     validate: (input) => input.audio ? "" : "An audio file or a voiceover is required.",
   },
   upscale: {
+    // upscale_model: proteus (classic Topaz Video AI), starlight-* (diffusion, best detail), astra (creative).
     app: "topaz/video-upscale", label: "Upscale",
-    build: (b, files) => ({
-      video: files.video,
-      scale: Math.min(4, Math.max(1, Number(b.scale) || 2)),
-      model: b.model || "prob-4",
-    }),
+    appFor: (b) => /^starlight/.test(b.upscale_model) ? "topaz/starlight" : b.upscale_model === "astra" ? "topaz/astra" : "topaz/video-upscale",
+    labelFor: (b) => ({ "starlight-precise": "Upscale (Starlight Precise)", "starlight-hq": "Upscale (Starlight HQ)", "starlight-mini": "Upscale (Starlight Mini)", astra: "Upscale (Astra)" })[b.upscale_model] || "Upscale",
+    build: (b, files) => {
+      const scale = Math.min(4, Math.max(1, Number(b.scale) || 2));
+      const m = String(b.upscale_model || "");
+      if (/^starlight/.test(m)) {
+        return { video: files.video, scale, model: m === "starlight-hq" ? "hq" : m === "starlight-mini" ? "mini" : "precise-2.5" };
+      }
+      if (m === "astra") {
+        const lvl = v => Math.min(1, Math.max(0, Number(v)));
+        return {
+          video: files.video, scale,
+          creativity: b.creativity !== undefined && b.creativity !== "" ? lvl(b.creativity) : 0.5,
+          ...(String(b.upscale_prompt || "").trim() ? { prompt: String(b.upscale_prompt).trim().slice(0, 500) } : {}),
+        };
+      }
+      return { video: files.video, scale, model: b.model || "prob-4" };
+    },
     validate: () => "",
   },
 };
@@ -2432,8 +2468,8 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    model: cfg.app, tool: b.tool,
-    prompt: `${cfg.label}${b.output_language ? ": " + b.output_language : b.tool === "dub" && input.target_lang ? ": " + input.target_lang.toUpperCase() : ""}`,
+    model: cfg.appFor ? cfg.appFor(b) : cfg.app, tool: b.tool,
+    prompt: `${cfg.labelFor ? cfg.labelFor(b) : cfg.label}${b.output_language ? ": " + b.output_language : b.tool === "dub" && input.target_lang ? ": " + input.target_lang.toUpperCase() : ""}`,
     aspect_ratio: null, duration: null,
     result_url: null, error: null,
   };
@@ -2452,7 +2488,7 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
       let url;
       if (cfg.run) url = await cfg.run(input, task);
       else {
-        const result = await runInfshApp(cfg.app, input, { timeout: 1800000 });
+        const result = await runInfshApp(task.model, input, { timeout: 3600000 });
         url = infshOutputUrl(result, ["video", "output_video", "result"]);
         if (!url) throw new Error(result?.output?.description || result?.error || result?.status_text || "no video returned");
       }
@@ -2484,14 +2520,31 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
 // A reference video plus 1–8 images of the influencer (or the object):
 //   motion  = the person in the images copies the movement of the video
 //   swap    = one object/person in the video is replaced, the rest stays
-// docs.higgsfield.ai/docs/models/genjutsu/{motion-transfer,object-swap}
+//   restyle = the whole video is redrawn in a style preset (anime, clay, …),
+//             motion kept; images (0–5) are optional extra style references
+// docs.higgsfield.ai/docs/models/genjutsu/{motion-transfer,object-swap,restyle}
 // The source must be >= 4 s (longer than 30 s is trimmed by Higgsfield) and,
 // for a swap, at least 409,600 pixels per frame. Results land in
 // ai-video-tasks.json, so they also show up in the AI Generate list.
 const GENJUTSU_MODES = {
   motion: { label: "Motion transfer", endpoint: "higgsfield/genjutsu/motion-transfer/v1.0" },
   swap:   { label: "Object swap",     endpoint: "higgsfield/genjutsu/object-swap/v1.0" },
+  restyle: { label: "Restyle",        endpoint: "higgsfield/genjutsu/restyle/v1.0", maxImages: 5, imagesOptional: true },
 };
+const GENJUTSU_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Restyle presets come from Higgsfield (ids can disappear), cached for an hour.
+let restylePresetCache = { at: 0, items: [] };
+async function genjutsuRestylePresets() {
+  if (restylePresetCache.items.length && Date.now() - restylePresetCache.at < 3600e3) return restylePresetCache.items;
+  const r = await fetch(`${HIGGSFIELD_API}/models/higgsfield/genjutsu/restyle/v1.0/presets`, { headers: higgsfieldHeaders() });
+  if (!r.ok) throw new Error(`presets ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const d = await r.json();
+  const items = (Array.isArray(d.items) ? d.items : []).filter(x => x && GENJUTSU_UUID.test(x.id))
+    .map(x => ({ id: x.id, name: String(x.name || x.id), preview_url: String(x.preview_url || "") }));
+  restylePresetCache = { at: Date.now(), items };
+  return items;
+}
 const GENJUTSU_RESOLUTIONS = ["720p", "480p", "1080p"];
 const GENJUTSU_MIN_PIXELS = 409600;
 
@@ -2550,10 +2603,16 @@ app.get("/influencer/genjutsu/rates", (req, res) => {
   res.json({ rates, max_secs: 30, min_secs: 4 });
 });
 
+app.get("/influencer/genjutsu/restyle-presets", async (_req, res) => {
+  if (!(process.env.HIGGSFIELD_API_KEY || "").includes(":")) return res.json({ presets: [], error: "Set HIGGSFIELD_API_KEY first." });
+  try { res.json({ presets: await genjutsuRestylePresets() }); }
+  catch (e) { res.json({ presets: [], error: e.message }); }
+});
+
 app.get("/influencer/genjutsu", (_req, res) =>
   res.json(apiUsage.attachCosts(readTaskFile("ai-video-tasks.json").filter(t => t.tool === "genjutsu"))));
 
-app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
+app.post("/influencer/genjutsu", genjutsuUpload, async (req, res) => {
   const b = req.body || {};
   const up = req.files || {};
   const uploaded = [...(up.video || []), ...(up.images || [])].map(f => f.path);
@@ -2562,7 +2621,9 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
     return res.status(code).json({ error });
   };
   const mode = GENJUTSU_MODES[b.mode];
-  if (!mode) return fail(400, "Choose motion transfer or object swap.");
+  if (!mode) return fail(400, "Choose motion transfer, object swap or restyle.");
+  const presetId = String(b.preset_id || "").trim();
+  if (b.mode === "restyle" && !GENJUTSU_UUID.test(presetId)) return fail(400, "Pick a style for the restyle.");
   if (!(process.env.HIGGSFIELD_API_KEY || "").includes(":")) return fail(400, "Genjutsu runs on Higgsfield: set HIGGSFIELD_API_KEY (KEY_ID:KEY_SECRET) in Settings first.");
 
   const videoFile = up.video && up.video[0] ? up.video[0].path : "";
@@ -2584,8 +2645,17 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
     imageFiles.push(p);
     avatarNames.push(a.name || id);
   }
-  if (!imageFiles.length) return fail(400, "Add at least one reference image (upload or pick an avatar).");
-  if (imageFiles.length > 8) return fail(400, `Genjutsu takes at most 8 reference images (received ${imageFiles.length}).`);
+  if (!imageFiles.length && !mode.imagesOptional) return fail(400, "Add at least one reference image (upload or pick an avatar).");
+  const maxImages = mode.maxImages || 8;
+  if (imageFiles.length > maxImages) return fail(400, `${mode.label} takes at most ${maxImages} reference images (received ${imageFiles.length}).`);
+  let presetName = "";
+  if (b.mode === "restyle") {
+    try {
+      const preset = (await genjutsuRestylePresets()).find(x => x.id === presetId);
+      if (!preset) return fail(400, "That style is no longer available. Reload the page and pick another one.");
+      presetName = preset.name;
+    } catch (e) { return fail(502, "Could not load the Higgsfield styles: " + e.message); }
+  }
 
   const prompt = String(b.prompt || "").slice(0, 10000);
   const resolution = GENJUTSU_RESOLUTIONS.includes(b.resolution) ? b.resolution : "720p";
@@ -2593,9 +2663,10 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    model: "higgsfield/genjutsu-" + (b.mode === "swap" ? "object-swap" : "motion-transfer"),
+    model: "higgsfield/genjutsu-" + ({ swap: "object-swap", restyle: "restyle" }[b.mode] || "motion-transfer"),
     tool: "genjutsu", genjutsu_mode: b.mode,
-    prompt: `${mode.label}${avatarNames.length ? " · " + avatarNames.join(", ") : ""}${prompt ? ": " + prompt : ""}`,
+    ...(presetName ? { preset_id: presetId, preset_name: presetName } : {}),
+    prompt: `${mode.label}${presetName ? " · " + presetName : ""}${avatarNames.length ? " · " + avatarNames.join(", ") : ""}${prompt ? ": " + prompt : ""}`,
     user_prompt: prompt, resolution, ref_images: imageFiles.length,
     aspect_ratio: null, duration: null,
     result_url: null, error: null,
@@ -2603,7 +2674,7 @@ app.post("/influencer/genjutsu", genjutsuUpload, (req, res) => {
   tasks.unshift(task);
   writeTaskFile("ai-video-tasks.json", tasks);
   res.status(201).json(task);
-  apiUsage.forTask(task.id, () => runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution }));
+  apiUsage.forTask(task.id, () => runGenjutsuTask(task, mode, { videoFile, link, imageFiles, uploaded, prompt, resolution, presetId }));
 });
 
 const GENJUTSU_KEEP_FAILED = 5;
@@ -2655,7 +2726,9 @@ async function runGenjutsuTask(task, mode, o) {
     cleanup.push(...resized);
     const video = await higgsfieldUpload(prepared);
 
-    const body = { video_url: video, image_urls: images, resolution: o.resolution };
+    const body = { video_url: video, resolution: o.resolution };
+    if (images.length || task.genjutsu_mode !== "restyle") body.image_urls = images;
+    if (task.genjutsu_mode === "restyle") body.preset_id = o.presetId;
     if (o.prompt) body.prompt = o.prompt;
     // Billed per started second of input (max 30): the body has no duration
     // field, so hand the seconds to the usage meter out of band.
@@ -3122,6 +3195,7 @@ app.post("/ugc/tasks", (req, res) => {
     motion_id: b.motion_id || "",
     voice_id: b.voice_id || "",
     voice_provider: b.voice_provider || "",
+    tts_model: b.tts_model || "",
     voice_emotion: b.voice_emotion || "",
     voice_speed: b.voice_speed || 1,
     speak_model: b.speak_model || "higgsfield",
@@ -3195,6 +3269,8 @@ app.get("/ugc/voice-providers", (_req, res) => {
   res.json({
     default: ttsProvider(),
     emotions: INFERENCE_EMOTIONS,
+    eleven_models: ELEVEN_TTS_MODELS,
+    eleven_default: elevenTtsModel(),
     providers: [
       { id: "inference", label: "MiniMax (inference.sh)", available: true },
       { id: "elevenlabs", label: "ElevenLabs", available: !!(process.env.ELEVENLABS_API_KEY || "").trim() },
@@ -3230,6 +3306,7 @@ app.post("/audio/voiceovers", (req, res) => {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     provider, voice_id: b.voice_id || "", emotion: b.emotion || "", speed: Number(b.speed) || 1,
+    tts_model: provider === "elevenlabs" ? elevenTtsModel(b.tts_model) : "",
     text: text.slice(0, 10000), title: (b.title || text.slice(0, 60)).trim(),
     result_url: null, duration: null, error: null,
   };
@@ -3244,7 +3321,7 @@ app.post("/audio/voiceovers", (req, res) => {
       const outFile = path.join(VOICEOVER_DIR, task.id + ".mp3");
       await synthesizeSpeech({
         text: task.text, outFile,
-        provider: task.provider, voice_id: task.voice_id, emotion: task.emotion, speed: task.speed,
+        provider: task.provider, voice_id: task.voice_id, emotion: task.emotion, speed: task.speed, model: task.tts_model,
       });
       update = { status: "completed", result_url: `/voiceovers/${task.id}.mp3` };
       // Rough length so the UI can show it — 1 second per ~15 characters.
@@ -3434,7 +3511,7 @@ app.get("/settings/integrations", (_req, res) => {
     id: "inference", status: infshStatus,
     details: [
       { label: "CLI", value: "infsh (inference.sh)" },
-      { label: "Model", value: "google/gemini-3-1-flash-image-preview" },
+      { label: "Model", value: designerImageModel() },
       { label: "Used by", value: "Designer (Nano Banana engine)" },
     ],
   });
@@ -3539,7 +3616,7 @@ async function estimateCost(b) {
   const chars = Math.max(0, String(b.text || "").length || Number(b.chars) || 0);
   const tts = (n) => {
     if (!n) return;
-    if (ttsProvider(b.voice_provider) === "elevenlabs") rows.push({ p: "elevenlabs", m: "tts", chars: n });
+    if (ttsProvider(b.voice_provider) === "elevenlabs") rows.push({ p: "elevenlabs", m: elevenTtsModel(b.tts_model), chars: n });
     else extra += n / 1e6 * INFSH_TTS_PER_MCHAR;
   };
   if (kind === "aigen") {
@@ -3578,7 +3655,8 @@ async function estimateCost(b) {
     } else {
       const engine = HIGGSFIELD_VIDEO[b.engine] ? b.engine : "dop";
       const p = HIGGSFIELD_VIDEO[engine].build({ model: b.model, duration: b.duration, resolution: b.resolution });
-      rows.push({ p: "higgsfield", m: p.model || "image2video/" + engine, jobs: 1, secs: Number(p.duration) || 0 });
+      const m = HIGGSFIELD_VIDEO[engine].newApi ? HIGGSFIELD_VIDEO[engine].newApi(p) : (p.model || "image2video/" + engine);
+      rows.push({ p: "higgsfield", m, jobs: 1, secs: Number(p.duration) || 0 });
     }
   } else if (kind === "avatar") {
     rows.push({ p: "higgsfield", m: "text2image/soul", jobs: Math.max(1, Number(b.count) || 1) });
@@ -6807,8 +6885,15 @@ const HIGGSFIELD_VIDEO = {
     models: ["dop-lite", "dop-preview", "dop-turbo"],
     build: (t) => ({ model: pickOption(t.model, ["dop-lite", "dop-preview", "dop-turbo"]), ...(t.motion_id ? { motion_id: t.motion_id } : {}) }),
   },
+  // Kling 3.0 lives on the new Higgsfield API (request id + /requests/{id}/status),
+  // the old v1 engines below use job-sets. `newApi(t)` returns the endpoint.
+  kling3: {
+    label: "Kling 3.0", models: ["kling-v3-pro", "kling-v3-std"], durations: [5, 10, 15],
+    newApi: (t) => `kling-video/v3.0/${t.model === "kling-v3-std" ? "std" : "pro"}/image-to-video`,
+    build: (t) => ({ model: pickOption(t.model, ["kling-v3-pro", "kling-v3-std"]), duration: pickOption(Number(t.duration), [5, 10, 15]) }),
+  },
   kling: {
-    endpoint: "/v1/image2video/kling", label: "Kling",
+    endpoint: "/v1/image2video/kling", label: "Kling 2.1 (legacy)",
     models: ["kling-v2-1", "kling-v2-1-master"], durations: [5, 10],
     build: (t) => ({ model: pickOption(t.model, ["kling-v2-1", "kling-v2-1-master"]), duration: pickOption(Number(t.duration), [5, 10]) }),
   },
@@ -6882,6 +6967,21 @@ const INFERENCE_VOICES = [
 ];
 const INFERENCE_EMOTIONS = ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "calm", "fluent", "whisper"];
 
+// ElevenLabs TTS models offered in the UI (first = default unless ELEVENLABS_TTS_MODEL is set).
+// Turbo/flash bill half the characters.
+const ELEVEN_TTS_MODELS = [
+  { id: "eleven_v4", label: "Eleven v4 (best)" },
+  { id: "eleven_v4_turbo", label: "Eleven v4 Turbo (half price)" },
+  { id: "eleven_multilingual_v2", label: "Multilingual v2 (classic)" },
+  { id: "eleven_flash_v2_5", label: "Flash v2.5 (fastest, half price)" },
+];
+function elevenTtsModel(requested) {
+  const ids = ELEVEN_TTS_MODELS.map(m => m.id);
+  if (ids.includes(requested)) return requested;
+  const env = (process.env.ELEVENLABS_TTS_MODEL || "").trim();
+  return ids.includes(env) ? env : ids[0];
+}
+
 // Which TTS provider to use: an explicit choice, else whatever is configured.
 function ttsProvider(requested) {
   if (requested === "elevenlabs" || requested === "inference") return requested;
@@ -6913,7 +7013,7 @@ async function synthesizeSpeech(opts) {
   const key = (process.env.ELEVENLABS_API_KEY || "").trim();
   if (!key) throw new Error("ELEVENLABS_API_KEY not set");
   const voiceId = opts.voice_id || ELEVENLABS_DEFAULT_VOICE;
-  const body = { text, model_id: "eleven_multilingual_v2" };
+  const body = { text, model_id: elevenTtsModel(opts.model) };
   const speed = Number(opts.speed) || 1;
   if (speed !== 1) body.voice_settings = { speed: Math.min(1.2, Math.max(0.7, speed)) };
   // With timestampsFile the character timings are saved next to the audio, so
@@ -6947,7 +7047,7 @@ async function generateUgcAudio(task) {
   const wavPath = path.join(dir, task.id + ".wav");
   await synthesizeSpeech({
     text, outFile: mp3Path,
-    provider: task.voice_provider, voice_id: task.voice_id, emotion: task.voice_emotion, speed: task.voice_speed,
+    provider: task.voice_provider, voice_id: task.voice_id, emotion: task.voice_emotion, speed: task.voice_speed, model: task.tts_model,
     timestampsFile: task.captions ? path.join(dir, task.id + ".words.json") : undefined,
   });
   // Higgsfield's speak endpoint rejects mp3 ("invalid_audio_format") — convert
@@ -7034,6 +7134,21 @@ async function processUgcTasks() {
           params.duration = d > 10 ? 15 : d > 5 ? 10 : 5;
           params.quality = "high";
         }
+      } else if (HIGGSFIELD_VIDEO[videoEngine].newApi) {
+        const cfg = HIGGSFIELD_VIDEO[videoEngine];
+        const p = cfg.build(t);
+        const body = {
+          prompt: (t.prompt || t.description || "").trim() || "subtle natural motion, cinematic",
+          image_url: inputImageUrl, duration: p.duration, sound: "off",
+        };
+        try {
+          t.request_id = await apiUsage.forTask(t.id, () => higgsfieldSubmitVideo(cfg.newApi(t), body));
+          t.hf_new_api = true;
+          t.status = "processing";
+        } catch (e) { t.status = "failed"; t.error = String(e.message).slice(0, 400); }
+        changed = true;
+        processingTasks.delete(t.id);
+        continue;
       } else {
         const cfg = HIGGSFIELD_VIDEO[videoEngine];
         const image = { type: "image_url", image_url: inputImageUrl };
@@ -7161,6 +7276,26 @@ async function pollUgcStatus() {
       continue;
     }
     if (t.status !== "processing" || !t.request_id) continue;
+    if (t.hf_new_api) {
+      // New-API request (Kling 3.0): one status check per tick.
+      try {
+        const s = await fetch(`${HIGGSFIELD_API}/requests/${encodeURIComponent(t.request_id)}/status`, { headers: higgsfieldHeaders() });
+        if (!s.ok) continue;
+        const data = await s.json();
+        const status = String(data.status || "").toLowerCase();
+        if (status === "completed") {
+          const url = (data.video && data.video.url) || (Array.isArray(data.videos) && data.videos[0] && data.videos[0].url) || "";
+          if (!url) { t.status = "failed"; t.error = "finished without a video URL"; }
+          else if (t.captions || t.autopilot) { t.status = "finishing"; t.remote_url = url; t.result_url = url; }
+          else { t.status = "completed"; t.result_url = url; }
+          changed = true;
+        } else if (["failed", "nsfw", "canceled", "cancelled", "error"].includes(status)) {
+          const why = data.error ? (typeof data.error === "string" ? data.error : JSON.stringify(data.error)) : "";
+          t.status = "failed"; t.error = status + (why ? ": " + why.slice(0, 300) : ""); changed = true;
+        }
+      } catch { /* transient — retry next tick */ }
+      continue;
+    }
     try {
       const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.request_id), { headers: higgsfieldHeaders() });
       const data = await r.json().catch(() => ({}));
@@ -8022,7 +8157,7 @@ const AGENT_DEFS = [
     role: "Creates visual assets and social graphics.", files: ["designer-tasks.json"], needs: ["INFERENCE_API_KEY"] },
   { id: "scheduler", nickname: "Bubbles", name: "Scheduler", hsl: "0 72% 51%", href: "agents.html", model: "schedules + autopilots", kind: "scheduler",
     role: "Runs the scheduled tasks and keeps every autopilot on time." },
-  { id: "content-creator", nickname: "Reel", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
+  { id: "content-creator", nickname: "Max", name: "Content creator", hsl: "180 70% 45%", href: "content-creator.html", model: "higgsfield + opusclip",
     role: "Produces UGC videos and short clips from long form content.", files: ["ugc-tasks.json", "opusclip-tasks.json", "ai-video-tasks.json"], needs: ["HIGGSFIELD_API_KEY|OPUSCLIP_API_KEY"] },
   { id: "social-media-manager", nickname: "Boo", name: "Social media manager", hsl: "200 90% 55%", href: "community-manager.html", kind: "social",
     role: "Writes, schedules and publishes posts to X and Telegram." },

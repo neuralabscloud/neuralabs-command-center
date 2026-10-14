@@ -78,6 +78,9 @@ const DEFAULT_RATES = {
     "genjutsu/object-swap/v1.0@480p":      { per_sec: 0.318 },
     "genjutsu/object-swap/v1.0@720p":      { per_sec: 0.681 },
     "genjutsu/object-swap/v1.0@1080p":     { per_sec: 1.632 },
+    "genjutsu/restyle/v1.0@480p":          { per_sec: 0.318 },
+    "genjutsu/restyle/v1.0@720p":          { per_sec: 0.681 },
+    "genjutsu/restyle/v1.0@1080p":         { per_sec: 1.632 },
     // Seedance 2.5 (api.higgsfield.ai estimate, 16:9): per second of input +
     // generated video. Stored as "<endpoint>@<resolution>"; the bare key is the
     // fallback for runs from before the resolution was recorded (720p default).
@@ -352,7 +355,7 @@ function rowCost(row, rates) {
       return { cost: tok + search, priced: true };
     }
     case "inference": return { cost: row.actual || 0, priced: true };
-    case "elevenlabs": return { cost: (row.chars || 0) / 1000 * rates.elevenlabs.per_1k_chars + (row.secs || 0) / 60 * (rates.elevenlabs.dubbing_per_min || 0), priced: true };
+    case "elevenlabs": return { cost: (row.chars || 0) / 1000 * rates.elevenlabs.per_1k_chars * (/turbo|flash|conversational/.test(row.m || "") ? 0.5 : 1) + (row.secs || 0) / 60 * (rates.elevenlabs.dubbing_per_min || 0), priced: true };
     case "x": return { cost: (row.reads || 0) * rates.x.per_read + (row.writes || 0) * rates.x.per_write, priced: true };
     case "higgsfield": {
       const r = higgsfieldRate(row.m, rates);

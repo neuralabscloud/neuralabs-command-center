@@ -55,6 +55,8 @@ ok(U.tokenTime(Date.now().toString(36) + ".x") > 0, "token time parses");
 const both = ["designer", "content-creator"];
 const r = (m, p, t = both) => U.routeRule(m, p, t).kind;
 ok(r("GET", "/designer/tasks") === "list", "designer list filtered");
+ok(r("GET", "/designer/image-models") === "allow", "designer image models allowed");
+ok(r("GET", "/influencer/genjutsu/restyle-presets") === "allow", "restyle presets allowed");
 ok(r("GET", "/designer/tasks", ["content-creator"]) === "list", "content creator may read own designs (From Designer)");
 ok(r("POST", "/designer/tasks", ["content-creator"]) === "deny", "content creator only cannot create designs");
 ok(r("DELETE", "/designer/tasks/abc") === "own", "delete needs ownership");

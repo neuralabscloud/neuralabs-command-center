@@ -255,6 +255,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="playwright">Playwright (instant)</option>
             </select>
           </div>
+          <div class="form-field" id="image-model-field">
+            <label class="form-label">Image model</label>
+            <select class="form-select" id="design-image-model">
+              <option value="">Default</option>
+            </select>
+          </div>
           <div class="form-field">
             <label class="form-label">Style</label>
             <select class="form-select" id="design-style">
@@ -484,11 +490,18 @@ function syncFormFields() {
   const mode = document.getElementById('design-mode').value;
   document.getElementById('reference-mode-field').style.display = engine === 'higgsfield' && mode === 'generate' ? '' : 'none';
   document.getElementById('variants-field').style.display = engine === 'higgsfield' && mode === 'generate' ? '' : 'none';
+  document.getElementById('image-model-field').style.display = engine === 'nanobanana' ? '' : 'none';
   document.getElementById('edit-source-note').style.display = mode === 'edit' && editSource ? '' : 'none';
   document.getElementById('submit-btn').textContent = mode === 'edit' ? 'Edit Image' : 'Submit Design Task';
   updateSizeNote();
 }
 document.getElementById('design-engine').addEventListener('change', syncFormFields);
+fetch('/designer/image-models').then(r => r.ok ? r.json() : null).then(d => {
+  if (!d || !d.models) return;
+  const sel = document.getElementById('design-image-model');
+  sel.innerHTML = d.models.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+  sel.value = d.default;
+}).catch(() => {});
 document.getElementById('design-mode').addEventListener('change', syncFormFields);
 
 function useAsEditSource(id) {
@@ -624,6 +637,7 @@ async function submitTask() {
     mode,
     reference_mode: document.getElementById('design-reference-mode').value,
     variants: document.getElementById('design-variants').value,
+    image_model: engine === 'nanobanana' ? document.getElementById('design-image-model').value : '',
   };
   if (mode === 'edit' && editSource) {
     const src = allTasks.find(t => t.id === editSource.id);
