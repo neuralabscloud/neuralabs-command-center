@@ -11,6 +11,16 @@
   const BELL_ICON = '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>';
   const SETTINGS_ICON = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>';
 
+  const LOGOUT_ICON = '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>';
+
+  function bindLogout() {
+    sidebar.querySelectorAll('.cc-logout').forEach(a => a.addEventListener('click', async e => {
+      e.preventDefault();
+      try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+      location.href = '/login.html';
+    }));
+  }
+
   function svg(inner) {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${inner}</svg>`;
   }
@@ -57,7 +67,9 @@
       ${svg(SETTINGS_ICON)}
       <span class="tooltip">Settings</span>
     </a>
+    <a class="nav-item cc-logout" href="#">${svg(LOGOUT_ICON)}<span class="tooltip">Log out</span></a>
   `;
+  bindLogout();
 
   // Optional external tools, only when configured in .env (PHOTO_EDITOR_URL, VIDEO_EDITOR_URL)
   const EXTERNAL_TOOLS = [
@@ -65,7 +77,6 @@
     { key: 'video_editor', label: 'Video Editor', icon: '<rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>' },
   ];
   // Team users (Settings → Users & access) only see their own tools and a log out button.
-  const LOGOUT_ICON = '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>';
   sidebar.style.visibility = 'hidden';
   const reveal = setTimeout(() => { sidebar.style.visibility = ''; }, 1500);
   fetch('/auth/check', { credentials: 'same-origin' })
@@ -81,12 +92,8 @@
         <nav class="sidebar-nav">
           ${items.map(item => `<a class="nav-item${item.href === currentPage ? ' active' : ''}" href="${item.href}">${svg(item.icon)}<span class="tooltip">${item.label}</span></a>`).join('')}
         </nav>
-        <a class="nav-item" href="#" id="cc-logout" style="margin-top:auto">${svg(LOGOUT_ICON)}<span class="tooltip">Log out</span></a>`;
-      sidebar.querySelector('#cc-logout').addEventListener('click', async e => {
-        e.preventDefault();
-        try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
-        location.href = '/login.html';
-      });
+        <a class="nav-item cc-logout" href="#" style="margin-top:auto">${svg(LOGOUT_ICON)}<span class="tooltip">Log out</span></a>`;
+      bindLogout();
     })
     .catch(() => {})
     .finally(() => { clearTimeout(reveal); sidebar.style.visibility = ''; });
