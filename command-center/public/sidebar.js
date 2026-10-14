@@ -64,6 +64,40 @@
     { key: 'photo_editor', label: 'Photo Editor', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>' },
     { key: 'video_editor', label: 'Video Editor', icon: '<rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>' },
   ];
+  // Team users (Settings → Users & access) only see their own tools and a log out button.
+  const LOGOUT_ICON = '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>';
+  sidebar.style.visibility = 'hidden';
+  const reveal = setTimeout(() => { sidebar.style.visibility = ''; }, 1500);
+  fetch('/auth/check', { credentials: 'same-origin' })
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => {
+      const u = d && d.user;
+      if (!u || u.role !== 'user') return;
+      document.documentElement.classList.add('cc-team-user');
+      const pages = (u.tools || []).map(t => String(t.page || '').replace(/^\//, ''));
+      const items = NAV_ITEMS.filter(i => pages.includes(i.href));
+      sidebar.innerHTML = `
+        <div class="sidebar-logo">NL</div>
+        <nav class="sidebar-nav">
+          ${items.map(item => `<a class="nav-item${item.href === currentPage ? ' active' : ''}" href="${item.href}">${svg(item.icon)}<span class="tooltip">${item.label}</span></a>`).join('')}
+        </nav>
+        <a class="nav-item" href="#" id="cc-logout" style="margin-top:auto">${svg(LOGOUT_ICON)}<span class="tooltip">Log out</span></a>`;
+      sidebar.querySelector('#cc-logout').addEventListener('click', async e => {
+        e.preventDefault();
+        try { await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
+        location.href = '/login.html';
+      });
+    })
+    .catch(() => {})
+    .finally(() => { clearTimeout(reveal); sidebar.style.visibility = ''; });
+
+  if (!document.getElementById('cc-team-style')) {
+    const st = document.createElement('style');
+    st.id = 'cc-team-style';
+    st.textContent = 'html.cc-team-user [data-owner-only] { display: none !important; }';
+    document.head.appendChild(st);
+  }
+
   fetch('/brand', { credentials: 'same-origin' })
     .then(r => (r.ok ? r.json() : null))
     .then(brand => {

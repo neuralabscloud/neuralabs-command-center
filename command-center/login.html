@@ -84,8 +84,11 @@ body::after {
 <div class="login-box">
   <div class="login-logo" id="login-logo">COMMAND</div>
   <div class="login-sub">Command Center</div>
+  <label class="login-label">Username <span style="text-transform:none;letter-spacing:0;opacity:.7">(team members only)</span></label>
+  <input class="login-input" id="user" type="text" placeholder="Leave empty if you are the owner" autocomplete="username"
+    autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')document.getElementById('pw').focus()">
   <label class="login-label">Password</label>
-  <input class="login-input" id="pw" type="password" placeholder="Enter password..." autofocus
+  <input class="login-input" id="pw" type="password" placeholder="Enter password..." autofocus autocomplete="current-password"
     onkeydown="if(event.key==='Enter')doLogin()">
   <button class="login-btn" id="btn" onclick="doLogin()">Authenticate</button>
   <div class="login-error" id="err"></div>
@@ -93,6 +96,7 @@ body::after {
 <script>
 async function doLogin() {
   const pw = document.getElementById('pw').value;
+  const username = document.getElementById('user').value.trim();
   const btn = document.getElementById('btn');
   const err = document.getElementById('err');
   if (!pw) { err.textContent = 'Enter a password'; return; }
@@ -103,12 +107,13 @@ async function doLogin() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ password: pw }),
+      body: JSON.stringify({ username, password: pw }),
     });
     if (res.ok) {
       window.location.href = '/index.html';
     } else {
-      err.textContent = 'Incorrect password';
+      const d = await res.json().catch(() => ({}));
+      err.textContent = d.error || 'Incorrect password';
       document.getElementById('pw').select();
     }
   } catch (e) {

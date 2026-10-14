@@ -637,6 +637,36 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
+    <!-- USERS & ACCESS -->
+    <section class="fade-up delay-3" id="users-section">
+      <div class="section-header">Users &amp; Access</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:-10px 0 16px;line-height:1.5">
+        Give team members their own login with access to selected tools only. A team member only sees what they create themselves: never your generated assets, schedules, settings or other tools. They log in with their username and password on the normal login page. Their generations run on your API keys and count toward your costs.
+      </p>
+      <div class="integration-card" style="margin-bottom:12px">
+        <div class="integration-name" style="margin-bottom:10px">Add a user</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <label class="usr-f"><span>Name</span><input id="usr-name" type="text" placeholder="Jane" maxlength="60"></label>
+          <label class="usr-f"><span>Username</span><input id="usr-username" type="text" placeholder="jane" maxlength="32" autocomplete="off" autocapitalize="none"></label>
+          <label class="usr-f"><span>Password (min. 8)</span><input id="usr-password" type="password" autocomplete="new-password"></label>
+          <div class="usr-f"><span>Tools</span><div id="usr-tools" class="usr-tools"></div></div>
+          <button class="btn-test" id="usr-add" type="button">Add user</button>
+        </div>
+        <div id="usr-msg" style="font-size:12px;margin-top:8px;min-height:16px"></div>
+      </div>
+      <div id="usr-list" style="display:flex;flex-direction:column;gap:8px"><div style="color:var(--text-dim);font-size:13px">Loading users...</div></div>
+    </section>
+    <style>
+      .usr-f { display:flex; flex-direction:column; gap:4px; font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; }
+      .usr-f input:not([type=checkbox]) { background:var(--bg-deep, hsl(0 0% 5%)); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:8px 10px; font-size:13px; min-width:150px; text-transform:none; letter-spacing:0; }
+      .usr-tools { display:flex; gap:10px; flex-wrap:wrap; padding:6px 0; }
+      .usr-tools label { display:flex; gap:5px; align-items:center; font-size:12px; color:var(--text); text-transform:none; letter-spacing:0; cursor:pointer; }
+      .usr-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; }
+      .usr-row .usr-who { min-width:180px; }
+      .usr-row .usr-actions { display:flex; gap:6px; flex-wrap:wrap; }
+      .usr-off { opacity:0.55; }
+    </style>
+
     <!-- API USAGE & COSTS -->
     <section class="fade-up delay-3" id="api-costs-section">
       <div class="section-header">API Usage &amp; Costs</div>
@@ -2017,6 +2047,84 @@ async function addYtChannel() {
 }
 </script>
 <script src="/auth-guard.js"></script>
+<script>
+// Users & access: team logins limited to selected tools (owner only).
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let TOOLS = [];
+  function msg(text, ok) { const m = $('usr-msg'); m.textContent = text || ''; m.style.color = ok ? 'var(--success)' : 'var(--danger)'; }
+  function toolBoxes(selected, name) {
+    return TOOLS.map(t => `<label><input type="checkbox" name="${name}" value="${esc(t.id)}"${selected.includes(t.id) ? ' checked' : ''}> ${esc(t.label)}</label>`).join('');
+  }
+  async function call(url, opts) {
+    const r = await fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts || {}));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  }
+  async function load() {
+    let d;
+    try { d = await call('/users'); } catch (e) { $('usr-list').innerHTML = `<div style="color:var(--danger);font-size:13px">${esc(e.message)}</div>`; return; }
+    TOOLS = d.tools || [];
+    if (!$('usr-tools').dataset.ready) { $('usr-tools').innerHTML = toolBoxes(TOOLS.map(t => t.id), 'usr-new-tool'); $('usr-tools').dataset.ready = '1'; }
+    const users = d.users || [];
+    if (!users.length) { $('usr-list').innerHTML = '<div style="color:var(--text-dim);font-size:13px">No team users yet.</div>'; return; }
+    $('usr-list').innerHTML = users.map(u => `
+      <div class="integration-card usr-row${u.disabled ? ' usr-off' : ''}" data-id="${esc(u.id)}">
+        <div class="usr-who">
+          <div class="integration-name">${esc(u.name)} <span style="font-weight:400;color:var(--text-dim);font-size:12px">@${esc(u.username)}</span>${u.disabled ? ' <span style="font-size:10px;color:var(--warning)">DISABLED</span>' : ''}</div>
+          <div class="integration-desc">Last login: ${u.last_login ? esc(new Date(u.last_login).toLocaleString()) : 'never'}</div>
+        </div>
+        <div class="usr-tools">${toolBoxes(u.tools || [], 'usr-tool-' + esc(u.id))}</div>
+        <div class="usr-actions">
+          <button class="btn-test" data-act="tools" type="button">Save tools</button>
+          <button class="btn-test" data-act="password" type="button">New password</button>
+          <button class="btn-test" data-act="toggle" type="button">${u.disabled ? 'Enable' : 'Disable'}</button>
+          <button class="btn-test" data-act="delete" type="button" style="color:var(--danger)">Delete</button>
+        </div>
+      </div>`).join('');
+  }
+  $('usr-add').addEventListener('click', async () => {
+    const tools = [...document.querySelectorAll('input[name="usr-new-tool"]:checked')].map(i => i.value);
+    try {
+      await call('/users', { method: 'POST', body: JSON.stringify({ name: $('usr-name').value, username: $('usr-username').value, password: $('usr-password').value, tools }) });
+      $('usr-name').value = ''; $('usr-username').value = ''; $('usr-password').value = '';
+      msg('User added. They can log in now with their username and password.', true);
+      load();
+    } catch (e) { msg(e.message); }
+  });
+  $('usr-list').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const row = btn.closest('[data-id]');
+    const id = row.dataset.id;
+    const name = row.querySelector('.integration-name').textContent.trim();
+    try {
+      if (btn.dataset.act === 'tools') {
+        const tools = [...row.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value);
+        await call('/users/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ tools }) });
+        msg('Tools saved. The user has to log in again.', true);
+      } else if (btn.dataset.act === 'password') {
+        const pw = prompt('New password for ' + name + ' (min. 8 characters):');
+        if (!pw) return;
+        await call('/users/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ password: pw }) });
+        msg('Password changed. Existing sessions are logged out.', true);
+      } else if (btn.dataset.act === 'toggle') {
+        const off = !row.classList.contains('usr-off');
+        await call('/users/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ disabled: off }) });
+        msg(off ? 'User disabled and logged out.' : 'User enabled.', true);
+      } else if (btn.dataset.act === 'delete') {
+        if (!confirm('Delete ' + name + '? Their login stops working. Items they created stay in your Designer and Content Creator.')) return;
+        await call('/users/' + encodeURIComponent(id), { method: 'DELETE' });
+        msg('User deleted.', true);
+      }
+      load();
+    } catch (err) { msg(err.message); }
+  });
+  load();
+})();
+</script>
 <script src="/sidebar.js"></script>
 <script src="/notif-panel.js"></script>
 </body>

@@ -391,8 +391,8 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div class="section-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <span>Design Tasks</span>
         <span style="display:flex;align-items:center;gap:8px">
-          <span id="edu-status" style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)"></span>
-          <button class="task-btn" id="edu-run-btn" onclick="runEduNow()" title="Research a popular educational post and design it now (about 2 to 4 minutes)">Educational post now</button>
+          <span id="edu-status" data-owner-only style="font-size:10px;color:var(--text-dim);font-family:var(--font-data)"></span>
+          <button class="task-btn" id="edu-run-btn" data-owner-only onclick="runEduNow()" title="Research a popular educational post and design it now (about 2 to 4 minutes)">Educational post now</button>
         </span>
       </div>
       <div class="tasks-grid" id="tasks-grid">

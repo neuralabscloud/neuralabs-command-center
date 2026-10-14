@@ -42,6 +42,21 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const cookieParser = require("cookie-parser");
+// multer finishes on busboy stream events, which lose the AsyncLocalStorage
+// context of the request (team user, API-usage tags). Bind its callbacks back.
+{
+  const { AsyncResource } = require("async_hooks");
+  const multerOrig = require("multer");
+  const multerBound = Object.assign(function (opts) {
+    const inst = multerOrig(opts);
+    for (const k of ["single", "array", "fields", "none", "any"]) {
+      const make = inst[k].bind(inst);
+      inst[k] = (...a) => { const mw = make(...a); return (req, res, cb) => mw(req, res, AsyncResource.bind(cb)); };
+    }
+    return inst;
+  }, multerOrig);
+  require.cache[require.resolve("multer")].exports = multerBound;
+}
 
 const { renderSlide, renderCarousel, fitImage } = require("./slide-renderer");
 const { designSlides } = require("./slide-designer-ai");
@@ -99,8 +114,16 @@ if (!process.env.INTERNAL_SECRET) {
   process.env.INTERNAL_SECRET = generated;
 }
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
-function createSessionToken() {
-  const payload = Date.now().toString(36) + "." + crypto.randomBytes(16).toString("hex");
+// Team users (Settings → Users & access): extra logins limited to some tools.
+const ccUsers = require("./users");
+const userStore = ccUsers.createStore(path.join(__dirname, "data", "users.json"));
+const userCtx = new (require("async_hooks").AsyncLocalStorage)();
+const loginLimiter = ccUsers.createLoginLimiter();
+// The team user behind the current request (null = owner or a background job).
+function currentSubUser() { const s = userCtx.getStore(); return s && s.user ? s.user : null; }
+
+function createSessionToken(userId) {
+  const payload = Date.now().toString(36) + "." + crypto.randomBytes(16).toString("hex") + (userId ? "." + userId : "");
   const sig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
   return payload + "." + sig;
 }
@@ -119,16 +142,45 @@ function isValidSession(token) {
   try { return crypto.timingSafeEqual(sigBuf, expBuf); } catch { return false; }
 }
 
+// Who a valid session belongs to: { role: "owner" } or { role: "user", user }.
+// A user token dies when the user is removed or disabled, or when their
+// rights or password changed after the token was issued.
+function sessionInfo(token) {
+  if (!isValidSession(token)) return null;
+  const payload = token.substring(0, token.lastIndexOf("."));
+  const uid = ccUsers.tokenUserId(payload);
+  if (!uid) return { role: "owner" };
+  const user = userStore.get(uid);
+  if (!user || user.disabled) return null;
+  if (ccUsers.tokenTime(payload) < (user.sessions_after || 0)) return null;
+  return { role: "user", user };
+}
+
 // Login endpoint
+// No username = the owner (CC_PASSWORD); with a username = a team user.
 app.post("/auth/login", (req, res) => {
-  const { password } = req.body;
-  if (password === CC_PASSWORD) {
-    const token = createSessionToken();
-    res.cookie("cc_session", token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
-    res.json({ ok: true });
+  const ip = req.ip || "";
+  if (loginLimiter.blocked(ip)) return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+  const password = String((req.body || {}).password || "");
+  const username = ccUsers.normUsername((req.body || {}).username);
+  let token = null;
+  if (!username) {
+    const a = Buffer.from(password), b = Buffer.from(String(CC_PASSWORD));
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) token = createSessionToken();
   } else {
-    res.status(401).json({ error: "Incorrect password" });
+    const user = userStore.byUsername(username);
+    if (user && !user.disabled && ccUsers.verifyPassword(password, user.pw_hash)) {
+      token = createSessionToken(user.id);
+      userStore.markLogin(user.id);
+    }
   }
+  if (!token) {
+    loginLimiter.fail(ip);
+    return res.status(401).json({ error: username ? "Incorrect username or password" : "Incorrect password" });
+  }
+  loginLimiter.reset(ip);
+  res.cookie("cc_session", token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
+  res.json({ ok: true });
 });
 
 app.post("/auth/logout", (req, res) => {
@@ -137,7 +189,14 @@ app.post("/auth/logout", (req, res) => {
 });
 
 app.get("/auth/check", (req, res) => {
-  res.json({ authenticated: isValidSession(req.cookies?.cc_session) });
+  const info = sessionInfo(req.cookies?.cc_session);
+  if (!info) return res.json({ authenticated: false });
+  if (info.role === "owner") return res.json({ authenticated: true, user: { role: "owner" } });
+  const u = info.user;
+  res.json({
+    authenticated: true,
+    user: { role: "user", id: u.id, name: u.name, username: u.username, tools: (u.tools || []).map(t => ({ id: t, label: ccUsers.TOOLS[t].label, page: ccUsers.TOOLS[t].page })) },
+  });
 });
 
 // Returns whether the installation has completed initial setup.
@@ -227,14 +286,115 @@ app.use((req, res, next) => {
     (req.headers["x-internal"] === "scheduler" || req.headers["x-internal"] === "telegram") &&
     req.headers["x-internal-secret"] === INTERNAL_SECRET
   ) return next();
-  if (isValidSession(req.cookies?.cc_session)) return next();
+  const info = sessionInfo(req.cookies?.cc_session);
+  if (info) {
+    req.ccUser = info.role === "user" ? info.user : null;
+    return userCtx.run({ user: req.ccUser }, next);
+  }
   if (req.path.endsWith(".html") || req.path === "/") return res.redirect("/login.html");
   res.status(401).json({ error: "Unauthorized" });
+});
+
+// Team users get a strict allowlist: their tool pages, the shared scripts, and
+// the API routes of those tools, filtered to their own items. Everything else
+// (settings, scheduler, other tools, the owner's files) is a 403.
+const USER_DATA_FILES = ["designer-tasks.json", "ugc-tasks.json", "ai-video-tasks.json", "voiceover-tasks.json", "opusclip-tasks.json", "ugc-avatars.json"];
+function readOwnedList(file) {
+  return file === "ref-library.json" ? readRefLibrary() : readTaskFile(file);
+}
+function userOwnsMedia(userId, reqPath) {
+  let p = reqPath;
+  try { p = decodeURIComponent(reqPath); } catch {}
+  if (p.startsWith("/designer/ref-library/file/")) {
+    const file = path.basename(p);
+    return readRefLibrary().some(r => ccUsers.isOwnedBy(r, userId) && r.file === file);
+  }
+  for (const f of USER_DATA_FILES) {
+    for (const item of readTaskFile(f)) {
+      if (!ccUsers.isOwnedBy(item, userId)) continue;
+      const paths = ccUsers.collectPaths(item);
+      if (paths.has(p) || paths.has(reqPath)) return true;
+    }
+  }
+  return false;
+}
+app.use((req, res, next) => {
+  const user = req.ccUser;
+  if (!user || req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
+  const tools = user.tools || [];
+  const p = req.path;
+  // Pages
+  if (p === "/" || p.endsWith(".html")) {
+    const page = ccUsers.pageFor(p, tools);
+    if (page.ok) return next();
+    if (page.redirect && req.method === "GET") return res.redirect(page.redirect);
+    return res.status(403).send("No access");
+  }
+  // Shared scripts/styles/images in public/ (not the media folder)
+  if (req.method === "GET" && /^\/[\w./-]+\.(js|css|png|jpe?g|webp|svg|ico|woff2?|ttf)$/i.test(p) && !p.startsWith("/media/") && !p.includes("..")) {
+    const file = path.join(__dirname, "public", p);
+    if (file.startsWith(path.join(__dirname, "public") + path.sep) && fs.existsSync(file)) return res.sendFile(file);
+  }
+  const rule = ccUsers.routeRule(req.method, p, tools);
+  // Nobody but the owner hands out ownership.
+  if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) delete req.body.owner_user;
+  switch (rule.kind) {
+    case "allow": return next();
+    case "stub": return res.json(rule.body);
+    case "brand": {
+      const json = res.json.bind(res);
+      res.json = body => json(body && typeof body === "object" ? { ...body, links: {} } : body);
+      return next();
+    }
+    case "list": {
+      const json = res.json.bind(res);
+      res.json = body => json(Array.isArray(body) ? body.filter(t => ccUsers.isOwnedBy(t, user.id)) : body);
+      return next();
+    }
+    case "own": {
+      const item = readOwnedList(rule.file).find(t => t && t.id === rule.id);
+      if (!ccUsers.isOwnedBy(item, user.id)) return res.status(404).json({ error: "Not found" });
+      return next();
+    }
+    case "media":
+      if (userOwnsMedia(user.id, p)) return next();
+      return res.status(404).end();
+    default:
+      return res.status(403).json({ error: "No access" });
+  }
 });
 
 // Serve all static files (HTML, JS, CSS) — protected by auth middleware above
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, "public")));
+
+// ── TEAM USERS (owner only; the gate above keeps team users out) ──
+app.get("/users", (_req, res) => {
+  res.json({
+    tools: Object.entries(ccUsers.TOOLS).map(([id, t]) => ({ id, label: t.label })),
+    users: userStore.list().map(ccUsers.publicUser),
+  });
+});
+app.post("/users", (req, res) => {
+  try {
+    const b = req.body || {};
+    res.json(ccUsers.publicUser(userStore.create({ username: b.username, name: b.name, password: b.password, tools: b.tools })));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.patch("/users/:id", (req, res) => {
+  try {
+    const b = req.body || {};
+    const patch = {};
+    for (const k of ["name", "tools", "disabled", "password"]) if (b[k] !== undefined && b[k] !== "") patch[k] = b[k];
+    const u = userStore.update(req.params.id, patch);
+    if (!u) return res.status(404).json({ error: "Not found" });
+    res.json(ccUsers.publicUser(u));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete("/users/:id", (req, res) => {
+  if (!userStore.remove(req.params.id)) return res.status(404).json({ error: "Not found" });
+  res.json({ ok: true });
+});
 
 // ── SETTINGS API ─────────────────────────────
 const ENV_PATH = [path.join(__dirname, ".env"), path.join(__dirname, "..", ".env")].find(p => fs.existsSync(p)) || path.join(__dirname, ".env");
@@ -422,6 +582,9 @@ function readTaskFile(file) {
   catch { return []; }
 }
 function writeTaskFile(file, tasks) {
+  // Items a team user creates are stamped with their id (owner_user).
+  const sub = currentSubUser();
+  if (sub && Array.isArray(tasks)) ccUsers.stampNew(tasks, readTaskFile(file), sub.id);
   fs.writeFileSync(path.join(__dirname, "data", file), JSON.stringify(tasks, null, 2));
 }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -660,6 +823,8 @@ function readRefLibrary() {
   catch { return []; }
 }
 function writeRefLibrary(list) {
+  const sub = currentSubUser();
+  if (sub && Array.isArray(list)) ccUsers.stampNew(list, readRefLibrary(), sub.id);
   fs.writeFileSync(path.join(__dirname, "data", "ref-library.json"), JSON.stringify(list, null, 2));
 }
 app.get("/designer/ref-library", (_req, res) => {
@@ -9162,7 +9327,7 @@ async function createUgcAutopilotTask(p = {}) {
   if (!origin) throw new Error("No public address known yet: open the dashboard once via its domain, or set PUBLIC_BASE_URL in .env");
   const tasks = readTaskFile("ugc-tasks.json");
   const recent = tasks.filter(t => t.autopilot);
-  const avatar = ugcAuto.pickAvatar(readTaskFile("ugc-avatars.json"), recent.map(t => t.avatar_id), p.avatar_id || "");
+  const avatar = ugcAuto.pickAvatar(readTaskFile("ugc-avatars.json").filter(a => !a.owner_user || a.id === p.avatar_id), recent.map(t => t.avatar_id), p.avatar_id || "");
   if (!avatar) throw new Error("No ready avatar with a recognisable gender in the Avatar library");
   const gender = ugcAuto.inferGender(avatar);
 
