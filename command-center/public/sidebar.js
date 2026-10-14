@@ -40,4 +40,21 @@
       <span class="tooltip">Settings</span>
     </a>
   `;
+
+  // Optional external tools, only when configured in .env (PHOTO_EDITOR_URL)
+  const PHOTO_ICON = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>';
+  fetch('/brand', { credentials: 'same-origin' })
+    .then(r => (r.ok ? r.json() : null))
+    .then(brand => {
+      const url = brand && brand.links && brand.links.photo_editor;
+      if (!url || !/^https?:\/\//.test(url)) return;
+      const a = document.createElement('a');
+      a.className = 'nav-item';
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.innerHTML = `${svg(PHOTO_ICON)}<span class="tooltip">Photo Editor</span>`;
+      sidebar.querySelector('.sidebar-nav').appendChild(a);
+    })
+    .catch(() => {});
 })();

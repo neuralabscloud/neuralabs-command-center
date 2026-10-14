@@ -5189,6 +5189,10 @@ app.get("/brand", (_req, res) => {
     composio: !!process.env.COMPOSIO_API_KEY,
     youtube: !!process.env.YOUTUBE_API_KEY,
   };
+  // Optional external tools shown in the sidebar (e.g. a self-hosted photo editor)
+  brand.links = {
+    photo_editor: /^https?:\/\//.test(process.env.PHOTO_EDITOR_URL || "") ? process.env.PHOTO_EDITOR_URL : "",
+  };
   res.json(brand);
 });
 
