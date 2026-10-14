@@ -107,6 +107,13 @@ ok(!items[2].owner_user, "stale resurrected item not stamped");
 ok(items[3].owner_user === "u9", "existing owner kept");
 ok(items[4].owner_user === "u1", "new item without date stamped");
 
+// Owner view hides team items
+ok(U.isListRoute("GET", "/ugc/avatars") && U.isListRoute("GET", "/designer/ref-library"), "list routes recognised");
+ok(!U.isListRoute("POST", "/ugc/avatars/upload") && !U.isListRoute("GET", "/settings"), "other routes are not list routes");
+const ov = U.ownerView([{ id: "a" }, { id: "b", owner_user: "u1" }]);
+ok(ov.length === 1 && ov[0].id === "a", "owner view drops team items");
+ok(U.ownerView({ x: 1 }).x === 1, "owner view leaves objects alone");
+
 // Login limiter
 const lim = U.createLoginLimiter({ max: 3, windowMs: 1000 });
 for (let i = 0; i < 3; i++) lim.fail("ip", 0);

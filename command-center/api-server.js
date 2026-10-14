@@ -320,6 +320,11 @@ function userOwnsMedia(userId, reqPath) {
 }
 app.use((req, res, next) => {
   const user = req.ccUser;
+  if (!user && !req.path.endsWith(".html") && ccUsers.isListRoute(req.method, req.path) && req.query.owner !== "all") {
+    const json = res.json.bind(res);
+    res.json = body => json(ccUsers.ownerView(body));
+    return next();
+  }
   if (!user || req.path.startsWith("/auth/") || req.path === "/api/setup-status") return next();
   const tools = user.tools || [];
   const p = req.path;

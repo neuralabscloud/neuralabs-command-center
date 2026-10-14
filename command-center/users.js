@@ -249,8 +249,16 @@ function createLoginLimiter({ max = 10, windowMs = 15 * 60 * 1000 } = {}) {
   };
 }
 
+// The owner's lists hide what team members made (their own galleries stay clean).
+function isListRoute(method, p) {
+  return routeRule(method, p, ANY).kind === "list";
+}
+function ownerView(items) {
+  return Array.isArray(items) ? items.filter(t => !(t && t.owner_user)) : items;
+}
+
 module.exports = {
   TOOLS, hashPassword, verifyPassword, normUsername, validUsername, validPassword, cleanTools,
   createStore, publicUser, routeRule, pageFor, isOwnedBy, collectPaths, stampNew,
-  tokenUserId, tokenTime, createLoginLimiter,
+  tokenUserId, tokenTime, createLoginLimiter, isListRoute, ownerView,
 };
