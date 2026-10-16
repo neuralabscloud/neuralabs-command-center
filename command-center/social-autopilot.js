@@ -386,6 +386,7 @@ function createAutopilot(deps) {
     const tool = {
       name: "submit_post",
       description: "Submit the chosen candidate and the original post written about it.",
+      strict: true,
       input_schema: {
         type: "object",
         properties: {
@@ -396,6 +397,7 @@ function createAutopilot(deps) {
           reason: { type: "string", description: "One sentence: why this candidate." },
         },
         required: ["choice", "post_text", "image_prompt", "image_headline", "reason"],
+        additionalProperties: false,
       },
     };
     const content = [{
@@ -403,7 +405,7 @@ function createAutopilot(deps) {
       text: `You write posts for an X account. Voice: ${voice}
 ${brandKnowledge(channel)}
 
-Below are ${candidates.length} recent posts that are performing well on X. Pick the ONE best suited to inspire our next post, then write an ORIGINAL post in ${cfg.language} about the same subject.
+Below are ${candidates.length} recent posts that are performing well on X. Pick the ONE best suited to inspire our next post, then write an ORIGINAL post in ${cfg.language} about the same subject. Always answer by calling the submit_post tool (choice -1 if none fit).
 
 Rules for the post:
 - Your own words and angle. Never copy phrases from the candidate. Never mention or tag its author. No links.
@@ -430,12 +432,21 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
 
     const messages = [{ role: "user", content }];
     for (let attempt = 0; attempt < 2; attempt++) {
+      // Geforceerde tool_choice ("tool"/"any") geeft een 400 op claude-sonnet-5-5 en nieuwer:
+      // auto + strict schema, en bij een antwoord zonder tool-call één keer aansporen.
       const msg = await anthropic.messages.create({
-        model: MODEL, max_tokens: 1500, tools: [tool],
-        tool_choice: { type: "tool", name: "submit_post" }, messages,
+        model: MODEL, max_tokens: 8000, tools: [tool],
+        tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages,
       });
       const use = msg.content.find(b => b.type === "tool_use");
-      if (!use) throw new Error("Claude returned no post");
+      if (!use) {
+        if (attempt === 0 && msg.stop_reason !== "refusal") {
+          messages.push({ role: "assistant", content: msg.content });
+          messages.push({ role: "user", content: "Answer only by calling the submit_post tool." });
+          continue;
+        }
+        throw new Error("Claude returned no post");
+      }
       const out = use.input || {};
       if (!(out.choice >= 0 && out.choice < candidates.length)) {
         const err = new Error(`No suitable candidate: ${out.reason || "all rejected"}`);
