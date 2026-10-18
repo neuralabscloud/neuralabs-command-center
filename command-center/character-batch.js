@@ -459,6 +459,7 @@ function telegramSummary(m, origin = "") {
     head, "", ...rows,
     fails.length ? "\n<b>Failures</b>\n" + fails.join("\n") : "",
     m.stopped ? `\n⚠️ ${escTg(m.stopped)}` : "",
+    m.buffer ? `\n📅 Buffer: ${m.buffer.scheduled} post(s) scheduled at ${escTg(m.buffer.time)}${m.buffer.errors?.length ? ` · ${m.buffer.errors.length} error(s)` : ""}` : "",
     `\n💰 Total cost: $${cost.usd.toFixed(2)}${cost.priced ? "" : " (+ items without a rate)"}`,
   ].filter(Boolean).join("\n").slice(0, 4000);
 }

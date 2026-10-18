@@ -250,6 +250,27 @@ app.post("/opusclip/webhook", (req, res) => {
   setImmediate(() => processOpusclipTasks().catch(e => console.error("[OPUSCLIP] Webhook-triggered run failed:", e.message)));
 });
 
+// Public, signed video links for schedulers that fetch media by URL (Buffer).
+// /share/video/<sig>/<file>: sig = HMAC(session secret, file), so only files
+// we hand out a link for can be fetched; everything else in video-outputs
+// stays behind the login.
+function shareVideoSig(file) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update("share-video:" + file).digest("hex").slice(0, 32);
+}
+function shareVideoPath(localUrl) {
+  const m = String(localUrl || "").match(/^\/video-outputs\/([\w.-]+)$/);
+  return m ? `/share/video/${shareVideoSig(m[1])}/${m[1]}` : null;
+}
+app.get("/share/video/:sig/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^\w.-]/g, "");
+  const sig = String(req.params.sig);
+  let ok = false;
+  try { ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(shareVideoSig(file))); } catch { /* length mismatch */ }
+  const p = path.join(__dirname, "data", "video-outputs", file);
+  if (!ok || !file || !fs.existsSync(p)) return res.status(404).end();
+  res.sendFile(p);
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -9081,8 +9102,10 @@ app.delete("/growth/reports/:id", (req, res) => {
 // Nano Banana engine renders a 9:16 start frame per day (face + rotating outfit
 // from the reference library) → Seedance 2.5 on Higgsfield turns every frame
 // into a clip. Manifest in data/character-batches.json + one JSON per batch in
-// data/character-batches/. Nothing is posted anywhere: publishing stays manual.
+// data/character-batches/. With payload.buffer.enabled the finished clips are
+// scheduled in Buffer (charBatchToBuffer); nothing is posted otherwise.
 const charBatch = require("./character-batch");
+const buffer = require("./buffer");
 const CHAR_BATCH_FILE = "character-batches.json";
 const CHAR_BATCH_DIR = path.join(__dirname, "data", "character-batches");
 let charBatchRun = null;
@@ -9410,6 +9433,10 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
         m.stopped = `Higgsfield balance too low: no video for slot ${missing.join(", ")}. No other model was used.`;
       }
       m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
+      if (buffer.configOf(payload).enabled) {
+        charBatchRun.stage = "buffer";
+        await charBatchToBuffer(m, buffer.configOf(payload)).catch(e => charLog(m, `Buffer failed: ${e.message}`));
+      }
       return m;
     });
   } catch (e) {
@@ -9434,6 +9461,65 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
     charBatchRun = null;
   }
 }
+
+// Schedule every finished clip of a batch in Buffer: one custom-scheduled post
+// per channel on the clip's own day at cfg.time (batch time zone). Idempotent:
+// post ids are kept per slot under s.buffer[channelId]; a clip that is already
+// scheduled, or whose moment has passed, is left alone.
+async function charBatchToBuffer(m, cfg) {
+  if (!buffer.apiKey()) throw new Error("BUFFER_API_KEY is not set");
+  if (!cfg.channels.length) throw new Error("no Buffer channels configured (payload.buffer.channels)");
+  const origin = knownPublicOrigin();
+  if (!origin) throw new Error("No public address known: set PUBLIC_BASE_URL in .env so Buffer can fetch the videos");
+  const { channels } = await buffer.channels();
+  const byId = new Map(channels.map(c => [c.id, c]));
+  const res = { scheduled: 0, kept: 0, skipped: 0, errors: [] };
+  for (const s of m.slots) {
+    if (s.status !== "done" || !s.video_url) continue;
+    const share = shareVideoPath(s.video_url);
+    if (!share) { res.errors.push(`slot ${s.slot}: video is not stored locally`); continue; }
+    const due = buffer.zonedTime(s.date, cfg.time, m.tz || TIMEZONE);
+    s.buffer = s.buffer || {};
+    for (const id of cfg.channels) {
+      const ch = byId.get(id);
+      if (s.buffer[id]?.post_id) { res.kept++; continue; }
+      if (!ch || ch.isDisconnected || ch.isLocked) { res.errors.push(`slot ${s.slot}: channel ${id} not available`); continue; }
+      if (due.getTime() < Date.now() + 5 * 60000) { s.buffer[id] = { status: "skipped_past", due_at: due.toISOString() }; res.skipped++; continue; }
+      try {
+        const post = await buffer.createPost(buffer.postInput({ channelId: id, service: ch.service, slot: s, videoUrl: origin + share, dueAt: due }));
+        s.buffer[id] = { post_id: post.id, service: ch.service, channel: ch.displayName || ch.name, due_at: post.dueAt || due.toISOString(), status: post.status || "scheduled" };
+        res.scheduled++;
+      } catch (e) {
+        s.buffer[id] = { status: "failed", error: e.message.slice(0, 300), due_at: due.toISOString() };
+        res.errors.push(`slot ${s.slot} ${ch.service}: ${e.message.slice(0, 160)}`);
+      }
+      saveCharBatchManifest(m);
+    }
+  }
+  m.buffer = { ...res, time: cfg.time, channels: cfg.channels, at: new Date().toISOString() };
+  saveCharBatchManifest(m);
+  charLog(m, `Buffer: ${res.scheduled} scheduled, ${res.kept} already there, ${res.skipped} in the past, ${res.errors.length} error(s)`);
+  return m.buffer;
+}
+
+app.get("/buffer/channels", async (_req, res) => {
+  try { res.json(await buffer.channels()); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+// Schedule (or re-try) a finished batch in Buffer. Body: { channels?, time? };
+// defaults come from the schedule payload the batch was made with.
+app.post("/character-batch/:id/buffer", async (req, res) => {
+  const name = path.basename(String(req.params.id)).replace(/[^\w.-]/g, "");
+  const file = path.join(CHAR_BATCH_DIR, name + ".json");
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
+  const m = JSON.parse(fs.readFileSync(file, "utf8"));
+  const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.id === m.schedule_id);
+  const base = buffer.configOf((sched && sched.payload) || {});
+  const cfg = buffer.configOf({ buffer: { enabled: true, channels: req.body?.channels || base.channels, time: req.body?.time || base.time } });
+  try { res.json({ ok: true, buffer: await charBatchToBuffer(m, cfg), slots: m.slots.map(s => ({ slot: s.slot, date: s.date, buffer: s.buffer || null })) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 
 async function deliverCharBatchToTelegram(m) {
   if (!TG_TOKEN || !TG_CHAT) return;

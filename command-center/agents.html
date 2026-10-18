@@ -525,7 +525,7 @@ const AGENT_DESCRIPTIONS = {
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
   ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
   edu_designer: 'Scouts X, Instagram, TikTok and the web for educational trading and crypto posts (term lists, cheat sheets, step by step), extracts the lesson and designs it in your house style without any logos. Delivers the image plus a ready-to-post caption on the Designer page and via Telegram.',
-  character_video_batch: 'Once a week: Claude writes 7 cinematic concepts (one per day of the coming week) for one recurring character, the Designer renders a 9:16 start frame per day (face + rotating outfit from the reference library) and Seedance 2.5 turns each frame into an 8 s clip with music and sound effects. Stills land in the Designer gallery, videos in Content Creator, a summary goes to Telegram. Nothing is posted.',
+  character_video_batch: 'Once a week: Claude writes 7 cinematic concepts (one per day of the coming week) for one recurring character, the Designer renders a 9:16 start frame per day (face + rotating outfit from the reference library) and Seedance 2.5 turns each frame into an 8 s clip with music and sound effects. Stills land in the Designer gallery, videos in Content Creator, a summary goes to Telegram. With a buffer block in the configuration every clip is scheduled in Buffer on its own day; otherwise nothing is posted.',
   growth_marketeer: 'Acts as your growth marketer: researches your product online, competitors, gaps in the market and buzz opportunities, then delivers a report with concrete growth ideas (newsletter, ads, UGC, community actions and more) on the Marketing page.',
 };
 
@@ -562,7 +562,9 @@ function buildScheduleSummary(s) {
     }
     case 'character_video_batch': {
       const n = (p.outfits || []).length;
-      return `${escHtml((p.character && p.character.name) || 'character')} · ${n} outfit${n === 1 ? '' : 's'} · Seedance 2.5 ${escHtml(p.resolution || '720p')} · stills in the <a href="designer.html" style="color:inherit">Designer</a>, videos in <a href="content-creator.html" style="color:inherit">Content Creator</a>`;
+      const bf = p.buffer && (p.buffer.enabled === true || p.buffer.enabled === 'true')
+        ? ` · Buffer: ${(p.buffer.channels || []).length} channel${(p.buffer.channels || []).length === 1 ? '' : 's'} at ${escHtml(p.buffer.time || '18:00')}` : ' · Buffer off';
+      return `${escHtml((p.character && p.character.name) || 'character')} · ${n} outfit${n === 1 ? '' : 's'} · Seedance 2.5 ${escHtml(p.resolution || '720p')} · stills in the <a href="designer.html" style="color:inherit">Designer</a>, videos in <a href="content-creator.html" style="color:inherit">Content Creator</a>${bf}`;
     }
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
@@ -704,6 +706,7 @@ const PAYLOAD_FIELDS = {
         <li><code>batch_prefix</code>, <code>title</code>, <code>character</code> {name, description, face}, <code>style</code>, <code>forbidden_names</code></li>
         <li><code>face_ref</code> and <code>outfits</code> [{ref, label, description}]: ids from the Designer reference library</li>
         <li>Optional: <code>resolution</code> (720p default, 1080p), <code>context</code>, <code>rules</code> (override fixed sentences)</li>
+        <li>Optional: <code>buffer</code> {enabled, channels: [Buffer channel ids], time: "18:00"}: schedules every finished clip in Buffer on its own day (needs <code>BUFFER_API_KEY</code>; ids via <code>GET /buffer/channels</code>)</li>
       </ul>
     </div>
     <textarea class="sched-input" id="sp-config" rows="14" style="width:100%;font-family:monospace;font-size:11px" placeholder='{"batch_prefix":"hero","character":{"name":"...","face":"..."},"face_ref":"","outfits":[]}'></textarea>
