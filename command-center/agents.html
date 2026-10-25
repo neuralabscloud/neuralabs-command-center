@@ -604,6 +604,7 @@ async function loadSchedules() {
           <div class="sched-last">Last run: ${lastRun}</div>${runBtns}
         </div>`;
     }).join('');
+    scheds.filter(s => s.agent === 'character_video_batch').forEach(s => pollCharBatch(s.id));
   } catch { document.getElementById('sched-grid').innerHTML = ''; }
 }
 
@@ -686,9 +687,24 @@ async function pollCharBatch(id) {
       return setTimeout(() => pollCharBatch(id), 10000);
     }
     const all = await fetch('/character-batch').then(r => r.json());
-    const m = (all.batches || [])[0];
-    if (m) st.textContent = `${m.batch_id}: ${m.status} · ${(m.slots || []).filter(x => x.status === 'done').length} video(s) · $${(m.total_cost?.usd || 0).toFixed(2)}`;
+    const m = (all.batches || []).find(b => b.schedule_id === id) || (all.batches || [])[0];
+    if (!m) return;
+    const missing = (m.slots || []).filter(x => x.status === 'skipped_balance').length;
+    st.innerHTML = `${escHtml(m.batch_id)}: ${escHtml(m.status)} · ${(m.slots || []).filter(x => x.status === 'done').length} video(s) · $${(m.total_cost?.usd || 0).toFixed(2)}`
+      + (missing ? ` · <span style="color:hsl(45 93% 55%)">${missing} waiting for balance</span> <button class="sched-btn" style="margin-left:6px" onclick="retryCharBatch('${escHtml(m.batch_id)}','${id}',this)">↻ Retry missing videos</button>` : '');
   } catch {}
+}
+
+// Retry the videos a batch skipped because the Higgsfield balance was too low.
+async function retryCharBatch(batchId, schedId, btn) {
+  if (!confirm('Generate the missing videos of ' + batchId + ' now? (paid)')) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/character-batch/' + encodeURIComponent(batchId) + '/retry', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.status);
+    pollCharBatch(schedId);
+  } catch (e) { btn.disabled = false; alert('Retry failed: ' + e.message); }
 }
 
 async function deleteSchedule(id) {

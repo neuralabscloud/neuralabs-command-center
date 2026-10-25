@@ -9407,31 +9407,8 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
         throw Object.assign(new Error(m.stopped), { handled: true });
       }
 
-      // Step C: videos, submitted in slot order, polled side by side.
-      charBatchRun.stage = "videos";
-      const wantedSlots = m.slots.filter(s => s.status === "still_done").map(s => s.slot);
-      const { stills, fallback } = charBatchStillsFor(id, wantedSlots);
-      if (fallback) { m.still_fallback = true; charLog(m, "no tagged stills found, falling back to the newest designer stills"); }
-      const running = [];
-      let balanceHit = null;
-      for (const s of m.slots) {
-        if (s.status !== "still_done") continue;
-        if (balanceHit) { s.status = "skipped_balance"; continue; }
-        const still = stills.get(s.slot);
-        if (!still) { s.status = "video_failed"; s.error = "no still found for this slot"; continue; }
-        // Submit this one before moving to the next slot, so the order holds.
-        await new Promise((submitted) => {
-          const p = charBatchVideo(m, s, still, { ...payload, onSubmitted: submitted })
-            .catch(e => { if (e.balance) balanceHit = e; })
-            .finally(() => { submitted(); saveCharBatchManifest(m); });
-          running.push(p);
-        });
-      }
-      await Promise.all(running);
-      if (balanceHit) {
-        const missing = m.slots.filter(s => s.status === "skipped_balance").map(s => s.slot);
-        m.stopped = `Higgsfield balance too low: no video for slot ${missing.join(", ")}. No other model was used.`;
-      }
+      // Step C: videos (waits for the Higgsfield top-up when the balance runs out).
+      await charBatchVideosWithRetry(m, payload);
       m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
       if (buffer.configOf(payload).enabled) {
         charBatchRun.stage = "buffer";
@@ -9445,21 +9422,117 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
     if (!e.handled) charLog(m, `failed: ${e.message}`);
     return m;
   } finally {
-    // inference.sh costs are looked up asynchronously; give them a moment.
-    if (!dryRun) await new Promise(r => setTimeout(r, 8000));
-    const costs = apiUsage.taskCosts([id, ...m.slots.flatMap(s => [s.still_task_id, s.video_task_id]).filter(Boolean)]);
-    m.concepts_cost = costs[id] || null;
-    for (const s of m.slots) {
-      s.still_cost = costs[s.still_task_id] || null;
-      s.video_cost = costs[s.video_task_id] || null;
-      s.cost_usd = Math.round(((s.still_cost?.usd || 0) + (s.video_cost?.usd || 0)) * 100) / 100;
-    }
-    m.total_cost = charBatch.totalCost(m);
-    m.finished_at = new Date().toISOString();
-    saveCharBatchManifest(m);
-    charLog(m, `finished: ${m.status} · ${m.slots.filter(s => s.status === "done").length} video(s) · $${m.total_cost.usd.toFixed(2)}`);
-    charBatchRun = null;
+    await charBatchFinalize(m, dryRun);
   }
+}
+
+// Costs, timestamps and the closing log line; shared by a run and a retry.
+async function charBatchFinalize(m, dryRun = false) {
+  // inference.sh costs are looked up asynchronously; give them a moment.
+  if (!dryRun) await new Promise(r => setTimeout(r, 8000));
+  const id = m.batch_id;
+  const costs = apiUsage.taskCosts([id, ...m.slots.flatMap(s => [s.still_task_id, s.video_task_id]).filter(Boolean)]);
+  m.concepts_cost = costs[id] || null;
+  for (const s of m.slots) {
+    s.still_cost = costs[s.still_task_id] || null;
+    s.video_cost = costs[s.video_task_id] || null;
+    s.cost_usd = Math.round(((s.still_cost?.usd || 0) + (s.video_cost?.usd || 0)) * 100) / 100;
+  }
+  m.total_cost = charBatch.totalCost(m);
+  m.finished_at = new Date().toISOString();
+  saveCharBatchManifest(m);
+  charLog(m, `finished: ${m.status} · ${m.slots.filter(s => s.status === "done").length} video(s) · $${m.total_cost.usd.toFixed(2)}`);
+  charBatchRun = null;
+}
+
+// One round of videos for every slot that has a still and no video yet
+// (status still_done), submitted in slot order, polled side by side.
+// Returns true when Higgsfield said the balance is too low.
+async function charBatchVideos(m, payload) {
+  const wantedSlots = m.slots.filter(s => s.status === "still_done").map(s => s.slot);
+  if (!wantedSlots.length) return false;
+  const { stills, fallback } = charBatchStillsFor(m.batch_id, wantedSlots);
+  if (fallback) { m.still_fallback = true; charLog(m, "no tagged stills found, falling back to the newest designer stills"); }
+  const running = [];
+  let balanceHit = null;
+  for (const s of m.slots) {
+    if (s.status !== "still_done") continue;
+    if (balanceHit) { s.status = "skipped_balance"; continue; }
+    const still = stills.get(s.slot);
+    if (!still) { s.status = "video_failed"; s.error = "no still found for this slot"; continue; }
+    // Submit this one before moving to the next slot, so the order holds.
+    await new Promise((submitted) => {
+      const p = charBatchVideo(m, s, still, { ...payload, onSubmitted: submitted })
+        .catch(e => { if (e.balance) balanceHit = e; })
+        .finally(() => { submitted(); saveCharBatchManifest(m); });
+      running.push(p);
+    });
+  }
+  await Promise.all(running);
+  return !!balanceHit;
+}
+
+// Higgsfield's auto top-up lands a few minutes after the balance runs dry, so
+// a "balance too low" is not the end: wait, then retry only the missing slots,
+// until balance_retry_max_min is used up. No other model is ever used.
+async function charBatchVideosWithRetry(m, payload) {
+  const { everyMs, maxMs, rounds } = charBatch.balanceRetry(payload);
+  if (charBatchRun) charBatchRun.stage = "videos";
+  for (let round = 0; ; round++) {
+    const hit = await charBatchVideos(m, payload);
+    const missing = m.slots.filter(s => s.status === "skipped_balance").map(s => s.slot);
+    if (!hit || !missing.length) { m.stopped = null; m.balance_wait = null; return; }
+    if (round >= rounds) {
+      m.balance_wait = null;
+      m.stopped = `Higgsfield balance too low: no video for slot ${missing.join(", ")}`
+        + (rounds ? ` (still too low after ${rounds} retr${rounds === 1 ? "y" : "ies"} over ${Math.round(maxMs / 60000)} min)` : "")
+        + ". No other model was used.";
+      return;
+    }
+    const at = new Date(Date.now() + everyMs).toISOString();
+    m.balance_wait = { round: round + 1, of: rounds, retry_at: at, slots: missing };
+    charLog(m, `Higgsfield balance too low for slot ${missing.join(", ")}; waiting for the auto top-up, retry ${round + 1}/${rounds} in ${Math.round(everyMs / 60000)} min`);
+    if (charBatchRun) charBatchRun.stage = `waiting for Higgsfield top-up (retry ${round + 1}/${rounds} at ${at.slice(11, 16)} UTC)`;
+    saveCharBatchManifest(m);
+    await new Promise(r => setTimeout(r, everyMs));
+    for (const s of m.slots) if (s.status === "skipped_balance") { s.status = "still_done"; s.error = null; }
+    if (charBatchRun) charBatchRun.stage = "videos";
+  }
+}
+
+// Finish the videos of an existing batch: slots that stopped on the balance
+// (and, with include_failed, slots whose video failed) get another round, with
+// the same top-up wait. Concepts and stills are reused, nothing is regenerated.
+async function retryCharacterBatch(batchId, { includeFailed = false } = {}) {
+  if (charBatchRun) throw new Error("A video batch is already running");
+  const file = path.join(CHAR_BATCH_DIR, batchId + ".json");
+  if (!fs.existsSync(file)) throw new Error("Batch not found");
+  const m = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (m.dry_run) throw new Error("A dry run has no stills to make videos from");
+  const redo = m.slots.filter(s => s.status === "skipped_balance" || (includeFailed && s.status === "video_failed" && s.still_task_id));
+  if (!redo.length) throw new Error("Nothing to retry in this batch");
+  const sched = readTaskFile("scheduled-tasks.json").find?.(s => s.id === m.schedule_id);
+  const payload = sched?.payload || {};
+  charBatchRun = { batch_id: m.batch_id, dry_run: false, started_at: new Date().toISOString(), stage: "videos", log: [], retry: true };
+  for (const s of redo) { s.status = "still_done"; s.error = null; }
+  m.status = "running";
+  charLog(m, `retry: video for slot ${redo.map(s => s.slot).join(", ")}`);
+  try {
+    await apiUsage.tag("Weekly video batch", async () => {
+      await charBatchVideosWithRetry(m, payload);
+      m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
+      if (buffer.configOf(payload).enabled) {
+        charBatchRun.stage = "buffer";
+        await charBatchToBuffer(m, buffer.configOf(payload)).catch(e => charLog(m, `Buffer failed: ${e.message}`));
+      }
+    });
+  } catch (e) {
+    m.status = "partial";
+    charLog(m, `retry failed: ${e.message}`);
+  } finally {
+    await charBatchFinalize(m);
+  }
+  return { m, payload };
 }
 
 // Schedule every finished clip of a batch in Buffer: one custom-scheduled post
@@ -9575,6 +9648,22 @@ app.post("/character-batch/run", async (req, res) => {
   if (dryRun) return res.json(await job);
   job.then(m => notify && deliverCharBatchToTelegram(m)).catch(e => console.error(`[CHAR-BATCH] Manual run failed: ${e.message}`));
   res.json({ ok: true, started: true, schedule: sched.name });
+});
+
+// Finish an existing batch: { include_failed? }. Answers at once, reports via Telegram.
+app.post("/character-batch/:id/retry", (req, res) => {
+  if (charBatchRun) return res.status(409).json({ error: "Already running", running: charBatchRun });
+  const id = path.basename(String(req.params.id)).replace(/[^\w.-]/g, "");
+  const includeFailed = req.body?.include_failed === true || req.body?.include_failed === "true";
+  const file = path.join(CHAR_BATCH_DIR, id + ".json");
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Not found" });
+  const m = JSON.parse(fs.readFileSync(file, "utf8"));
+  const n = (m.slots || []).filter(s => s.status === "skipped_balance" || (includeFailed && s.status === "video_failed" && s.still_task_id)).length;
+  if (!n) return res.status(400).json({ error: "Nothing to retry in this batch" });
+  retryCharacterBatch(id, { includeFailed })
+    .then(({ m, payload }) => payload.notify !== "false" && deliverCharBatchToTelegram(m))
+    .catch(e => console.error(`[CHAR-BATCH] Retry failed: ${e.message}`));
+  res.json({ ok: true, started: true, slots: n });
 });
 
 // ── UGC AUTOPILOT: Marketeer writes, Content Creator renders ────────

@@ -133,6 +133,16 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   try { await cb.withBackoff(async () => { throw new Error("timeout"); }, { tries: 3, base: 100, sleep: async (ms) => waits.push(ms), onRetry: () => {} }); } catch {}
   check("backoff doubles", waits.join(",") === "100,200");
 
+  // ── wachten op de Higgsfield-top-up ──
+  const br = cb.balanceRetry({});
+  check("balance retry default: elke 10 min, max 60 min", br.everyMs === 600000 && br.maxMs === 3600000 && br.rounds === 6);
+  const br2 = cb.balanceRetry({ balance_retry_every_min: "5", balance_retry_max_min: "30" });
+  check("balance retry leest de payload (ook als tekst)", br2.everyMs === 300000 && br2.rounds === 6);
+  check("balance retry 0 = uit", cb.balanceRetry({ balance_retry_max_min: 0 }).rounds === 0);
+  check("balance retry negeert onzin", cb.balanceRetry({ balance_retry_every_min: "x", balance_retry_max_min: -5 }).rounds === 6);
+  check("balance retry interval nooit onder 1 min", cb.balanceRetry({ balance_retry_every_min: 0 }).everyMs === 60000);
+  check("Higgsfield-saldofout wordt herkend", cb.isInsufficientBalance('Higgsfield reported "failed": Your credit balance is too low to complete this request. Please top up your balance and try again'));
+
   // ── manifest + telegram ──
   const m = {
     batch_id: "nova-2026-W42", title: "Weekly character batch", week_start: "2026-10-12", week_end: "2026-10-18",

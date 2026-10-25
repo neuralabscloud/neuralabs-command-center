@@ -409,6 +409,16 @@ function isTransient(msg) {
   return /\b(408|425|429|500|502|503|504)\b|timeout|timed out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|fetch failed|socket hang up|rate.?limit|temporar|overloaded|try again/i.test(String(msg || ""));
 }
 
+// Higgsfield tops itself up automatically, but not instantly: a batch that hits
+// "balance too low" waits and retries the missing videos. Payload knobs (minutes):
+// balance_retry_every_min (default 10), balance_retry_max_min (default 60, 0 = off).
+function balanceRetry(payload = {}) {
+  const num = (v, d) => { const n = Number(v); return v === undefined || v === null || v === "" || !Number.isFinite(n) || n < 0 ? d : n; };
+  const every = Math.max(1, num(payload.balance_retry_every_min, 10));
+  const max = num(payload.balance_retry_max_min, 60);
+  return { everyMs: every * 60000, maxMs: max * 60000, rounds: max > 0 ? Math.floor(max / every) : 0 };
+}
+
 // Retry an async function on transient errors with exponential backoff.
 async function withBackoff(fn, { tries = 3, base = 5000, sleep = (ms) => new Promise(r => setTimeout(r, ms)), onRetry } = {}) {
   let last;
@@ -471,6 +481,6 @@ module.exports = {
   stripDashes, normalizeHashtags, words,
   systemPrompt, userPrompt, neutralRewritePrompt, textOf, extractJson,
   devicesOf, buildStillPrompt, buildVideoPrompt, buildCaption, normalizeConcept, validateConcepts,
-  isInsufficientBalance, isModeration, isTransient, withBackoff,
+  isInsufficientBalance, isModeration, isTransient, withBackoff, balanceRetry,
   totalCost, telegramSummary,
 };

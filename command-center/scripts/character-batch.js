@@ -5,6 +5,7 @@
 //   node scripts/character-batch.js --slots 1,3     only these days (1 = Monday)
 //   node scripts/character-batch.js --schedule <id> pick a schedule (default: the first)
 //   node scripts/character-batch.js --no-wait       start and exit, result comes via Telegram
+//   node scripts/character-batch.js --retry <batch> retry the videos skipped for low balance
 const fs = require("fs");
 const path = require("path");
 
@@ -53,10 +54,16 @@ function printManifest(m) {
 }
 
 (async () => {
-  console.log(`Video batch ${body.dry_run ? "(dry run) " : ""}starting…`);
-  const r = await api("POST", "/character-batch/run", body);
-  if (body.dry_run) return printManifest(r);
-  console.log(`Started (${r.schedule}).`);
+  let r;
+  if (val("--retry")) {
+    r = await api("POST", `/character-batch/${encodeURIComponent(val("--retry"))}/retry`, { include_failed: flag("--include-failed") });
+    console.log(`Retry started for ${r.slots} video(s).`);
+  } else {
+    console.log(`Video batch ${body.dry_run ? "(dry run) " : ""}starting…`);
+    r = await api("POST", "/character-batch/run", body);
+    if (body.dry_run) return printManifest(r);
+    console.log(`Started (${r.schedule}).`);
+  }
   if (flag("--no-wait")) return console.log("Result follows via Telegram.");
   let seen = 0, batchId = null;
   for (;;) {
