@@ -75,7 +75,7 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   check("laptop detected from the text", cb.normalizeConcept(raw(0, { devices: [], still_scene: "He sits at a laptop in a cafe." }), 0, ctx).devices.includes("laptop"));
   check("video prompt opener", c.video_prompt.startsWith("Cinematic but realistic footage, slow push-in, blue hour neon, subtle film grain."));
   check("video prompt beats in order", /0 to 2 s:.*2 to 5 s:.*5 to 8 s:/.test(c.video_prompt));
-  check("objects sentence", c.video_prompt.includes("Only the objects already in the scene exist."));
+  check("objects sentence", c.video_prompt.includes("Only the objects already in the scene exist; light, hologram and energy effects may grow out of them."));
   check("no-text line without onscreen text", c.video_prompt.includes(r.no_text));
   check("audio line last", c.video_prompt.endsWith(r.audio.replace("{music}", "deep electronic pulse").replace("{sfx}", "wind, distant traffic")));
   const t = cb.normalizeConcept(raw(0, { onscreen_text: "risk first — always" }), 0, ctx);
