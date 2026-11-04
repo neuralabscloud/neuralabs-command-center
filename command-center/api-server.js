@@ -68,6 +68,11 @@ const {
 } = require("./browser-tools");
 
 const app = express();
+// Behind nginx on the same machine: take the client IP / https from the proxy
+// headers, but only when the request comes from loopback (cannot be spoofed
+// from outside). Without this every visitor was 127.0.0.1 and shared one
+// login rate limit.
+app.set("trust proxy", "loopback");
 
 // Keep the raw body around for HMAC verification of incoming webhooks
 // (OpusClip signs the exact bytes it sends).
@@ -179,7 +184,7 @@ app.post("/auth/login", (req, res) => {
     return res.status(401).json({ error: username ? "Incorrect username or password" : "Incorrect password" });
   }
   loginLimiter.reset(ip);
-  res.cookie("cc_session", token, { httpOnly: true, sameSite: "lax", maxAge: 7 * 24 * 60 * 60 * 1000 });
+  res.cookie("cc_session", token, { httpOnly: true, sameSite: "lax", secure: req.secure, maxAge: 7 * 24 * 60 * 60 * 1000 });
   res.json({ ok: true });
 });
 
@@ -396,7 +401,13 @@ app.use((req, res, next) => {
 });
 
 // Serve all static files (HTML, JS, CSS) — protected by auth middleware above
-app.use(express.static(__dirname));
+// The app folder itself holds code, .env-adjacent config, data/ and logs/:
+// only the HTML pages and /public/ are served from it.
+const rootStatic = express.static(__dirname);
+app.use((req, res, next) => {
+  if (/^\/(?:[\w-]+\.html)?$/.test(req.path) || req.path.startsWith("/public/")) return rootStatic(req, res, next);
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 // ── TEAM USERS (owner only; the gate above keeps team users out) ──
@@ -451,9 +462,15 @@ function readEnvFile() {
 function writeEnvFile(updates) {
   let content = "";
   try { content = fs.readFileSync(ENV_PATH, "utf8"); } catch {}
+  // Values are single-line: a newline in a pasted value could otherwise add
+  // extra variables (e.g. overwrite CC_PASSWORD) to .env.
+  for (const k of Object.keys(updates)) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(k)) throw new Error("Invalid env key: " + k);
+    updates[k] = String(updates[k] ?? "").replace(/[\r\n]/g, "").trim();
+  }
   for (const [key, val] of Object.entries(updates)) {
     const re = new RegExp(`^${key}=.*$`, "m");
-    if (re.test(content)) content = content.replace(re, `${key}=${val}`);
+    if (re.test(content)) content = content.replace(re, () => `${key}=${val}`);
     else content += `\n${key}=${val}`;
   }
   fs.writeFileSync(ENV_PATH, content.trim() + "\n", { mode: 0o600 });
@@ -2392,7 +2409,31 @@ function ytDlpBin() {
   }
   return "";
 }
-function downloadLinkedVideo(link, baseName) {
+// SSRF-rem voor links die de gebruiker opgeeft: alleen http(s) naar een publiek
+// adres. Blokkeert localhost, privé-netten, link-local (cloud metadata) en CGNAT/tailscale.
+function isPrivateIp(ip) {
+  const net = require("net");
+  if (net.isIPv6(ip)) {
+    const v = ip.toLowerCase();
+    const m = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (m) return isPrivateIp(m[1]);
+    return v === "::" || v === "::1" || /^f[cd]/.test(v) || /^fe[89ab]/.test(v);
+  }
+  const [a, b] = ip.split(".").map(Number);
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+}
+async function assertPublicUrl(link) {
+  let u;
+  try { u = new URL(link); } catch { throw new Error("Invalid link."); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error("The video link must start with http:// or https://");
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  const addrs = await require("dns").promises.lookup(host, { all: true }).catch(() => []);
+  if (!addrs.length) throw new Error("The link's host could not be resolved.");
+  if (addrs.some(a => isPrivateIp(a.address))) throw new Error("Links to local or private network addresses are not allowed.");
+}
+async function downloadLinkedVideo(link, baseName) {
+  await assertPublicUrl(link);
   return new Promise((resolve, reject) => {
     const bin = ytDlpBin();
     if (!bin) return reject(new Error("yt-dlp is not installed on the server (run update.sh), so links can't be fetched. Upload the file instead."));
@@ -3618,6 +3659,10 @@ app.get("/settings/integrations", (_req, res) => {
     ],
   });
 
+  // Secrets never leave the server in full: only a short prefix/suffix for recognition.
+  for (const int of integrations) for (const d of int.details || []) {
+    if (d.secret && d.value) { const v = String(d.value); d.value = v.length > 14 ? v.slice(0, 6) + "…" + v.slice(-4) : "••••"; }
+  }
   res.json({ integrations });
 });
 
@@ -3850,7 +3895,7 @@ app.get("/social/meta/auth", (req, res) => {
   const redirect = process.env.META_REDIRECT_URI;
   if (!appId || !redirect) return res.status(400).send("META_APP_ID and META_REDIRECT_URI are not set — configure them in Settings.");
   const state = crypto.randomBytes(16).toString("hex");
-  res.cookie("meta_oauth_state", state, { httpOnly: true, maxAge: 600_000, sameSite: "lax" });
+  res.cookie("meta_oauth_state", state, { httpOnly: true, secure: req.secure, maxAge: 600_000, sameSite: "lax" });
   const scope = [
     "pages_show_list", "pages_read_engagement",
     "business_management",
@@ -3865,7 +3910,10 @@ app.get("/social/meta/auth", (req, res) => {
 app.get("/social/meta/callback", async (req, res) => {
   const { code, state, error, error_description } = req.query;
   if (error) return res.send(`<h2>Connect failed</h2><p>${error}: ${error_description || ""}</p><a href="/settings.html">Back</a>`);
-  if (state !== req.cookies?.meta_oauth_state) return res.status(400).send("Invalid state (CSRF)");
+  // Both must be present: with neither, undefined === undefined used to pass.
+  const expectedState = req.cookies?.meta_oauth_state;
+  if (!state || !expectedState || String(state) !== expectedState) return res.status(400).send("Invalid state (CSRF)");
+  res.clearCookie("meta_oauth_state");
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   const redirect = process.env.META_REDIRECT_URI;

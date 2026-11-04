@@ -461,8 +461,8 @@ function renderTasks(tasks) {
         }
       </div>
       <div class="task-body">
-        <div class="task-type">${typeLabels[t.design_type] || t.design_type}${t.custom_width && t.custom_height ? ' &middot; ' + t.custom_width + '&times;' + t.custom_height : (t.aspect_ratio ? ' &middot; ' + t.aspect_ratio : '')}${t.engine ? ' &middot; ' + t.engine : ''}</div>
-        <div class="task-desc">${t.description}</div>
+        <div class="task-type">${typeLabels[t.design_type] || escH(t.design_type)}${t.custom_width && t.custom_height ? ' &middot; ' + t.custom_width + '&times;' + t.custom_height : (t.aspect_ratio ? ' &middot; ' + escH(t.aspect_ratio) : '')}${t.engine ? ' &middot; ' + t.engine : ''}</div>
+        <div class="task-desc">${escH(t.description)}</div>
         <div class="task-footer">
           <span class="task-status-badge ${t.status}">${t.status}</span>
           <span class="task-time">${time}</span>
@@ -476,7 +476,7 @@ function renderTasks(tasks) {
           <button class="task-btn danger" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
         </div>
         ${t.engine === 'edu' ? eduExtras(t) : ''}
-        ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${t.error}</div>` : ''}
+        ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${escH(t.error)}</div>` : ''}
       </div>
     </div>`;
   }).join('');

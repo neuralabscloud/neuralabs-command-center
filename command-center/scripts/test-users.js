@@ -93,7 +93,7 @@ ok(r("GET", "/agents/overview") === "agents" && r("GET", "/system/health") === "
 
 // Ownership + media paths
 ok(U.isOwnedBy({ owner_user: "u1" }, "u1") && !U.isOwnedBy({}, "u1") && !U.isOwnedBy(null, "u1"), "isOwnedBy");
-const paths = U.collectPaths({ a: "/media/x.png?v=1", b: [{ c: "/video-outputs/y.mp4" }], d: "https://x", e: 3 });
+const paths = U.collectPaths({ result_url: "/media/x.png?v=1", clips: [{ local_path: "/video-outputs/y.mp4" }], url: "https://x", e: 3, description: "/media/owner.png" });
 ok(paths.has("/media/x.png") && paths.has("/video-outputs/y.mp4") && paths.size === 2, "collectPaths finds local paths");
 
 // Stamping

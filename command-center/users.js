@@ -204,15 +204,19 @@ function pageFor(p, tools) {
 
 function isOwnedBy(item, userId) { return !!item && item.owner_user === userId; }
 
-// Every local path ("/media/…") mentioned anywhere inside an item.
-function collectPaths(obj, out = new Set(), depth = 0) {
+// Every local path ("/media/…") inside an item's file fields. Only keys that
+// name a file/url count: free text (description, prompt, caption …) is typed by
+// the user, so "/media/<owner file>" there must not grant access to it.
+const PATH_KEY = /(url|path|thumb|thumbnail|file|image|video|audio|media|output|result|src|poster|preview|still|clip)s?$/i;
+const TEXT_KEY = /^(description|prompt|caption|notes?|title|name|script|text|error|hook|on_screen_hook|custom_prompt|hashtags|x_post|message|stage)$/i;
+function collectPaths(obj, out = new Set(), depth = 0, key = "") {
   if (depth > 6 || obj == null) return out;
   if (typeof obj === "string") {
-    if (obj.startsWith("/")) out.add(obj.split(/[?#]/)[0]);
+    if (key && PATH_KEY.test(key) && !TEXT_KEY.test(key) && obj.startsWith("/")) out.add(obj.split(/[?#]/)[0]);
     return out;
   }
-  if (Array.isArray(obj)) { for (const v of obj) collectPaths(v, out, depth + 1); return out; }
-  if (typeof obj === "object") for (const v of Object.values(obj)) collectPaths(v, out, depth + 1);
+  if (Array.isArray(obj)) { for (const v of obj) collectPaths(v, out, depth + 1, key); return out; }
+  if (typeof obj === "object") for (const [k, v] of Object.entries(obj)) collectPaths(v, out, depth + 1, k);
   return out;
 }
 
