@@ -822,7 +822,7 @@ app.get("/designer/tasks", (_req, res) => {
 const designerUpload = require("multer")({
   storage: require("multer").diskStorage({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
-    filename: (_req, file, cb) => cb(null, "ref-" + Date.now() + path.extname(file.originalname || ".png")),
+    filename: (_req, file, cb) => cb(null, "ref-" + Date.now() + safeExt(file.originalname, ".png")),
   }),
   limits: { fileSize: 50 * 1024 * 1024 },
 });
@@ -1643,7 +1643,7 @@ const aiVideoUpload = require("multer")({
   storage: require("multer").diskStorage({
     destination: path.join(__dirname, "data", "ai-video-uploads"),
     filename: (_req, file, cb) =>
-      cb(null, Date.now() + "-" + Math.random().toString(36).slice(2, 8) + path.extname(file.originalname || ".png")),
+      cb(null, Date.now() + "-" + Math.random().toString(36).slice(2, 8) + safeExt(file.originalname, ".png")),
   }),
   limits: { fileSize: VIDEO_UPLOAD_MAX_MB * 1024 * 1024 }, // a source video weighs a lot more than a reference image
 });
@@ -1751,12 +1751,19 @@ const SEEDANCE_PRIVACY_RE = /PrivacyInformation|may contain real person/i;
 // provider size limits (Kling caps at 10MB, Higgsfield only takes a handful of
 // content types). Falls back to the original file. Every file it creates is
 // appended to `created` so the caller can clean up afterwards.
+// Upload extension from the client: only letters/digits (max 5), else the fallback.
+function safeExt(name, fallback) {
+  const ext = path.extname(String(name || ""));
+  return /^\.[a-z0-9]{1,5}$/i.test(ext) ? ext : fallback;
+}
+
 function shrinkRefImages(paths, created) {
   return paths.filter((p) => fs.existsSync(p)).map((p) => {
     const out = p.replace(/\.\w+$/, "") + "-resized.jpg";
     try {
-      require("child_process").execSync(
-        `convert "${p}" -resize "1024x1024>" -quality 85 "${out}"`,
+      // execFileSync without a shell: a crafted filename can never run commands
+      require("child_process").execFileSync(
+        "convert", [p, "-resize", "1024x1024>", "-quality", "85", out],
         { timeout: 15000 }
       );
       created.push(out);
@@ -4657,7 +4664,7 @@ try {
       },
       filename: (req, file, cb) => {
         const assetType = req.params.type || "asset";
-        const ext = path.extname(file.originalname).toLowerCase();
+        const ext = safeExt(file.originalname, ".png").toLowerCase();
         cb(null, `${assetType}${ext}`);
       },
     }),
@@ -4745,7 +4752,7 @@ try {
       }
       if (!req.file) return res.status(400).json({ error: "No file received" });
       try {
-        const ext = path.extname(req.file.originalname) || "";
+        const ext = safeExt(req.file.originalname, "");
         const finalName = req.file.filename + ext;
         fs.renameSync(req.file.path, path.join(MEDIA_DIR, finalName));
         console.log(`[MEDIA] Uploaded ${req.file.originalname} → ${finalName} (${req.file.size} bytes)`);
@@ -10159,7 +10166,8 @@ setInterval(() => {
   }
 }, 60_000);
 
-const httpServer = app.listen(PORT, "0.0.0.0", () => {
+// BIND_HOST=127.0.0.1 in .env when nginx sits in front (default: all interfaces)
+const httpServer = app.listen(PORT, process.env.BIND_HOST || "0.0.0.0", () => {
   console.log(`CTRL API running on port ${PORT}`);
   console.log(`[WORKER] Task workers active — polling every 15s, status check every 30s`);
   const schedules = readTaskFile("scheduled-tasks.json");
