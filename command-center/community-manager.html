@@ -237,6 +237,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 <script src="/public/sidebar.js"></script>
 <script>
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// JS string literal for use inside an inline on*="" handler (HTML-escaped JSON; esc() alone is NOT enough, entities decode before JS runs)
+const jq = s => esc(JSON.stringify(String(s == null ? '' : s)));
+// Only allow http(s) URLs in href
+const safeUrl = u => /^https?:\/\//i.test(String(u || '')) ? String(u) : '#';
 const fmt = t => {
   if (!t) return "—";
   try {
@@ -299,8 +303,8 @@ function renderChannelCard(c) {
           <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim)">id: ${esc(c.id)}</span>
         </div>
         <div style="display:flex;gap:8px">
-          ${['telegram','twitter'].includes(c.platform) ? `<button class="btn-sm" onclick="validateChannel('${esc(c.id)}')">Validate</button>` : ''}
-          <button class="btn-sm danger" onclick="deleteChannel('${esc(c.id)}')">Delete</button>
+          ${['telegram','twitter'].includes(c.platform) ? `<button class="btn-sm" onclick="validateChannel(${jq(c.id)})">Validate</button>` : ''}
+          <button class="btn-sm danger" onclick="deleteChannel(${jq(c.id)})">Delete</button>
         </div>
       </div>
       ${discordNote}${twitterNote}
@@ -364,7 +368,7 @@ function renderChannelCard(c) {
       </div>
       ${isTwitter ? renderXKeys(c) + renderAutopilot(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
-        <button class="btn-sm primary" onclick="saveChannel('${esc(c.id)}')">Save</button>
+        <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
     </div>
   `;
@@ -394,7 +398,7 @@ function renderXKeys(c) {
       <div></div>
       ${field('access_token', 'Access token')}
       ${field('access_secret', 'Access token secret')}
-      <div style="display:flex;align-items:flex-end">${hasOwn ? `<button class="btn-sm danger" onclick="clearXKeys('${esc(c.id)}')">Remove channel keys</button>` : ''}</div>
+      <div style="display:flex;align-items:flex-end">${hasOwn ? `<button class="btn-sm danger" onclick="clearXKeys(${jq(c.id)})">Remove channel keys</button>` : ''}</div>
     </div>`;
 }
 async function clearXKeys(id) {
@@ -418,8 +422,8 @@ function renderAutopilot(c) {
       <div class="ap-head">
         <span class="ap-title">⚡ Autopilot</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-sm" onclick="runAutopilot('${esc(c.id)}','review')" title="Find a post, write it, make the image, and put it in the queue as a draft">Run once → draft</button>
-          <button class="btn-sm primary" onclick="runAutopilot('${esc(c.id)}','auto')" title="Same, but post it to X right away">Run once → post</button>
+          <button class="btn-sm" onclick="runAutopilot(${jq(c.id)},'review')" title="Find a post, write it, make the image, and put it in the queue as a draft">Run once → draft</button>
+          <button class="btn-sm primary" onclick="runAutopilot(${jq(c.id)},'auto')" title="Same, but post it to X right away">Run once → post</button>
         </div>
       </div>
       <div class="ap-status" id="ap-status-${esc(c.id)}">Loading status…</div>
@@ -500,8 +504,8 @@ function renderTgAutopilot(c) {
       <div class="ap-head">
         <span class="ap-title">⚡ Autopilot</span>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn-sm" onclick="runAutopilot('${esc(c.id)}','review','Telegram')" title="Write a post and put it in the queue as a draft">Run once → draft</button>
-          <button class="btn-sm primary" onclick="runAutopilot('${esc(c.id)}','auto','Telegram')" title="Same, but post it right away">Run once → post</button>
+          <button class="btn-sm" onclick="runAutopilot(${jq(c.id)},'review','Telegram')" title="Write a post and put it in the queue as a draft">Run once → draft</button>
+          <button class="btn-sm primary" onclick="runAutopilot(${jq(c.id)},'auto','Telegram')" title="Same, but post it right away">Run once → post</button>
         </div>
       </div>
       <div class="ap-status" id="ap-status-${esc(c.id)}">Loading status…</div>
@@ -596,8 +600,8 @@ function collectTgAutopilot(id) {
 }
 function renderRefs(id) {
   const refs = apRefs[id] || [];
-  return refs.map((p, i) => `<div class="ap-ref"><img src="${esc(p)}" alt="style"><button title="Remove" onclick="removeRef('${esc(id)}', ${i})">✕</button></div>`).join('') + `
-    <input type="file" id="ap-ref-file-${esc(id)}" accept="image/png,image/jpeg,image/webp" multiple style="display:none" onchange="addRefs('${esc(id)}', this.files)">
+  return refs.map((p, i) => `<div class="ap-ref"><img src="${esc(p)}" alt="style"><button title="Remove" onclick="removeRef(${jq(id)}, ${i})">✕</button></div>`).join('') + `
+    <input type="file" id="ap-ref-file-${esc(id)}" accept="image/png,image/jpeg,image/webp" multiple style="display:none" onchange="addRefs(${jq(id)}, this.files)">
     <button class="btn-sm" onclick="document.getElementById('ap-ref-file-${esc(id)}').click()">+ Add image</button>`;
 }
 async function addRefs(id, files) {
@@ -858,7 +862,7 @@ function renderPost(t) {
   const arch = t.archetype ? `<span class="post-arch">${esc(t.archetype)}</span>` : '';
   const chan = t.channel_id ? `<span class="post-channel">📡 ${esc(channelLabel(t.channel_id))}</span>` : '';
   const when = t.scheduled_local || fmt(t.scheduled_at);
-  const src = t.edu_task_id ? `<div class="post-source">🎨 Designer · educational post${t.topic ? ': ' + esc(t.topic) : ''}</div>` : t.autopilot && t.angle ? `<div class="post-source">⚡ Autopilot · angle: ${esc(t.angle)}</div>` : t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(t.source.url)}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
+  const src = t.edu_task_id ? `<div class="post-source">🎨 Designer · educational post${t.topic ? ': ' + esc(t.topic) : ''}</div>` : t.autopilot && t.angle ? `<div class="post-source">⚡ Autopilot · angle: ${esc(t.angle)}</div>` : t.source && t.source.url ? `<div class="post-source">⚡ Autopilot · inspired by <a href="${esc(safeUrl(t.source.url))}" target="_blank" rel="noopener">@${esc(t.source.author || 'post')}</a> (${esc((t.source.metrics && t.source.metrics.like_count) || 0)} likes)${t.image_method ? ` · image: ${esc(t.image_method)}` : ''}</div>` : '';
   const chanObj = channelsCache.find(c => c.id === t.channel_id);
   const xLink = t.status === 'published' && t.message_id && chanObj && chanObj.platform === 'twitter'
     ? `<a class="btn-sm" style="text-decoration:none" href="https://x.com/${esc(chanObj.x_username || 'i')}/status/${esc(t.message_id)}" target="_blank" rel="noopener">View on X</a>` : '';
@@ -887,7 +891,7 @@ function renderPost(t) {
             <div class="fn">${esc(mp.split('/').pop())}</div>
             <div>${isVideo ? 'video' : 'image'}${lenWarn}</div>
           </div>
-          <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove</button>
+          <button class="btn-sm" onclick="removeMedia(${jq(t.id)})">Remove</button>
         </div>`;
     } else {
       const thumbs = mediaPaths.map(mp => {
@@ -901,30 +905,30 @@ function renderPost(t) {
           <div style="display:flex;gap:6px;flex-wrap:wrap">${thumbs}</div>
           <div class="post-media-info" style="display:flex;justify-content:space-between;align-items:center">
             <div>album · ${mediaPaths.length} items${lenWarn}</div>
-            <button class="btn-sm" onclick="removeMedia('${esc(t.id)}')">Remove all</button>
+            <button class="btn-sm" onclick="removeMedia(${jq(t.id)})">Remove all</button>
           </div>
         </div>`;
     }
   }
   const uploadBtn = canPublish ? `
-    <input type="file" id="file-${esc(t.id)}" accept="image/*,video/mp4" multiple style="display:none" onchange="uploadMedia('${esc(t.id)}', this.files)">
+    <input type="file" id="file-${esc(t.id)}" accept="image/*,video/mp4" multiple style="display:none" onchange="uploadMedia(${jq(t.id)}, this.files)">
     <button class="btn-sm" onclick="document.getElementById('file-${esc(t.id)}').click()">${hasMedia ? 'Replace' : 'Add'} Media</button>
   ` : '';
-  const copyBtn = isManual ? `<button class="btn-sm primary" id="copy-${esc(t.id)}" onclick="copyText('${esc(t.id)}')">Copy text</button>` : '';
+  const copyBtn = isManual ? `<button class="btn-sm primary" id="copy-${esc(t.id)}" onclick="copyText(${jq(t.id)})">Copy text</button>` : '';
   const approveBtn = t.status === 'draft'
-    ? `<button class="btn-sm primary" onclick="approvePost('${esc(t.id)}')">Approve</button>`
+    ? `<button class="btn-sm primary" onclick="approvePost(${jq(t.id)})">Approve</button>`
     : '';
   const unscheduleBtn = t.status === 'scheduled'
-    ? `<button class="btn-sm" onclick="unapprovePost('${esc(t.id)}')">Move to draft</button>`
+    ? `<button class="btn-sm" onclick="unapprovePost(${jq(t.id)})">Move to draft</button>`
     : '';
   const actions = `
     ${approveBtn}
-    ${canEdit ? `<button class="btn-sm" onclick="startEdit('${esc(t.id)}')">Edit</button>` : ''}
+    ${canEdit ? `<button class="btn-sm" onclick="startEdit(${jq(t.id)})">Edit</button>` : ''}
     ${uploadBtn}
     ${copyBtn}
     ${unscheduleBtn}
-    ${canPublish ? `<button class="btn-sm primary" onclick="publishNow('${esc(t.id)}')">Publish Now</button>` : ''}
-    <button class="btn-sm danger" onclick="deleteTask('${esc(t.id)}')">Delete</button>
+    ${canPublish ? `<button class="btn-sm primary" onclick="publishNow(${jq(t.id)})">Publish Now</button>` : ''}
+    <button class="btn-sm danger" onclick="deleteTask(${jq(t.id)})">Delete</button>
   `;
   return `
     <div class="post-card">
@@ -963,16 +967,16 @@ function renderEditForm(t) {
         </div>
         <div class="full">
           <label class="edit-label">${t.parse_mode === 'HTML' ? 'Text (Telegram HTML: &lt;b&gt;bold&lt;/b&gt;, &lt;a href="url"&gt;text&lt;/a&gt;)' : 'Text (Markdown, *bold* for bold, [text](url) for links)'}</label>
-          <textarea class="edit-textarea" id="edit-text-${esc(t.id)}" oninput="updateCharCount('${esc(t.id)}')">${esc(t.text)}</textarea>
+          <textarea class="edit-textarea" id="edit-text-${esc(t.id)}" oninput="updateCharCount(${jq(t.id)})">${esc(t.text)}</textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
             <div class="char-count${warn}" id="cc-${esc(t.id)}">${textLen} chars${t.media_path ? ` · media caption limit 1024` : ''}</div>
-            <button class="btn-sm" type="button" onclick="toggleEmojiPicker('edit-text-${esc(t.id)}', this)" style="font-size:16px;line-height:1;padding:4px 10px">😀</button>
+            <button class="btn-sm" type="button" onclick="toggleEmojiPicker(${jq('edit-text-' + t.id)}, this)" style="font-size:16px;line-height:1;padding:4px 10px">😀</button>
           </div>
         </div>
       </div>
       <div class="post-actions">
-        <button class="btn-sm primary" onclick="saveEdit('${esc(t.id)}')">Save</button>
-        <button class="btn-sm" onclick="cancelEdit('${esc(t.id)}')">Cancel</button>
+        <button class="btn-sm primary" onclick="saveEdit(${jq(t.id)})">Save</button>
+        <button class="btn-sm" onclick="cancelEdit(${jq(t.id)})">Cancel</button>
       </div>
     </div>
   `;

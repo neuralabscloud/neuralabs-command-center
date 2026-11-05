@@ -450,7 +450,7 @@ function renderTasks(tasks) {
     return `<div class="task-card">
       <div class="task-thumb">
         ${t.result_thumbnail
-          ? `<img src="${t.result_thumbnail}" alt="Design preview" onclick="openPreview('${t.result_url || t.result_thumbnail}')" />`
+          ? `<img src="${escH(safeUrl(t.result_thumbnail))}" alt="Design preview" onclick="openPreview(${jqH(safeUrl(t.result_url || t.result_thumbnail))})" />`
             : t.status === 'processing'
               ? '<span style="animation:pulse-glow 1.5s infinite">Generating...</span>'
               : t.status === 'pending'
@@ -461,19 +461,19 @@ function renderTasks(tasks) {
         }
       </div>
       <div class="task-body">
-        <div class="task-type">${typeLabels[t.design_type] || escH(t.design_type)}${t.custom_width && t.custom_height ? ' &middot; ' + t.custom_width + '&times;' + t.custom_height : (t.aspect_ratio ? ' &middot; ' + escH(t.aspect_ratio) : '')}${t.engine ? ' &middot; ' + t.engine : ''}</div>
+        <div class="task-type">${typeLabels[t.design_type] || escH(t.design_type)}${t.custom_width && t.custom_height ? ' &middot; ' + escH(t.custom_width) + '&times;' + escH(t.custom_height) : (t.aspect_ratio ? ' &middot; ' + escH(t.aspect_ratio) : '')}${t.engine ? ' &middot; ' + escH(t.engine) : ''}</div>
         <div class="task-desc">${escH(t.description)}</div>
         <div class="task-footer">
-          <span class="task-status-badge ${t.status}">${t.status}</span>
-          <span class="task-time">${time}</span>
+          <span class="task-status-badge ${escH(t.status)}">${escH(t.status)}</span>
+          <span class="task-time">${escH(time)}</span>
         </div>
         <div class="task-actions">
-          ${t.result_url ? `<a class="task-btn primary" href="${t.result_url}" target="_blank" ${/^\/(generated|media)\//.test(t.result_url) ? 'download' : ''}>${['playwright','edu','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : 'Open'}</a>` : ''}
+          ${t.result_url ? `<a class="task-btn primary" href="${escH(safeUrl(t.result_url))}" target="_blank" rel="noopener" ${/^\/(generated|media)\//.test(t.result_url) ? 'download' : ''}>${['playwright','edu','nanobanana','higgsfield','enhance'].includes(t.engine) ? 'Download' : 'Open'}</a>` : ''}
           ${t.result_url && ['nanobanana','higgsfield','enhance'].includes(t.engine) ? `
-            <button class="task-btn" onclick="useAsEditSource('${t.id}')" title="Rework this image with a prompt">Edit</button>
-            <button class="task-btn" onclick="enhanceTask('${t.id}', 'rmbg')" title="Cut out the background">Cut out</button>
-            <button class="task-btn" onclick="enhanceTask('${t.id}', 'upscale')" title="Upscale 2x">Upscale</button>` : ''}
-          <button class="task-btn danger" onclick="deleteTask('${t.id}')" title="Delete">&#x2715;</button>
+            <button class="task-btn" onclick="useAsEditSource(${jqH(t.id)})" title="Rework this image with a prompt">Edit</button>
+            <button class="task-btn" onclick="enhanceTask(${jqH(t.id)}, 'rmbg')" title="Cut out the background">Cut out</button>
+            <button class="task-btn" onclick="enhanceTask(${jqH(t.id)}, 'upscale')" title="Upscale 2x">Upscale</button>` : ''}
+          <button class="task-btn danger" onclick="deleteTask(${jqH(t.id)})" title="Delete">&#x2715;</button>
         </div>
         ${t.engine === 'edu' ? eduExtras(t) : ''}
         ${t.error ? `<div style="margin-top:8px;font-size:10px;color:var(--danger);font-family:var(--font-data)">${escH(t.error)}</div>` : ''}
@@ -499,7 +499,7 @@ document.getElementById('design-engine').addEventListener('change', syncFormFiel
 fetch('/designer/image-models').then(r => r.ok ? r.json() : null).then(d => {
   if (!d || !d.models) return;
   const sel = document.getElementById('design-image-model');
-  sel.innerHTML = d.models.map(m => `<option value="${m.id}">${m.label}</option>`).join('');
+  sel.innerHTML = d.models.map(m => `<option value="${escH(m.id)}">${escH(m.label)}</option>`).join('');
   sel.value = d.default;
 }).catch(() => {});
 document.getElementById('design-mode').addEventListener('change', syncFormFields);
@@ -742,11 +742,11 @@ function renderRefLib() {
   }
   grid.innerHTML = refLib.map(r => {
     const n = refLibSel.indexOf(r.id);
-    return `<div class="reflib-item${n >= 0 ? ' selected' : ''}" onclick="toggleRefLib('${r.id}')" title="${escH(r.name)}">
-      <img src="${escH(r.url)}" loading="lazy" alt="">
+    return `<div class="reflib-item${n >= 0 ? ' selected' : ''}" onclick="toggleRefLib(${jqH(r.id)})" title="${escH(r.name)}">
+      <img src="${escH(safeUrl(r.url))}" loading="lazy" alt="">
       <span class="reflib-num">${n + 1}</span>
-      <button type="button" class="reflib-del" title="Delete from library" onclick="event.stopPropagation();deleteRefLib('${r.id}')">&#x2715;</button>
-      <span class="reflib-name" ondblclick="event.stopPropagation();renameRefLib('${r.id}')">${escH(r.name)}</span>
+      <button type="button" class="reflib-del" title="Delete from library" onclick="event.stopPropagation();deleteRefLib(${jqH(r.id)})">&#x2715;</button>
+      <span class="reflib-name" ondblclick="event.stopPropagation();renameRefLib(${jqH(r.id)})">${escH(r.name)}</span>
     </div>`;
   }).join('');
 }
@@ -806,22 +806,26 @@ async function refLibSelectedFiles() {
   return out;
 }
 
+// JS string literal for inline on*="" handlers (HTML-escaped JSON; entities decode before JS runs, so escH alone is not enough)
+function jqH(s) { return escH(JSON.stringify(String(s ?? ''))); }
+// Only http(s), same-origin absolute paths and blob: URLs (blocks javascript:/data:)
+function safeUrl(u) { u = String(u ?? ''); return /^(https?:\/\/|blob:)/i.test(u) || /^\/(?![\/\\])/.test(u) ? u : '#'; }
 function escH(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 function eduExtras(t) {
-  const variants = (t.variants || []).map(v => `<a class="task-btn" href="${escH(v.url)}" download title="${v.width}x${v.height}">${escH(v.label || v.size)}</a>`).join('');
-  const sources = (t.sources || []).slice(0, 4).map(s => `<a href="${escH(s.url)}" target="_blank" rel="noopener" style="color:var(--text-dim)">${escH(s.platform || 'source')}</a>`).join(' · ');
+  const variants = (t.variants || []).map(v => `<a class="task-btn" href="${escH(safeUrl(v.url))}" download title="${escH(v.width)}x${escH(v.height)}">${escH(v.label || v.size)}</a>`).join('');
+  const sources = (t.sources || []).slice(0, 4).map(s => `<a href="${escH(safeUrl(s.url))}" target="_blank" rel="noopener" style="color:var(--text-dim)">${escH(s.platform || 'source')}</a>`).join(' · ');
   return `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);line-height:1.5">
-      ${t.topic ? `<div><b style="color:var(--text)">${escH(t.topic)}</b> · ${escH(t.format || '')} · ${t.items || 0} items</div>` : ''}
+      ${t.topic ? `<div><b style="color:var(--text)">${escH(t.topic)}</b> · ${escH(t.format || '')} · ${escH(t.items || 0)} items</div>` : ''}
       ${sources ? `<div>Inspired by: ${sources}</div>` : ''}
     </div>
     ${t.caption_full ? `<div style="margin-top:8px;font-size:10px;color:var(--text-dim);white-space:pre-wrap;max-height:96px;overflow:auto;background:var(--input, hsl(217 32% 15%));border-radius:6px;padding:6px 8px">${escH(t.caption_full)}</div>` : ''}
     <div class="task-actions" style="margin-top:6px">
       ${variants}
-      ${t.caption_full ? `<button class="task-btn" onclick="copyEduCaption('${t.id}', this)">Copy caption</button>` : ''}
-      ${!t.x || ['failed', 'cancelled'].includes(t.x.status) ? `<button class="task-btn" onclick="postEduToX('${t.id}', this)">Post on X</button>` : ''}
+      ${t.caption_full ? `<button class="task-btn" onclick="copyEduCaption(${jqH(t.id)}, this)">Copy caption</button>` : ''}
+      ${!t.x || ['failed', 'cancelled'].includes(t.x.status) ? `<button class="task-btn" onclick="postEduToX(${jqH(t.id)}, this)">Post on X</button>` : ''}
     </div>
-    ${t.x ? `<div style="margin-top:4px;font-size:10px;color:var(--text-dim)">𝕏 ${t.x.url ? `<a href="${escH(t.x.url)}" target="_blank" rel="noopener" style="color:hsl(142 76% 50%)">posted</a>` : escH(t.x.status === 'draft' ? 'draft in Social Media Manager' : t.x.status)}${t.x.error ? ` · <span style="color:hsl(0 72% 65%)">${escH(t.x.error)}</span>` : ''}</div>` : ''}`;
+    ${t.x ? `<div style="margin-top:4px;font-size:10px;color:var(--text-dim)">𝕏 ${t.x.url ? `<a href="${escH(safeUrl(t.x.url))}" target="_blank" rel="noopener" style="color:hsl(142 76% 50%)">posted</a>` : escH(t.x.status === 'draft' ? 'draft in Social Media Manager' : t.x.status)}${t.x.error ? ` · <span style="color:hsl(0 72% 65%)">${escH(t.x.error)}</span>` : ''}</div>` : ''}`;
 }
 
 async function postEduToX(id, btn) {

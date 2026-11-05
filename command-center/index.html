@@ -895,10 +895,10 @@ function fmtBytes(n) {
 function statTile({ label, value, sub, color = 'var(--text)', chart = '', accent = 'var(--primary)' }) {
   return `<div style="background:hsl(0 0% 4%);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-height:110px">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-      <div style="font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim)">${label}</div>
-      <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data)">${sub || ''}</div>
+      <div style="font-family:var(--font-data);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim)">${escTask(label)}</div>
+      <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-data)">${escTask(sub || '')}</div>
     </div>
-    <div style="font-family:var(--font-data);font-size:22px;font-weight:600;color:${color};letter-spacing:-0.01em">${value}</div>
+    <div style="font-family:var(--font-data);font-size:22px;font-weight:600;color:${color};letter-spacing:-0.01em">${escTask(value)}</div>
     <div style="margin-top:auto">${chart}</div>
   </div>`;
 }
@@ -971,7 +971,7 @@ async function renderSystemHealth() {
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid hsla(217 32% 20% / 0.25)">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="width:7px;height:7px;border-radius:50%;background:${dot};box-shadow:0 0 8px ${dot}"></span>
-          <span style="font-size:11px;color:var(--text)">${svc.label}</span>
+          <span style="font-size:11px;color:var(--text)">${escTask(svc.label)}</span>
         </div>
         <span style="font-size:9px;color:${dot};font-weight:600;text-transform:uppercase;letter-spacing:0.06em">${online ? 'Online' : 'Offline'}</span>
       </div>`;
@@ -979,7 +979,7 @@ async function renderSystemHealth() {
 
     const procsHtml = (health.top_processes || []).length ? health.top_processes.map(p => `
       <div style="display:grid;grid-template-columns:1fr 60px 60px;gap:8px;padding:6px 10px;border-bottom:1px solid hsla(217 32% 20% / 0.25);font-family:var(--font-data);font-size:11px;align-items:center">
-        <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="PID ${p.pid}">${p.name}</span>
+        <span style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="PID ${escTask(p.pid)}">${escTask(p.name)}</span>
         <span style="color:${p.cpu > 50 ? 'var(--danger)' : p.cpu > 20 ? 'var(--warning)' : 'var(--text-dim)'};text-align:right">${p.cpu.toFixed(1)}% cpu</span>
         <span style="color:${p.mem > 10 ? 'var(--warning)' : 'var(--text-dim)'};text-align:right">${p.mem.toFixed(1)}% mem</span>
       </div>`).join('') : '<div style="padding:14px;color:var(--text-dim);font-size:11px">No process data</div>';
@@ -1025,11 +1025,11 @@ function agentCardHtml(a) {
     return `<span class="ac-spark" style="top:${top}%;left:${left}%;animation-delay:${(i * 1.7 + rnd()).toFixed(2)}s"></span>`;
   }).join('');
   const hero = a.sprite
-    ? `<img class="ac-sprite" src="${escTask(a.sprite)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ac-initials',textContent:'${acInitials(a.name)}'}))">`
+    ? `<img class="ac-sprite" src="${escTask(safeHref(a.sprite))}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ac-initials',textContent:${escTask(JSON.stringify(String(acInitials(a.name))))}}))">`
     : `<div class="ac-initials">${escTask(acInitials(a.name))}</div>`;
   const stats = (a.stats || []).slice(0, 2).map((st, i) =>
     `<div><div class="ac-stat-label">${escTask(st.label)}</div><div class="ac-stat-value" data-stat="${i}">${escTask(st.value)}</div></div>`).join('');
-  return `<a class="ac ${escTask(a.status)}" href="${escTask(a.href || 'agents.html')}" data-id="${escTask(a.id)}"
+  return `<a class="ac ${escTask(a.status)}" href="${escTask(safeHref(a.href) || 'agents.html')}" data-id="${escTask(a.id)}"
       style="--ac:${escTask(a.hsl || '264 65% 49%')};--sx:${Math.round(rnd() * 200)}px;--sy:${Math.round(rnd() * 220)}px">
     <div class="ac-bg"><div class="ac-stars"></div>${sparks}<div class="ac-floor"></div></div>
     <div class="ac-model">${escTask(a.model)}</div>
@@ -1089,7 +1089,12 @@ function fmtTaskTime(iso) {
 function escTask(s) {
   const d = document.createElement('div');
   d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Only http(s) or relative same-origin URLs may land in href/src
+function safeHref(u) {
+  u = String(u == null ? '' : u).trim();
+  return /^https?:\/\//i.test(u) || !(/^[a-z][a-z0-9+.-]*:/i.test(u) || u.startsWith('//') || /^[\\\s]/.test(u)) ? u : '';
 }
 
 async function loadTaskFeed() {
@@ -1124,13 +1129,13 @@ async function loadTaskFeed() {
     return;
   }
   el.innerHTML = list.map(t => `
-    <div class="task-feed-row is-${t.status}">
+    <div class="task-feed-row is-${escTask(t.status)}">
       <div class="task-feed-meta">
         <span class="task-feed-tag" style="color:${t._color};background:${t._color}15">${t._subtype}</span>
         <span class="task-feed-time">${fmtTaskTime(t.created_at)}</span>
       </div>
       <div class="task-feed-desc">${escTask(t._desc)}</div>
-      <div class="task-feed-status" style="color:${t._color}">${t.status}</div>
+      <div class="task-feed-status" style="color:${t._color}">${escTask(t.status)}</div>
     </div>
   `).join('');
 }

@@ -131,11 +131,11 @@
       // Build message: strip URLs from text, show as buttons
       let msgText = (n.message || '').replace(/\n?(Video|Download): https?:\/\/\S+/g, '').trim();
       let links = '';
-      if (n.higgsfield_url) links += `<a class="notif-link" href="${n.higgsfield_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open video</a> `;
-      if (n.result_url) links += `<a class="notif-link" href="${n.result_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Download video</a>`;
+      if (safeUrl(n.higgsfield_url)) links += `<a class="notif-link" href="${safeUrl(n.higgsfield_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open video</a> `;
+      if (safeUrl(n.result_url)) links += `<a class="notif-link" href="${safeUrl(n.result_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Download video</a>`;
 
-      return `<div class="notif-item ${n.read ? '' : 'unread'}" onclick="notifMarkRead('${n.id}', this)">
-        <div class="notif-dot ${n.severity}"></div>
+      return `<div class="notif-item ${n.read ? '' : 'unread'}" onclick="notifMarkRead('${escA(String(n.id).replace(/[^\w.:-]/g, ''))}', this)">
+        <div class="notif-dot ${escA(String(n.severity || '').replace(/[^\w-]/g, ''))}"></div>
         <div class="notif-content">
           <div class="notif-title">${esc(n.title)}</div>
           <div class="notif-msg">${esc(msgText)}</div>
@@ -150,6 +150,14 @@
     const d = document.createElement('div');
     d.textContent = s || '';
     return d.innerHTML;
+  }
+  // Attribute-safe escape (quotes too) + http(s)-only URL check
+  function escA(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function safeUrl(u) {
+    u = String(u == null ? '' : u).trim();
+    return /^(https?:\/\/|\/(?!\/))/i.test(u) ? escA(u) : '';
   }
 
   async function pollBadge() {

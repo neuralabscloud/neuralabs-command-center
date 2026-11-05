@@ -1017,13 +1017,13 @@ async function loadAvatars() {
   if (gal) {
     gal.innerHTML = avatars.length ? avatars.map(a => {
       const thumb = a.image_url
-        ? `<img src="${esc(a.image_url)}" style="width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;background:#000;">`
+        ? `<img src="${esc(safeUrl(a.image_url))}" style="width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:8px;background:#000;">`
         : `<div style="width:100%;aspect-ratio:9/16;border-radius:8px;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-dim);font-family:var(--font-data);">${a.status === 'failed' ? 'failed' : 'generating…'}</div>`;
       return `<div style="position:relative;${a.autopilot_exclude ? 'opacity:0.55;' : ''}">
         ${thumb}
         <div style="font-size:11px;color:var(--text);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.name || 'Avatar')} ${costPill(a)}</div>
-        <button onclick="deleteAvatar('${a.id}')" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;padding:2px 6px;" title="Delete">&#x2715;</button>
-        ${a.status === 'ready' ? `<button data-owner-only onclick="toggleAvatarAutopilot('${a.id}', ${a.autopilot_exclude ? 'false' : 'true'})" style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.6);border:none;color:${a.autopilot_exclude ? 'var(--text-dim)' : 'hsl(142 76% 50%)'};border-radius:6px;cursor:pointer;font-size:10px;font-family:var(--font-data);padding:2px 6px;" title="${a.autopilot_exclude ? 'Excluded from the UGC autopilot. Click to include.' : 'Used by the UGC autopilot. Click to exclude.'}">${a.autopilot_exclude ? 'autopilot off' : 'autopilot on'}</button>` : ''}
+        <button onclick="deleteAvatar(${jq(a.id)})" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:11px;padding:2px 6px;" title="Delete">&#x2715;</button>
+        ${a.status === 'ready' ? `<button data-owner-only onclick="toggleAvatarAutopilot(${jq(a.id)}, ${a.autopilot_exclude ? 'false' : 'true'})" style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.6);border:none;color:${a.autopilot_exclude ? 'var(--text-dim)' : 'hsl(142 76% 50%)'};border-radius:6px;cursor:pointer;font-size:10px;font-family:var(--font-data);padding:2px 6px;" title="${a.autopilot_exclude ? 'Excluded from the UGC autopilot. Click to include.' : 'Used by the UGC autopilot. Click to exclude.'}">${a.autopilot_exclude ? 'autopilot off' : 'autopilot on'}</button>` : ''}
       </div>`;
     }).join('') : '<div style="color:var(--text-dim);font-size:12px;">No avatars yet — create one above.</div>';
   }
@@ -1053,14 +1053,18 @@ async function deleteAvatar(id) {
   loadAvatars();
 }
 
-function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+// URL allowlist for href/src: http(s), site-relative (/x, not //x), blob:, data:image. Anything else (javascript: etc.) becomes ''.
+function safeUrl(u) { const s = String(u == null ? '' : u).trim(); return /^(https?:\/\/|\/(?!\/)|blob:|data:image\/)/i.test(s) ? s : ''; }
+// Value for use inside an inline handler attribute: onclick="fn(${jq(id)})" (JS string literal, HTML-escaped).
+function jq(v) { return esc(JSON.stringify(String(v == null ? '' : v))); }
 
 const _clipperTaskById = {};
 
 function renderClipperCard(t) {
   _clipperTaskById[t.id] = t;
   const clips = Array.isArray(t.clips) ? t.clips : [];
-  const projectUrl = t.project_id ? `https://clip.opus.pro/project/${esc(t.project_id)}` : '';
+  const projectUrl = t.project_id ? `https://clip.opus.pro/project/${encodeURIComponent(t.project_id)}` : '';
   const projectLink = projectUrl ? `<div style="margin:8px 0;font-size:12px;"><a href="${projectUrl}" target="_blank" rel="noopener" style="color:var(--accent,#7c4dff);">Open project on OpusClip ↗</a></div>` : '';
   const clipsHtml = clips.length ? `<div class="clips-grid">` + clips.map((c, i) => {
     const title = c.title || c.name || c.clipTitle || 'Clip';
@@ -1068,10 +1072,10 @@ function renderClipperCard(t) {
     const dur = durMs ? Math.round(durMs / 1000) + 's' : (c.duration ? Math.round(c.duration) + 's' : '');
     const scoreVal = c.virality_score != null ? c.virality_score : c.viralityScore;
     const score = scoreVal != null ? 'Score ' + Math.round(scoreVal) : '';
-    const poster = c.local_thumb || c.thumbnail_url || c.uriForThumbnail || c.thumbnailUrl || c.thumbnail || c.coverUrl || '';
-    const preview = c.local_path || c.preview_url || c.previewUrl || c.uriForPreview || '';
-    const download = c.local_path || c.download_url || c.exportUrl || c.downloadUrl || c.uriForExport || c.videoUrl || c.url || '';
-    const opusUrl = c.shareUrl || c.editorUrl || '';
+    const poster = safeUrl(c.local_thumb || c.thumbnail_url || c.uriForThumbnail || c.thumbnailUrl || c.thumbnail || c.coverUrl || '');
+    const preview = safeUrl(c.local_path || c.preview_url || c.previewUrl || c.uriForPreview || '');
+    const download = safeUrl(c.local_path || c.download_url || c.exportUrl || c.downloadUrl || c.uriForExport || c.videoUrl || c.url || '');
+    const opusUrl = safeUrl(c.shareUrl || c.editorUrl || '');
     const savedBadge = c.local_path ? '<span style="color:hsl(142 76% 50%);">saved</span>' : '';
     const media = preview
       ? `<video src="${esc(preview)}" ${poster ? `poster="${esc(poster)}"` : ''} controls preload="none" playsinline style="width:100%;aspect-ratio:9/16;border-radius:6px;background:#000;object-fit:cover;"></video>`
@@ -1079,12 +1083,12 @@ function renderClipperCard(t) {
     return `<div class="clip-card">
       ${media}
       <div class="clip-title">${esc(title)}</div>
-      <div class="clip-meta">${dur ? '<span>' + dur + '</span>' : ''}${score ? '<span>' + score + '</span>' : ''}${savedBadge}</div>
+      <div class="clip-meta">${dur ? '<span>' + esc(dur) + '</span>' : ''}${score ? '<span>' + esc(score) + '</span>' : ''}${savedBadge}</div>
       <div class="clip-actions">
         ${download ? `<a href="${esc(download)}" target="_blank" rel="noopener" download>Download</a>` : ''}
         ${opusUrl ? `<a href="${esc(opusUrl)}" target="_blank" rel="noopener">Edit</a>` : ''}
-        <a href="#" data-owner-only onclick="openPostModal('${esc(t.id)}',${i});return false;">Post ▸</a>
-        ${c.local_path ? `<a href="#" data-owner-only onclick="clipToCommunity('${esc(t.id)}',${i});return false;" title="Create a draft post in the Community manager">→ Community</a>` : ''}
+        <a href="#" data-owner-only onclick="openPostModal(${jq(t.id)},${i});return false;">Post ▸</a>
+        ${c.local_path ? `<a href="#" data-owner-only onclick="clipToCommunity(${jq(t.id)},${i});return false;" title="Create a draft post in the Community manager">→ Community</a>` : ''}
       </div>
     </div>`;
   }).join('') + `</div>` : '';
@@ -1104,7 +1108,7 @@ function renderClipperPosts(t) {
         <span>${esc(p.account_name || p.account_id || '')}</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.title || '')}</span>
         <span>${pending ? '⏱ ' + when : '✓ ' + when}</span>
-        ${pending ? `<a href="#" onclick="cancelClipperSchedule('${esc(p.schedule_id)}');return false;" style="color:var(--danger);">cancel</a>` : ''}
+        ${pending ? `<a href="#" onclick="cancelClipperSchedule(${jq(p.schedule_id)});return false;" style="color:var(--danger);">cancel</a>` : ''}
       </div>`;
     }).join('') + `</div>`;
 }
@@ -1298,8 +1302,8 @@ async function loadTasks() {
         preview = ugcPreviewText.substring(0, 80) + (ugcPreviewText.length > 80 ? '...' : '');
         label = t.description || ('UGC ' + (t.mode || 'clip'));
       }
-      const typeLabel = isClipper ? 'Clipper' : ('UGC ' + (t.mode || 'clip'));
-      const typeTag = `<span class="task-type-tag ${t._type}">${typeLabel}</span>`;
+      const typeLabel = esc(isClipper ? 'Clipper' : ('UGC ' + (t.mode || 'clip')));
+      const typeTag = `<span class="task-type-tag ${esc(t._type)}">${typeLabel}</span>`;
       const apiBase = isClipper ? API_CLIPPER : API_UGC;
       const stagePill = isClipper && t.stage && t.status === 'processing' ? `<span class="stage-pill">${esc(t.stage)}</span>` : '';
       const clipsBlock = isClipper ? renderClipperCard(t) : '';
@@ -1316,15 +1320,15 @@ async function loadTasks() {
             <div style="font-size:11px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:6px;word-break:break-all;">${esc(preview)}</div>
             ${ugcMeta}
             ${t.error ? '<div style="font-size:10px;color:var(--danger);font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
-            ${t.result_url && !String(t.result_url).startsWith('/media/') ? '<a href="' + esc(t.result_url) + '" target="_blank" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video on Higgsfield ↗</a>' : ''}
+            ${t.result_url && !String(t.result_url).startsWith('/media/') ? '<a href="' + esc(safeUrl(t.result_url)) + '" target="_blank" rel="noopener" style="font-size:11px;color:hsl(174 72% 56%);font-family:var(--font-data);text-decoration:none;">Open video on Higgsfield ↗</a>' : ''}
             ${isUgc ? renderUgcDelivery(t) : ''}
           </div>
           ${isUgc && String(t.result_url || '').startsWith('/media/') ? `<video src="${esc(t.result_url)}" controls preload="metadata" playsinline style="width:120px;aspect-ratio:9/16;border-radius:8px;background:#000;flex-shrink:0;object-fit:cover;"></video>` : ''}
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-            <span class="task-badge ${t.status}">${t.status}</span>
+            <span class="task-badge ${esc(t.status)}">${esc(t.status)}</span>
             <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
           </div>
-          <button onclick="deleteTask('${apiBase}','${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
+          <button onclick="deleteTask(${jq(apiBase)},${jq(t.id)})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
         </div>
         ${clipsBlock}
       </div>`;
@@ -1348,7 +1352,7 @@ function renderUgcDelivery(t) {
     parts.push(`<div style="margin-top:6px;background:var(--bg-input, rgba(255,255,255,0.04));border:1px solid var(--border);border-radius:6px;padding:8px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;">Caption · Reels / TikTok</span>
-        <button onclick="copyUgcCaption('${t.id}', this)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:2px 8px;cursor:pointer;">Copy</button>
+        <button onclick="copyUgcCaption(${jq(t.id)}, this)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;padding:2px 8px;cursor:pointer;">Copy</button>
       </div>
       <div style="font-size:11px;color:var(--text);white-space:pre-wrap;line-height:1.45;">${esc(t.post_caption)}</div>
     </div>`);
@@ -1423,7 +1427,7 @@ async function loadBrandOptions() {
     if (!names.length) return;
     document.querySelectorAll('.cc-brand-select').forEach(sel => {
       const current = sel.value;
-      sel.innerHTML = names.map(n => `<option value="${n}">${n}</option>`).join('');
+      sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
       if (current && names.includes(current)) sel.value = current;
     });
   } catch {}
@@ -1457,7 +1461,7 @@ async function loadUgcMotions() {
     const res = await fetch('/ugc/motions');
     const motions = await res.json();
     if (Array.isArray(motions) && motions.length) {
-      sel.innerHTML = motions.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+      sel.innerHTML = motions.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
     } else {
       sel.innerHTML = '<option value="">No motions (check Higgsfield key)</option>';
     }
@@ -1475,7 +1479,7 @@ async function loadUgcVoices() {
     const res = await fetch('/ugc/voices?provider=' + encodeURIComponent(provider));
     const voices = await res.json();
     sel.innerHTML = '<option value="">Default voice</option>' +
-      (Array.isArray(voices) ? voices.map(v => `<option value="${v.id}">${v.name}</option>`).join('') : '');
+      (Array.isArray(voices) ? voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('') : '');
   } catch {}
 }
 
@@ -1485,7 +1489,7 @@ async function loadUgcVoices() {
 function fillTtsModels(id, d) {
   const m = document.getElementById(id);
   if (!m) return;
-  m.innerHTML = (d.eleven_models || []).map(x => `<option value="${x.id}">${x.label}</option>`).join('');
+  m.innerHTML = (d.eleven_models || []).map(x => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('');
   if (d.eleven_default) m.value = d.eleven_default;
 }
 async function loadVoiceProviders() {
@@ -1493,10 +1497,10 @@ async function loadVoiceProviders() {
   if (!sel) return;
   try {
     const d = await (await fetch('/ugc/voice-providers')).json();
-    sel.innerHTML = d.providers.filter(p => p.available).map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+    sel.innerHTML = d.providers.filter(p => p.available).map(p => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
     sel.value = d.default;
     const em = document.getElementById('ugc-voice-emotion');
-    em.innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${e}">${e}</option>`).join('');
+    em.innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
     fillTtsModels('ugc-tts-model', d);
     const syncEmotion = () => {
       em.closest('div').style.display = sel.value === 'inference' ? '' : 'none';
@@ -1515,7 +1519,7 @@ async function loadUgcEngines() {
   const sel = document.getElementById('ugc-engine');
   if (!sel) return;
   try { ugcEngines = await (await fetch('/ugc/video-engines')).json(); } catch { return; }
-  sel.innerHTML = ugcEngines.map(e => `<option value="${e.id}">${e.label}</option>`).join('');
+  sel.innerHTML = ugcEngines.map(e => `<option value="${esc(e.id)}">${esc(e.label)}</option>`).join('');
   sel.addEventListener('change', syncUgcEngine);
   syncUgcEngine();
 }
@@ -1524,7 +1528,7 @@ function syncUgcEngine() {
   if (!eng) return;
   const fill = (id, values, labelFn) => {
     const el = document.getElementById(id);
-    el.innerHTML = values.map(v => `<option value="${v}">${labelFn ? labelFn(v) : v}</option>`).join('');
+    el.innerHTML = values.map(v => `<option value="${esc(v)}">${esc(labelFn ? labelFn(v) : v)}</option>`).join('');
     el.closest('div').style.display = values.length ? '' : 'none';
   };
   fill('ugc-model', eng.models);
@@ -1541,9 +1545,9 @@ async function loadVoiceoverProviders() {
   if (!sel) return;
   try {
     const d = await (await fetch('/ugc/voice-providers')).json();
-    sel.innerHTML = d.providers.filter(p => p.available).map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+    sel.innerHTML = d.providers.filter(p => p.available).map(p => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
     sel.value = d.default;
-    document.getElementById('vo-emotion').innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${e}">${e}</option>`).join('');
+    document.getElementById('vo-emotion').innerHTML = '<option value="">Neutral</option>' + (d.emotions || []).map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
     fillTtsModels('vo-model', d);
     const sync = () => {
       document.getElementById('vo-emotion-field').style.display = sel.value === 'inference' ? '' : 'none';
@@ -1560,7 +1564,7 @@ async function loadVoiceoverVoices() {
   try {
     const voices = await (await fetch('/ugc/voices?provider=' + encodeURIComponent(provider))).json();
     sel.innerHTML = '<option value="">Default voice</option>' +
-      (Array.isArray(voices) ? voices.map(v => `<option value="${v.id}">${v.name}</option>`).join('') : '');
+      (Array.isArray(voices) ? voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('') : '');
   } catch {}
 }
 loadVoiceoverProviders();
@@ -1600,11 +1604,11 @@ async function loadVoiceovers() {
     <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v.title || '')}</div>
-        <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">${v.provider} &middot; ${esc(v.voice_id || 'default')} &middot; ${v.status}${v.error ? ' — ' + esc(String(v.error).slice(0, 80)) : ''} ${costPill(v)}</div>
+        <div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);">${esc(v.provider)} &middot; ${esc(v.voice_id || 'default')} &middot; ${esc(v.status)}${v.error ? ' — ' + esc(String(v.error).slice(0, 80)) : ''} ${costPill(v)}</div>
       </div>
-      ${v.result_url ? `<audio controls preload="none" src="${v.result_url}" style="height:32px;"></audio>
-        <a class="task-link" href="${v.result_url}" download>Download</a>` : ''}
-      <button class="task-delete" onclick="deleteVoiceover('${v.id}')" title="Delete">&#x2715;</button>
+      ${v.result_url ? `<audio controls preload="none" src="${esc(safeUrl(v.result_url))}" style="height:32px;"></audio>
+        <a class="task-link" href="${esc(safeUrl(v.result_url))}" download>Download</a>` : ''}
+      <button class="task-delete" onclick="deleteVoiceover(${jq(v.id)})" title="Delete">&#x2715;</button>
     </div>`).join('') : '<div class="empty-state">No voiceovers yet.</div>';
   clearTimeout(_voPollTimer);
   if (items.some(v => v.status === 'processing')) _voPollTimer = setTimeout(loadVoiceovers, 5000);
@@ -1769,8 +1773,8 @@ async function loadGjPresets() {
   if (!items.length) { el.innerHTML = `<span style="font-size:11px;color:var(--danger);">${esc(d.error || 'No styles available.')}</span>`; return; }
   gjPresetsLoaded = true;
   if (!items.some(p => p.id === gjPresetId)) gjPresetId = items[0].id;
-  el.innerHTML = items.map(p => `<button type="button" class="gj-preset${p.id === gjPresetId ? ' active' : ''}" data-preset="${esc(p.id)}" onclick="pickGjPreset('${esc(p.id)}')" title="${esc(p.name)}">
-      ${p.preview_url ? `<img src="${esc(p.preview_url)}" alt="" loading="lazy">` : ''}<span>${esc(p.name)}</span></button>`).join('');
+  el.innerHTML = items.map(p => `<button type="button" class="gj-preset${p.id === gjPresetId ? ' active' : ''}" data-preset="${esc(p.id)}" onclick="pickGjPreset(${jq(p.id)})" title="${esc(p.name)}">
+      ${p.preview_url ? `<img src="${esc(safeUrl(p.preview_url))}" alt="" loading="lazy">` : ''}<span>${esc(p.name)}</span></button>`).join('');
 }
 function pickGjPreset(id) {
   gjPresetId = id;
@@ -1824,8 +1828,8 @@ async function loadGjAvatars() {
   try { avatars = await fetch('/ugc/avatars').then(r => r.json()); } catch { return; }
   const ready = avatars.filter(a => a.status === 'ready' && a.image_url);
   for (const id of [...gjAvatarIds]) if (!ready.some(a => a.id === id)) gjAvatarIds.delete(id);
-  el.innerHTML = ready.length ? ready.map(a => `<button type="button" class="gj-avatar${gjAvatarIds.has(a.id) ? ' active' : ''}" data-av="${a.id}" onclick="toggleGjAvatar('${a.id}')">
-      <img src="${esc(a.image_url)}" alt="">${esc(a.name || 'Avatar')}</button>`).join('')
+  el.innerHTML = ready.length ? ready.map(a => `<button type="button" class="gj-avatar${gjAvatarIds.has(a.id) ? ' active' : ''}" data-av="${esc(a.id)}" onclick="toggleGjAvatar(${jq(a.id)})">
+      <img src="${esc(safeUrl(a.image_url))}" alt="">${esc(a.name || 'Avatar')}</button>`).join('')
     : '<span style="font-size:11px;color:var(--text-dim);">No avatars yet: create one in the Avatar Creator tab, or upload photos below.</span>';
 }
 function toggleGjAvatar(id) {
@@ -1881,18 +1885,18 @@ async function loadGenjutsu() {
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
           <span class="task-type-tag" style="color:hsl(270 95% 75%);background:hsla(270 95% 65% / 0.1);">${kind}</span>
-          <span class="stage-pill">${esc(t.resolution || '')}${t.duration ? ' · ' + t.duration + 's' : ''}${t.ref_images ? ' · ' + t.ref_images + ' img' : ''}</span>
+          <span class="stage-pill">${esc(t.resolution || '')}${t.duration ? ' · ' + esc(t.duration) + 's' : ''}${t.ref_images ? ' · ' + esc(t.ref_images) + ' img' : ''}</span>
           ${costPill(t)}
           <span style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);">${time}</span>
         </div>
         <div style="font-size:12px;color:var(--text);line-height:1.4;">${esc(t.prompt || '')}</div>
         ${t.error ? `<div style="font-size:11px;color:var(--danger);margin-top:4px;font-family:var(--font-data);">${esc(t.error)}</div>` : ''}
-        ${t.result_url ? `<video class="gj-result" src="${esc(t.result_url)}" controls playsinline></video>
-          <div><a class="task-link" href="${esc(t.result_url)}" download>Download video</a></div>` : ''}
+        ${t.result_url ? `<video class="gj-result" src="${esc(safeUrl(t.result_url))}" controls playsinline></video>
+          <div><a class="task-link" href="${esc(safeUrl(t.result_url))}" download>Download video</a></div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
         <span class="task-badge ${esc(t.status)}">${esc(t.status)}</span>
-        <button class="task-delete" onclick="deleteGenjutsu('${t.id}')" title="Delete">&#x2715;</button>
+        <button class="task-delete" onclick="deleteGenjutsu(${jq(t.id)})" title="Delete">&#x2715;</button>
       </div>
     </div>`;
   }).join('') : '<div class="empty-state">No AI influencer videos yet.</div>';
@@ -2006,7 +2010,7 @@ function renderDesignerPicker(more) {
   grid.innerHTML = designerImages.slice(0, designerShown).map((t, i) => `
     <button type="button" onclick="addDesignerRef(${i}, this)" title="${esc((t.description || t.design_type || '').slice(0, 160))}"
       style="position:relative;padding:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;background:var(--bg);aspect-ratio:1;">
-      <img src="${esc(t.result_thumbnail || t.result_url)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
+      <img src="${esc(safeUrl(t.result_thumbnail || t.result_url))}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
     </button>`).join('');
   document.getElementById('ai-designer-more').style.display = designerShown < designerImages.length ? '' : 'none';
 }
@@ -2048,7 +2052,7 @@ function renderRefImages() {
   strip.style.display = 'flex';
   strip.innerHTML = aiRefFiles.map((f, i) => `
     <div style="position:relative;">
-      <img src="${aiRefUrls[i]}" title="${f.name.replace(/"/g, '&quot;')}" style="height:110px;border-radius:8px;border:1px solid var(--border);display:block;" />
+      <img src="${aiRefUrls[i]}" title="${esc(f.name)}" style="height:110px;border-radius:8px;border:1px solid var(--border);display:block;" />
       <span style="position:absolute;left:4px;top:4px;background:hsla(0 0% 0% / 0.7);color:var(--text);border-radius:5px;padding:1px 6px;font-family:var(--font-data);font-size:10px;">${i + 1}</span>
       <button onclick="removeRefImage(${i})" title="Remove" style="position:absolute;right:4px;top:4px;background:hsla(0 0% 0% / 0.7);border:none;color:var(--danger);border-radius:5px;padding:1px 6px;cursor:pointer;font-size:11px;line-height:1.4;">&#x2715;</button>
     </div>`).join('');
@@ -2258,7 +2262,7 @@ function fillSourceOptions() {
   const prev = aiSrcUrl;
   sel.innerHTML = '<option value="">No source video</option>' + done.map(t => {
     const label = (String(t.model || t.tool || 'video').split('/').pop() + ' — ' + (t.prompt || '')).slice(0, 60);
-    return `<option value="${t.result_url}" data-id="${t.id}">${label.replace(/</g, '&lt;')}</option>`;
+    return `<option value="${esc(safeUrl(t.result_url))}" data-id="${esc(t.id)}">${esc(label)}</option>`;
   }).join('');
   if (prev && done.some(t => t.result_url === prev)) sel.value = prev;
 }
@@ -2389,23 +2393,23 @@ async function loadAIVideos() {
       return `<div class="vt-card">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-transform:uppercase;letter-spacing:0.06em;">${modelName}</span>
-            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${t.aspect_ratio ? t.aspect_ratio + ' &middot; ' : ''}${t.duration ? t.duration + 's' : ''}${t.resolution ? ' &middot; ' + t.resolution : ''}${t.generate_audio === false ? ' &middot; silent' : ''}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--primary);text-transform:uppercase;letter-spacing:0.06em;">${esc(modelName)}</span>
+            <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${t.aspect_ratio ? esc(t.aspect_ratio) + ' &middot; ' : ''}${t.duration ? esc(t.duration) + 's' : ''}${t.resolution ? ' &middot; ' + esc(t.resolution) : ''}${t.generate_audio === false ? ' &middot; silent' : ''}</span>
             ${costPill(t)}
           </div>
-          <div style="font-size:13px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${t.prompt}</div>
-          ${t.error ? '<div style="font-size:10px;color:var(--danger);margin-top:4px;font-family:var(--font-data);">' + t.error + '</div>' : ''}
+          <div style="font-size:13px;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${esc(t.prompt)}</div>
+          ${t.error ? '<div style="font-size:10px;color:var(--danger);margin-top:4px;font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
           ${t.result_url ? `<div style="margin-top:8px;">
-            <video src="${t.result_url}" controls style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);"></video>
-            <a href="${t.result_url}" target="_blank" download style="display:inline-block;margin-top:4px;font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;">Download video</a>
-            <button onclick="extendVideo('${t.id}')" style="margin-left:10px;background:none;border:none;color:var(--primary);cursor:pointer;font-size:10px;font-family:var(--font-data);padding:0;">Extend this video</button>
+            <video src="${esc(safeUrl(t.result_url))}" controls style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);"></video>
+            <a href="${esc(safeUrl(t.result_url))}" target="_blank" rel="noopener" download style="display:inline-block;margin-top:4px;font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;">Download video</a>
+            <button onclick="extendVideo(${jq(t.id)})" style="margin-left:10px;background:none;border:none;color:var(--primary);cursor:pointer;font-size:10px;font-family:var(--font-data);padding:0;">Extend this video</button>
           </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-          <span class="vt-badge ${t.status}">${t.status}</span>
+          <span class="vt-badge ${esc(t.status)}">${esc(t.status)}</span>
           <span style="font-family:var(--font-data);font-size:10px;color:var(--text-muted);">${time}</span>
         </div>
-        <button onclick="deleteAIVideo('${t.id}')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
+        <button onclick="deleteAIVideo(${jq(t.id)})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
       </div>`;
     }).join('');
   } catch(e) {

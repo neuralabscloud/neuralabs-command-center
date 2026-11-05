@@ -156,6 +156,8 @@ a:hover { text-decoration: underline; }
 
 <script>
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// JS string literal safe inside a double-quoted HTML attribute
+const jsq = (s) => esc(JSON.stringify(String(s == null ? '' : s)));
 const safeUrl = (u) => /^https?:\/\//i.test(u || '') ? u : '';
 const chLabel = (c) => String(c || 'other').replace(/_/g, ' ');
 const STATUS_LABELS = { new: 'New', planned: 'Planned', doing: 'In progress', done: 'Done', dismissed: 'Dismissed' };
@@ -234,7 +236,7 @@ function ideaCard(r, i, rank) {
     ${steps || facts ? `<details><summary>Plan of attack</summary>${steps}<div class="facts">${facts}</div></details>` : ''}
     <div class="idea-foot">
       <span style="font-size:10px;color:var(--text-dim)">${i.status_at ? 'Updated ' + esc(fmtDate(i.status_at, { day: 'numeric', month: 'short' })) : ''}</span>
-      <select class="status-sel" onchange="setStatus('${esc(r.id)}','${esc(i.id)}',this.value)">
+      <select class="status-sel" onchange="setStatus(${jsq(r.id)},${jsq(i.id)},this.value)">
         ${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}"${i.status === k ? ' selected' : ''}>${v}</option>`).join('')}
       </select>
     </div>
@@ -257,7 +259,7 @@ function render() {
   }
   if (r.status === 'failed') {
     el.innerHTML = `<div class="card"><div class="headline">This run failed</div><div class="err">${esc(r.error)}</div><div class="meta">${esc(fmtDate(r.created_at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</div>
-      <div style="margin-top:12px"><button class="btn" onclick="delReport('${esc(r.id)}')">Remove</button></div></div>`;
+      <div style="margin-top:12px"><button class="btn" onclick="delReport(${jsq(r.id)})">Remove</button></div></div>`;
     return;
   }
 
@@ -293,7 +295,7 @@ function render() {
     <div class="fade-up">
       <div class="section-header">All growth ideas (${r.ideas.length})</div>
       <div class="filters">
-        ${['all', ...channels].map(c => `<button class="chip${filters.channel === c ? ' active' : ''}" onclick="setFilter('channel','${esc(c)}')">${c === 'all' ? 'All channels' : esc(chLabel(c))}</button>`).join('')}
+        ${['all', ...channels].map(c => `<button class="chip${filters.channel === c ? ' active' : ''}" onclick="setFilter('channel',${jsq(c)})">${c === 'all' ? 'All channels' : esc(chLabel(c))}</button>`).join('')}
         <span style="width:12px"></span>
         ${[['open', 'Open'], ['all', 'All'], ['planned', 'Planned'], ['doing', 'In progress'], ['done', 'Done'], ['dismissed', 'Dismissed']].map(([k, v]) => `<button class="chip${filters.status === k ? ' active' : ''}" onclick="setFilter('status','${k}')">${v}</button>`).join('')}
       </div>

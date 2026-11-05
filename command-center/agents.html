@@ -403,7 +403,11 @@ function fmtTime(iso) {
   return d.toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// JS string literal for inline on*="" handlers (HTML-escaped JSON; entities decode before JS runs, so esc() alone is not enough)
+function jq(s) { return esc(JSON.stringify(String(s ?? ''))); }
+// Only same-origin relative paths for navigation buttons
+function safeRel(u) { u = String(u ?? ''); return /^\/(?![\/\\])/.test(u) || /^[A-Za-z0-9_.\-]+(\?[^\s]*)?(#[^\s]*)?$/.test(u) ? u : '#'; }
 
 function setFilter(f) {
   currentFilter = f;
@@ -466,9 +470,9 @@ function renderTaskFeed() {
     const hasResult = t.status === 'completed' && (t.result || t.result_url);
     const preview = t._preview ? esc(t._preview.substring(0, 120)) + (t._preview.length > 120 ? '...' : '') : '';
 
-    return `<div class="task-row is-${t.status}">
+    return `<div class="task-row is-${esc(t.status)}">
       <div>
-        <span class="task-agent-tag" style="color:${color};background:${color}15">${t._subtype}</span>
+        <span class="task-agent-tag" style="color:${color};background:${color}15">${esc(t._subtype)}</span>
       </div>
       <div>
         <div class="task-desc">${esc(t._desc)}</div>
@@ -476,9 +480,9 @@ function renderTaskFeed() {
         ${t.status === 'completed' && t.result ? '<div class="task-result-preview">' + esc(t.result.substring(0, 200)) + '</div>' : ''}
         ${t.error ? '<div style="font-size:10px;color:var(--danger);margin-top:2px;font-family:var(--font-data);">' + esc(t.error) + '</div>' : ''}
       </div>
-      <div style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);">${t._agent}</div>
-      <div><span class="task-status-pill ${t.status}">${t.status}</span></div>
-      <div>${(t.status === 'processing' || t.status === 'pending') ? '<button class="task-cancel-btn" onclick="cancelTask(\''+t._api+'\',\''+t.id+'\',this)">Cancel</button>' : ''}</div>
+      <div style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);">${esc(t._agent)}</div>
+      <div><span class="task-status-pill ${esc(t.status)}">${esc(t.status)}</span></div>
+      <div>${(t.status === 'processing' || t.status === 'pending') ? '<button class="task-cancel-btn" onclick="cancelTask(' + jq(t._api) + ',' + jq(t.id) + ',this)">Cancel</button>' : ''}</div>
       <div class="task-time">${fmtTime(t.created_at)}</div>
     </div>`;
   }).join('');
@@ -536,9 +540,9 @@ function buildScheduleSummary(s) {
   switch (s.agent) {
     case 'designer': {
       const parts = [];
-      if (p.description) parts.push(`"${p.description.substring(0, 60)}${p.description.length > 60 ? '...' : ''}"`);
-      parts.push(`${(p.design_type || 'instagram_post').replace(/_/g, ' ')} via ${p.engine || 'nanobanana'}`);
-      if (p.brand) parts.push(`brand: ${p.brand}`);
+      if (p.description) parts.push(`"${escHtml(p.description.substring(0, 60))}${p.description.length > 60 ? '...' : ''}"`);
+      parts.push(`${escHtml((p.design_type || 'instagram_post').replace(/_/g, ' '))} via ${escHtml(p.engine || 'nanobanana')}`);
+      if (p.brand) parts.push(`brand: ${escHtml(p.brand)}`);
       return parts.join(' · ');
     }
     case 'marketeer':
@@ -546,19 +550,19 @@ function buildScheduleSummary(s) {
     case 'assistant':
       return p.query ? `"${escHtml(p.query.substring(0, 80))}${p.query.length > 80 ? '...' : ''}"` : 'Calendar overview';
     case 'ads_optimizer':
-      return `Analyzes campaign performance (${p.period || 'last_7d'}), auto-pauses ROAS < 0.8, scales ROAS > 2.5, sends Telegram report`;
+      return `Analyzes campaign performance (${escHtml(p.period || 'last_7d')}), auto-pauses ROAS < 0.8, scales ROAS > 2.5, sends Telegram report`;
     case 'opusclip': {
       const minD = parseInt(p.min_duration) || 30;
       const maxD = parseInt(p.max_duration) || 90;
-      return `YouTube channel ${escHtml(p.channel_id || 'connected channel')} · clips ${minD}-${maxD}s · ${p.source_lang || 'auto'}`;
+      return `YouTube channel ${escHtml(p.channel_id || 'connected channel')} · clips ${minD}-${maxD}s · ${escHtml(p.source_lang || 'auto')}`;
     }
     case 'ugc_autopilot': {
       const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Main product from brand knowledge';
-      return `${focus} · avatar: ${p.avatar_id ? escHtml(p.avatar_id) : 'rotating'} · ${p.speak_model || 'kling'} · captions ${p.captions === 'false' ? 'off' : 'on'}`;
+      return `${focus} · avatar: ${p.avatar_id ? escHtml(p.avatar_id) : 'rotating'} · ${escHtml(p.speak_model || 'kling')} · captions ${p.captions === 'false' ? 'off' : 'on'}`;
     }
     case 'edu_designer': {
       const focus = p.focus ? `"${escHtml(p.focus.substring(0, 70))}${p.focus.length > 70 ? '...' : ''}"` : 'Trading & crypto education';
-      return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${p.language || 'English'} · X: ${p.x_post === 'auto' ? 'auto post' : p.x_post === 'review' ? 'draft' : 'off'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
+      return `${focus} · ${escHtml(p.sizes || 'portrait')} · ${escHtml(p.language || 'English')} · X: ${p.x_post === 'auto' ? 'auto post' : p.x_post === 'review' ? 'draft' : 'off'} · results on the <a href="designer.html" style="color:inherit">Designer page</a>`;
     }
     case 'character_video_batch': {
       const n = (p.outfits || []).length;
@@ -569,7 +573,7 @@ function buildScheduleSummary(s) {
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
     default:
-      return Object.entries(p).map(([k,v]) => `${k}: ${v}`).join(' · ') || 'No details';
+      return Object.entries(p).map(([k,v]) => `${escHtml(k)}: ${escHtml(typeof v === 'object' ? JSON.stringify(v) : v)}`).join(' · ') || 'No details';
   }
 }
 
@@ -581,24 +585,24 @@ async function loadSchedules() {
     const el = document.getElementById('sched-grid');
     if (!scheds.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No scheduled tasks yet</span>'; return; }
     el.innerHTML = scheds.map(s => {
-      const days = (s.days || []).map(d => d.substring(0,2).toUpperCase()).join(' ');
-      const time = `${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} ${escHtml(s.tz || 'UTC')}`;
+      const days = (s.days || []).map(d => escHtml(String(d).substring(0,2).toUpperCase())).join(' ');
+      const time = `${escHtml(String(s.hour).padStart(2,'0'))}:${escHtml(String(s.minute).padStart(2,'0'))} ${escHtml(s.tz || 'UTC')}`;
       const runBtns = s.agent === 'character_video_batch'
         ? `<div style="display:flex;gap:6px;margin-top:8px">
-             <button class="sched-btn" onclick="runCharBatch('${s.id}',false,this)">▶ Run ${escHtml(s.name)}</button>
-             <button class="sched-btn" onclick="runCharBatch('${s.id}',true,this)">Dry run</button>
-           </div><div class="sched-last" id="cb-status-${s.id}"></div>` : '';
+             <button class="sched-btn" onclick="runCharBatch(${jq(s.id)},false,this)">▶ Run ${escHtml(s.name)}</button>
+             <button class="sched-btn" onclick="runCharBatch(${jq(s.id)},true,this)">Dry run</button>
+           </div><div class="sched-last" id="cb-status-${escHtml(s.id)}"></div>` : '';
       const summary = buildScheduleSummary(s);
       const lastRun = s.last_run ? new Date(s.last_run).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'never';
       return `
         <div class="sched-card ${s.enabled ? '' : 'disabled'}">
           <div class="sched-actions">
-            <button class="sched-btn" onclick="toggleSchedule('${s.id}',${!s.enabled})">${s.enabled ? 'Pause' : 'Enable'}</button>
-            <button class="sched-btn" onclick="editSchedule('${s.id}')">Edit</button>
-            <button class="sched-btn del" onclick="deleteSchedule('${s.id}')">Del</button>
+            <button class="sched-btn" onclick="toggleSchedule(${jq(s.id)},${!s.enabled})">${s.enabled ? 'Pause' : 'Enable'}</button>
+            <button class="sched-btn" onclick="editSchedule(${jq(s.id)})">Edit</button>
+            <button class="sched-btn del" onclick="deleteSchedule(${jq(s.id)})">Del</button>
           </div>
           <div class="sched-name">${escHtml(s.name)}</div>
-          <div class="sched-agent" style="${AGENT_STYLES[s.agent] || ''}">${AGENT_LABELS[s.agent] || s.agent}</div>
+          <div class="sched-agent" style="${AGENT_STYLES[s.agent] || ''}">${AGENT_LABELS[s.agent] || escHtml(s.agent)}</div>
           <div class="sched-time"><span class="sched-badge ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'active' : 'paused'}</span>${time} &middot; ${days}</div>
           <div class="sched-details">${summary}</div>
           <div class="sched-last">Last run: ${lastRun}</div>${runBtns}
@@ -623,18 +627,18 @@ async function loadAutonomous() {
     el.innerHTML = jobs.map(j => {
       const badge = j.running ? '<span class="sched-badge run">running</span>'
         : `<span class="sched-badge ${j.enabled ? 'on' : 'off'}">${j.enabled ? 'active' : 'paused'}</span>`;
-      const today = j.today ? `<div class="sched-details">Today: ${j.today.done} posted · ${j.today.failed} failed/skipped · ${j.today.pending} to go</div>` : '';
+      const today = j.today ? `<div class="sched-details">Today: ${escHtml(j.today.done)} posted · ${escHtml(j.today.failed)} failed/skipped · ${escHtml(j.today.pending)} to go</div>` : '';
       const next = j.next_run ? `Next: ${fmtWhen(j.next_run)}` : '';
       const last = j.last_run ? `Last run: ${fmtWhen(j.last_run.at)} · ${escHtml(j.last_run.status || '')}` : '';
       const err = j.last_run && j.last_run.error && j.last_run.status === 'failed'
         ? `<div class="sched-last err" title="${escHtml(j.last_run.error)}">${escHtml(j.last_run.error.substring(0, 110))}${j.last_run.error.length > 110 ? '...' : ''}</div>` : '';
-      const toggle = j.toggle ? `<button class="sched-btn" onclick="toggleAutonomous('${j.toggle.channel_id}','${j.toggle.field}',${!j.enabled})">${j.enabled ? 'Pause' : 'Enable'}</button>` : '';
-      const manage = j.manage_url ? `<button class="sched-btn" onclick="location.href='${j.manage_url}'">Open</button>` : '';
+      const toggle = j.toggle ? `<button class="sched-btn" onclick="toggleAutonomous(${jq(j.toggle.channel_id)},${jq(j.toggle.field)},${!j.enabled})">${j.enabled ? 'Pause' : 'Enable'}</button>` : '';
+      const manage = j.manage_url ? `<button class="sched-btn" onclick="location.href=${jq(safeRel(j.manage_url))}">Open</button>` : '';
       return `
         <div class="sched-card ${j.enabled ? '' : 'disabled'}">
           <div class="sched-actions">${toggle}${manage}</div>
           <div class="sched-name">${escHtml(j.name)}</div>
-          <div class="sched-agent" style="${AGENT_STYLES[j.agent] || ''}">${AGENT_LABELS[j.agent] || j.agent}</div>
+          <div class="sched-agent" style="${AGENT_STYLES[j.agent] || ''}">${AGENT_LABELS[j.agent] || escHtml(j.agent)}</div>
           <div class="sched-time">${badge}${escHtml(j.when || '')}</div>
           <div class="sched-details">${escHtml(j.details || '')}</div>
           ${today}
@@ -690,8 +694,8 @@ async function pollCharBatch(id) {
     const m = (all.batches || []).find(b => b.schedule_id === id) || (all.batches || [])[0];
     if (!m) return;
     const missing = (m.slots || []).filter(x => x.status === 'skipped_balance').length;
-    st.innerHTML = `${escHtml(m.batch_id)}: ${escHtml(m.status)} · ${(m.slots || []).filter(x => x.status === 'done').length} video(s) · $${(m.total_cost?.usd || 0).toFixed(2)}`
-      + (missing ? ` · <span style="color:hsl(45 93% 55%)">${missing} waiting for balance</span> <button class="sched-btn" style="margin-left:6px" onclick="retryCharBatch('${escHtml(m.batch_id)}','${id}',this)">↻ Retry missing videos</button>` : '');
+    st.innerHTML = `${escHtml(m.batch_id)}: ${escHtml(m.status)} · ${(m.slots || []).filter(x => x.status === 'done').length} video(s) · $${Number(m.total_cost?.usd || 0).toFixed(2)}`
+      + (missing ? ` · <span style="color:hsl(45 93% 55%)">${Number(missing)} waiting for balance</span> <button class="sched-btn" style="margin-left:6px" onclick="retryCharBatch(${jq(m.batch_id)},${jq(id)},this)">↻ Retry missing videos</button>` : '');
   } catch {}
 }
 
@@ -938,7 +942,7 @@ async function populateAvatarSelect(selectedId) {
     const avatars = await fetch('/ugc/avatars', { credentials: 'include' }).then(r => r.json());
     const ready = (avatars || []).filter(a => a.status === 'ready' && a.image_url);
     sel.innerHTML = '<option value="">Rotate through the library</option>' + ready.map(a =>
-      `<option value="${escHtml(a.id)}">${escHtml(a.name)}${a.gender_resolved ? ' · ' + a.gender_resolved : ' · gender unknown (skipped)'}</option>`).join('');
+      `<option value="${escHtml(a.id)}">${escHtml(a.name)}${a.gender_resolved ? ' · ' + escHtml(a.gender_resolved) : ' · gender unknown (skipped)'}</option>`).join('');
     if (selectedId) sel.value = selectedId;
   } catch {}
 }
