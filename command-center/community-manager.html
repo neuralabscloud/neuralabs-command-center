@@ -277,10 +277,13 @@ function switchTab(name) {
 }
 
 // ── CHANNELS ──
+let igAccounts = [];
 async function loadChannels() {
   const container = document.getElementById('channels-list');
   try {
-    channelsCache = await fetchJson('/community/channels');
+    const [chs, conns] = await Promise.all([fetchJson('/community/channels'), fetchJson('/social/connections').catch(() => [])]);
+    channelsCache = chs;
+    igAccounts = (Array.isArray(conns) ? conns : (conns && conns.connections) || []).filter(x => x.platform === 'instagram');
     refreshChannelFilter();
     if (!channelsCache.length) { container.innerHTML = '<div class="empty">No channels configured. Add one below.</div>'; return; }
     container.innerHTML = channelsCache.map(renderChannelCard).join('');
@@ -367,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -384,6 +387,39 @@ function renderXAuthNote(c) {
     : 'No X keys yet. Add the 4 keys below (or TWITTER_* in .env).';
   return `<div class="discord-banner">𝕏 ${src} Create them at developer.x.com: an app with <b>Read and write</b> permission, then the API key/secret and an access token/secret generated while logged in as the account you want to post to. X bills per use (~$0.015 per post, reads for the autopilot's searches are billed too); a monthly counter caps posts (TWITTER_MONTHLY_POST_LIMIT, default 500). Use Validate to test.</div>`;
 }
+// Instagram cross-post: copy this X channel's image posts to an Instagram
+// Business account connected via Settings → Meta.
+function renderInstagram(c) {
+  const ig = c.instagram || {};
+  const id = esc(c.id);
+  const opts = igAccounts.map(a => `<option value="${esc(a.id)}"${ig.account_id === a.id ? ' selected' : ''}>@${esc(a.username || a.name || a.id)}</option>`).join('');
+  const missing = ig.account_id && !igAccounts.some(a => a.id === ig.account_id) ? `<option value="${esc(ig.account_id)}" selected>${esc(ig.account_id)} (not connected)</option>` : '';
+  return `
+    <div class="edit-label" style="margin-top:14px">📸 Instagram cross-post</div>
+    ${igAccounts.length ? '' : '<div class="post-err" style="margin-bottom:6px">No Instagram Business account connected. Connect Meta in Settings (Instagram account linked to a Facebook page).</div>'}
+    <div class="edit-grid">
+      <div><label class="edit-label">Cross-post</label>
+        <select class="edit-input" id="ch-ig-enabled-${id}"><option value="false"${ig.enabled ? '' : ' selected'}>Off</option><option value="true"${ig.enabled ? ' selected' : ''}>On</option></select></div>
+      <div><label class="edit-label">Instagram account</label>
+        <select class="edit-input" id="ch-ig-account-${id}"><option value="">choose…</option>${missing}${opts}</select></div>
+      <div><label class="edit-label">Which posts</label>
+        <select class="edit-input" id="ch-ig-which-${id}"><option value="all"${ig.which !== 'promo' ? ' selected' : ''}>All posts with an image</option><option value="promo"${ig.which === 'promo' ? ' selected' : ''}>Only promo posts</option></select></div>
+    </div>
+    <label class="edit-label">Extra hashtags for Instagram (max 30, links become "Link in bio")</label>
+    <input class="edit-input" id="ch-ig-hashtags-${id}" value="${esc(ig.hashtags || '')}" placeholder="#example #tags">`;
+}
+function collectInstagram(id) {
+  const g = k => document.getElementById(`ch-ig-${k}-${id}`);
+  if (!g('enabled')) return null;
+  return { enabled: g('enabled').value === 'true', account_id: g('account').value, which: g('which').value, hashtags: g('hashtags').value.trim() };
+}
+async function crosspostInstagram(taskId) {
+  try {
+    await fetchJson(`/community/tasks/${encodeURIComponent(taskId)}/instagram`, { method: 'POST' });
+    await loadTasks();
+  } catch (e) { alert('Instagram: ' + e.message); }
+}
+
 function renderXKeys(c) {
   const f = (c.x_auth && c.x_auth.fields) || {};
   const field = (k, label) => `
@@ -786,6 +822,11 @@ async function saveChannel(id) {
     if (Object.keys(keys).length) payload.x_credentials = keys;
     const ap = collectAutopilot(id);
     if (ap) payload.autopilot = ap;
+    const ig = collectInstagram(id);
+    if (ig) {
+      if (ig.enabled && !ig.account_id) { alert('Choose an Instagram account first'); return; }
+      payload.instagram = ig;
+    }
   }
   try {
     await fetchJson(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -944,6 +985,14 @@ function renderPost(t) {
   const xLink = t.status === 'published' && t.message_id && chanObj && chanObj.platform === 'twitter'
     ? `<a class="btn-sm" style="text-decoration:none" href="https://x.com/${esc(chanObj.x_username || 'i')}/status/${esc(t.message_id)}" target="_blank" rel="noopener">View on X</a>` : '';
   const err = t.error ? `<div class="post-err">Error: ${esc(t.error)} (attempts ${t.attempts || 0})</div>` : '';
+  const ig = t.instagram;
+  const igLink = ig && ig.status === 'published' && ig.permalink
+    ? `<a class="btn-sm" style="text-decoration:none" href="${esc(safeUrl(ig.permalink))}" target="_blank" rel="noopener">View on Instagram</a>` : '';
+  const igState = ig && ig.status !== 'published'
+    ? `<div class="${ig.status === 'failed' || ig.error ? 'post-err' : 'post-source'}">📸 Instagram: ${esc(ig.status)}${ig.error ? ' · ' + esc(ig.error) : ''}</div>` : '';
+  const igBtn = t.status === 'published' && chanObj && chanObj.platform === 'twitter' && chanObj.instagram && chanObj.instagram.account_id
+    && (!ig || ig.status === 'failed') && (t.media_path || (t.media_paths || []).length)
+    ? `<button class="btn-sm" onclick="crosspostInstagram(${jq(t.id)})">→ Instagram</button>` : '';
   const isManual = t.status === 'manual';
   const canPublish = !isManual && t.status !== 'published' && t.status !== 'cancelled';
   const canEdit = t.status !== 'published';
@@ -1017,7 +1066,8 @@ function renderPost(t) {
       ${mediaBlock}
       ${src}
       ${err}
-      <div class="post-actions">${xLink}${actions}</div>
+      ${igState}
+      <div class="post-actions">${xLink}${igLink}${igBtn}${actions}</div>
     </div>
   `;
 }

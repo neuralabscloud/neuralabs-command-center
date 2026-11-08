@@ -276,6 +276,21 @@ app.get("/share/video/:sig/:file", (req, res) => {
   res.sendFile(p);
 });
 
+// Same idea for images Instagram fetches by URL (cross-posts). Only JPEGs we
+// converted into public/media/ig/ get a link; the rest of /media stays private.
+function shareImageSig(file) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update("share-image:" + file).digest("hex").slice(0, 32);
+}
+app.get("/share/image/:sig/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^\w.-]/g, "");
+  const sig = String(req.params.sig);
+  let ok = false;
+  try { ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(shareImageSig(file))); } catch { /* length mismatch */ }
+  const p = path.join(__dirname, "public", "media", "ig", file);
+  if (!ok || !/\.jpe?g$/i.test(file) || !fs.existsSync(p)) return res.status(404).end();
+  res.type("image/jpeg").sendFile(p);
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -2883,6 +2898,7 @@ app.patch("/community/channels/:id", (req, res) => {
   const next = { ...current, ...body, id: current.id, updated_at: new Date().toISOString() };
   if (body.review) next.review = { ...current.review, ...body.review };
   if (body.autopilot) next.autopilot = { ...(current.autopilot || {}), ...body.autopilot };
+  if ("instagram" in body) next.instagram = igPublish.sanitize(body.instagram);
   // Blank key fields keep what is stored; { clear: true } removes the channel's own keys.
   if (x_credentials && current.platform === "twitter") {
     const all = readXCredentials();
@@ -3900,7 +3916,7 @@ app.get("/social/meta/auth", (req, res) => {
     "pages_show_list", "pages_read_engagement",
     "business_management",
     "ads_read", "ads_management",
-    "instagram_basic", "instagram_manage_insights",
+    "instagram_basic", "instagram_manage_insights", "instagram_content_publish",
   ].join(",");
   const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&scope=${scope}&state=${state}&response_type=code`;
   res.redirect(url);
@@ -8028,6 +8044,7 @@ async function processCommunityTasks() {
       task.error = null;
       save(task);
       console.log(`[WORKER] Community post ${task.id} published (msg ${result.message_id})`);
+      if (igPublish.shouldCrosspost(task, channel)) task.instagram = { status: "pending", attempts: 0, queued_at: task.published_at };
       if (task.autopilot && channel.platform === "twitter") {
         const handle = channel.x_username || "i";
         sendTelegram(`𝕏 Autopilot posted (${escapeHtmlTg(channel.name)})`,
@@ -8055,6 +8072,96 @@ async function processCommunityTasks() {
     writeTaskFile(COMMUNITY_TASKS_FILE, fresh.map(t => updates.get(t.id) || t));
   }
 }
+// ── INSTAGRAM CROSS-POST ──
+// Published X posts with an image are copied to the Instagram account set on
+// the channel (channel.instagram). The PNG becomes a JPEG in public/media/ig/
+// (Instagram only takes JPEG, 4:5 to 1.91:1) behind a signed public link.
+const igPublish = require("./instagram-publish");
+const IG_MEDIA_DIR = path.join(MEDIA_DIR, "ig");
+let igRunning = false;
+
+async function igPrepareJpeg(task) {
+  const src = path.join(__dirname, "public", igPublish.imagePathOf(task));
+  if (!src.startsWith(MEDIA_DIR + path.sep) || !fs.existsSync(src)) throw new Error("image file missing");
+  fs.mkdirSync(IG_MEDIA_DIR, { recursive: true });
+  const file = `${String(task.id).replace(/[^\w-]/g, "")}.jpg`;
+  const out = path.join(IG_MEDIA_DIR, file);
+  const { execFile } = require("child_process");
+  const run = (cmd, args) => new Promise((ok, no) => execFile(cmd, args, { timeout: 60000 }, (e, so) => e ? no(e) : ok(String(so))));
+  const [w, h] = (await run("identify", ["-format", "%w %h", src + "[0]"])).trim().split(/\s+/).map(Number);
+  const pad = igPublish.padTarget(w, h);
+  const args = [src + "[0]", "-background", "black", "-flatten"];
+  if (pad) args.push("-gravity", "center", "-extent", `${pad.width}x${pad.height}`);
+  args.push("-strip", "-quality", "92", out);
+  await run("convert", args);
+  return file;
+}
+
+async function publishTaskToInstagram(task, channel) {
+  const cfg = igPublish.config(channel);
+  const conn = (readSocial() || []).find(c => c.id === cfg.account_id && c.platform === "instagram");
+  if (!conn || !conn.ig_user_id || !conn.page_access_token) throw new Error("Instagram account not connected (Settings → Meta)");
+  const origin = knownPublicOrigin();
+  if (!/^https:\/\//.test(origin)) throw new Error("no public https origin (PUBLIC_BASE_URL)");
+  const file = await igPrepareJpeg(task);
+  const imageUrl = `${origin}/share/image/${shareImageSig(file)}/${file}`;
+  const caption = igPublish.caption(task.text, { hashtags: cfg.hashtags });
+  return igPublish.publishImage({ igUserId: conn.ig_user_id, token: conn.page_access_token, imageUrl, caption });
+}
+
+async function processInstagramCrossposts() {
+  if (igRunning) return;
+  igRunning = true;
+  try {
+    const channelMap = Object.fromEntries(readChannels().map(c => [c.id, c]));
+    const now = Date.now();
+    const due = readTaskFile(COMMUNITY_TASKS_FILE).filter(t => t.instagram && t.instagram.status === "pending"
+      && (!t.instagram.next_at || Date.parse(t.instagram.next_at) <= now));
+    for (const task of due.slice(0, 3)) {
+      const channel = channelMap[task.channel_id];
+      const ig = { ...task.instagram };
+      try {
+        if (!channel) throw new Error("channel removed");
+        const r = await publishTaskToInstagram(task, channel);
+        Object.assign(ig, { status: "published", media_id: r.media_id, permalink: r.permalink, published_at: new Date().toISOString(), error: null });
+        console.log(`[INSTAGRAM] ${task.id} published (${r.media_id})`);
+        sendTelegram(`📸 Instagram posted (${escapeHtmlTg(channel.name)})`, escapeHtmlTg(r.permalink || r.media_id), "info");
+      } catch (e) {
+        ig.attempts = (ig.attempts || 0) + 1;
+        ig.error = String(e.message || e).slice(0, 400);
+        if (ig.attempts >= 3) {
+          ig.status = "failed";
+          sendTelegram(`📸 Instagram cross-post failed (${escapeHtmlTg(channel ? channel.name : task.channel_id)})`, escapeHtmlTg(ig.error), "danger");
+        } else {
+          ig.next_at = new Date(Date.now() + ig.attempts * 10 * 60 * 1000).toISOString();
+        }
+        console.error(`[INSTAGRAM] ${task.id} failed (attempt ${ig.attempts}): ${ig.error}`);
+      }
+      // Only our field changes; merge into a fresh read.
+      const fresh = readTaskFile(COMMUNITY_TASKS_FILE);
+      writeTaskFile(COMMUNITY_TASKS_FILE, fresh.map(t => t.id === task.id ? { ...t, instagram: ig } : t));
+    }
+  } finally {
+    igRunning = false;
+  }
+}
+
+// (Re)queue one published post for Instagram, e.g. after a failure.
+app.post("/community/tasks/:id/instagram", (req, res) => {
+  const tasks = readTaskFile(COMMUNITY_TASKS_FILE);
+  const task = tasks.find(t => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "not found" });
+  const channel = readChannels().find(c => c.id === task.channel_id);
+  if (task.status !== "published") return res.status(400).json({ error: "post is not published yet" });
+  if (!channel || !igPublish.config(channel).account_id) return res.status(400).json({ error: "no Instagram account set on this channel" });
+  if (!igPublish.imagePathOf(task)) return res.status(400).json({ error: "post has no image" });
+  if (task.instagram && task.instagram.status === "published") return res.status(400).json({ error: "already on Instagram" });
+  task.instagram = { status: "pending", attempts: 0, queued_at: new Date().toISOString() };
+  writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
+  res.json({ ok: true, instagram: task.instagram });
+  setImmediate(() => processInstagramCrossposts().catch(e => console.error("[INSTAGRAM]", e.message)));
+});
+
 function escapeHtmlTg(s) {
   return String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
@@ -8062,7 +8169,8 @@ function escapeHtmlTg(s) {
 // Run workers every 15 seconds
 setInterval(() => {
   processOpusclipTasks().catch(e => console.error("[WORKER] OpusClip error:", e.message));
-  processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message));
+  processCommunityTasks().catch(e => console.error("[WORKER] Community error:", e.message))
+    .then(() => processInstagramCrossposts()).catch(e => console.error("[WORKER] Instagram error:", e.message));
   processUgcTasks().catch(e => console.error("[WORKER] UGC error:", e.message));
 }, 15_000);
 
