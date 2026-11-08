@@ -105,5 +105,16 @@ ok(groups.flatMap(g => g.query.split(" OR ")).length === 60 && groups.every(g =>
 ok(ap.accountTopics(["a", "b"], "me").length === 1 && ap.accountTopics(["a"], "me")[0].label === "Curated", "accountTopics: one group is labelled Curated");
 ok(ap.accountTopics([], "me").length === 0, "accountTopics: none without accounts");
 
+// card template (image_mode "template")
+const ct = require("../card-template");
+ok(ct.cleanHeadline("Same Venusaur — $75 to $1,086.") === "Same Venusaur $75 to $1,086.", "cleanHeadline: dashes stripped");
+ok(ct.cleanHeadline("a b c d e f g h i j k").split(" ").length === 9, "cleanHeadline: max 9 words");
+const html = ct.buildHtml({ imageDataUri: "data:image/png;base64,AA", headline: "<b>x</b>", mark: "SLAB", fonts: false });
+ok(html.includes("&lt;b&gt;x&lt;/b&gt;") && !html.includes("<b>x</b>"), "buildHtml: headline escaped");
+ok(html.includes(">SLAB<") && !ct.buildHtml({ imageDataUri: "x", headline: "h", fonts: false }).includes('class="mark"'), "buildHtml: wordmark optional");
+ok(ct.mimeOf(Buffer.from([0x89, 0x50, 0, 0])) === "image/png" && ct.mimeOf(Buffer.from([0xff, 0xd8, 0, 0])) === "image/jpeg", "mimeOf: png/jpeg");
+ok(ap.config({ autopilot: { image_mode: "template", template_mark: "MYBRAND" } }).image_mode === "template", "config: image_mode template kept");
+ok(ap.config({ autopilot: { image_mode: "weird" } }).image_mode === "ai", "config: unknown image_mode falls back to ai");
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

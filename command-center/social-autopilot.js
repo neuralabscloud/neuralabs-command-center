@@ -11,6 +11,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const cardTemplate = require("./card-template");
 
 const DEFAULTS = {
   enabled: false,
@@ -28,6 +29,9 @@ const DEFAULTS = {
   voice: "",               // optional description of the account's voice
   style_prompt: "",        // house style for images; empty = derived from brand
   style_refs: [],          // /media/... images that show the house style
+  image_mode: "ai",        // ai = Higgsfield redraw; template = source photo in a fixed template (card-template.js)
+  template_mark: "",       // small wordmark at the bottom of the template
+  template_hue: 43,        // accent colour of the template (hsl hue)
 };
 
 const MODEL = process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5";
@@ -58,6 +62,9 @@ function config(channel) {
   if (!/^\d{2}:\d{2}$/.test(c.window_end)) c.window_end = DEFAULTS.window_end;
   if (!Array.isArray(c.topics)) c.topics = String(c.topics || "").split("\n");
   c.topics = c.topics.map(t => String(t).trim()).filter(Boolean);
+  c.image_mode = c.image_mode === "template" ? "template" : "ai";
+  c.template_mark = String(c.template_mark || "").slice(0, 30);
+  c.template_hue = Number.isFinite(Number(c.template_hue)) ? Number(c.template_hue) % 360 : DEFAULTS.template_hue;
   c.accounts = parseAccounts(c.accounts);
   if (!Array.isArray(c.style_refs)) c.style_refs = [];
   return c;
@@ -417,10 +424,13 @@ Rules for the post:
 - Skip candidates that shill small tokens, run giveaways, look like scams, are political, or whose image shows identifiable real people (our image generator refuses those). A candidate that merely mentions a token or project is fine when it carries real market news, data or a chart: our post takes a neutral angle on the subject and never promotes it. Return choice -1 only if none fit.
 - Do not repeat the angle of our recent posts.
 
-Rules for the image:
+${cfg.image_mode === "template" ? `Rules for the image (template mode):
+- The candidate's own photo is shown as-is inside our template, so only pick a candidate whose image clearly shows the subject of the post (the card, slab or product), not a meme, screenshot of text, collage of unrelated items or a person.
+- image_headline is REQUIRED: a punchy headline of max 7 words in our own words, plain English, that states the key fact or hook of the post (for example "Same Venusaur. $75 to $1,086."). No hashtags, no emojis, no dashes. Only facts that are in the candidate.
+- image_prompt: one short sentence describing what the photo shows.` : `Rules for the image:
 - image_prompt describes a NEW image that conveys the same idea as the candidate image (you may borrow the composition), without logos, watermarks, usernames or real people's faces.
 - If the candidate image is a chart or data graphic, say so in image_prompt and describe its shape and key values precisely, so the redraw stays faithful to the data.
-- If the candidate image carries text, write image_headline in our own words (max 8 words); otherwise leave it empty.
+- If the candidate image carries text, write image_headline in our own words (max 8 words); otherwise leave it empty.`}
 ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " + t.replace(/\s+/g, " ").slice(0, 200)).join("\n")}` : ""}`,
     }];
     candidates.forEach((c, i) => {
@@ -490,7 +500,29 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
     throw new Error("Higgsfield: timed out");
   }
 
+  // Template mode: the source photo (borders trimmed) in card-template.js, headline as real text.
+  async function renderTemplate(cfg, cand, post, id) {
+    const r = await fetch(`${cand.image}?name=large`);
+    if (!r.ok) throw new Error(`source image download ${r.status}`);
+    let buf = Buffer.from(await r.arrayBuffer());
+    try {
+      const trimmed = execFileSync("convert", ["-", "-fuzz", "8%", "-trim", "+repage", "jpg:-"], { input: buf, maxBuffer: 50 * 1024 * 1024 });
+      if (trimmed.length > 1000) buf = trimmed;
+    } catch (e) { log(`template trim skipped: ${e.message}`); }
+    fs.mkdirSync(mediaDir, { recursive: true });
+    const name = `autopilot-${id}.png`;
+    await cardTemplate.render({ imageBuf: buf, headline: post.image_headline, mark: cfg.template_mark, hue: cfg.template_hue }, path.join(mediaDir, name));
+    if (fs.statSync(path.join(mediaDir, name)).size > X_IMAGE_MAX) {
+      const jpg = `autopilot-${id}.jpg`;
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(mediaDir, name), "-q:v", "3", path.join(mediaDir, jpg)]);
+      fs.unlinkSync(path.join(mediaDir, name));
+      return { path: `/media/${jpg}`, method: "template" };
+    }
+    return { path: `/media/${name}`, method: "template" };
+  }
+
   async function renderImage(cfg, cand, post, id) {
+    if (cfg.image_mode === "template") return renderTemplate(cfg, cand, post, id);
     const aspect = nearestAspect(cand.width, cand.height);
     const styleUrls = [];
     for (const ref of cfg.style_refs.slice(0, 2)) {
