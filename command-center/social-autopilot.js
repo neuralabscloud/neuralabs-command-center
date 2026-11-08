@@ -629,7 +629,7 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
       input_schema: {
         type: "object",
         properties: {
-          angle: { type: "string", description: "The angle in a few words (e.g. 'grading data before you submit')." },
+          angle: { type: "string", description: "The angle in a few words (e.g. 'review your trades without memory')." },
           post_text: { type: "string", description: `The post without the link, max ${maxText - 20} characters.` },
           image_headline: { type: "string", description: "Headline for the image, max 7 words." },
         },
@@ -648,12 +648,12 @@ ${cfg.promo_facts}
 """
 
 Rules:
-- Lead with a real collector situation or pain point (one specific moment from the hobby), then show how ${cfg.promo_product} helps. Sound like a person from the community, not an ad.
+- Lead with a real situation or pain point from this account's niche (one specific moment your audience recognises), then show how ${cfg.promo_product} helps. Sound like a person from the community, not an ad.
 - Name ${cfg.promo_product} once. A short call to action at the end is fine (the link is added below the post automatically; do not write a URL or "link below").
 - 2 to 5 short lines, plain text, max ${maxText - 20} characters. At most 1 hashtag and 2 emojis.
 - NEVER use em dashes or en dashes. Use periods, colons or line breaks.
 - No financial advice, no price predictions, no "guaranteed", no claims about profit or value going up.
-- Pick a different angle than the recent promos below (feature, pain point, free trial, a question to the audience, a myth about pulls or grading).
+- Pick a different angle than the recent promos below (feature, pain point, free trial, a question to the audience, a common myth in the niche).
 - image_headline: max 7 words, plain, no hashtags, emojis or dashes.
 ${recent.length ? `\nRecent promo posts (use a different angle and different wording):\n${recent.map(t => "- " + t.replace(/\s+/g, " ").slice(0, 220)).join("\n")}` : ""}` }];
 
