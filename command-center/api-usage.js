@@ -383,11 +383,24 @@ function recordClaudeMessage(msg, feature) {
   }, { model: msg.model, feature });
 }
 
+// A .slice() somewhere upstream can cut an emoji in half; a lone surrogate makes the
+// API reject the whole request ("unexpected end of hex escape"). Repair all strings.
+function wellFormed(v, depth = 0) {
+  if (typeof v === "string") return v.isWellFormed() ? v : v.toWellFormed();
+  if (depth > 40 || !v || typeof v !== "object" || Buffer.isBuffer(v) || ArrayBuffer.isView(v)) return v;
+  if (Array.isArray(v)) { let out = null; v.forEach((x, i) => { const y = wellFormed(x, depth + 1); if (y !== x) (out ||= v.slice())[i] = y; }); return out || v; }
+  if (Object.getPrototypeOf(v) !== Object.prototype) return v;
+  let out = null;
+  for (const k of Object.keys(v)) { const y = wellFormed(v[k], depth + 1); if (y !== v[k]) (out ||= { ...v })[k] = y; }
+  return out || v;
+}
+
 function patchMessagesClass(Cls) {
   if (!Cls || !Cls.prototype || Cls.prototype.__usagePatched) return;
   const origCreate = Cls.prototype.create;
   const origStream = Cls.prototype.stream;
   Cls.prototype.create = function (body, options) {
+    body = wellFormed(body);
     const p = origCreate.call(this, body, options);
     // Streamed creates are recorded by stream() below (it calls create with stream:true).
     if (!(body && body.stream)) {
@@ -398,6 +411,7 @@ function patchMessagesClass(Cls) {
   };
   if (origStream) {
     Cls.prototype.stream = function (body, options) {
+      body = wellFormed(body);
       const s = origStream.call(this, body, options);
       const feature = currentFeature();
       try { s.on("finalMessage", msg => recordClaudeMessage(msg, feature)); } catch {}
@@ -796,6 +810,7 @@ function install() {
 }
 
 module.exports = {
+  wellFormed,
   install, middleware, tag, withVideoSeconds, forTask, taskCosts, attachCosts, rowsCost, infshEstimate, effectiveRates: () => effectiveRates(), higgsfieldRateFor: (model) => higgsfieldRate(model, effectiveRates()), record, recordInfshTask, meterInfshOutput, currentFeature, summary, updateConfig, liveBalances, flush,
   // exported for tests
   _internal: { rowCost, effectiveRates, modelRate, higgsfieldRate, meterFetch, currentFeature, providerForHost, recordClaudeMessage, DEFAULT_RATES, PROVIDERS, reset: () => { usage = { days: {} }; dirty = false; }, getUsage: () => usage, pruneTasks, KEEP_TASKS },

@@ -189,6 +189,16 @@ function persistence() {
   check("fetch patched", globalThis.fetch.__usagePatched === true);
 
   fs.rmSync(tmp, { recursive: true, force: true });
+  {
+    const cut = "card \u{1F525}".slice(0, 6); // half an emoji
+    const body = { model: "m", messages: [{ role: "user", content: [{ type: "text", text: "x " + cut }, { type: "image", source: { data: "abc" } }] }], max_tokens: 5 };
+    const fixed = u.wellFormed(body);
+    check("wellFormed repairs a lone surrogate", fixed.messages[0].content[0].text.isWellFormed() && JSON.stringify(fixed).length > 0);
+    check("wellFormed leaves the original body alone", !body.messages[0].content[0].text.isWellFormed());
+    check("wellFormed returns same object when clean", u.wellFormed({ a: ["ok \u{1F525}"] }).a[0] === "ok \u{1F525}");
+    const clean = { a: [1, "b"] };
+    check("wellFormed no copy when nothing to fix", u.wellFormed(clean) === clean);
+  }
   console.log(`\n${pass} ok, ${fail} FOUT`);
   process.exit(fail ? 1 : 0);
 }
