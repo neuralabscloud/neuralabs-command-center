@@ -41,6 +41,11 @@ check("crosspost: promo ignores instagram_ok false", ig.shouldCrosspost({ ...t, 
 check("crosspost: old tasks without the flag still go", ig.shouldCrosspost({ ...t }, ch) && ig.skipReason(t, ch) === null);
 check("skipReason explains a gated post", /X only/.test(ig.skipReason({ ...t, instagram_ok: false }, ch) || ""));
 check("skipReason silent when IG off or already handled", ig.skipReason({ ...t, instagram_ok: false }, { ...ch, instagram: { enabled: false } }) === null && ig.skipReason({ ...t, instagram_ok: false, instagram: { status: "skipped" } }, ch) === null);
+check("crosspost: not for raw AI image (tiny/no text)", !ig.shouldCrosspost({ ...t, image_method: "text-only" }, ch) && !ig.shouldCrosspost({ ...t, image_method: "restyle" }, ch));
+check("crosspost: AI card + template go", ig.shouldCrosspost({ ...t, image_method: "restyle+card" }, ch) && ig.shouldCrosspost({ ...t, image_method: "template" }, ch));
+check("crosspost: not when card frame failed", !ig.shouldCrosspost({ ...t, image_method: "restyle", image_framed: false }, ch));
+check("crosspost: promo always", ig.shouldCrosspost({ ...t, promo: true, image_method: "text-only" }, ch));
+check("skipReason names unreadable image", /readable headline/.test(ig.skipReason({ ...t, image_method: "text-only" }, ch) || ""));
 check("imagePathOf rejects traversal", ig.imagePathOf({ media_path: "/media/../../.env.png" }) === null);
 check("imagePathOf takes first of media_paths", ig.imagePathOf({ media_paths: ["/media/a.jpg"] }) === "/media/a.jpg");
 

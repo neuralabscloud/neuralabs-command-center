@@ -2,6 +2,7 @@
 // Run: node scripts/test-social-autopilot.js
 const ap = require("../social-autopilot");
 let pass = 0, fail = 0;
+const check = (name, cond) => ok(cond, name);
 const ok = (cond, name) => { if (cond) { pass++; console.log("ok   " + name); } else { fail++; console.log("FOUT " + name); } };
 
 // cleanPostText: no em/en dashes, no links
@@ -116,7 +117,7 @@ ok(html.includes("&lt;b&gt;x&lt;/b&gt;") && !html.includes("<b>x</b>"), "buildHt
 ok(html.includes(">SLAB<") && !ct.buildHtml({ imageDataUri: "x", headline: "h", fonts: false }).includes('class="mark"'), "buildHtml: wordmark optional");
 ok(ct.mimeOf(Buffer.from([0x89, 0x50, 0, 0])) === "image/png" && ct.mimeOf(Buffer.from([0xff, 0xd8, 0, 0])) === "image/jpeg", "mimeOf: png/jpeg");
 ok(ap.config({ autopilot: { image_mode: "template", template_mark: "MYBRAND" } }).image_mode === "template", "config: image_mode template kept");
-ok(ap.config({ autopilot: { image_mode: "weird" } }).image_mode === "ai", "config: unknown image_mode falls back to ai");
+ok(ap.config({ autopilot: { image_mode: "weird" } }).image_mode === "ai_card", "config: unknown image_mode falls back to ai_card");
 
 // daily promo slot
 const seq = (...v) => { let i = 0; return () => v[i++ % v.length]; };
@@ -137,5 +138,13 @@ ok(pc.promo_enabled === true && pc.promo_per_day === 2, "config: promo on, per_d
 ok(pc.promo_link === "", "config: non-http promo link dropped");
 ok(pc.promo_images.length === 1 && pc.promo_images[0] === "/media/promo/a.png", "config: only clean /media/ promo images kept");
 
+// image mode + headline fallback (readable images, also for Instagram)
+check("image_mode default ai_card", ap.config({ autopilot: {} }).image_mode === "ai_card");
+check("image_mode keeps ai / template", ap.config({ autopilot: { image_mode: "ai" } }).image_mode === "ai" && ap.config({ autopilot: { image_mode: "template" } }).image_mode === "template");
+check("image_mode unknown falls back", ap.config({ autopilot: { image_mode: "x" } }).image_mode === "ai_card");
+check("ensureHeadline keeps Claude's own", ap.ensureHeadline("Rails first. Flow second.", "whatever") === "Rails first. Flow second.");
+const fh = ap.ensureHeadline("", "Support for a rail is not usage of a rail. Crypto.com's app does more.\n\n#BTC");
+check("ensureHeadline falls back to first sentence", fh === "Support for a rail is not usage");
+check("ensureHeadline strips dashes, hashtags, links", !/[–—#]|http/.test(ap.ensureHeadline("", "Big move — $BTC https://x.y #crypto")));
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

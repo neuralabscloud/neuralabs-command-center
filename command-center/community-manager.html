@@ -579,12 +579,13 @@ function renderAutopilot(c) {
         <div>
           <label class="edit-label">Image</label>
           <select class="edit-select" id="ch-ap-imgmode-${esc(c.id)}">
-            <option value="ai"${ap.image_mode !== 'template' ? ' selected' : ''}>AI redraw in house style</option>
+            <option value="ai_card"${!ap.image_mode || ap.image_mode === 'ai_card' ? ' selected' : ''}>AI image in template + headline (readable)</option>
+            <option value="ai"${ap.image_mode === 'ai' ? ' selected' : ''}>AI redraw, raw (X only, not to Instagram)</option>
             <option value="template"${ap.image_mode === 'template' ? ' selected' : ''}>Source photo in template + headline</option>
           </select>
         </div>
         <div>
-          <label class="edit-label">Template wordmark (template only)</label>
+          <label class="edit-label">Template wordmark (template modes)</label>
           <input class="edit-input" id="ch-ap-mark-${esc(c.id)}" value="${v('template_mark', '')}" placeholder="e.g. your account name">
         </div>
         <div class="full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
@@ -802,7 +803,7 @@ function collectAutopilot(id) {
     accounts: g('accounts') ? g('accounts').value.split(/[\s,;]+/).map(a => a.replace(/^@/, '').trim()).filter(Boolean) : [],
     voice: g('voice').value.trim(),
     style_prompt: g('style').value.trim(),
-    image_mode: g('imgmode') ? g('imgmode').value : 'ai',
+    image_mode: g('imgmode') ? g('imgmode').value : 'ai_card',
     template_mark: g('mark') ? g('mark').value.trim() : '',
     style_refs: (apRefs[id] || []).slice(),
     ...(g('promo') ? {

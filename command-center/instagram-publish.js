@@ -45,22 +45,33 @@ function imagePathOf(task) {
   return p && IMAGE_RE.test(p) && /^\/media\/[\w./-]+$/.test(p) && !p.includes("..") ? p : null;
 }
 
+// A raw AI image (the model drew the text itself: often tiny, misspelled or none at all)
+// is not self-explanatory on Instagram, where nobody reads the caption first.
+// Only cards with a headline rendered as real text go there ("…+card", "template").
+const RAW_AI = new Set(["restyle", "style-only", "text-only"]);
+function unreadable(task) {
+  return !task.promo && (task.image_framed === false || RAW_AI.has(task.image_method));
+}
+
 function shouldCrosspost(task, channel) {
   const cfg = config(channel);
   if (!cfg.enabled || !channel || channel.platform !== "twitter") return false;
   if (task.instagram) return false;            // already queued, done or failed
   if (!imagePathOf(task)) return false;        // Instagram needs an image
   if (task.instagram_ok === false && !task.promo) return false; // reaction/off-niche: X only
+  if (unreadable(task)) return false;          // no readable headline in the image
   return cfg.which === "all" || !!task.promo;
 }
 
 // Waarom een post die anders mee zou gaan bewust NIET naar Instagram gaat
 // (reactie op een tweet of buiten de niche, zo beoordeeld bij het schrijven).
 function skipReason(task, channel) {
-  if (!task || task.instagram || task.promo || task.instagram_ok !== false) return null;
+  if (!task || task.instagram || task.promo) return null;
+  if (task.instagram_ok !== false && !unreadable(task)) return null;
   const cfg = config(channel);
   if (!cfg.enabled || !channel || channel.platform !== "twitter" || cfg.which !== "all" || !imagePathOf(task)) return null;
-  return "reaction to a tweet or off-niche (X only)";
+  if (task.instagram_ok === false) return "reaction to a tweet or off-niche (X only)";
+  return "image has no readable headline (raw AI image, X only)";
 }
 
 // X text → Instagram caption. Links are not clickable on Instagram, so they

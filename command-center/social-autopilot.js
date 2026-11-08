@@ -29,7 +29,9 @@ const DEFAULTS = {
   voice: "",               // optional description of the account's voice
   style_prompt: "",        // house style for images; empty = derived from brand
   style_refs: [],          // /media/... images that show the house style
-  image_mode: "ai",        // ai = Higgsfield redraw; template = source photo in a fixed template (card-template.js)
+  image_mode: "ai_card",   // ai_card = Higgsfield redraw without text, framed in the template with a big headline;
+                           // ai = raw Higgsfield redraw (text drawn by the model, often tiny/typos);
+                           // template = source photo in a fixed template (card-template.js)
   template_mark: "",       // small wordmark at the bottom of the template
   template_hue: 43,        // accent colour of the template (hsl hue)
   // Daily promo: N of the day's slots promote your own product instead of reacting to X.
@@ -58,6 +60,14 @@ const MAX_ACCOUNTS = 100;
 const IMAGE_ASPECTS = { "16:9": 16 / 9, "3:2": 3 / 2, "4:3": 4 / 3, "1:1": 1, "4:5": 4 / 5 };
 
 // ── pure helpers (exported for tests) ─────────
+// Headline for the image card: Claude's own, else the first sentence of the post (max 7 words).
+function ensureHeadline(headline, postText) {
+  const own = cardTemplate.cleanHeadline(headline);
+  if (own) return own;
+  const first = String(postText || "").replace(/#\S+|\$[A-Za-z]+|https?:\/\/\S+/g, " ").split(/\n|(?<=[.!?])\s/)[0] || "";
+  return cardTemplate.cleanHeadline(first.replace(/[^\p{L}\p{N}\s.,!?:$%&'+]/gu, " ")).split(" ").slice(0, 7).join(" ");
+}
+
 function config(channel) {
   const c = { ...DEFAULTS, ...(channel && channel.autopilot || {}) };
   c.posts_per_day = Math.min(24, Math.max(1, Number(c.posts_per_day) || DEFAULTS.posts_per_day));
@@ -69,7 +79,7 @@ function config(channel) {
   if (!/^\d{2}:\d{2}$/.test(c.window_end)) c.window_end = DEFAULTS.window_end;
   if (!Array.isArray(c.topics)) c.topics = String(c.topics || "").split("\n");
   c.topics = c.topics.map(t => String(t).trim()).filter(Boolean);
-  c.image_mode = c.image_mode === "template" ? "template" : "ai";
+  c.image_mode = ["template", "ai", "ai_card"].includes(c.image_mode) ? c.image_mode : DEFAULTS.image_mode;
   c.template_mark = String(c.template_mark || "").slice(0, 30);
   c.template_hue = Number.isFinite(Number(c.template_hue)) ? Number(c.template_hue) % 360 : DEFAULTS.template_hue;
   c.accounts = parseAccounts(c.accounts);
@@ -474,7 +484,7 @@ ${cfg.image_mode === "template" ? `Rules for the image (template mode):
 - image_prompt: one short sentence describing what the photo shows.` : `Rules for the image:
 - image_prompt describes a NEW image that conveys the same idea as the candidate image (you may borrow the composition), without logos, watermarks, usernames or real people's faces.
 - If the candidate image is a chart or data graphic, say so in image_prompt and describe its shape and key values precisely, so the redraw stays faithful to the data.
-- If the candidate image carries text, write image_headline in our own words (max 8 words); otherwise leave it empty.`}
+${cfg.image_mode === "ai_card" ? `- image_headline is REQUIRED: a punchy headline of max 7 words in our own words, plain English, that states the key fact or hook of the post, so someone who only sees the image (on Instagram, without reading the caption) understands it. It is rendered large as real text above the image; the image itself gets no text. No hashtags, no emojis, no dashes. Only facts that are in the candidate.` : `- If the candidate image carries text, write image_headline in our own words (max 8 words); otherwise leave it empty.`}`}
 ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " + t.replace(/\s+/g, " ").slice(0, 200)).join("\n")}` : ""}`,
     }];
     candidates.forEach((c, i) => {
@@ -565,9 +575,25 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
     return { path: `/media/${name}`, method: "template" };
   }
 
+  // AI image (no text) → card template with the headline as real, large text.
+  async function frameAi(cfg, file, post, id) {
+    const out = `autopilot-${id}-card.png`;
+    await cardTemplate.render({ imageBuf: fs.readFileSync(file), headline: post.image_headline, mark: cfg.template_mark, hue: cfg.template_hue }, path.join(mediaDir, out));
+    let name = out;
+    if (fs.statSync(path.join(mediaDir, out)).size > X_IMAGE_MAX) {
+      name = `autopilot-${id}-card.jpg`;
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(mediaDir, out), "-q:v", "3", path.join(mediaDir, name)]);
+      fs.unlinkSync(path.join(mediaDir, out));
+    }
+    return name;
+  }
+
   async function renderImage(cfg, cand, post, id) {
+    if (cfg.image_mode !== "ai") post.image_headline = ensureHeadline(post.image_headline, post.post_text);
     if (cfg.image_mode === "template") return renderTemplate(cfg, cand, post, id);
-    const aspect = nearestAspect(cand.width, cand.height);
+    const card = cfg.image_mode === "ai_card";
+    // In the card the image sits under the headline: square fills that space best.
+    const aspect = card ? "1:1" : nearestAspect(cand.width, cand.height);
     const styleUrls = [];
     for (const ref of cfg.style_refs.slice(0, 2)) {
       try {
@@ -575,7 +601,9 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
         if (fs.existsSync(file)) styleUrls.push(await higgsfield.upload(file));
       } catch (e) { log(`style ref ${ref} upload failed: ${e.message}`); }
     }
-    const textRule = post.image_headline
+    const textRule = card
+      ? "The image contains NO text at all: no headline, captions, words or letters (a headline is added separately). Only if there is a chart, keep its axis values."
+      : post.image_headline
       ? `The only text in the image is this headline: "${post.image_headline}". Replace any other text.`
       : "The image contains no text.";
     const base = `${post.image_prompt}\n\nVisual style: ${stylePrompt(cfg)}\n${textRule}\nFill the entire frame edge to edge: no white or blank borders, bars or margins. If there is a chart, keep its line shape, axis values and data points exactly as in the reference: restyle, never redraw the data. Never invent placeholder labels (like "Protocol A"), duplicate labels or extra charts that are not in the reference: an element without a real label gets no label. No logos, watermarks, usernames, handles or signatures. No real people's faces.`;
@@ -606,6 +634,15 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
           fs.renameSync(path.join(mediaDir, jpg + ".tmp.jpg"), path.join(mediaDir, jpg));
           if (jpg !== name) fs.unlinkSync(path.join(mediaDir, name));
           name = jpg;
+        }
+        if (card) {
+          try {
+            const framed = await frameAi(cfg, path.join(mediaDir, name), post, id);
+            return { path: `/media/${framed}`, method: `${a.label}+card`, raw: `/media/${name}`, framed: true };
+          } catch (e) {
+            log(`card frame failed, using raw image: ${e.message}`);
+            return { path: `/media/${name}`, method: a.label, framed: false };
+          }
         }
         return { path: `/media/${name}`, method: a.label };
       } catch (e) {
@@ -803,6 +840,9 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
         autopilot: true,
         topic: cand.topic,
         image_method: image.method,
+        image_headline: post.image_headline || "",
+        ...(image.raw ? { image_raw: image.raw } : {}),
+        ...(image.framed === false ? { image_framed: false } : {}),
         reason: post.reason,
         instagram_ok: post.instagram_ok !== false,
         source: {
@@ -855,5 +895,5 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
   config, parseTopics, parseAccounts, accountTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
-  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed,
+  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed, ensureHeadline,
 };
