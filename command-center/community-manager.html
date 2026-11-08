@@ -370,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderReplies(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -407,6 +407,68 @@ function renderInstagram(c) {
     </div>
     <label class="edit-label">Extra hashtags for Instagram (max 30, links become "Link in bio")</label>
     <input class="edit-input" id="ch-ig-hashtags-${id}" value="${esc(ig.hashtags || '')}" placeholder="#example #tags">`;
+}
+// Auto-replies: answer people who reply to this channel's posts, in the same thread.
+function renderReplies(c) {
+  const r = c.replies || {};
+  const id = esc(c.id);
+  const num = (k, d) => esc(r[k] != null ? r[k] : d);
+  setTimeout(() => loadRepliesStatus(c.id), 0);
+  return `
+    <div class="edit-label" style="margin-top:14px">💬 Auto-replies</div>
+    <div class="discord-banner">Every few minutes the bot looks for new replies to this channel's posts and answers them in the same thread, with the context of the original post. Spam, bots, trolls and scams are skipped. Costs: ~$0.005 per reply read on X, ~$0.015 per answer posted, plus a small Claude call per answered reply.</div>
+    <div class="edit-grid">
+      <div><label class="edit-label">Auto-replies</label>
+        <select class="edit-input" id="ch-rp-enabled-${id}"><option value="false"${r.enabled ? '' : ' selected'}>Off</option><option value="true"${r.enabled ? ' selected' : ''}>On</option></select></div>
+      <div><label class="edit-label">Max replies per day</label>
+        <input class="edit-input" type="number" min="1" max="100" id="ch-rp-max_per_day-${id}" value="${num('max_per_day', 20)}"></div>
+      <div><label class="edit-label">Max per person per thread</label>
+        <input class="edit-input" type="number" min="1" max="10" id="ch-rp-max_per_thread-${id}" value="${num('max_per_thread', 3)}"></div>
+      <div><label class="edit-label">Max per person per day</label>
+        <input class="edit-input" type="number" min="1" max="10" id="ch-rp-max_per_author-${id}" value="${num('max_per_author', 3)}"></div>
+      <div><label class="edit-label">Check every (min)</label>
+        <input class="edit-input" type="number" min="5" max="120" id="ch-rp-interval_min-${id}" value="${num('interval_min', 10)}"></div>
+      <div><label class="edit-label">Language (empty = same as the reply)</label>
+        <input class="edit-input" id="ch-rp-language-${id}" value="${esc(r.language || '')}" placeholder="auto"></div>
+    </div>
+    <div class="ap-status" id="rp-status-${id}">Loading…</div>
+    <div style="margin-top:6px"><button class="btn-sm" onclick="runReplies(${jq(c.id)}, this)">Check now</button></div>`;
+}
+function collectReplies(id) {
+  const g = k => document.getElementById(`ch-rp-${k}-${id}`);
+  if (!g('enabled')) return null;
+  const n = k => Number(g(k).value) || undefined;
+  return { enabled: g('enabled').value === 'true', max_per_day: n('max_per_day'), max_per_thread: n('max_per_thread'), max_per_author: n('max_per_author'), interval_min: n('interval_min'), language: g('language').value.trim() };
+}
+async function loadRepliesStatus(id) {
+  const el = document.getElementById(`rp-status-${id}`);
+  if (!el) return;
+  try {
+    const s = await fetchJson(`/community/channels/${encodeURIComponent(id)}/replies`);
+    const lines = [];
+    if (s.running) lines.push('<span style="color:var(--premium)">● Checking replies…</span>');
+    if (!s.config.enabled) lines.push('Auto-replies are off.');
+    else lines.push(`Today: ${esc(s.today)}/${esc(s.config.max_per_day)} answered${s.last_check ? ' · last check ' + esc(fmt(s.last_check)) : ''}`);
+    if (s.last_error) lines.push(`<span style="color:var(--danger)">Last error: ${esc(s.last_error)}</span>`);
+    const rows = (s.log || []).slice(0, 8).map(l => {
+      const who = l.from ? '@' + esc(l.from) : 'someone';
+      const link = l.reply_id && s.username ? ` <a href="${esc(safeUrl('https://x.com/' + s.username + '/status/' + l.reply_id))}" target="_blank" rel="noopener">view</a>` : '';
+      return l.action === 'reply'
+        ? `<div style="margin-top:4px">↩︎ ${who}: <i>${esc((l.their_text || '').slice(0, 120))}</i><br>&nbsp;&nbsp;→ ${esc(l.text || '')}${link}</div>`
+        : `<div style="margin-top:4px;opacity:.6">⏭ ${who}: <i>${esc((l.their_text || '').slice(0, 80))}</i> (${esc(l.reason || 'skipped')})</div>`;
+    });
+    if (rows.length) lines.push(rows.join(''));
+    el.innerHTML = lines.join('<br>');
+  } catch (e) { el.textContent = 'Status error: ' + e.message; }
+}
+async function runReplies(id, btn) {
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const r = await fetchJson(`/community/channels/${encodeURIComponent(id)}/replies/run`, { method: 'POST' });
+    btn.textContent = `${r.found} found, ${r.replied} answered`;
+  } catch (e) { alert('Auto-replies: ' + e.message); btn.textContent = 'Check now'; }
+  btn.disabled = false;
+  loadRepliesStatus(id);
 }
 function collectInstagram(id) {
   const g = k => document.getElementById(`ch-ig-${k}-${id}`);
@@ -827,6 +889,8 @@ async function saveChannel(id) {
       if (ig.enabled && !ig.account_id) { alert('Choose an Instagram account first'); return; }
       payload.instagram = ig;
     }
+    const rp = collectReplies(id);
+    if (rp) payload.replies = rp;
   }
   try {
     await fetchJson(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -989,9 +1053,9 @@ function renderPost(t) {
   const igLink = ig && ig.status === 'published' && ig.permalink
     ? `<a class="btn-sm" style="text-decoration:none" href="${esc(safeUrl(ig.permalink))}" target="_blank" rel="noopener">View on Instagram</a>` : '';
   const igState = ig && ig.status !== 'published'
-    ? `<div class="${ig.status === 'failed' || ig.error ? 'post-err' : 'post-source'}">📸 Instagram: ${esc(ig.status)}${ig.error ? ' · ' + esc(ig.error) : ''}</div>` : '';
+    ? `<div class="${ig.status === 'failed' || ig.error ? 'post-err' : 'post-source'}">📸 Instagram: ${esc(ig.status)}${ig.reason ? ' · ' + esc(ig.reason) : ''}${ig.error ? ' · ' + esc(ig.error) : ''}</div>` : '';
   const igBtn = t.status === 'published' && chanObj && chanObj.platform === 'twitter' && chanObj.instagram && chanObj.instagram.account_id
-    && (!ig || ig.status === 'failed') && (t.media_path || (t.media_paths || []).length)
+    && (!ig || ig.status === 'failed' || ig.status === 'skipped') && (t.media_path || (t.media_paths || []).length)
     ? `<button class="btn-sm" onclick="crosspostInstagram(${jq(t.id)})">→ Instagram</button>` : '';
   const isManual = t.status === 'manual';
   const canPublish = !isManual && t.status !== 'published' && t.status !== 'cancelled';

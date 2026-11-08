@@ -2899,6 +2899,7 @@ app.patch("/community/channels/:id", (req, res) => {
   if (body.review) next.review = { ...current.review, ...body.review };
   if (body.autopilot) next.autopilot = { ...(current.autopilot || {}), ...body.autopilot };
   if ("instagram" in body) next.instagram = igPublish.sanitize(body.instagram);
+  if (body.replies && current.platform === "twitter") next.replies = xReplies.sanitize({ ...(current.replies || {}), ...body.replies });
   // Blank key fields keep what is stored; { clear: true } removes the channel's own keys.
   if (x_credentials && current.platform === "twitter") {
     const all = readXCredentials();
@@ -8045,6 +8046,7 @@ async function processCommunityTasks() {
       save(task);
       console.log(`[WORKER] Community post ${task.id} published (msg ${result.message_id})`);
       if (igPublish.shouldCrosspost(task, channel)) task.instagram = { status: "pending", attempts: 0, queued_at: task.published_at };
+      else if (igPublish.skipReason(task, channel)) task.instagram = { status: "skipped", reason: igPublish.skipReason(task, channel) };
       if (task.autopilot && channel.platform === "twitter") {
         const handle = channel.x_username || "i";
         sendTelegram(`𝕏 Autopilot posted (${escapeHtmlTg(channel.name)})`,
@@ -8230,6 +8232,37 @@ const tgAutopilot = require("./telegram-autopilot").createTelegramAutopilot({
   notify: sendTelegram,
 });
 setInterval(() => tgAutopilot.tick().catch(e => console.error("[TG-AUTOPILOT]", e.message)), 60_000);
+// ── X AUTO-REPLIES ────────────────────────────
+// Answers replies to our own X posts (config on channel.replies).
+const xReplies = require("./x-replies");
+const xRepliesBot = xReplies.createReplies({
+  dataDir: path.join(__dirname, "data"),
+  tz: TIMEZONE,
+  readChannels,
+  readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
+  twitterApi,
+  twitterCredsFor: (channel) => twitterCreds(channel),
+  twitterVerify: (creds) => twitterVerifyCredentials(creds),
+  twitterWeightedLength,
+  anthropic,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  autopilotConfig: (channel) => channel.autopilot || {},
+  notify: sendTelegram,
+});
+setInterval(() => xRepliesBot.tick().catch(e => console.error("[X-REPLIES]", e.message)), 60_000);
+
+app.get("/community/channels/:id/replies", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  res.json(xRepliesBot.status(channel));
+});
+app.post("/community/channels/:id/replies/run", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  try { res.json({ ok: true, ...(await xRepliesBot.runNow(channel)) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 const autopilotFor = (channel) => (channel.platform === "telegram" ? tgAutopilot : channel.platform === "twitter" ? autopilot : null);
 
 // Every autonomous job that is not a row in scheduled-tasks.json, so the
@@ -8254,6 +8287,21 @@ app.get("/agents/autonomous", (_req, res) => {
         next_run: cfg.enabled && next ? next.at : null,
         last_run: st.last_run ? { at: st.last_run.finished_at || st.last_run.at, status: st.last_run.status, error: st.last_run.error || null } : null,
         running: !!st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "twitter" && c.replies) {
+      const st = xRepliesBot.status(c);
+      const cfg = st.config;
+      const last = st.log[0];
+      jobs.push({
+        id: "x_replies:" + c.id, kind: "x_replies", agent: "community_manager",
+        name: `X Auto-replies · ${c.name}${st.username ? " (@" + st.username + ")" : ""}`,
+        enabled: cfg.enabled, toggle: { channel_id: c.id, field: "replies" },
+        when: `every ${cfg.interval_min} min · max ${cfg.max_per_day}/day`,
+        details: `Answers replies to our posts · max ${cfg.max_per_thread} per thread · skips spam and trolls`,
+        today: { done: st.today, failed: 0, pending: 0 },
+        last_run: st.last_check ? { at: st.last_check, status: st.last_error ? "failed" : (last && last.action === "reply" ? "replied" : "checked"), error: st.last_error } : null,
+        running: st.running, manage_url: "/community-manager.html",
       });
     }
     if (c.platform === "telegram" && c.autopilot) {

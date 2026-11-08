@@ -224,11 +224,14 @@ function pickCandidates(pool, max = MAX_CANDIDATES, perTopic = PER_TOPIC) {
 // Never em/en dashes in post text (house rule); plus no links or stray quotes.
 function cleanPostText(text) {
   return String(text || "")
+    .replace(/\r\n?/g, "\n")
     .replace(/\s*[\u2014\u2013]\s*(\S)?/g, (_, c) => ". " + (c ? c.toUpperCase() : ""))
     .replace(/https?:\/\/\S+/g, "")
     .replace(/^["'“”]+|["'“”]+$/g, "")
     .replace(/\.\s*\./g, ".")
     .replace(/[ \t]+\n/g, "\n")
+    // Elke regel is een eigen alinea: op X en Instagram plakken losse regels anders aan elkaar.
+    .replace(/([^\n])\n(?=[^\n])/g, "$1\n\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -440,9 +443,10 @@ function createAutopilot(deps) {
           post_text: { type: "string", description: "The post, max 260 characters." },
           image_prompt: { type: "string", description: "Description of the NEW image to generate: what it shows and how it is composed." },
           image_headline: { type: "string", description: "Short headline (max 8 words) to render in the image in our own words, or empty for no text." },
+          instagram_ok: { type: "boolean", description: "True only if the post stands on its own for a reader who never saw the candidate AND is clearly about this account's niche/topics." },
           reason: { type: "string", description: "One sentence: why this candidate." },
         },
-        required: ["choice", "post_text", "image_prompt", "image_headline", "reason"],
+        required: ["choice", "post_text", "image_prompt", "image_headline", "instagram_ok", "reason"],
         additionalProperties: false,
       },
     };
@@ -455,13 +459,14 @@ Below are ${candidates.length} recent posts that are performing well on X. Pick 
 
 Rules for the post:
 - Your own words and angle. Never copy phrases from the candidate. Never mention or tag its author. No links.
-- Hook in the first line. 1 to 4 short lines, plain text, max 260 characters.
+- Hook in the first line. 1 to 4 short lines, plain text, max 260 characters. Put a blank line between lines (each line its own paragraph), never a wall of text.
 - At most 2 hashtags/cashtags in total, at most 2 emojis.
 - NEVER use em dashes or en dashes. Use periods, colons or line breaks.
 - Only state numbers, prices or facts that are visible in the candidate text or image. Never invent figures, timeframes or history (no "for weeks", "first time since" unless the source says so). When unsure, frame it as a take or a question.
 - No financial advice, no return promises.
 - Skip candidates that shill small tokens, run giveaways, look like scams, are political, or whose image shows identifiable real people (our image generator refuses those). A candidate that merely mentions a token or project is fine when it carries real market news, data or a chart: our post takes a neutral angle on the subject and never promotes it. Return choice -1 only if none fit.
 - Do not repeat the angle of our recent posts.
+- instagram_ok: the post is also copied to Instagram, where nobody sees the candidate. Set false when the post reacts to the candidate (refers to "this", "that pull", "this card", "here", a question about the candidate, anything that only makes sense next to it), or when the subject is outside this account's niche/topics (${parseTopics(cfg.topics).map(t => t.label).join(", ") || "the topics above"}). Set true only for a self-contained post about our niche.
 
 ${cfg.image_mode === "template" ? `Rules for the image (template mode):
 - The candidate's own photo is shown as-is inside our template, so only pick a candidate whose image clearly shows the subject of the post (the card, slab or product), not a meme, screenshot of text, collage of unrelated items or a person.
@@ -650,7 +655,7 @@ ${cfg.promo_facts}
 Rules:
 - Lead with a real situation or pain point from this account's niche (one specific moment your audience recognises), then show how ${cfg.promo_product} helps. Sound like a person from the community, not an ad.
 - Name ${cfg.promo_product} once. A short call to action at the end is fine (the link is added below the post automatically; do not write a URL or "link below").
-- 2 to 5 short lines, plain text, max ${maxText - 20} characters. At most 1 hashtag and 2 emojis.
+- 2 to 5 short lines, plain text, max ${maxText - 20} characters. Put a blank line between lines (each line its own paragraph). At most 1 hashtag and 2 emojis.
 - NEVER use em dashes or en dashes. Use periods, colons or line breaks.
 - No financial advice, no price predictions, no "guaranteed", no claims about profit or value going up.
 - Pick a different angle than the recent promos below (feature, pain point, free trial, a question to the audience, a common myth in the niche).
@@ -799,6 +804,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
         topic: cand.topic,
         image_method: image.method,
         reason: post.reason,
+        instagram_ok: post.instagram_ok !== false,
         source: {
           tweet_id: cand.tweet_id, author: cand.author,
           url: `https://x.com/${cand.author || "i"}/status/${cand.tweet_id}`,

@@ -9,6 +9,8 @@ ok(!/[—–]/.test(ap.cleanPostText("BTC holds 100k — bulls in control – fo
 ok(ap.cleanPostText("Big move — watch this") === "Big move. Watch this", "cleanPostText replaces dash with period");
 ok(!/https?:/.test(ap.cleanPostText("Read this https://t.co/abc now")), "cleanPostText strips links");
 ok(ap.cleanPostText('"quoted"') === "quoted", "cleanPostText strips wrapping quotes");
+ok(ap.cleanPostText("Line one.\nLine two.\nLine three.") === "Line one.\n\nLine two.\n\nLine three.", "cleanPostText: each line its own paragraph");
+ok(ap.cleanPostText("A\r\n\r\n\r\nB") === "A\n\nB", "cleanPostText: CRLF and extra blank lines collapse to one blank line");
 
 // isPromo
 ok(ap.isPromo("Huge GIVEAWAY, retweet to win"), "isPromo: giveaway");

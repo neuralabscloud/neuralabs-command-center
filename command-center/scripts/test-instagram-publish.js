@@ -36,6 +36,11 @@ check("crosspost: off when disabled", !ig.shouldCrosspost(t, { ...ch, instagram:
 const promoCh = { ...ch, instagram: { ...ch.instagram, which: "promo" } };
 check("crosspost promo-only skips normal", !ig.shouldCrosspost(t, promoCh));
 check("crosspost promo-only takes promo", ig.shouldCrosspost({ ...t, promo: true }, promoCh));
+check("crosspost: not when instagram_ok false (reaction/off-niche)", !ig.shouldCrosspost({ ...t, instagram_ok: false }, ch));
+check("crosspost: promo ignores instagram_ok false", ig.shouldCrosspost({ ...t, promo: true, instagram_ok: false }, ch));
+check("crosspost: old tasks without the flag still go", ig.shouldCrosspost({ ...t }, ch) && ig.skipReason(t, ch) === null);
+check("skipReason explains a gated post", /X only/.test(ig.skipReason({ ...t, instagram_ok: false }, ch) || ""));
+check("skipReason silent when IG off or already handled", ig.skipReason({ ...t, instagram_ok: false }, { ...ch, instagram: { enabled: false } }) === null && ig.skipReason({ ...t, instagram_ok: false, instagram: { status: "skipped" } }, ch) === null);
 check("imagePathOf rejects traversal", ig.imagePathOf({ media_path: "/media/../../.env.png" }) === null);
 check("imagePathOf takes first of media_paths", ig.imagePathOf({ media_paths: ["/media/a.jpg"] }) === "/media/a.jpg");
 

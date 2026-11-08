@@ -119,6 +119,7 @@ const STACK_FEATURES = [
   [/\bat (?:async )?processCommunityTasks\b/, "Post publisher"],
   [/\bat (?:async )?tgPoll\b/, "Telegram bot"],
   [/social-autopilot\.js/, "X Autopilot"],
+  [/x-replies\.js/, "X Auto-replies"],
   [/telegram-autopilot\.js/, "Telegram Autopilot"],
   [/slide-designer-ai\.js/, "Designer (slides)"],
   [/opusclip-agent\.js/, "Clipper"],

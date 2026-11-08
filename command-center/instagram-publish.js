@@ -50,7 +50,17 @@ function shouldCrosspost(task, channel) {
   if (!cfg.enabled || !channel || channel.platform !== "twitter") return false;
   if (task.instagram) return false;            // already queued, done or failed
   if (!imagePathOf(task)) return false;        // Instagram needs an image
+  if (task.instagram_ok === false && !task.promo) return false; // reaction/off-niche: X only
   return cfg.which === "all" || !!task.promo;
+}
+
+// Waarom een post die anders mee zou gaan bewust NIET naar Instagram gaat
+// (reactie op een tweet of buiten de niche, zo beoordeeld bij het schrijven).
+function skipReason(task, channel) {
+  if (!task || task.instagram || task.promo || task.instagram_ok !== false) return null;
+  const cfg = config(channel);
+  if (!cfg.enabled || !channel || channel.platform !== "twitter" || cfg.which !== "all" || !imagePathOf(task)) return null;
+  return "reaction to a tweet or off-niche (X only)";
 }
 
 // X text → Instagram caption. Links are not clickable on Instagram, so they
@@ -107,4 +117,4 @@ async function publishImage({ fetch: fetchFn = fetch, igUserId, token, imageUrl,
   return { media_id: p.id, permalink };
 }
 
-module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, shouldCrosspost, caption, padTarget, publishImage };
+module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, shouldCrosspost, skipReason, caption, padTarget, publishImage };
