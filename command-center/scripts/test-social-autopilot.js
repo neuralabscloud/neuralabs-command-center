@@ -116,5 +116,24 @@ ok(ct.mimeOf(Buffer.from([0x89, 0x50, 0, 0])) === "image/png" && ct.mimeOf(Buffe
 ok(ap.config({ autopilot: { image_mode: "template", template_mark: "MYBRAND" } }).image_mode === "template", "config: image_mode template kept");
 ok(ap.config({ autopilot: { image_mode: "weird" } }).image_mode === "ai", "config: unknown image_mode falls back to ai");
 
+// daily promo slot
+const seq = (...v) => { let i = 0; return () => v[i++ % v.length]; };
+for (let n = 2; n <= 10; n++) {
+  const pp = ap.pickPromoSlots(n, 1, Math.random);
+  ok(pp.length === 1 && pp[0] > 0 && pp[0] < n, `pickPromoSlots: 1 of ${n}, never the first slot`);
+}
+const p3 = ap.pickPromoSlots(8, 3, Math.random);
+ok(p3.length === 3 && new Set(p3).size === 3 && p3.every(i => i >= 0 && i < 8), "pickPromoSlots: 3 distinct, in range");
+ok(ap.pickPromoSlots(1, 1, Math.random).length === 1, "pickPromoSlots: single slot day still gets its promo");
+ok(ap.pickPromoSlots(5, 0, Math.random).length === 0, "pickPromoSlots: zero promos");
+ok(ap.pickLeastUsed(["a", "b", "c"], { a: 2, b: 0, c: 1 }, seq(0)) === "b", "pickLeastUsed: least used wins");
+ok(ap.pickLeastUsed([], {}, Math.random) === null || ap.pickLeastUsed([], {}, Math.random) === undefined, "pickLeastUsed: empty list");
+ok(ap.config({ autopilot: { promo_enabled: true, promo_product: "P" } }).promo_enabled === false, "config: promo off without facts");
+const pc = ap.config({ autopilot: { posts_per_day: 2, promo_enabled: true, promo_product: "P", promo_facts: "f", promo_per_day: 9,
+  promo_link: "javascript:alert(1)", promo_images: ["/media/promo/a.png", "/media/../x.png", "https://evil/x.png", "/media/b c.png"] } });
+ok(pc.promo_enabled === true && pc.promo_per_day === 2, "config: promo on, per_day capped at posts_per_day");
+ok(pc.promo_link === "", "config: non-http promo link dropped");
+ok(pc.promo_images.length === 1 && pc.promo_images[0] === "/media/promo/a.png", "config: only clean /media/ promo images kept");
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

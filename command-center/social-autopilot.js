@@ -32,6 +32,13 @@ const DEFAULTS = {
   image_mode: "ai",        // ai = Higgsfield redraw; template = source photo in a fixed template (card-template.js)
   template_mark: "",       // small wordmark at the bottom of the template
   template_hue: 43,        // accent colour of the template (hsl hue)
+  // Daily promo: N of the day's slots promote your own product instead of reacting to X.
+  promo_enabled: false,
+  promo_per_day: 1,
+  promo_product: "",       // product name
+  promo_facts: "",         // what it is / does / offers; the ONLY claims the post may make
+  promo_link: "",          // landing page, appended to the post by code
+  promo_images: [],        // /media/... product visuals, rotated (least used first)
 };
 
 const MODEL = process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5";
@@ -67,7 +74,35 @@ function config(channel) {
   c.template_hue = Number.isFinite(Number(c.template_hue)) ? Number(c.template_hue) % 360 : DEFAULTS.template_hue;
   c.accounts = parseAccounts(c.accounts);
   if (!Array.isArray(c.style_refs)) c.style_refs = [];
+  c.promo_per_day = Math.min(c.posts_per_day, Math.max(1, Number(c.promo_per_day) || 1));
+  c.promo_product = String(c.promo_product || "").trim().slice(0, 80);
+  c.promo_facts = String(c.promo_facts || "").trim().slice(0, 4000);
+  c.promo_link = /^https?:\/\/\S+$/.test(String(c.promo_link || "").trim()) ? String(c.promo_link).trim() : "";
+  if (!Array.isArray(c.promo_images)) c.promo_images = [];
+  c.promo_images = c.promo_images.map(String).filter(x => /^\/media\/[\w./-]+$/.test(x) && !x.includes(".."));
+  // A promo without a product or facts would make Claude invent claims.
+  c.promo_enabled = !!c.promo_enabled && !!c.promo_product && !!c.promo_facts;
   return c;
+}
+
+// Which of the fresh slots become promo slots: spread over the day, never the first
+// slot when there is a choice (open the day with regular content).
+function pickPromoSlots(nFresh, nPromo, rand = Math.random) {
+  if (nPromo <= 0 || nFresh <= 0) return [];
+  nPromo = Math.min(nPromo, nFresh);
+  const out = [];
+  for (let i = 0; i < nPromo; i++) {
+    const lo = Math.floor(i * nFresh / nPromo), hi = Math.floor((i + 1) * nFresh / nPromo) - 1;
+    const from = lo === 0 && hi > 0 ? 1 : lo;
+    out.push(from + Math.floor(rand() * (hi - from + 1)));
+  }
+  return out;
+}
+
+// Least used first, ties random.
+function pickLeastUsed(items, counts = {}, rand = Math.random) {
+  if (!items.length) return null;
+  return items.map(x => ({ x, n: counts[x] || 0, r: rand() })).sort((a, b) => a.n - b.n || a.r - b.r)[0].x;
 }
 
 // "Bitcoin: (bitcoin OR $BTC)" → { label, query }. Search operators like
@@ -281,7 +316,7 @@ function createAutopilot(deps) {
   function ensurePlan(channel, st, now) {
     const cfg = config(channel);
     const day = localDay(now, tz);
-    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}`;
+    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}`;
     if (st.plan_key === key) return false;
     if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; }
     const keep = st.day === day ? (st.slots || []).filter(s => s.status !== "pending") : [];
@@ -292,6 +327,10 @@ function createAutopilot(deps) {
     const from = Math.max(start, now.getTime() + 2 * 60 * 1000);
     const fresh = planSlots(Math.max(0, cfg.posts_per_day - produced), from, end)
       .map(at => ({ at, status: "pending" }));
+    if (cfg.promo_enabled) {
+      const promosKept = keep.filter(s => s.kind === "promo" && s.status !== "skipped").length;
+      for (const i of pickPromoSlots(fresh.length, cfg.promo_per_day - promosKept)) fresh[i].kind = "promo";
+    }
     st.day = day;
     st.plan_key = key;
     st.slots = [...keep, ...fresh].sort((a, b) => a.at.localeCompare(b.at));
@@ -330,7 +369,7 @@ function createAutopilot(deps) {
       }
       mutate(c.id, st => { const sl = (st.slots || []).find(x => x.at === slotAt); if (sl) sl.status = "running"; });
       try {
-        const { task } = await produce(c, { mode: config(c).mode, trigger: "schedule" });
+        const { task } = await produce(c, { mode: config(c).mode, trigger: "schedule", kind: due.kind });
         mutate(c.id, st => { const sl = (st.slots || []).find(x => x.at === slotAt); if (sl) Object.assign(sl, { status: "done", task_id: task.id, error: null }); });
       } catch (e) {
         const final = mutate(c.id, st => {
@@ -343,7 +382,7 @@ function createAutopilot(deps) {
           return true;
         });
         log(`${c.name}: slot failed: ${e.message}`);
-        if (final) notify(`𝕏 Autopilot failed (${escHtml(c.name)})`, escHtml(String(e.message).slice(0, 300)), "danger");
+        if (final) notify(`𝕏 Autopilot ${due.kind === "promo" ? "promo " : ""}failed (${escHtml(c.name)})`, escHtml(String(e.message).slice(0, 300)), "danger");
       }
       return; // one post per tick
     }
@@ -572,13 +611,124 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
     throw new Error(`Image generation failed: ${lastErr && lastErr.message}`);
   }
 
-  async function produce(channel, { mode, trigger }) {
+  function recentPromos(channelId) {
+    return readTasks()
+      .filter(t => t.channel_id === channelId && t.promo && t.text && ["published", "scheduled", "draft"].includes(t.status))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .slice(0, 12).map(t => t.text);
+  }
+
+  async function writePromo(channel, cfg) {
+    const recent = recentPromos(channel.id);
+    const linkLen = cfg.promo_link ? 25 : 0; // X counts any link as 23, plus the blank line
+    const maxText = 270 - linkLen;
+    const tool = {
+      name: "submit_promo",
+      description: "Submit the promo post.",
+      strict: true,
+      input_schema: {
+        type: "object",
+        properties: {
+          angle: { type: "string", description: "The angle in a few words (e.g. 'grading data before you submit')." },
+          post_text: { type: "string", description: `The post without the link, max ${maxText - 20} characters.` },
+          image_headline: { type: "string", description: "Headline for the image, max 7 words." },
+        },
+        required: ["angle", "post_text", "image_headline"],
+        additionalProperties: false,
+      },
+    };
+    const messages = [{ role: "user", content: `You write posts for an X account. Voice: ${cfg.voice || "a knowledgeable account in its niche"}
+${brandKnowledge(channel)}
+
+This post is the account's daily promo for ${cfg.promo_product}. Write it in ${cfg.language}. Always answer by calling the submit_promo tool.
+
+Everything we may say about ${cfg.promo_product} (the ONLY claims allowed, never add features, numbers or promises that are not here):
+"""
+${cfg.promo_facts}
+"""
+
+Rules:
+- Lead with a real collector situation or pain point (one specific moment from the hobby), then show how ${cfg.promo_product} helps. Sound like a person from the community, not an ad.
+- Name ${cfg.promo_product} once. A short call to action at the end is fine (the link is added below the post automatically; do not write a URL or "link below").
+- 2 to 5 short lines, plain text, max ${maxText - 20} characters. At most 1 hashtag and 2 emojis.
+- NEVER use em dashes or en dashes. Use periods, colons or line breaks.
+- No financial advice, no price predictions, no "guaranteed", no claims about profit or value going up.
+- Pick a different angle than the recent promos below (feature, pain point, free trial, a question to the audience, a myth about pulls or grading).
+- image_headline: max 7 words, plain, no hashtags, emojis or dashes.
+${recent.length ? `\nRecent promo posts (use a different angle and different wording):\n${recent.map(t => "- " + t.replace(/\s+/g, " ").slice(0, 220)).join("\n")}` : ""}` }];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const msg = await anthropic.messages.create({
+        model: MODEL, max_tokens: 4000, tools: [tool],
+        tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages,
+      });
+      const use = msg.content.find(b => b.type === "tool_use");
+      if (!use) {
+        if (attempt === 0 && msg.stop_reason !== "refusal") {
+          messages.push({ role: "assistant", content: msg.content });
+          messages.push({ role: "user", content: "Answer only by calling the submit_promo tool." });
+          continue;
+        }
+        throw new Error("Claude returned no promo post");
+      }
+      const out = use.input || {};
+      out.post_text = cleanPostText(String(out.post_text || "").replace(/https?:\/\/\S+/g, "").trim());
+      const full = cfg.promo_link ? `${out.post_text}\n\n${cfg.promo_link}` : out.post_text;
+      const len = twitterWeightedLength(full);
+      if (out.post_text && len <= 280) return { ...out, post_text: full };
+      messages.push({ role: "assistant", content: msg.content });
+      messages.push({ role: "user", content: [{ type: "tool_result", tool_use_id: use.id, content: `Too long (${len} of 280 with the link). Resubmit with a shorter post_text.`, is_error: true }] });
+    }
+    throw new Error("Promo post stayed over 280 characters");
+  }
+
+  async function producePromo(channel, cfg, mode, record) {
+    step("writing promo");
+    const post = await writePromo(channel, cfg);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    let image = null;
+    const st = loadState()[channel.id] || {};
+    const pick = pickLeastUsed(cfg.promo_images.filter(p => fs.existsSync(path.join(mediaDir, p.replace(/^\/media\//, "")))), st.promo_image_counts || {});
+    if (pick) {
+      step("rendering promo image");
+      const buf = fs.readFileSync(path.join(mediaDir, pick.replace(/^\/media\//, "")));
+      const name = `autopilot-${id}.png`;
+      await cardTemplate.render({ imageBuf: buf, headline: post.image_headline, mark: cfg.template_mark, hue: cfg.template_hue }, path.join(mediaDir, name));
+      image = { path: `/media/${name}`, method: "promo-template" };
+    }
+    const now = new Date().toISOString();
+    const task = {
+      id, channel_id: channel.id,
+      status: mode === "review" ? "draft" : "scheduled",
+      created_at: now, updated_at: now, scheduled_at: now, scheduled_local: null,
+      archetype: `Autopilot · Promo`, trigger_word: null,
+      media_path: image ? image.path : null, media_paths: image ? [image.path] : [],
+      text: post.post_text, published_at: null, message_id: null, attempts: 0, error: null,
+      autopilot: true, promo: true,
+      topic: "Promo", angle: post.angle, image_method: image ? image.method : "none",
+      reason: `Daily promo for ${cfg.promo_product}: ${post.angle}`,
+      promo_image: pick || null,
+    };
+    addTask(task);
+    mutate(channel.id, s2 => {
+      if (pick) s2.promo_image_counts = { ...(s2.promo_image_counts || {}), [pick]: ((s2.promo_image_counts || {})[pick] || 0) + 1 };
+    });
+    record({ status: "done", task_id: task.id, finished_at: new Date().toISOString() });
+    log(`${channel.name}: queued promo ${task.id} (${post.angle}, image ${pick || "none"})`);
+    return { task };
+  }
+
+  async function produce(channel, { mode, trigger, kind }) {
     if (busy) throw new Error(`Autopilot is busy (${busy.step})`);
-    busy = { channel_id: channel.id, step: "searching X", started_at: new Date().toISOString(), trigger };
+    busy = { channel_id: channel.id, step: kind === "promo" ? "writing promo" : "searching X", started_at: new Date().toISOString(), trigger };
     const record = patch => mutate(channel.id, st => { st.last_run = { ...(st.last_run || {}), ...patch }; });
     record({ at: busy.started_at, trigger, mode, status: "running", error: null, task_id: null });
     try {
       const cfg = config(channel);
+      if (kind === "promo") {
+        if (!cfg.promo_enabled) throw new Error("Promo is off or has no product/facts");
+        return await producePromo(channel, cfg, mode, record);
+      }
       const topics = parseTopics(cfg.topics);
       if (!topics.length && !cfg.accounts.length) throw new Error("No topics or curated accounts configured");
       const creds = twitterCredsFor(channel);
@@ -673,9 +823,10 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
   }
 
   // Manual "run once" from the UI; resolves immediately, work continues in the background.
-  function runNow(channel, mode) {
+  function runNow(channel, mode, kind) {
     if (busy) throw new Error(`Autopilot is busy (${busy.step})`);
-    produce(channel, { mode: mode === "review" ? "review" : "auto", trigger: "manual" })
+    if (kind === "promo" && !config(channel).promo_enabled) throw new Error("Turn on the daily promo and fill in product + facts first");
+    produce(channel, { mode: mode === "review" ? "review" : "auto", trigger: "manual", kind: kind === "promo" ? "promo" : undefined })
       .catch(e => log(`${channel.name}: manual run failed: ${e.message}`));
   }
 
@@ -698,5 +849,5 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
   config, parseTopics, parseAccounts, accountTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
-  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots,
+  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed,
 };

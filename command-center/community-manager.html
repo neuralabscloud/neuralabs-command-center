@@ -127,6 +127,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 0; background: r
 .ap-slot { font-family: var(--font-data); font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-dim); }
 .ap-slot.done { color: var(--success); border-color: hsla(142 76% 36% / 0.4); }
 .ap-slot.running { color: var(--premium); border-color: hsla(270 95% 65% / 0.5); }
+.ap-slot.promo::before { content: "★ "; color: var(--warning); }
 .ap-slot.failed, .ap-slot.skipped { color: var(--danger); border-color: hsla(0 72% 51% / 0.4); }
 .ap-refs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .ap-ref { position: relative; }
@@ -411,10 +412,12 @@ async function clearXKeys(id) {
 
 // ── AUTOPILOT ──
 const apRefs = {};   // channel id → style reference paths being edited
+const apPromoImgs = {}; // channel id → promo image paths being edited
 function renderAutopilot(c) {
   const ap = c.autopilot || {};
   const v = (k, d) => esc(ap[k] != null ? ap[k] : d);
   apRefs[c.id] = Array.isArray(ap.style_refs) ? ap.style_refs.slice() : [];
+  apPromoImgs[c.id] = Array.isArray(ap.promo_images) ? ap.promo_images.slice() : [];
   const topics = Array.isArray(ap.topics) ? ap.topics.join('\n') : (ap.topics || '');
   setTimeout(() => loadAutopilotStatus(c.id), 0);
   return `
@@ -424,6 +427,7 @@ function renderAutopilot(c) {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-sm" onclick="runAutopilot(${jq(c.id)},'review')" title="Find a post, write it, make the image, and put it in the queue as a draft">Run once → draft</button>
           <button class="btn-sm primary" onclick="runAutopilot(${jq(c.id)},'auto')" title="Same, but post it to X right away">Run once → post</button>
+          ${ap.promo_enabled ? `<button class="btn-sm" onclick="runAutopilot(${jq(c.id)},'review','X','promo')" title="Write a promo post and put it in the queue as a draft">Promo once → draft</button>` : ''}
         </div>
       </div>
       <div class="ap-status" id="ap-status-${esc(c.id)}">Loading status…</div>
@@ -484,6 +488,36 @@ function renderAutopilot(c) {
         <div>
           <label class="edit-label">Template wordmark (template only)</label>
           <input class="edit-input" id="ch-ap-mark-${esc(c.id)}" value="${v('template_mark', '')}" placeholder="e.g. your account name">
+        </div>
+        <div class="full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <label class="edit-label">★ Daily promo: some of the day's posts promote your own product (counted within posts per day)</label>
+        </div>
+        <div>
+          <label class="edit-label">Promo</label>
+          <select class="edit-select" id="ch-ap-promo-${esc(c.id)}">
+            <option value="false"${!ap.promo_enabled ? ' selected' : ''}>Off</option>
+            <option value="true"${ap.promo_enabled ? ' selected' : ''}>On</option>
+          </select>
+        </div>
+        <div>
+          <label class="edit-label">Promo posts per day</label>
+          <input class="edit-input" type="number" min="1" max="24" id="ch-ap-promoppd-${esc(c.id)}" value="${v('promo_per_day', 1)}">
+        </div>
+        <div>
+          <label class="edit-label">Product name</label>
+          <input class="edit-input" id="ch-ap-promoprod-${esc(c.id)}" value="${v('promo_product', '')}" placeholder="e.g. your app or service">
+        </div>
+        <div class="full">
+          <label class="edit-label">Link (added below every promo post)</label>
+          <input class="edit-input" id="ch-ap-promolink-${esc(c.id)}" value="${v('promo_link', '')}" placeholder="https://…">
+        </div>
+        <div class="full">
+          <label class="edit-label">Product facts: what it is, does and offers. The promo only makes claims that are in here.</label>
+          <textarea class="edit-textarea" style="min-height:140px" id="ch-ap-promofacts-${esc(c.id)}" placeholder="Features, offer (e.g. free trial), what it is NOT, disclaimers">${v('promo_facts', '')}</textarea>
+        </div>
+        <div class="full">
+          <label class="edit-label">Promo images (product visuals, rotated; shown in the template with a headline)</label>
+          <div class="ap-refs" id="ap-promoimgs-${esc(c.id)}">${renderPromoImgs(c.id)}</div>
         </div>
         <div class="full">
           <label class="edit-label">Image style (blank = derived from your brand color)</label>
@@ -627,6 +661,28 @@ async function addRefs(id, files) {
   } catch (e) { alert('Upload error: ' + e.message); }
   document.getElementById(`ap-refs-${id}`).innerHTML = renderRefs(id);
 }
+function renderPromoImgs(id) {
+  const imgs = apPromoImgs[id] || [];
+  return imgs.map((p, i) => `<div class="ap-ref"><img src="${esc(/^\/media\/[\w./-]+$/.test(p) ? p : '#')}" alt="promo"><button title="Remove" onclick="removePromoImg(${jq(id)}, ${i})">✕</button></div>`).join('') + `
+    <input type="file" id="ap-promo-file-${esc(id)}" accept="image/png,image/jpeg,image/webp" multiple style="display:none" onchange="addPromoImgs(${jq(id)}, this.files)">
+    <button class="btn-sm" onclick="document.getElementById('ap-promo-file-${esc(id)}').click()">+ Add image</button>`;
+}
+async function addPromoImgs(id, files) {
+  try {
+    for (const file of Array.from(files || []).slice(0, 8)) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const d = await fetchJson('/media/upload', { method: 'POST', body: fd });
+      if (!d.path) throw new Error(d.error || 'upload failed');
+      apPromoImgs[id].push(d.path);
+    }
+  } catch (e) { alert('Upload error: ' + e.message); }
+  document.getElementById(`ap-promoimgs-${id}`).innerHTML = renderPromoImgs(id);
+}
+function removePromoImg(id, i) {
+  apPromoImgs[id].splice(i, 1);
+  document.getElementById(`ap-promoimgs-${id}`).innerHTML = renderPromoImgs(id);
+}
 function removeRef(id, i) {
   apRefs[id].splice(i, 1);
   document.getElementById(`ap-refs-${id}`).innerHTML = renderRefs(id);
@@ -651,6 +707,14 @@ function collectAutopilot(id) {
     image_mode: g('imgmode') ? g('imgmode').value : 'ai',
     template_mark: g('mark') ? g('mark').value.trim() : '',
     style_refs: (apRefs[id] || []).slice(),
+    ...(g('promo') ? {
+      promo_enabled: g('promo').value === 'true',
+      promo_per_day: Math.max(1, Number(g('promoppd').value) || 1),
+      promo_product: g('promoprod').value.trim(),
+      promo_link: g('promolink').value.trim(),
+      promo_facts: g('promofacts').value.trim(),
+      promo_images: (apPromoImgs[id] || []).slice(),
+    } : {}),
   };
 }
 const apPollers = {};
@@ -671,7 +735,7 @@ async function loadAutopilotStatus(id) {
     if (s.config.enabled && slots.length) {
       const done = slots.filter(x => x.status === 'done').length;
       lines.push(`Today: ${done}/${slots.length} made`);
-      lines.push(`<div class="ap-slots">${slots.map(x => `<span class="ap-slot ${esc(x.status)}" title="${esc(x.error || x.status)}">${esc(new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>`).join('')}</div>`);
+      lines.push(`<div class="ap-slots">${slots.map(x => `<span class="ap-slot ${esc(x.status)}${x.kind === 'promo' ? ' promo' : ''}" title="${esc((x.kind === 'promo' ? 'Promo · ' : '') + (x.error || x.status))}">${esc(new Date(x.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span>`).join('')}</div>`);
     } else if (!s.config.enabled) lines.push('Autopilot is off. Turn it on and Save to start posting on a daily plan.');
     else lines.push('Planning today’s posts within a minute…');
     el.innerHTML = lines.join('<br>');
@@ -679,10 +743,10 @@ async function loadAutopilotStatus(id) {
     if (s.running) apPollers[id] = setTimeout(() => { loadAutopilotStatus(id); loadTasks(); }, 5000);
   } catch (e) { el.textContent = 'Status error: ' + e.message; }
 }
-async function runAutopilot(id, mode, where = 'X') {
+async function runAutopilot(id, mode, where = 'X', kind) {
   if (mode === 'auto' && !confirm(where === 'X' ? 'Find a post, generate the image and publish it to X right away?' : `Write a post and publish it to ${where} right away?`)) return;
   try {
-    await fetchJson(`/community/channels/${encodeURIComponent(id)}/autopilot/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
+    await fetchJson(`/community/channels/${encodeURIComponent(id)}/autopilot/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, kind }) });
     setTimeout(() => loadAutopilotStatus(id), 800);
   } catch (e) { alert('Autopilot: ' + e.message); }
 }

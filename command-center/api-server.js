@@ -8218,7 +8218,7 @@ app.post("/community/channels/:id/autopilot/run", (req, res) => {
   const ap = autopilotFor(channel);
   if (!ap) return res.status(400).json({ error: "Autopilot is only available for X and Telegram channels" });
   try {
-    ap.runNow(channel, req.body?.mode);
+    ap.runNow(channel, req.body?.mode, req.body?.kind);
     res.json({ ok: true });
   } catch (e) {
     res.status(409).json({ error: e.message });
