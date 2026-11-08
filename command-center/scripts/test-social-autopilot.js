@@ -162,5 +162,34 @@ check("ensureHeadline strips dashes, hashtags, links", !/[–—#]|http/.test(ap
   check("formatsFull: cap per day", JSON.stringify(sa.formatsFull({ spotlight: sa.MAX_PER_FORMAT, market: 1 })) === JSON.stringify(["spotlight"]));
   check("FORMATS niche neutral (no pokemon)", !/pokemon|crypto/i.test(JSON.stringify(sa.FORMATS)));
 }
-console.log(`\n${pass} ok, ${fail} FOUT`);
-process.exit(fail ? 1 : 0);
+
+// restyle goes through the new Higgsfield API (nano-banana v1 was removed 2026-11-08)
+(async () => {
+  const os = require("os"), fsx = require("fs"), px = require("path");
+  const tmp = fsx.mkdtempSync(px.join(os.tmpdir(), "sa-img-"));
+  const calls = [];
+  const realFetch = global.fetch;
+  global.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || "GET", body: opts.body ? JSON.parse(opts.body) : null });
+    const j = d => ({ ok: true, status: 200, json: async () => d, headers: { get: () => "image/png" } });
+    if (String(url) === "https://hf.test/alibaba/qwen-image-3/edit") return j({ request_id: "r1" });
+    if (String(url).endsWith("/requests/r1/status")) return j({ status: "completed", images: [{ url: "https://cdn.test/out.png" }] });
+    if (String(url) === "https://cdn.test/out.png") return { ok: true, status: 200, headers: { get: () => "image/png" }, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  try {
+    const inst = ap.createAutopilot({ dataDir: tmp, mediaDir: tmp, readChannels: () => [], updateChannel: () => {}, readTasks: () => [], addTask: () => {},
+      higgsfield: { base: "https://old.test", api: "https://hf.test", pollMs: 0, endpoints: { text2image: "/v1/soul" }, headers: () => ({}), upload: async () => "", size: () => "1024x1024" },
+      brand: () => ({ primary_hue: 264 }), log: () => {} });
+    const r = await inst._renderImage({ ...ap.config({}).autopilot, image_mode: "ai", style_refs: [] }, { image: "https://pbs.test/m.jpg", width: 1200, height: 675 }, { image_prompt: "chart", post_text: "x" }, "t1");
+    const sub = calls.find(c => c.url.endsWith("/qwen-image-3/edit"));
+    check("restyle: posts to new API edit model", !!sub && sub.method === "POST");
+    check("restyle: source image in image_urls", sub && JSON.stringify(sub.body.image_urls) === JSON.stringify(["https://pbs.test/m.jpg"]));
+    check("editAspect maps 4:5 -> 7:9, keeps 16:9, odd -> nearest", ap.editAspect("4:5") === "7:9" && ap.editAspect("16:9") === "16:9" && ap.editAspect("1.91:1") === "16:9" && ap.editAspect("") === "1:1");
+    check("restyle: no old v1 job call", !calls.some(c => c.url.startsWith("https://old.test")));
+    check("restyle: method restyle + file saved", r && /restyle/.test(r.method || JSON.stringify(r)));
+  } catch (e) { check("restyle new API run (" + e.message + ")", false); }
+  global.fetch = realFetch;
+  console.log(`\n${pass} ok, ${fail} FOUT`);
+  process.exit(fail ? 1 : 0);
+})();

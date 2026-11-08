@@ -1553,11 +1553,12 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         let endpoint = HIGGSFIELD.endpoints.text2image;
         let params;
         if (mode === "edit") {
-          endpoint = HIGGSFIELD.endpoints.imageEdit;
+          // nano-banana (v1) was removed from the API on 2026-11-08: edit on the new API.
+          endpoint = null;
           params = {
             prompt: prompt.slice(0, 2000),
-            input_images: published.map(pu => ({ type: "image_url", image_url: pu.url })),
-            aspect_ratio: higgsfieldAspect(task.aspect_ratio),
+            image_urls: published.slice(0, 3).map(pu => pu.url),
+            aspect_ratio: require("./social-autopilot").editAspect(higgsfieldAspect(task.aspect_ratio)),
           };
         } else {
           params = {
@@ -1580,12 +1581,12 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
         }
         let jobId = "", failure = "";
         try {
-          const r = await fetch(HIGGSFIELD.base + endpoint, {
+          const r = await fetch(endpoint ? HIGGSFIELD.base + endpoint : `${HIGGSFIELD_API}/${HIGGSFIELD_EDIT_MODEL}`, {
             method: "POST", headers: higgsfieldHeaders(),
-            body: JSON.stringify({ params }),
+            body: JSON.stringify(endpoint ? { params } : params),
           });
           const d = await r.json().catch(() => ({}));
-          jobId = d.id || d.job_set_id || (d.job_set && d.job_set.id) || "";
+          jobId = d.request_id || d.id || d.job_set_id || (d.job_set && d.job_set.id) || "";
           if (!r.ok || !jobId) {
             failure = "Higgsfield: " + (d && d.detail ? JSON.stringify(d.detail) : JSON.stringify(d)).slice(0, 300);
           }
@@ -1601,6 +1602,7 @@ app.post("/designer/tasks", designerUploadMw, async (req, res) => {
           console.error("[DESIGNER] Higgsfield submit failed:", failure.slice(0, 200));
         } else {
           all[idx].hf_request_id = jobId;
+          if (!endpoint) all[idx].hf_new_api = true;
           console.log(`[DESIGNER] Higgsfield task ${task.id} submitted (job-set ${jobId})`);
         }
         all[idx].updated_at = new Date().toISOString();
@@ -1853,6 +1855,7 @@ function resolveSourceVideo(body, files) {
 //   POST /bytedance/seedance-2.5/video-{edit,extend}
 //   GET  /requests/{id}/status
 const HIGGSFIELD_API = "https://api.higgsfield.ai";
+const HIGGSFIELD_EDIT_MODEL = process.env.HIGGSFIELD_EDIT_MODEL || "alibaba/qwen-image-3/edit"; // image edit (nano-banana v1 removed 2026-11-08)
 const HF_SEEDANCE_ASPECTS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
 const HF_SEEDANCE_RESOLUTIONS = ["720p", "480p", "1080p"];
 // Which endpoint a run lands on is decided by what the user supplied, the same
@@ -7310,7 +7313,7 @@ async function pollDesignerHiggsfield() {
   let changed = false;
   for (const t of pending) {
     try {
-      const r = await fetch(HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.hf_request_id), { headers: higgsfieldHeaders() });
+      const r = await fetch(t.hf_new_api ? `${HIGGSFIELD_API}/requests/${encodeURIComponent(t.hf_request_id)}/status` : HIGGSFIELD.base + HIGGSFIELD.endpoints.jobSet(t.hf_request_id), { headers: higgsfieldHeaders() });
       const data = await r.json().catch(() => ({}));
       const jobs = Array.isArray(data.jobs) && data.jobs.length ? data.jobs : [data];
       const statuses = jobs.map(j => String(j.status || data.status || "").toLowerCase());
@@ -7320,7 +7323,7 @@ async function pollDesignerHiggsfield() {
       const urls = [];
       for (const j of jobs) {
         const res = j.results || {};
-        for (const cand of [res.raw, res.min, ...(Array.isArray(res.images) ? res.images : [])]) {
+        for (const cand of [res.raw, res.min, ...(Array.isArray(res.images) ? res.images : []), ...(Array.isArray(j.images) ? j.images : [])]) {
           const u = cand && (typeof cand === "string" ? cand : cand.url);
           if (u) { urls.push(u); break; }
         }
@@ -8228,6 +8231,7 @@ const autopilot = require("./social-autopilot").createAutopilot({
   twitterWeightedLength,
   higgsfield: {
     base: HIGGSFIELD.base,
+    api: HIGGSFIELD_API,
     endpoints: HIGGSFIELD.endpoints,
     headers: higgsfieldHeaders,
     upload: higgsfieldUpload,

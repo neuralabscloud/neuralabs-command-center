@@ -52,6 +52,7 @@ const LATE_LIMIT_MS = 90 * 60 * 1000;   // a slot this late (server was down) is
 const RETRY_DELAY_MS = 10 * 60 * 1000;
 const MAX_TRIES = 3;
 const X_IMAGE_MAX = 5 * 1024 * 1024;
+const EDIT_MODEL = "alibaba/qwen-image-3/edit"; // image edit on the new Higgsfield API (nano-banana is gone)
 const PROMO_RE = /\b(giveaways?|airdrops?|presales?|pre-sale|whitelist|free mint|claim (now|your)|dm me|link in (bio|comments)|join (my|our)|telegram group|whatsapp|discord\.gg|referral|use (my )?code|promo code|sign ?up bonus|\d{3,}x|next (gem|100x)|to the moon|mint(ing)? (is )?(live|now)|stealth launch|fair launch|just launched|ape in|tag \d+ friends|like (and|&) (rt|retweet)|rt (and|&) follow)\b/i;
 // A contract address in the text is the clearest sign of a token shill.
 const CA_RE = /\b(CA\s*[:：]|0x[a-fA-F0-9]{40}\b|[1-9A-HJ-NP-Za-km-z]{32,44}(pump|bonk)?\b)/;
@@ -274,6 +275,16 @@ function nearestAspect(w, h) {
   if (!w || !h) return "16:9";
   const r = w / h;
   return Object.entries(IMAGE_ASPECTS).sort((a, b) => Math.abs(Math.log(a[1] / r)) - Math.abs(Math.log(b[1] / r)))[0][0];
+}
+
+// Aspect ratios the edit model accepts (Qwen Image 3 Edit); anything else -> nearest.
+const EDIT_ASPECTS = ["1:1", "2:3", "3:2", "3:4", "4:3", "7:9", "9:7", "9:16", "16:9", "21:9"];
+function editAspect(ratio) {
+  const m = String(ratio || "").match(/^(\d+(?:\.\d+)?)\s*[:x]\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return "1:1";
+  const r = +m[1] / +m[2];
+  const val = a => { const [x, y] = a.split(":").map(Number); return x / y; };
+  return EDIT_ASPECTS.slice().sort((a, b) => Math.abs(Math.log(val(a) / r)) - Math.abs(Math.log(val(b) / r)))[0];
 }
 
 // Minutes the zone is ahead of UTC at that instant.
@@ -587,6 +598,28 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
     throw new Error("Higgsfield: timed out");
   }
 
+  // Newer Higgsfield API (api.higgsfield.ai/<model>): the old v1 nano-banana edit
+  // endpoint was taken offline on 2026-11-08 (every job "failed").
+  async function hfRequest(model, body) {
+    const base = higgsfield.api || "https://api.higgsfield.ai";
+    const r = await fetch(`${base}/${model}`, { method: "POST", headers: higgsfield.headers(), body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.request_id) throw new Error(`Higgsfield ${model}: ` + JSON.stringify(d.detail || d).slice(0, 200));
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(res => setTimeout(res, higgsfield.pollMs ?? 5000));
+      const s = await fetch(`${base}/requests/${encodeURIComponent(d.request_id)}/status`, { headers: higgsfield.headers() }).then(x => x.json()).catch(() => ({}));
+      const st = String(s.status || "").toLowerCase();
+      if (st === "completed") {
+        const url = (Array.isArray(s.images) && s.images[0] && s.images[0].url) || (s.image && s.image.url) || "";
+        if (!url) throw new Error("Higgsfield: completed without an image");
+        return url;
+      }
+      if (["failed", "nsfw", "error", "canceled", "cancelled"].includes(st)) throw new Error(`Higgsfield: ${st}${s.error ? " (" + String(s.error).slice(0, 120) + ")" : ""}`);
+    }
+    throw new Error("Higgsfield: timed out");
+  }
+
   // Template mode: the source photo (borders trimmed) in card-template.js, headline as real text.
   async function renderTemplate(cfg, cand, post, id) {
     const r = await fetch(`${cand.image}?name=large`);
@@ -640,21 +673,22 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
       ? `The only text in the image is this headline: "${post.image_headline}". Replace any other text.`
       : "The image contains no text.";
     const base = `${post.image_prompt}\n\nVisual style: ${stylePrompt(cfg)}\n${textRule}\nFill the entire frame edge to edge: no white or blank borders, bars or margins. If there is a chart, keep its line shape, axis values and data points exactly as in the reference: restyle, never redraw the data. Never invent placeholder labels (like "Protocol A"), duplicate labels or extra charts that are not in the reference: an element without a real label gets no label. No logos, watermarks, usernames, handles or signatures. No real people's faces.`;
+    const editModel = process.env.AUTOPILOT_EDIT_MODEL || EDIT_MODEL;
     const attempts = [
-      { label: "restyle", endpoint: higgsfield.endpoints.imageEdit, params: {
+      { label: "restyle", model: editModel, body: {
         prompt: `${base}\nThe first image is only a composition reference${styleUrls.length ? "; the other images show the target visual style" : ""}.`.slice(0, 2000),
-        input_images: [cand.image, ...styleUrls].map(u => ({ type: "image_url", image_url: u })), aspect_ratio: aspect } },
+        image_urls: [cand.image, ...styleUrls].slice(0, 3), aspect_ratio: editAspect(aspect) } },
     ];
-    if (styleUrls.length) attempts.push({ label: "style-only", endpoint: higgsfield.endpoints.imageEdit, params: {
+    if (styleUrls.length) attempts.push({ label: "style-only", model: editModel, body: {
       prompt: `${base}\nThe images show the target visual style; create a new image, do not copy their content.`.slice(0, 2000),
-      input_images: styleUrls.map(u => ({ type: "image_url", image_url: u })), aspect_ratio: aspect } });
+      image_urls: styleUrls.slice(0, 3), aspect_ratio: editAspect(aspect) } });
     attempts.push({ label: "text-only", endpoint: higgsfield.endpoints.text2image, params: {
       prompt: base.slice(0, 2000), width_and_height: higgsfield.size(aspect), quality: "1080p", enhance_prompt: true } });
 
     let lastErr;
     for (const a of attempts) {
       try {
-        const url = await hfJob(a.endpoint, a.params);
+        const url = a.model ? await hfRequest(a.model, a.body) : await hfJob(a.endpoint, a.params);
         const r = await fetch(url);
         if (!r.ok) throw new Error(`download ${r.status}`);
         const ext = /jpe?g/.test(r.headers.get("content-type") || "") ? "jpg" : /webp/.test(r.headers.get("content-type") || "") ? "webp" : "png";
@@ -922,11 +956,11 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
     };
   }
 
-  return { tick, runNow, status, busy: () => busy };
+  return { tick, runNow, status, busy: () => busy, _renderImage: renderImage };
 }
 
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
   config, parseTopics, parseAccounts, accountTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
-  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed, ensureHeadline, orderQueue, formatsFull, FORMATS, MAX_PER_FORMAT,
+  nearestAspect, editAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed, ensureHeadline, orderQueue, formatsFull, FORMATS, MAX_PER_FORMAT,
 };
