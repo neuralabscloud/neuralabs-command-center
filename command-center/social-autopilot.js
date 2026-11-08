@@ -109,6 +109,30 @@ function pickPromoSlots(nFresh, nPromo, rand = Math.random) {
   return out;
 }
 
+// Post formats rotate per day so the feed is not one kind of post. Niche neutral.
+const FORMATS = {
+  spotlight: "one item up close (a single card, coin, product or chart)",
+  market: "prices, sales, volumes or trends with numbers from the source",
+  news: "a release, announcement, restock, rule change or event",
+  comparison: "two or more items, versions or prices side by side",
+  tip: "a practical lesson for the audience (how to spot, check, store, avoid)",
+  story: "history, trivia or the story behind something",
+  question: "a question or debate that invites replies",
+};
+const MAX_PER_FORMAT = 2; // per day, unless nothing else fits
+
+// One queue for curated accounts and topics: least posted (plus rejected) first.
+// Curated wins only a tie, so it no longer takes every slot.
+function orderQueue(curated, topics, counts = {}, rejects = {}, rand = Math.random) {
+  return [...curated.map(t => ({ t, b: -0.5 })), ...topics.map(t => ({ t, b: 0 }))]
+    .map(x => ({ ...x, n: (counts[x.t.label] || 0) + (rejects[x.t.label] || 0) + x.b, r: rand() }))
+    .sort((a, b) => a.n - b.n || a.r - b.r).map(x => x.t);
+}
+
+function formatsFull(counts = {}) {
+  return Object.keys(FORMATS).filter(f => (counts[f] || 0) >= MAX_PER_FORMAT);
+}
+
 // Least used first, ties random.
 function pickLeastUsed(items, counts = {}, rand = Math.random) {
   if (!items.length) return null;
@@ -331,7 +355,7 @@ function createAutopilot(deps) {
     const day = localDay(now, tz);
     const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}`;
     if (st.plan_key === key) return false;
-    if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; }
+    if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; st.format_counts = {}; }
     const keep = st.day === day ? (st.slots || []).filter(s => s.status !== "pending") : [];
     const produced = keep.filter(s => s.status === "done" || s.status === "running").length;
     const start = zonedTime(day, cfg.window_start, tz).getTime();
@@ -435,10 +459,10 @@ function createAutopilot(deps) {
     return readTasks()
       .filter(t => t.channel_id === channelId && t.text && ["published", "scheduled", "draft"].includes(t.status))
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-      .slice(0, 15).map(t => t.text);
+      .slice(0, 15).map(t => (t.format ? `[${t.format}] ` : "") + t.text);
   }
 
-  async function writePost(channel, cfg, candidates) {
+  async function writePost(channel, cfg, candidates, formatCounts = {}) {
     const brandName = (brand() || {}).company_name || "";
     const voice = cfg.voice || (brandName ? `The account of ${brandName}: sharp, knowledgeable crypto and markets commentary.` : "Sharp, knowledgeable crypto and markets commentary.");
     const recent = recentPosts(channel.id);
@@ -452,11 +476,12 @@ function createAutopilot(deps) {
           choice: { type: "integer", description: "Index of the chosen candidate, or -1 if none is suitable." },
           post_text: { type: "string", description: "The post, max 260 characters." },
           image_prompt: { type: "string", description: "Description of the NEW image to generate: what it shows and how it is composed." },
+          format: { type: "string", enum: Object.keys(FORMATS), description: "The kind of post you wrote." },
           image_headline: { type: "string", description: "Short headline (max 8 words) to render in the image in our own words, or empty for no text." },
           instagram_ok: { type: "boolean", description: "True only if the post stands on its own for a reader who never saw the candidate AND is clearly about this account's niche/topics." },
           reason: { type: "string", description: "One sentence: why this candidate." },
         },
-        required: ["choice", "post_text", "image_prompt", "image_headline", "instagram_ok", "reason"],
+        required: ["choice", "post_text", "format", "image_prompt", "image_headline", "instagram_ok", "reason"],
         additionalProperties: false,
       },
     };
@@ -475,7 +500,9 @@ Rules for the post:
 - Only state numbers, prices or facts that are visible in the candidate text or image. Never invent figures, timeframes or history (no "for weeks", "first time since" unless the source says so). When unsure, frame it as a take or a question.
 - No financial advice, no return promises.
 - Skip candidates that shill small tokens, run giveaways, look like scams, are political, or whose image shows identifiable real people (our image generator refuses those). A candidate that merely mentions a token or project is fine when it carries real market news, data or a chart: our post takes a neutral angle on the subject and never promotes it. Return choice -1 only if none fit.
-- Do not repeat the angle of our recent posts.
+- Do not repeat the angle of our recent posts, and do not post about the same set, product, item or event as one of our last 5 posts.
+- Variety matters more than the single strongest candidate. Formats (set the format field): ${Object.entries(FORMATS).map(([k, v]) => `${k} = ${v}`).join("; ")}.
+  Today so far: ${Object.keys(FORMATS).map(f => `${f} ${formatCounts[f] || 0}`).join(", ")}. Prefer the candidate and angle that give a format used least today. A format at ${MAX_PER_FORMAT} is full for today${formatsFull(formatCounts).length ? ` (full now: ${formatsFull(formatCounts).join(", ")})` : ""}: write a different format about the subject (a spotlight candidate can become a tip, story, comparison or question) or pick another candidate.
 - instagram_ok: the post is also copied to Instagram, where nobody sees the candidate. Set false when the post reacts to the candidate (refers to "this", "that pull", "this card", "here", a question about the candidate, anything that only makes sense next to it), or when the subject is outside this account's niche/topics (${parseTopics(cfg.topics).map(t => t.label).join(", ") || "the topics above"}). Set true only for a self-contained post about our niche.
 
 ${cfg.image_mode === "template" ? `Rules for the image (template mode):
@@ -518,6 +545,12 @@ ${recent.length ? `\nOur recent posts (do not repeat):\n${recent.map(t => "- " +
         throw err;
       }
       out.post_text = cleanPostText(out.post_text);
+      if (!FORMATS[out.format]) out.format = "spotlight";
+      if (attempt === 0 && formatsFull(formatCounts).includes(out.format) && formatsFull(formatCounts).length < Object.keys(FORMATS).length) {
+        messages.push({ role: "assistant", content: msg.content });
+        messages.push({ role: "user", content: [{ type: "tool_result", tool_use_id: use.id, content: `Format "${out.format}" is already at ${MAX_PER_FORMAT} posts today. Resubmit with a different format (rewrite the angle or pick another candidate), or choice -1.`, is_error: true }] });
+        continue;
+      }
       const len = twitterWeightedLength(out.post_text);
       if (out.post_text && len <= 280) return out;
       messages.push({ role: "assistant", content: msg.content });
@@ -779,10 +812,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
       const counts = st.topic_counts || {};
       const rejects = st.topic_rejects || {};
       // Least posted first; a topic whose shortlist Claude rejected today goes back in the queue.
-      const order = list => list.map(t => ({ t, n: (counts[t.label] || 0) + (rejects[t.label] || 0), r: Math.random() }))
-        .sort((a, b) => a.n - b.n || a.r - b.r).map(x => x.t);
-      // Curated accounts first; the topic searches are the fallback.
-      const queue = [...order(accountTopics(cfg.accounts, me)), ...order(topics)];
+      const queue = orderQueue(accountTopics(cfg.accounts, me), topics, counts, rejects);
 
       // Search in rounds: a couple of topics, let Claude pick, and if the whole
       // shortlist is rejected move on to the next topics instead of giving up.
@@ -802,7 +832,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
         pool = pool.filter(c => !shown.has(c.tweet_id));
         step("writing post");
         try {
-          post = await writePost(channel, cfg, candidates);
+          post = await writePost(channel, cfg, candidates, st.format_counts || {});
         } catch (e) {
           if (!e.noCandidate) throw e;
           lastReject = e.message;
@@ -839,6 +869,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
         text: post.post_text, published_at: null, message_id: null, attempts: 0, error: null,
         autopilot: true,
         topic: cand.topic,
+        format: post.format,
         image_method: image.method,
         image_headline: post.image_headline || "",
         ...(image.raw ? { image_raw: image.raw } : {}),
@@ -856,9 +887,10 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
         s2.used_sources = [...(s2.used_sources || []), cand.tweet_id].slice(-1000);
         if (cand.author) s2.authors_today = [...(s2.authors_today || []), cand.author];
         s2.topic_counts = { ...(s2.topic_counts || {}), [cand.topic]: ((s2.topic_counts || {})[cand.topic] || 0) + 1 };
+        s2.format_counts = { ...(s2.format_counts || {}), [post.format]: ((s2.format_counts || {})[post.format] || 0) + 1 };
       });
       record({ status: "done", task_id: task.id, finished_at: new Date().toISOString() });
-      log(`${channel.name}: queued ${task.id} (${cand.topic}, source @${cand.author}, image ${image.method})`);
+      log(`${channel.name}: queued ${task.id} (${cand.topic}, ${post.format}, source @${cand.author}, image ${image.method})`);
       return { task };
     } catch (e) {
       record({ status: "failed", error: String(e.message).slice(0, 300), finished_at: new Date().toISOString() });
@@ -886,6 +918,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
       username: s.username?.name || null,
       running: busy && busy.channel_id === channel.id ? busy : null,
       topic_counts: s.topic_counts || {},
+      format_counts: s.format_counts || {},
     };
   }
 
@@ -895,5 +928,5 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
 module.exports = {
   createAutopilot, DEFAULTS, MODEL,
   config, parseTopics, parseAccounts, accountTopics, buildQuery, scoreTweet, isPromo, rankCandidates, pickCandidates, cleanPostText,
-  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed, ensureHeadline,
+  nearestAspect, tzOffsetMin, localDay, zonedTime, planSlots, pickPromoSlots, pickLeastUsed, ensureHeadline, orderQueue, formatsFull, FORMATS, MAX_PER_FORMAT,
 };

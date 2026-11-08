@@ -146,5 +146,21 @@ check("ensureHeadline keeps Claude's own", ap.ensureHeadline("Rails first. Flow 
 const fh = ap.ensureHeadline("", "Support for a rail is not usage of a rail. Crypto.com's app does more.\n\n#BTC");
 check("ensureHeadline falls back to first sentence", fh === "Support for a rail is not usage");
 check("ensureHeadline strips dashes, hashtags, links", !/[–—#]|http/.test(ap.ensureHeadline("", "Big move — $BTC https://x.y #crypto")));
+
+// variety: one queue, curated only wins ties; formats cap per day
+{
+  const sa = require("../social-autopilot");
+  const cur = [{ label: "Curated", curated: true }], tp = [{ label: "Market" }, { label: "Vintage" }];
+  const q0 = sa.orderQueue(cur, tp, {}, {}, () => 0.5);
+  check("orderQueue: curated first on a fresh day", q0[0].label === "Curated");
+  const q1 = sa.orderQueue(cur, tp, { Curated: 1 }, {}, () => 0.5);
+  check("orderQueue: curated after unused topics once it posted", q1[2].label === "Curated");
+  const q2 = sa.orderQueue(cur, tp, { Curated: 3, Market: 1, Vintage: 1 }, {}, () => 0.5);
+  check("orderQueue: curated with 3 posts goes last", q2[q2.length - 1].label === "Curated" && q2.length === 3);
+  const q3 = sa.orderQueue(cur, tp, { Market: 0 }, { Vintage: 2 }, () => 0.5);
+  check("orderQueue: rejects push a topic back", q3[q3.length - 1].label === "Vintage");
+  check("formatsFull: cap per day", JSON.stringify(sa.formatsFull({ spotlight: sa.MAX_PER_FORMAT, market: 1 })) === JSON.stringify(["spotlight"]));
+  check("FORMATS niche neutral (no pokemon)", !/pokemon|crypto/i.test(JSON.stringify(sa.FORMATS)));
+}
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);
