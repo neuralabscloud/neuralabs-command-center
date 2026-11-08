@@ -12,6 +12,9 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 const CAPTION_MAX = 2200;   // Instagram caption limit
 const HASHTAG_MAX = 30;     // Instagram rejects more than 30 hashtags
 const IMAGE_RE = /\.(png|jpe?g|webp)$/i;
+// Video goes to Instagram only for listing/sold posts (rendered by listings-autopilot.js
+// in public/media/listings/, already 4:5 H.264 with the headline burnt in).
+const LISTING_VIDEO_RE = /^\/media\/listings\/[\w.-]+\.mp4$/;
 
 function parseHashtags(s) {
   const out = [];
@@ -45,22 +48,28 @@ function imagePathOf(task) {
   return p && IMAGE_RE.test(p) && /^\/media\/[\w./-]+$/.test(p) && !p.includes("..") ? p : null;
 }
 
+function videoPathOf(task) {
+  if (!task || !(task.listing || task.sold)) return null;
+  const p = task.media_path || (Array.isArray(task.media_paths) && task.media_paths[0]);
+  return p && LISTING_VIDEO_RE.test(p) && !p.includes("..") ? p : null;
+}
+
 // A raw AI image (the model drew the text itself: often tiny, misspelled or none at all)
 // is not self-explanatory on Instagram, where nobody reads the caption first.
 // Only cards with a headline rendered as real text go there ("…+card", "template").
 const RAW_AI = new Set(["restyle", "style-only", "text-only"]);
 function unreadable(task) {
-  return !task.promo && (task.image_framed === false || RAW_AI.has(task.image_method));
+  return !task.promo && !task.listing && !task.sold && (task.image_framed === false || RAW_AI.has(task.image_method));
 }
 
 function shouldCrosspost(task, channel) {
   const cfg = config(channel);
   if (!cfg.enabled || !channel || channel.platform !== "twitter") return false;
   if (task.instagram) return false;            // already queued, done or failed
-  if (!imagePathOf(task)) return false;        // Instagram needs an image
+  if (!imagePathOf(task) && !videoPathOf(task)) return false; // Instagram needs an image (or a listing video)
   if (task.instagram_ok === false && !task.promo) return false; // reaction/off-niche: X only
   if (unreadable(task)) return false;          // no readable headline in the image
-  return cfg.which === "all" || !!task.promo;
+  return cfg.which === "all" || !!task.promo || !!task.listing || !!task.sold;
 }
 
 // Waarom een post die anders mee zou gaan bewust NIET naar Instagram gaat
@@ -110,22 +119,39 @@ async function graph(fetchFn, method, url, params) {
   return d;
 }
 
-// Container → wait until processed → publish → permalink.
-async function publishImage({ fetch: fetchFn = fetch, igUserId, token, imageUrl, caption: text, pollMs = 3000, maxWaitMs = 90000, sleep }) {
-  const wait = sleep || (ms => new Promise(r => setTimeout(r, ms)));
-  const c = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media`, { image_url: imageUrl, caption: text, access_token: token });
-  if (!c.id) throw new Error("Instagram: no container id");
+async function waitContainer(fetchFn, id, token, pollMs, maxWaitMs, wait) {
   for (let waited = 0; ; waited += pollMs) {
-    const s = await graph(fetchFn, "GET", `${GRAPH}/${c.id}`, { fields: "status_code,status", access_token: token });
-    if (s.status_code === "FINISHED") break;
+    const s = await graph(fetchFn, "GET", `${GRAPH}/${id}`, { fields: "status_code,status", access_token: token });
+    if (s.status_code === "FINISHED") return;
     if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Error(`Instagram: media ${s.status_code.toLowerCase()} (${s.status || "no detail"})`);
     if (waited >= maxWaitMs) throw new Error("Instagram: media still processing after " + Math.round(maxWaitMs / 1000) + " s");
     await wait(pollMs);
   }
-  const p = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media_publish`, { creation_id: c.id, access_token: token });
+}
+
+async function finish(fetchFn, igUserId, id, token) {
+  const p = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media_publish`, { creation_id: id, access_token: token });
   let permalink = null;
   try { permalink = (await graph(fetchFn, "GET", `${GRAPH}/${p.id}`, { fields: "permalink", access_token: token })).permalink || null; } catch { /* optional */ }
   return { media_id: p.id, permalink };
 }
 
-module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, shouldCrosspost, skipReason, caption, padTarget, publishImage };
+// Reel (also shown in the feed). Video processing takes longer than an image.
+async function publishVideo({ fetch: fetchFn = fetch, igUserId, token, videoUrl, caption: text, pollMs = 5000, maxWaitMs = 300000, sleep }) {
+  const wait = sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  const c = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media`, { media_type: "REELS", video_url: videoUrl, caption: text, share_to_feed: "true", access_token: token });
+  if (!c.id) throw new Error("Instagram: no container id");
+  await waitContainer(fetchFn, c.id, token, pollMs, maxWaitMs, wait);
+  return finish(fetchFn, igUserId, c.id, token);
+}
+
+// Container → wait until processed → publish → permalink.
+async function publishImage({ fetch: fetchFn = fetch, igUserId, token, imageUrl, caption: text, pollMs = 3000, maxWaitMs = 90000, sleep }) {
+  const wait = sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  const c = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media`, { image_url: imageUrl, caption: text, access_token: token });
+  if (!c.id) throw new Error("Instagram: no container id");
+  await waitContainer(fetchFn, c.id, token, pollMs, maxWaitMs, wait);
+  return finish(fetchFn, igUserId, c.id, token);
+}
+
+module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, videoPathOf, shouldCrosspost, skipReason, caption, padTarget, publishImage, publishVideo };

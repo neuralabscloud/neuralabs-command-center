@@ -291,6 +291,20 @@ app.get("/share/image/:sig/:file", (req, res) => {
   res.type("image/jpeg").sendFile(p);
 });
 
+// Listing/sold videos (public/media/listings/*.mp4) for Instagram Reels, same signed-link idea.
+function shareListingSig(file) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update("share-listing:" + file).digest("hex").slice(0, 32);
+}
+app.get("/share/listing/:sig/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^\w.-]/g, "");
+  const sig = String(req.params.sig);
+  let ok = false;
+  try { ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(shareListingSig(file))); } catch { /* length mismatch */ }
+  const p = path.join(__dirname, "public", "media", "listings", file);
+  if (!ok || !/\.mp4$/i.test(file) || !fs.existsSync(p)) return res.status(404).end();
+  res.type("video/mp4").sendFile(p);
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -2900,6 +2914,7 @@ app.patch("/community/channels/:id", (req, res) => {
   if (body.autopilot) next.autopilot = { ...(current.autopilot || {}), ...body.autopilot };
   if ("instagram" in body) next.instagram = igPublish.sanitize(body.instagram);
   if (body.replies && current.platform === "twitter") next.replies = xReplies.sanitize({ ...(current.replies || {}), ...body.replies });
+  if (body.listings && current.platform === "twitter") next.listings = listingsMod.sanitize({ ...(current.listings || {}), ...body.listings });
   // Blank key fields keep what is stored; { clear: true } removes the channel's own keys.
   if (x_credentials && current.platform === "twitter") {
     const all = readXCredentials();
@@ -8105,9 +8120,16 @@ async function publishTaskToInstagram(task, channel) {
   if (!conn || !conn.ig_user_id || !conn.page_access_token) throw new Error("Instagram account not connected (Settings → Meta)");
   const origin = knownPublicOrigin();
   if (!/^https:\/\//.test(origin)) throw new Error("no public https origin (PUBLIC_BASE_URL)");
+  const caption = igPublish.caption(task.text, { hashtags: cfg.hashtags });
+  const video = igPublish.videoPathOf(task);
+  if (video) {
+    const file = path.basename(video);
+    if (!fs.existsSync(path.join(MEDIA_DIR, "listings", file))) throw new Error("video file missing");
+    const videoUrl = `${origin}/share/listing/${shareListingSig(file)}/${file}`;
+    return igPublish.publishVideo({ igUserId: conn.ig_user_id, token: conn.page_access_token, videoUrl, caption });
+  }
   const file = await igPrepareJpeg(task);
   const imageUrl = `${origin}/share/image/${shareImageSig(file)}/${file}`;
-  const caption = igPublish.caption(task.text, { hashtags: cfg.hashtags });
   return igPublish.publishImage({ igUserId: conn.ig_user_id, token: conn.page_access_token, imageUrl, caption });
 }
 
@@ -8156,7 +8178,7 @@ app.post("/community/tasks/:id/instagram", (req, res) => {
   const channel = readChannels().find(c => c.id === task.channel_id);
   if (task.status !== "published") return res.status(400).json({ error: "post is not published yet" });
   if (!channel || !igPublish.config(channel).account_id) return res.status(400).json({ error: "no Instagram account set on this channel" });
-  if (!igPublish.imagePathOf(task)) return res.status(400).json({ error: "post has no image" });
+  if (!igPublish.imagePathOf(task) && !igPublish.videoPathOf(task)) return res.status(400).json({ error: "post has no image" });
   if (task.instagram && task.instagram.status === "published") return res.status(400).json({ error: "already on Instagram" });
   task.instagram = { status: "pending", attempts: 0, queued_at: new Date().toISOString() };
   writeTaskFile(COMMUNITY_TASKS_FILE, tasks);
@@ -8263,6 +8285,42 @@ app.post("/community/channels/:id/replies/run", async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// ── LISTINGS AUTOPILOT (X + Instagram) ────────
+// Posts items for sale from a feed on set weekdays, and SOLD posts for items
+// that left the feed (config on channel.listings).
+const listingsMod = require("./listings-autopilot");
+const listingsBot = listingsMod.createListings({
+  dataDir: path.join(__dirname, "data"),
+  mediaDir: MEDIA_DIR,
+  tz: TIMEZONE,
+  readChannels,
+  addTask: (task) => writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]),
+  anthropic,
+  twitterWeightedLength,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  notify: sendTelegram,
+});
+setInterval(() => listingsBot.tick().catch(e => console.error("[LISTINGS]", e.message)), 60_000);
+
+app.get("/community/channels/:id/listings", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  res.json(listingsBot.status(channel));
+});
+app.post("/community/channels/:id/listings/refresh", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  try { res.json(await listingsBot.refresh(channel)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/community/channels/:id/listings/run", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  const { kind, mode, item_id } = req.body || {};
+  try { listingsBot.runNow(channel, { kind, mode, item_id: item_id ? String(item_id).slice(0, 200) : undefined }); res.json({ ok: true, started: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 const autopilotFor = (channel) => (channel.platform === "telegram" ? tgAutopilot : channel.platform === "twitter" ? autopilot : null);
 
 // Every autonomous job that is not a row in scheduled-tasks.json, so the
@@ -8302,6 +8360,23 @@ app.get("/agents/autonomous", (_req, res) => {
         today: { done: st.today, failed: 0, pending: 0 },
         last_run: st.last_check ? { at: st.last_check, status: st.last_error ? "failed" : (last && last.action === "reply" ? "replied" : "checked"), error: st.last_error } : null,
         running: st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "twitter" && c.listings) {
+      const st = listingsBot.status(c);
+      const cfg = st.config;
+      const last = st.log[0];
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      jobs.push({
+        id: "listings:" + c.id, kind: "listings", agent: "community_manager",
+        name: `Listings · ${c.name}`,
+        enabled: cfg.enabled, toggle: { channel_id: c.id, field: "listings" },
+        when: `${cfg.days.map(d => dayNames[d]).join("/") || "no days"} · ${cfg.window_start}-${cfg.window_end} ${tz}`,
+        details: `${st.items.length} items for sale · ${cfg.sold_posts ? "SOLD posts on" : "no SOLD posts"} · ${st.sold_queue.length} sold waiting · ${cfg.mode === "review" ? "drafts" : "auto"}`,
+        today: null,
+        next_run: cfg.enabled && st.slot && st.slot.status === "pending" ? st.slot.at : null,
+        last_run: last ? { at: last.at, status: last.action === "error" ? "failed" : last.action, error: last.error || null } : null,
+        running: !!st.running, manage_url: "/community-manager.html",
       });
     }
     if (c.platform === "telegram" && c.autopilot) {

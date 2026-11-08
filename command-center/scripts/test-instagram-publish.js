@@ -49,6 +49,16 @@ check("skipReason names unreadable image", /readable headline/.test(ig.skipReaso
 check("imagePathOf rejects traversal", ig.imagePathOf({ media_path: "/media/../../.env.png" }) === null);
 check("imagePathOf takes first of media_paths", ig.imagePathOf({ media_paths: ["/media/a.jpg"] }) === "/media/a.jpg");
 
+// listing videos
+const lv = { id: "l", listing: true, media_path: "/media/listings/listing-abc.mp4" };
+check("videoPathOf: listing mp4", ig.videoPathOf(lv) === "/media/listings/listing-abc.mp4");
+check("videoPathOf: not for normal task", ig.videoPathOf({ media_path: "/media/listings/x.mp4" }) === null);
+check("videoPathOf: only listings dir", ig.videoPathOf({ sold: true, media_path: "/media/ugc/x.mp4" }) === null);
+check("videoPathOf: rejects traversal", ig.videoPathOf({ sold: true, media_path: "/media/listings/../x.mp4" }) === null);
+check("crosspost: listing video goes", ig.shouldCrosspost(lv, ch));
+check("crosspost: sold video goes on promo-only channel", ig.shouldCrosspost({ ...lv, listing: false, sold: true }, promoCh));
+check("crosspost: listing card goes", ig.shouldCrosspost({ id: "c", listing: true, media_path: "/media/listings/listing-c.png", image_method: "listing-card" }, ch));
+
 // padTarget
 check("pad: 4:5 fits", ig.padTarget(1080, 1350) === null);
 check("pad: square fits", ig.padTarget(1080, 1080) === null);
@@ -85,6 +95,21 @@ check("pad: very wide padded", wide && wide.width === 3000 && wide.width / wide.
   msg = "";
   try { await ig.publishImage({ fetch: errStatus, igUserId: "1", token: "t", imageUrl: "u", caption: "c", sleep: async () => {} }); } catch (e) { msg = e.message; }
   check("publish fails on container ERROR", msg.includes("error") && msg.includes("bad image"));
+
+  const vcalls = [];
+  let vpolls = 0;
+  const vfake = async (url, opts) => {
+    vcalls.push({ url, body: opts.body ? Object.fromEntries(opts.body) : null });
+    const j = d => ({ ok: true, json: async () => d });
+    if (opts.method === "POST" && url.endsWith("/media")) return j({ id: "V1" });
+    if (url.includes("/V1?")) return j({ status_code: ++vpolls < 3 ? "IN_PROGRESS" : "FINISHED" });
+    if (url.endsWith("/media_publish")) return j({ id: "R1" });
+    if (url.includes("/R1?")) return j({ permalink: "https://www.instagram.com/reel/x/" });
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const vr = await ig.publishVideo({ fetch: vfake, igUserId: "17", token: "t", videoUrl: "https://h/v.mp4", caption: "c", sleep: async () => {} });
+  check("publishVideo sends REELS + video_url + share_to_feed", vcalls[0].body.media_type === "REELS" && vcalls[0].body.video_url === "https://h/v.mp4" && vcalls[0].body.share_to_feed === "true");
+  check("publishVideo waits + returns permalink", vpolls === 3 && vr.media_id === "R1" && vr.permalink.includes("/reel/"));
 
   console.log(`\n${pass} ok, ${fail} FOUT`);
   process.exit(fail ? 1 : 0);

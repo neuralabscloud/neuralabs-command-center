@@ -370,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderReplies(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderReplies(c) + renderListings(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -469,6 +469,85 @@ async function runReplies(id, btn) {
   } catch (e) { alert('Auto-replies: ' + e.message); btn.textContent = 'Check now'; }
   btn.disabled = false;
   loadRepliesStatus(id);
+}
+// Listings: post our own items that are for sale (from a JSON feed), and a "sold" post when one disappears.
+function renderListings(c) {
+  const l = c.listings || {};
+  const id = esc(c.id);
+  const DAYN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const days = Array.isArray(l.days) ? l.days : [1, 3, 5];
+  const sel = (k, opts, cur) => `<select class="edit-input" id="ch-ls-${k}-${id}">${opts.map(([v, t]) => `<option value="${esc(v)}"${String(cur) === String(v) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+  setTimeout(() => loadListingsStatus(c.id), 0);
+  return `
+    <div class="edit-label" style="margin-top:14px">🏷 Listings</div>
+    <div class="discord-banner">Posts the items you have for sale, read from a JSON feed (items with id, name, grade, price, image and optionally an mp4 video). On the chosen weekdays one item per day is posted at a random time in the window, least posted first. When the item has a video (rotating render) that is used, otherwise the image in the card template. When an item disappears from the feed (2 checks in a row) a "sold" post follows. Goes to Instagram too when the cross-post is on (video as reel).</div>
+    <div class="edit-grid">
+      <div><label class="edit-label">Listings</label>${sel('enabled', [['false','Off'],['true','On']], !!l.enabled)}</div>
+      <div><label class="edit-label">Mode</label>${sel('mode', [['auto','Auto (post)'],['review','Review (draft)']], l.mode || 'auto')}</div>
+      <div style="grid-column:1/-1"><label class="edit-label">Feed URL</label>
+        <input class="edit-input" id="ch-ls-feed_url-${id}" value="${esc(l.feed_url || '')}" placeholder="https://example.com/api/collectibles"></div>
+      <div style="grid-column:1/-1"><label class="edit-label">Days</label>
+        <div id="ch-ls-days-${id}" style="display:flex;gap:10px;flex-wrap:wrap">${DAYN.map((d, i) => `<label style="font-size:13px"><input type="checkbox" value="${i}"${days.includes(i) ? ' checked' : ''}> ${d}</label>`).join('')}</div></div>
+      <div><label class="edit-label">Window start</label><input class="edit-input" id="ch-ls-window_start-${id}" value="${esc(l.window_start || '10:00')}" placeholder="10:00"></div>
+      <div><label class="edit-label">Window end</label><input class="edit-input" id="ch-ls-window_end-${id}" value="${esc(l.window_end || '21:00')}" placeholder="21:00"></div>
+      <div><label class="edit-label">Sold posts</label>${sel('sold_posts', [['true','On'],['false','Off']], l.sold_posts !== false)}</div>
+      <div><label class="edit-label">Max sold posts per day</label><input class="edit-input" type="number" min="1" max="5" id="ch-ls-sold_per_day-${id}" value="${esc(l.sold_per_day != null ? l.sold_per_day : 2)}"></div>
+      <div><label class="edit-label">Link in the post</label>${sel('link', [['page','Item page (feed page_url)'],['marketplace','Marketplace listing'],['none','No link']], l.link || 'page')}</div>
+      <div><label class="edit-label">Use video when there is one</label>${sel('video', [['true','Yes'],['false','No, always the image']], l.video !== false)}</div>
+    </div>
+    <div class="ap-status" id="ls-status-${id}">Loading…</div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn-sm" onclick="refreshListings(${jq(c.id)}, this)">Read feed</button>
+      <button class="btn-sm" onclick="runListings(${jq(c.id)}, 'listing', this)">Listing once → draft</button>
+      <button class="btn-sm" onclick="runListings(${jq(c.id)}, 'sold', this)">Sold post → draft</button>
+    </div>`;
+}
+function collectListings(id) {
+  const g = k => document.getElementById(`ch-ls-${k}-${id}`);
+  if (!g('enabled')) return null;
+  const days = [...g('days').querySelectorAll('input:checked')].map(x => Number(x.value));
+  return {
+    enabled: g('enabled').value === 'true', mode: g('mode').value, feed_url: g('feed_url').value.trim(), days,
+    window_start: g('window_start').value.trim(), window_end: g('window_end').value.trim(),
+    sold_posts: g('sold_posts').value === 'true', sold_per_day: Number(g('sold_per_day').value) || undefined,
+    link: g('link').value, video: g('video').value === 'true',
+  };
+}
+async function loadListingsStatus(id) {
+  const el = document.getElementById(`ls-status-${id}`);
+  if (!el) return;
+  try {
+    const s = await fetchJson(`/community/channels/${encodeURIComponent(id)}/listings`);
+    const lines = [];
+    if (s.running) lines.push(`<span style="color:var(--premium)">● Working: ${esc(s.running.step)}…</span>`);
+    if (!s.config.enabled) lines.push('Listings are off.');
+    else if (s.slot) lines.push(`Today's listing slot: ${esc(fmt(s.slot.at))} (${esc(s.slot.status)})`);
+    else lines.push('No listing post today (not a listing day).');
+    if (s.last_check) lines.push(`Feed read ${esc(fmt(s.last_check))} · ${esc(s.items.length)} items for sale`);
+    if (s.last_error) lines.push(`<span style="color:var(--danger)">Feed: ${esc(s.last_error)}</span>`);
+    if (s.items.length) lines.push(s.items.map(i => `<div style="margin-top:2px">${i.video ? '🎞' : '🖼'} ${esc(i.name)}${i.grade ? ' · ' + esc(i.grade) : ''} · ${esc(i.price)} <span style="opacity:.6">(${esc(i.platform || '')}, posted ${esc(i.posted)}×)</span></div>`).join(''));
+    if (s.sold_queue.length) lines.push(`<b>Waiting for a sold post:</b> ${s.sold_queue.map(i => esc(i.name)).join(', ')}`);
+    if (s.sold.length) lines.push(`<b>Sold:</b> ${s.sold.slice(0, 6).map(i => `${esc(i.name)}${i.posted ? ' ✓' : ''}`).join(', ')}`);
+    const rows = (s.log || []).slice(0, 6).map(l => `<div style="margin-top:2px;opacity:${l.action === 'error' ? 1 : .7}">${esc(fmt(l.at))} · ${esc(l.action)}${l.item ? ' · ' + esc(l.item) : ''}${l.media ? ' · ' + esc(l.media) : ''}${l.error ? ' · <span style="color:var(--danger)">' + esc(l.error) + '</span>' : ''}${l.note ? ' · ' + esc(l.note) : ''}</div>`);
+    if (rows.length) lines.push(rows.join(''));
+    el.innerHTML = lines.join('<br>');
+    if (s.running) setTimeout(() => loadListingsStatus(id), 5000);
+  } catch (e) { el.textContent = 'Status error: ' + e.message; }
+}
+async function refreshListings(id, btn) {
+  btn.disabled = true;
+  try { await fetchJson(`/community/channels/${encodeURIComponent(id)}/listings/refresh`, { method: 'POST' }); }
+  catch (e) { alert('Listings: ' + e.message); }
+  btn.disabled = false;
+  loadListingsStatus(id);
+}
+async function runListings(id, kind, btn) {
+  btn.disabled = true;
+  try {
+    await fetchJson(`/community/channels/${encodeURIComponent(id)}/listings/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, mode: 'review' }) });
+    setTimeout(() => loadListingsStatus(id), 800);
+  } catch (e) { alert('Listings: ' + e.message); }
+  btn.disabled = false;
 }
 function collectInstagram(id) {
   const g = k => document.getElementById(`ch-ig-${k}-${id}`);
@@ -892,6 +971,8 @@ async function saveChannel(id) {
     }
     const rp = collectReplies(id);
     if (rp) payload.replies = rp;
+    const ls = collectListings(id);
+    if (ls) payload.listings = ls;
   }
   try {
     await fetchJson(`/community/channels/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

@@ -252,6 +252,7 @@
           tips: [
             'An X channel can have its own API keys; without them it posts with the default account from the server settings.',
             '"Min. likes" and "Min. followers" keep the autopilot away from low-quality sources.',
+            'Listings (X channels): point it at a JSON feed of what you sell. It posts one item on the chosen days and a "sold" post when an item leaves the feed. "Read feed" shows what it sees.',
           ],
         },
       },
