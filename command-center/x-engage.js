@@ -133,11 +133,12 @@ function cardText(channel, p) {
     "",
     `<i>${escHtml(p.their_text.slice(0, 700))}</i>`,
     "",
-    `💬 <b>Our reply:</b>`,
-    escHtml(p.text),
+    `💬 <b>Our reply</b> (tap to copy):`,
+    `<code>${escHtml(p.text)}</code>`,
     "",
     `<a href="${escHtml(p.url)}">Open the post on X</a> · expires in ${p.expire_hours} h`,
     `📲 opens X with this reply ready${p.as ? ` (be logged in as <b>@${escHtml(p.as)}</b>)` : ""}, tap Reply there, then ✔ Done here.`,
+    `Empty screen in X? Tap the reply above to copy it, tap 🔗 Open post, reply there and paste.`,
   ].join("\n");
 }
 
@@ -147,7 +148,7 @@ const intentUrl = (p, text) => `https://x.com/intent/post?in_reply_to=${encodeUR
 
 const keyboard = (channelId, p) => ({
   inline_keyboard: [
-    [{ text: "📲 Reply on X (pre-filled)", url: intentUrl(p) }],
+    [{ text: "📲 Reply on X (pre-filled)", url: intentUrl(p) }, { text: "🔗 Open post", url: p.url || `https://x.com/i/status/${p.tweet_id}` }],
     [
       { text: "✔ Done", callback_data: `xe:ok:${channelId}:${p.id}` },
       { text: "❌ Skip", callback_data: `xe:no:${channelId}:${p.id}` },
@@ -372,11 +373,11 @@ Rules for the reply:
       const r = await twitterApi("GET", `https://api.x.com/2/tweets/search/recent?query=${q}&max_results=10&tweet.fields=referenced_tweets,created_at`, creds);
       const hit = ((r && r.data) || []).find(t => (t.referenced_tweets || []).some(x => x.type === "replied_to" && x.id === p.tweet_id));
       return hit ? hit.id : null;
-    } catch (e) { log(`find own reply: ${e.message}`); return null; }
+    } catch (e) { log(`find own reply: ${e.message}`); return undefined; }
   }
 
   // Done: the reply was posted by hand via the pre-filled X link. Text = the version used.
-  async function approve(channelId, pid, text) {
+  async function approve(channelId, pid, text, force = false) {
     const channel = channelById(channelId);
     if (!channel) throw new Error("channel not found");
     const p = getProposal(channelId, pid);
@@ -386,8 +387,12 @@ Rules for the reply:
     if (!body) throw new Error("empty reply");
     update(channelId, pid, { status: "posting" });
     const creds = twitterCredsFor(channel);
-    let id = null, username = p.as;
-    try { const m = await me(channel, creds); username = m.username; id = await findOurReply(channel, creds, m.username, p); } catch (e) { log(`done lookup: ${e.message}`); }
+    let id = null, username = p.as, looked = false;
+    try { const m = await me(channel, creds); username = m.username; id = await findOurReply(channel, creds, m.username, p); looked = id !== undefined; id = id || null; } catch (e) { log(`done lookup: ${e.message}`); }
+    if (looked && !id && !force) {
+      update(channelId, pid, { status: "pending" });
+      throw new Error(`no reply from @${username} found on X yet. Post it first (or wait a few seconds), then tap Done again`);
+    }
     const url = id ? `https://x.com/${username}/status/${id}` : null;
     const done = mutate(channelId, s => {
       rollDay(s);
@@ -445,7 +450,7 @@ Rules for the reply:
         await tg("sendMessage", { chat_id: chatId, text: `✏ Send the new reply to @${p.author} as a message. /cancel to stop.\n\nCurrent:\n${p.text}` });
       } else await answer();
     } catch (e) {
-      await tg("sendMessage", { chat_id: chatId, text: `⚠ X engage: ${String(e.message).slice(0, 300)}` }).catch(() => {});
+      await answer(`⚠ ${String(e.message).slice(0, 190)}`, true).catch(() => {});
     }
     return true;
   }

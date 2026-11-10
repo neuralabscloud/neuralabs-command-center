@@ -124,21 +124,27 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   lastTweet = r.proposal.tweet_id;
   check("proposal knows our handle", r.proposal.as === "ourbrand");
   check("card links to pre-filled reply", JSON.stringify(tgCalls[0][1].reply_markup).includes("intent/post?in_reply_to=" + r.proposal.tweet_id));
+  check("card has open-post fallback + copyable reply", JSON.stringify(tgCalls[0][1].reply_markup).includes("Open post") && tgCalls[0][1].text.includes("<code>"));
   check("edit: callback opens edit", await bot.handleCallback({ id: "c1", data: `xe:ed:ch1:${pid}`, message: { chat: { id: 123 } } }));
   check("edit: text consumed", await bot.handleText(123, "Edited reply here"));
   check("edit: stored", bot.status(channel).pending[0].text === "Edited reply here");
   check("other text not consumed", !(await bot.handleText(123, "hello")));
 
+  lastTweet = "nope";
+  await bot.handleCallback({ id: "c1b", data: `xe:ok:ch1:${pid}`, message: { chat: { id: 123 } } });
+  check("done without our reply on X stays pending", bot.status(channel).pending.length === 1 && bot.status(channel).pending[0].status === "pending");
+  check("done without reply shows alert", tgCalls.some(([m, b]) => m === "answerCallbackQuery" && b.show_alert && /no reply/.test(b.text)));
+  lastTweet = r.proposal.tweet_id;
   await bot.handleCallback({ id: "c2", data: `xe:ok:ch1:${pid}`, message: { chat: { id: 123 } } });
   check("done does not post via API (X refuses)", posts.length === 0);
-  check("done looks up our hand-posted reply", lookups === 1);
+  check("done looks up our hand-posted reply", lookups === 2);
   check("edited card links edited text", tgCalls.filter(([m]) => m === "sendMessage").some(([, b]) => JSON.stringify(b.reply_markup || {}).includes("Edited%20reply%20here")));
   const st2 = bot.status(channel);
   check("status: posted", st2.posted_today === 1 && st2.recent[0].status === "posted" && st2.recent[0].reply_url === "https://x.com/ourbrand/status/999");
   check("card closed with link", tgCalls.some(([m, b]) => m === "editMessageReplyMarkup" && JSON.stringify(b).includes("status/999")));
   let threw = false;
   try { await bot.approve("ch1", pid); } catch { threw = true; }
-  check("no double done", threw && lookups === 1);
+  check("no double done", threw && lookups === 2);
   check("ourReplies feeds x-replies", bot.ourReplies(channel)[0].id === "999");
 
   // skip
