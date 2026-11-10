@@ -2403,7 +2403,9 @@ async function loadAIVideos() {
             <video src="${esc(safeUrl(t.result_url))}" controls style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border);"></video>
             <a href="${esc(safeUrl(t.result_url))}" target="_blank" rel="noopener" download style="display:inline-block;margin-top:4px;font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;">Download video</a>
             <button onclick="extendVideo(${jq(t.id)})" style="margin-left:10px;background:none;border:none;color:var(--primary);cursor:pointer;font-size:10px;font-family:var(--font-data);padding:0;">Extend this video</button>
+            ${t.status === 'completed' ? `<button data-owner-only onclick="openAiScheduleModal(${jq(t.id)})" style="margin-left:10px;background:none;border:none;color:var(--primary);cursor:pointer;font-size:10px;font-family:var(--font-data);padding:0;">&#128197; Schedule post</button>` : ''}
           </div>` : ''}
+          ${aiPostsHtml(t)}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
           <span class="vt-badge ${esc(t.status)}">${esc(t.status)}</span>
@@ -2415,6 +2417,154 @@ async function loadAIVideos() {
   } catch(e) {
     document.getElementById('ai-video-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not load AI videos</div>';
   }
+}
+
+// ── AI Generate → schedule on Social Media Manager channels ──
+function aiPostsHtml(t) {
+  const posts = Array.isArray(t.posts) ? t.posts : [];
+  if (!posts.length) return '';
+  const fmt = d => d ? new Date(d).toLocaleString('en-GB', { weekday:'short', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+  return `<div data-owner-only style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);">` +
+    `<div style="font-size:10px;color:var(--text-dim);font-family:var(--font-data);margin-bottom:3px;">SOCIAL POSTS</div>` +
+    posts.map(p => {
+      const st = p.status || '?';
+      const color = st === 'published' ? 'var(--success)' : st === 'failed' ? 'var(--danger)' : st === 'scheduled' ? 'var(--warning)' : 'var(--text-dim)';
+      const ig = p.instagram ? ` &middot; IG: ${esc(p.instagram)}` : '';
+      return `<div style="display:flex;gap:8px;font-size:11px;font-family:var(--font-data);color:var(--text-dim);padding:1px 0;">
+        <span style="color:var(--text);">${esc(p.channel_name || p.channel_id)}</span>
+        <span style="color:${color};">${esc(st)}</span>
+        <span>${st === 'published' ? '' : esc(fmt(p.scheduled_at))}${ig}</span>
+        ${p.error ? `<span style="color:var(--danger);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(p.error)}">${esc(p.error)}</span>` : ''}
+      </div>`;
+    }).join('') + `<a href="/community-manager.html" style="font-size:10px;color:var(--primary);font-family:var(--font-data);text-decoration:none;">Open Social Media Manager &rarr;</a></div>`;
+}
+
+let _aiSchedCtx = null;
+async function openAiScheduleModal(id) {
+  const task = (aiVideoTasks || []).find(t => t.id === id);
+  if (!task) return;
+  _aiSchedCtx = { id };
+  let modal = document.getElementById('ais-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ais-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `<div style="background:var(--bg-surface,#0d0d12);border:1px solid var(--border);border-radius:12px;max-width:480px;width:100%;padding:20px;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="section-header" style="margin:0;">Schedule video post</div>
+        <button onclick="closeAiScheduleModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&#x2715;</button>
+      </div>
+      <video id="ais-preview" controls muted style="width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);background:#000;"></video>
+      <div class="form-label" style="margin-top:12px;">Channels</div>
+      <div id="ais-channels" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div class="form-label" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span>Post text</span><span id="ais-count" style="font-family:var(--font-data);font-size:10px;color:var(--text-dim);"></span>
+      </div>
+      <textarea class="form-input" id="ais-text" rows="5" style="width:100%;" oninput="aiSchedCount()"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
+        <input class="form-input" id="ais-hint" placeholder="Optional hint for the AI text" style="flex:1;" />
+        <button class="btn-mini" onclick="aiSchedWriteText()" style="font-size:11px;padding:4px 10px;">&#10024; AI text</button>
+      </div>
+      <div class="form-label" style="margin-top:12px;">When (empty = now)</div>
+      <input class="form-input" id="ais-when" type="datetime-local" style="width:100%;" />
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-submit" id="ais-send" onclick="submitAiSchedule('scheduled')">Schedule</button>
+        <button class="btn-submit" onclick="submitAiSchedule('draft')" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--text);">Save as draft</button>
+        <span id="ais-status" style="font-family:var(--font-data);font-size:11px;color:var(--text-dim);"></span>
+      </div>
+    </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) closeAiScheduleModal(); });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  document.getElementById('ais-preview').src = safeUrl(task.result_url);
+  document.getElementById('ais-text').value = '';
+  document.getElementById('ais-hint').value = '';
+  document.getElementById('ais-when').value = '';
+  const st = document.getElementById('ais-status');
+  const box = document.getElementById('ais-channels');
+  st.textContent = 'Loading channels…';
+  box.innerHTML = '';
+  try {
+    const res = await fetch('/community/channels');
+    if (!res.ok) throw new Error('Could not load channels');
+    const chans = (await res.json()).filter(c => c.enabled !== false && (c.platform === 'twitter' || c.platform === 'telegram'));
+    box.innerHTML = chans.length ? chans.map(c => {
+      const hasIg = c.platform === 'twitter' && c.instagram && c.instagram.account_id;
+      return `<div style="display:flex;align-items:center;gap:10px;font-size:12px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text);">
+          <input type="checkbox" class="ais-ch" value="${esc(c.id)}" data-platform="${esc(c.platform)}" onchange="aiSchedCount()" />
+          ${c.platform === 'twitter' ? '&#120143;' : 'Telegram'} ${esc(c.name)}
+        </label>
+        ${hasIg ? `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-dim);">
+          <input type="checkbox" class="ais-ig" value="${esc(c.id)}" checked /> + Instagram (Reel)
+        </label>` : ''}
+      </div>`;
+    }).join('') : '<div style="font-size:12px;color:var(--text-dim);">No channels yet. Add one in the Social Media Manager.</div>';
+    st.textContent = '';
+  } catch (e) { st.textContent = String(e.message).slice(0, 90); }
+  aiSchedCount();
+}
+
+function closeAiScheduleModal() {
+  const m = document.getElementById('ais-modal');
+  if (m) { m.style.display = 'none'; const v = document.getElementById('ais-preview'); if (v) v.pause(); }
+  _aiSchedCtx = null;
+}
+
+function aiSchedChannels() { return [...document.querySelectorAll('.ais-ch:checked')]; }
+
+// Rough X weighting: URLs count as 23, the rest per character.
+function aiSchedCount() {
+  const el = document.getElementById('ais-count');
+  if (!el) return;
+  const t = document.getElementById('ais-text').value;
+  const n = t.replace(/https?:\/\/\S+/g, 'x'.repeat(23)).length;
+  const x = aiSchedChannels().some(c => c.dataset.platform === 'twitter');
+  el.textContent = x ? `${n}/280` : `${n}`;
+  el.style.color = x && n > 280 ? 'var(--danger)' : 'var(--text-dim)';
+}
+
+async function aiSchedWriteText() {
+  if (!_aiSchedCtx) return;
+  const st = document.getElementById('ais-status');
+  const ch = aiSchedChannels()[0];
+  if (!ch) { st.textContent = 'Pick a channel first (its brand sets the tone).'; return; }
+  st.textContent = 'Writing…';
+  try {
+    const res = await fetch('/video/ai-generate/' + encodeURIComponent(_aiSchedCtx.id) + '/caption', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_id: ch.value, hint: document.getElementById('ais-hint').value }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'Failed');
+    document.getElementById('ais-text').value = d.text || '';
+    aiSchedCount();
+    st.textContent = '';
+  } catch (e) { st.textContent = 'Error: ' + String(e.message).slice(0, 90); }
+}
+
+async function submitAiSchedule(mode) {
+  if (!_aiSchedCtx) return;
+  const st = document.getElementById('ais-status');
+  const chans = aiSchedChannels().map(c => c.value);
+  if (!chans.length) { st.textContent = 'Pick at least one channel.'; return; }
+  const when = document.getElementById('ais-when').value;
+  const instagram = {};
+  document.querySelectorAll('.ais-ig').forEach(c => { instagram[c.value] = c.checked; });
+  st.textContent = 'Saving…';
+  try {
+    const res = await fetch('/video/ai-generate/' + encodeURIComponent(_aiSchedCtx.id) + '/schedule', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_ids: chans, text: document.getElementById('ais-text').value,
+        scheduled_at: when ? new Date(when).toISOString() : null, instagram, mode }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || 'Failed');
+    st.textContent = mode === 'draft' ? 'Saved as draft.' : (when ? 'Scheduled.' : 'Posting now…');
+    setTimeout(closeAiScheduleModal, 900);
+    loadAIVideos();
+  } catch (e) { st.textContent = 'Error: ' + String(e.message).slice(0, 120); }
 }
 
 async function deleteAIVideo(id) {

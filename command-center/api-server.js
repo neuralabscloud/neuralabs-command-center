@@ -305,6 +305,20 @@ app.get("/share/listing/:sig/:file", (req, res) => {
   res.type("video/mp4").sendFile(p);
 });
 
+// Hand-scheduled video posts (public/media/posts/*.mp4, e.g. from AI Generate) for Instagram Reels.
+function sharePostVideoSig(file) {
+  return crypto.createHmac("sha256", SESSION_SECRET).update("share-post-video:" + file).digest("hex").slice(0, 32);
+}
+app.get("/share/post-video/:sig/:file", (req, res) => {
+  const file = String(req.params.file).replace(/[^\w.-]/g, "");
+  const sig = String(req.params.sig);
+  let ok = false;
+  try { ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(sharePostVideoSig(file))); } catch { /* length mismatch */ }
+  const p = path.join(__dirname, "public", "media", "posts", file);
+  if (!ok || !/\.mp4$/i.test(file) || !fs.existsSync(p)) return res.status(404).end();
+  res.type("video/mp4").sendFile(p);
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -2048,7 +2062,23 @@ async function resumeHiggsfieldVideoTasks() {
 }
 setTimeout(() => resumeHiggsfieldVideoTasks().catch((e) => console.error("[AI-VIDEO] resume:", e.message)), 5000);
 
-app.get("/video/ai-generate", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile("ai-video-tasks.json"))));
+app.get("/video/ai-generate", (_req, res) => {
+  const tasks = readTaskFile("ai-video-tasks.json");
+  if (tasks.some(t => Array.isArray(t.posts) && t.posts.length)) {
+    const byId = new Map(readTaskFile(COMMUNITY_TASKS_FILE).map(c => [c.id, c]));
+    const names = new Map(readChannels().map(c => [c.id, c.name]));
+    for (const t of tasks) {
+      if (!Array.isArray(t.posts)) continue;
+      t.posts = t.posts.map(p => {
+        const c = byId.get(p.task_id);
+        return { ...p, channel_name: names.get(p.channel_id) || p.channel_id,
+          status: c ? c.status : "removed", scheduled_at: c ? c.scheduled_at : p.scheduled_at,
+          error: c ? c.error : null, instagram: c && c.instagram ? c.instagram.status : (p.instagram ? "after X" : null) };
+      });
+    }
+  }
+  res.json(apiUsage.attachCosts(tasks));
+});
 
 app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCount: 9 }, { name: "source_video", maxCount: 1 }]), (req, res) => {
   const tasks = readTaskFile("ai-video-tasks.json");
@@ -2869,6 +2899,99 @@ async function runGenjutsuTask(task, mode, o) {
 app.delete("/video/ai-generate/:id", (req, res) => {
   writeTaskFile("ai-video-tasks.json", readTaskFile("ai-video-tasks.json").filter(t => t.id !== req.params.id));
   res.json({ ok: true });
+});
+
+// ── AI Generate → Social Media Manager: schedule a finished video on one or more channels ──
+// One community task per channel (the normal worker publishes it). For an X channel with an
+// Instagram account on its card, `instagram[channelId] = true` sends it on as a Reel after X.
+const POST_MEDIA_DIR = path.join(__dirname, "public", "media", "posts");
+async function aiVideoToPostMedia(task) {
+  const file = `${String(task.id).replace(/[^\w-]/g, "")}.mp4`;
+  const out = path.join(POST_MEDIA_DIR, file);
+  if (fs.existsSync(out)) return `/media/posts/${file}`;
+  fs.mkdirSync(POST_MEDIA_DIR, { recursive: true });
+  const local = String(task.result_url || "").match(/^\/video-outputs\/([\w.-]+\.mp4)$/);
+  if (local && fs.existsSync(path.join(VIDEO_OUTPUT_DIR, local[1]))) fs.copyFileSync(path.join(VIDEO_OUTPUT_DIR, local[1]), out);
+  else if (/^https:\/\//.test(task.result_url || "")) await downloadTo(task.result_url, out);
+  else throw new Error("video file not found");
+  return `/media/posts/${file}`;
+}
+const cleanSocialText = (t) => String(t || "").replace(/\s*[—–]\s*/g, ". ").replace(/\.\s*\./g, ".").trim();
+
+app.post("/video/ai-generate/:id/schedule", async (req, res) => {
+  const ai = readTaskFile("ai-video-tasks.json").find(t => t.id === req.params.id);
+  if (!ai) return res.status(404).json({ error: "video not found" });
+  if (ai.status !== "completed" || !ai.result_url) return res.status(400).json({ error: "video is not finished yet" });
+  const channels = readChannels();
+  const ids = [...new Set((Array.isArray(req.body.channel_ids) ? req.body.channel_ids : []).map(String))];
+  const picked = ids.map(id => channels.find(c => c.id === id)).filter(Boolean);
+  if (!picked.length) return res.status(400).json({ error: "pick at least one channel" });
+  const texts = req.body.texts && typeof req.body.texts === "object" ? req.body.texts : {};
+  const textFor = (c) => cleanSocialText(texts[c.id] != null ? texts[c.id] : req.body.text).slice(0, 4000);
+  for (const c of picked) {
+    if (c.platform === "discord") return res.status(400).json({ error: `${c.name}: Discord publishing is not supported` });
+    if (c.platform === "twitter" && twitterWeightedLength(textFor(c)) > 280) {
+      return res.status(400).json({ error: `${c.name}: text is too long for X (~${twitterWeightedLength(textFor(c))}/280)` });
+    }
+  }
+  const draft = req.body.mode === "draft";
+  let when = new Date();
+  if (req.body.scheduled_at) {
+    when = new Date(req.body.scheduled_at);
+    if (isNaN(when)) return res.status(400).json({ error: "invalid date" });
+  }
+  let media;
+  try { media = await aiVideoToPostMedia(ai); } catch (e) { return res.status(500).json({ error: "could not prepare video: " + e.message }); }
+  const ig = req.body.instagram && typeof req.body.instagram === "object" ? req.body.instagram : {};
+  const now = new Date().toISOString();
+  const created = picked.map(c => {
+    const igAccount = c.platform === "twitter" && igPublish.config(c).account_id;
+    const wantIg = !!(igAccount && ig[c.id]);
+    return {
+      id: genId(), channel_id: c.id, status: draft ? "draft" : "scheduled",
+      created_at: now, updated_at: now, scheduled_at: when.toISOString(), scheduled_local: null,
+      archetype: null, trigger_word: null, media_path: media, media_paths: [media],
+      text: textFor(c), published_at: null, message_id: null, attempts: 0, error: null,
+      video_post: true, ai_video_id: ai.id,
+      ...(wantIg ? { ig_requested: true } : igAccount ? { instagram: { status: "skipped", reason: "Instagram not selected when scheduling" } } : {}),
+    };
+  });
+  writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), ...created]);
+  const fresh = readTaskFile("ai-video-tasks.json");
+  const t = fresh.find(x => x.id === ai.id);
+  if (t) {
+    t.posts = [...(Array.isArray(t.posts) ? t.posts : []),
+      ...created.map(c => ({ task_id: c.id, channel_id: c.channel_id, scheduled_at: c.scheduled_at, instagram: !!c.ig_requested }))];
+    writeTaskFile("ai-video-tasks.json", fresh);
+  }
+  res.status(201).json({ ok: true, tasks: created });
+});
+
+// Short post copy for an AI video, in the voice of the channel's brand.
+app.post("/video/ai-generate/:id/caption", async (req, res) => {
+  const ai = readTaskFile("ai-video-tasks.json").find(t => t.id === req.params.id);
+  if (!ai) return res.status(404).json({ error: "video not found" });
+  const channel = readChannels().find(c => c.id === req.body.channel_id);
+  if (!channel) return res.status(400).json({ error: "unknown channel" });
+  const lang = (channel.autopilot && channel.autopilot.language) || (channel.platform === "twitter" ? "English" : (String(process.env.LANGUAGE || "").toUpperCase() === "NL" ? "Dutch" : "English"));
+  const brand = channel.brand || null;
+  const prompt = [
+    `Write one social media post (${channel.platform === "twitter" ? "X, max 260 characters" : "Telegram, max 600 characters"}) to go with a short video.`,
+    `Language: ${lang}. Channel: ${channel.name}.`,
+    `What the video shows (the prompt it was generated from): ${String(ai.prompt || "").slice(0, 1500)}`,
+    req.body.hint ? `Extra instruction from the user: ${String(req.body.hint).slice(0, 500)}` : "",
+    "Rules: sound like a real person, a hook in the first line, no em dashes or en dashes, no links, at most 2 hashtags, do not mention AI or how it was made, no invented facts or prices.",
+    "Reply with the post text only.",
+  ].filter(Boolean).join("\n");
+  try {
+    const msg = await anthropic.messages.create({
+      model: process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5", max_tokens: 1000,
+      system: brandKnowledgeBlock(brand).trim() || undefined,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = cleanSocialText((msg.content || []).filter(b => b.type === "text").map(b => b.text).join("").replace(/^["']|["']$/g, ""));
+    res.json({ text });
+  } catch (e) { res.status(500).json({ error: String(e.message || e).slice(0, 300) }); }
 });
 
 
@@ -8135,8 +8258,11 @@ async function publishTaskToInstagram(task, channel) {
   const video = igPublish.videoPathOf(task);
   if (video) {
     const file = path.basename(video);
-    if (!fs.existsSync(path.join(MEDIA_DIR, "listings", file))) throw new Error("video file missing");
-    const videoUrl = `${origin}/share/listing/${shareListingSig(file)}/${file}`;
+    const isPost = video.startsWith("/media/posts/");
+    if (!fs.existsSync(path.join(MEDIA_DIR, isPost ? "posts" : "listings", file))) throw new Error("video file missing");
+    const videoUrl = isPost
+      ? `${origin}/share/post-video/${sharePostVideoSig(file)}/${file}`
+      : `${origin}/share/listing/${shareListingSig(file)}/${file}`;
     return igPublish.publishVideo({ igUserId: conn.ig_user_id, token: conn.page_access_token, videoUrl, caption });
   }
   const file = await igPrepareJpeg(task);

@@ -15,6 +15,8 @@ const IMAGE_RE = /\.(png|jpe?g|webp)$/i;
 // Video goes to Instagram only for listing/sold posts (rendered by listings-autopilot.js
 // in public/media/listings/, already 4:5 H.264 with the headline burnt in).
 const LISTING_VIDEO_RE = /^\/media\/listings\/[\w.-]+\.mp4$/;
+// Video posts scheduled by hand (e.g. an AI Generate video): public/media/posts/*.mp4
+const POST_VIDEO_RE = /^\/media\/posts\/[\w.-]+\.mp4$/;
 
 function parseHashtags(s) {
   const out = [];
@@ -49,9 +51,12 @@ function imagePathOf(task) {
 }
 
 function videoPathOf(task) {
-  if (!task || !(task.listing || task.sold)) return null;
+  if (!task) return null;
   const p = task.media_path || (Array.isArray(task.media_paths) && task.media_paths[0]);
-  return p && LISTING_VIDEO_RE.test(p) && !p.includes("..") ? p : null;
+  if (!p || p.includes("..")) return null;
+  if ((task.listing || task.sold) && LISTING_VIDEO_RE.test(p)) return p;
+  if (task.video_post && POST_VIDEO_RE.test(p)) return p;
+  return null;
 }
 
 // A raw AI image (the model drew the text itself: often tiny, misspelled or none at all)
@@ -69,7 +74,7 @@ function shouldCrosspost(task, channel) {
   if (!imagePathOf(task) && !videoPathOf(task)) return false; // Instagram needs an image (or a listing video)
   if (task.instagram_ok === false && !task.promo) return false; // reaction/off-niche: X only
   if (unreadable(task)) return false;          // no readable headline in the image
-  return cfg.which === "all" || !!task.promo || !!task.listing || !!task.sold;
+  return cfg.which === "all" || !!task.promo || !!task.listing || !!task.sold || !!task.ig_requested;
 }
 
 // Waarom een post die anders mee zou gaan bewust NIET naar Instagram gaat
