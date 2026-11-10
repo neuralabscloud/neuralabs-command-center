@@ -370,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderReplies(c) + renderListings(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderIgReplies(c) + renderReplies(c) + renderEngage(c) + renderListings(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -469,6 +469,146 @@ async function runReplies(id, btn) {
   } catch (e) { alert('Auto-replies: ' + e.message); btn.textContent = 'Check now'; }
   btn.disabled = false;
   loadRepliesStatus(id);
+}
+// Engage: reply to viral posts of other accounts in the niche. Every proposal is reviewed in Telegram first.
+function renderEngage(c) {
+  const e = c.engage || {};
+  const id = esc(c.id);
+  const v = (k, d) => esc(e[k] != null ? e[k] : d);
+  setTimeout(() => loadEngageStatus(c.id), 0);
+  return `
+    <div class="edit-label" style="margin-top:14px">🔥 Engage (review in Telegram)</div>
+    <div class="discord-banner">A few times a day the bot searches fresh, popular posts on the autopilot topics and curated accounts, picks the one where a reply adds the most and writes that reply. You get it in Telegram with ✅ Post / ❌ Skip / ✏ Edit; nothing is posted without your approval (X does not allow fully automated replies found by search). Unanswered proposals expire. Costs: ~$0.005 per post read (2 searches of 15 per proposal), ~$0.015 per posted reply, plus one Claude call.</div>
+    <div class="edit-grid">
+      <div><label class="edit-label">Engage</label>
+        <select class="edit-input" id="ch-eg-enabled-${id}"><option value="false"${e.enabled ? '' : ' selected'}>Off</option><option value="true"${e.enabled ? ' selected' : ''}>On</option></select></div>
+      <div><label class="edit-label">Proposals per day</label>
+        <input class="edit-input" type="number" min="1" max="30" id="ch-eg-per_day-${id}" value="${v('per_day', 6)}"></div>
+      <div><label class="edit-label">Window start</label>
+        <input class="edit-input" type="time" id="ch-eg-window_start-${id}" value="${v('window_start', '09:00')}"></div>
+      <div><label class="edit-label">Window end</label>
+        <input class="edit-input" type="time" id="ch-eg-window_end-${id}" value="${v('window_end', '22:00')}"></div>
+      <div><label class="edit-label">Min likes on the post</label>
+        <input class="edit-input" type="number" min="0" id="ch-eg-min_likes-${id}" value="${v('min_likes', 100)}"></div>
+      <div><label class="edit-label">Min followers of the author</label>
+        <input class="edit-input" type="number" min="0" id="ch-eg-min_followers-${id}" value="${v('min_followers', 2000)}"></div>
+      <div><label class="edit-label">Max age of the post (h)</label>
+        <input class="edit-input" type="number" min="1" max="48" id="ch-eg-max_age_hours-${id}" value="${v('max_age_hours', 8)}"></div>
+      <div><label class="edit-label">Proposal expires after (h)</label>
+        <input class="edit-input" type="number" min="1" max="48" id="ch-eg-expire_hours-${id}" value="${v('expire_hours', 6)}"></div>
+      <div><label class="edit-label">Language (empty = same as the post)</label>
+        <input class="edit-input" id="ch-eg-language-${id}" value="${esc(e.language || '')}" placeholder="auto"></div>
+    </div>
+    <div class="ap-status" id="eg-status-${id}">Loading…</div>
+    <div style="margin-top:6px"><button class="btn-sm" onclick="runEngage(${jq(c.id)}, this)">Find one now → Telegram</button></div>`;
+}
+function collectEngage(id) {
+  const g = k => document.getElementById(`ch-eg-${k}-${id}`);
+  if (!g('enabled')) return null;
+  const n = k => g(k).value === '' ? undefined : Number(g(k).value);
+  return { enabled: g('enabled').value === 'true', per_day: n('per_day'), window_start: g('window_start').value, window_end: g('window_end').value,
+    min_likes: n('min_likes'), min_followers: n('min_followers'), max_age_hours: n('max_age_hours'), expire_hours: n('expire_hours'), language: g('language').value.trim() };
+}
+async function loadEngageStatus(id) {
+  const el = document.getElementById(`eg-status-${id}`);
+  if (!el) return;
+  try {
+    const s = await fetchJson(`/community/channels/${encodeURIComponent(id)}/engage`);
+    const lines = [];
+    if (s.running) lines.push('<span style="color:var(--premium)">● Searching…</span>');
+    if (!s.config.enabled) lines.push('Engage is off.');
+    else lines.push(`Today: ${esc(s.proposed_today)}/${esc(s.config.per_day)} proposed · ${esc(s.posted_today)} posted${s.next_at ? ' · next ' + esc(fmt(s.next_at)) : ''}`);
+    if (s.last_error) lines.push(`<span style="color:var(--danger)">Last error: ${esc(s.last_error)}</span>`);
+    const card = (p, pending) => {
+      const src = `<a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">@${esc(p.author)}</a>`;
+      const mine = p.reply_url ? ` <a href="${esc(safeUrl(p.reply_url))}" target="_blank" rel="noopener">view</a>` : '';
+      const btns = pending ? `<br>&nbsp;&nbsp;<button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'approve', this)">✅ Post</button> <button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'skip', this)">❌ Skip</button>` : '';
+      const icon = { pending: '⏳', posted: '✅', skipped: '❌', expired: '⌛', failed: '⚠', posting: '…' }[p.status] || '•';
+      return `<div style="margin-top:6px${pending ? '' : ';opacity:.7'}">${icon} ${src} (❤ ${esc(p.metrics && p.metrics.likes)}): <i>${esc((p.their_text || '').slice(0, 120))}</i><br>&nbsp;&nbsp;→ ${esc(p.text || '')}${mine}${p.error ? ` <span style="color:var(--danger)">${esc(p.error)}</span>` : ''}${btns}</div>`;
+    };
+    const rows = [...(s.pending || []).map(p => card(p, true)), ...(s.recent || []).slice(0, 6).map(p => card(p, false))];
+    if (rows.length) lines.push(rows.join(''));
+    else if ((s.log || [])[0]) lines.push(`<span style="opacity:.6">Last run: ${esc(s.log[0].reason || s.log[0].action)}</span>`);
+    el.innerHTML = lines.join('<br>');
+  } catch (e) { el.textContent = 'Status error: ' + e.message; }
+}
+async function runEngage(id, btn) {
+  btn.disabled = true; btn.textContent = 'Searching…';
+  try {
+    const r = await fetchJson(`/community/channels/${encodeURIComponent(id)}/engage/run`, { method: 'POST' });
+    btn.textContent = r.proposed ? 'Sent to Telegram' : `Nothing: ${r.reason || 'no good post'}`;
+  } catch (e) { alert('Engage: ' + e.message); btn.textContent = 'Find one now → Telegram'; }
+  btn.disabled = false;
+  loadEngageStatus(id);
+}
+async function decideEngage(id, pid, action, btn) {
+  btn.disabled = true;
+  try { await fetchJson(`/community/channels/${encodeURIComponent(id)}/engage/${encodeURIComponent(pid)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }); }
+  catch (e) { alert('Engage: ' + e.message); }
+  loadEngageStatus(id);
+}
+// Instagram auto-replies: answer comments under our own Instagram posts (account from the cross-post section).
+function renderIgReplies(c) {
+  const r = c.ig_replies || {};
+  const id = esc(c.id);
+  const num = (k, d) => esc(r[k] != null ? r[k] : d);
+  setTimeout(() => loadIgRepliesStatus(c.id), 0);
+  return `
+    <div class="edit-label" style="margin-top:14px">💬 Instagram auto-replies</div>
+    <div class="discord-banner">Answers comments under this channel's own Instagram posts (the account chosen in the cross-post section above), with the caption as context. Spam, bots and trolls are skipped. Needs the Meta connection with comment permission (reconnect Meta in Settings if it asks). Commenting on other accounts' posts is not possible on Instagram.</div>
+    <div class="edit-grid">
+      <div><label class="edit-label">Instagram auto-replies</label>
+        <select class="edit-input" id="ch-ir-enabled-${id}"><option value="false"${r.enabled ? '' : ' selected'}>Off</option><option value="true"${r.enabled ? ' selected' : ''}>On</option></select></div>
+      <div><label class="edit-label">Max replies per day</label>
+        <input class="edit-input" type="number" min="1" max="200" id="ch-ir-max_per_day-${id}" value="${num('max_per_day', 30)}"></div>
+      <div><label class="edit-label">Max per person per day</label>
+        <input class="edit-input" type="number" min="1" max="20" id="ch-ir-max_per_user-${id}" value="${num('max_per_user', 3)}"></div>
+      <div><label class="edit-label">Max per comment thread</label>
+        <input class="edit-input" type="number" min="1" max="20" id="ch-ir-max_per_thread-${id}" value="${num('max_per_thread', 3)}"></div>
+      <div><label class="edit-label">Check every (min)</label>
+        <input class="edit-input" type="number" min="5" max="240" id="ch-ir-interval_min-${id}" value="${num('interval_min', 15)}"></div>
+      <div><label class="edit-label">Language (empty = same as the comment)</label>
+        <input class="edit-input" id="ch-ir-language-${id}" value="${esc(r.language || '')}" placeholder="auto"></div>
+    </div>
+    <div class="ap-status" id="ir-status-${id}">Loading…</div>
+    <div style="margin-top:6px"><button class="btn-sm" onclick="runIgReplies(${jq(c.id)}, this)">Check now</button></div>`;
+}
+function collectIgReplies(id) {
+  const g = k => document.getElementById(`ch-ir-${k}-${id}`);
+  if (!g('enabled')) return null;
+  const n = k => Number(g(k).value) || undefined;
+  return { enabled: g('enabled').value === 'true', max_per_day: n('max_per_day'), max_per_user: n('max_per_user'), max_per_thread: n('max_per_thread'), interval_min: n('interval_min'), language: g('language').value.trim() };
+}
+async function loadIgRepliesStatus(id) {
+  const el = document.getElementById(`ir-status-${id}`);
+  if (!el) return;
+  try {
+    const s = await fetchJson(`/community/channels/${encodeURIComponent(id)}/ig-replies`);
+    const lines = [];
+    if (s.running) lines.push('<span style="color:var(--premium)">● Checking comments…</span>');
+    if (!s.config.account_id) lines.push('Choose an Instagram account in the cross-post section first.');
+    else if (!s.config.enabled) lines.push('Instagram auto-replies are off.');
+    else lines.push(`Today: ${esc(s.sent_today)}/${esc(s.config.max_per_day)} answered${s.last_check ? ' · last check ' + esc(fmt(s.last_check)) : ''}`);
+    if (s.needs_scope) lines.push('<span style="color:var(--warning)">Missing permission: reconnect Meta in Settings and allow comment management.</span>');
+    if (s.last_error) lines.push(`<span style="color:var(--danger)">Last error: ${esc(s.last_error)}</span>`);
+    const rows = (s.log || []).slice(0, 8).map(l => {
+      const link = l.permalink ? ` <a href="${esc(safeUrl(l.permalink))}" target="_blank" rel="noopener">post</a>` : '';
+      return l.action === 'replied'
+        ? `<div style="margin-top:4px">↩︎ @${esc(l.to)}: <i>${esc((l.comment || '').slice(0, 120))}</i><br>&nbsp;&nbsp;→ ${esc(l.text || '')}${link}</div>`
+        : `<div style="margin-top:4px;opacity:.6">⏭ @${esc(l.to)}: <i>${esc((l.comment || '').slice(0, 80))}</i> (${esc(l.reason || l.action)})</div>`;
+    });
+    if (rows.length) lines.push(rows.join(''));
+    el.innerHTML = lines.join('<br>');
+  } catch (e) { el.textContent = 'Status error: ' + e.message; }
+}
+async function runIgReplies(id, btn) {
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const r = await fetchJson(`/community/channels/${encodeURIComponent(id)}/ig-replies/run`, { method: 'POST' });
+    btn.textContent = `${r.checked} new, ${r.replied} answered`;
+  } catch (e) { alert('Instagram auto-replies: ' + e.message); btn.textContent = 'Check now'; }
+  btn.disabled = false;
+  loadIgRepliesStatus(id);
 }
 // Listings: post our own items that are for sale (from a JSON feed), and a "sold" post when one disappears.
 function renderListings(c) {
@@ -971,6 +1111,10 @@ async function saveChannel(id) {
     }
     const rp = collectReplies(id);
     if (rp) payload.replies = rp;
+    const eg = collectEngage(id);
+    if (eg) payload.engage = eg;
+    const ir = collectIgReplies(id);
+    if (ir) payload.ig_replies = ir;
     const ls = collectListings(id);
     if (ls) payload.listings = ls;
   }

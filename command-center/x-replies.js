@@ -141,6 +141,11 @@ function createReplies(deps) {
       map.set(String(t.message_id), { kind: "post", text: t.text || "", source: t.source && t.source.text || "", root: String(t.message_id) });
     }
     for (const o of st.ours || []) map.set(o.id, { kind: "reply", text: o.text, root: o.conversation_id, to_text: o.to_text, to_author: o.to_author });
+    // replies we placed elsewhere (x-engage): answer people who react to those too
+    for (const o of (deps.extraOurTweets ? deps.extraOurTweets(channel) : []) || []) {
+      if (!o || !o.id || Date.parse(o.at || 0) < cutoff) continue;
+      if (!map.has(String(o.id))) map.set(String(o.id), { kind: "reply", text: o.text, root: o.conversation_id, to_text: o.to_text, to_author: o.to_author });
+    }
     return map;
   }
 

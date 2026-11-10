@@ -2917,6 +2917,8 @@ app.patch("/community/channels/:id", (req, res) => {
   if (body.autopilot) next.autopilot = { ...(current.autopilot || {}), ...body.autopilot };
   if ("instagram" in body) next.instagram = igPublish.sanitize(body.instagram);
   if (body.replies && current.platform === "twitter") next.replies = xReplies.sanitize({ ...(current.replies || {}), ...body.replies });
+  if (body.engage && current.platform === "twitter") next.engage = xEngage.sanitize({ ...(current.engage || {}), ...body.engage });
+  if (body.ig_replies) next.ig_replies = igReplies.sanitize({ ...(current.ig_replies || {}), ...body.ig_replies });
   if (body.listings && current.platform === "twitter") next.listings = listingsMod.sanitize({ ...(current.listings || {}), ...body.listings });
   // Blank key fields keep what is stored; { clear: true } removes the channel's own keys.
   if (x_credentials && current.platform === "twitter") {
@@ -3935,7 +3937,7 @@ app.get("/social/meta/auth", (req, res) => {
     "pages_show_list", "pages_read_engagement",
     "business_management",
     "ads_read", "ads_management",
-    "instagram_basic", "instagram_manage_insights", "instagram_content_publish",
+    "instagram_basic", "instagram_manage_insights", "instagram_content_publish", "instagram_manage_comments",
   ].join(",");
   const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirect)}&scope=${scope}&state=${state}&response_type=code`;
   res.redirect(url);
@@ -4920,6 +4922,9 @@ async function handleTgMessage(msg) {
 
   if (!text) return;
 
+  // X engage review: edited reply text
+  if (await xEngageBot.handleText(chatId, text)) return;
+
   // Community manager review: edit-text capture
   if (communityEditState.has(chatId)) {
     const { postId } = communityEditState.get(chatId);
@@ -5229,6 +5234,9 @@ async function handleTgCallback(cq) {
     await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Niet geautoriseerd." });
     return;
   }
+
+  // X engage review cards (x-engage.js)
+  if (data.startsWith("xe:")) { await xEngageBot.handleCallback(cq); return; }
 
   if (!data.startsWith("sm:")) {
     await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id });
@@ -8258,6 +8266,75 @@ const tgAutopilot = require("./telegram-autopilot").createTelegramAutopilot({
   notify: sendTelegram,
 });
 setInterval(() => tgAutopilot.tick().catch(e => console.error("[TG-AUTOPILOT]", e.message)), 60_000);
+// ── X ENGAGE (review in Telegram) ─────────────
+// Finds viral posts in the niche, Claude writes a reply, a human approves it in
+// Telegram before it is posted (config on channel.engage).
+const xEngage = require("./x-engage");
+const xEngageBot = xEngage.createEngage({
+  dataDir: path.join(__dirname, "data"),
+  tz: TIMEZONE,
+  readChannels,
+  twitterApi,
+  twitterCredsFor: (channel) => twitterCreds(channel),
+  twitterVerify: (creds) => twitterVerifyCredentials(creds),
+  twitterWeightedLength,
+  anthropic,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  tg: (method, body) => tgApiCall(method, body),
+  chatId: TG_CHAT,
+  notify: sendTelegram,
+});
+setInterval(() => xEngageBot.tick().catch(e => console.error("[X-ENGAGE]", e.message)), 60_000);
+
+app.get("/community/channels/:id/engage", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  res.json(xEngageBot.status(channel));
+});
+app.post("/community/channels/:id/engage/run", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  try { res.json({ ok: true, ...(await xEngageBot.runNow(channel)) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/community/channels/:id/engage/:pid", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  const { action, text } = req.body || {};
+  try {
+    if (action === "approve") return res.json({ ok: true, proposal: await xEngageBot.approve(channel.id, req.params.pid, typeof text === "string" ? text : null) });
+    if (action === "skip") return res.json({ ok: true, proposal: await xEngageBot.skip(channel.id, req.params.pid) });
+    res.status(400).json({ error: "action must be approve or skip" });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── INSTAGRAM AUTO-REPLIES ────────────────────
+// Answers comments under our own Instagram posts (config on channel.ig_replies,
+// account from channel.instagram.account_id).
+const igReplies = require("./ig-replies");
+const igRepliesBot = igReplies.createIgReplies({
+  dataDir: path.join(__dirname, "data"),
+  tz: TIMEZONE,
+  readChannels,
+  readSocial,
+  anthropic,
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  notify: sendTelegram,
+});
+setInterval(() => igRepliesBot.tick().catch(e => console.error("[IG-REPLIES]", e.message)), 60_000);
+
+app.get("/community/channels/:id/ig-replies", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel) return res.status(404).json({ error: "channel not found" });
+  res.json(igRepliesBot.status(channel));
+});
+app.post("/community/channels/:id/ig-replies/run", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel) return res.status(404).json({ error: "channel not found" });
+  try { res.json({ ok: true, ...(await igRepliesBot.runNow(channel)) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 // ── X AUTO-REPLIES ────────────────────────────
 // Answers replies to our own X posts (config on channel.replies).
 const xReplies = require("./x-replies");
@@ -8273,6 +8350,7 @@ const xRepliesBot = xReplies.createReplies({
   anthropic,
   brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
   autopilotConfig: (channel) => channel.autopilot || {},
+  extraOurTweets: (channel) => xEngageBot.ourReplies(channel),
   notify: sendTelegram,
 });
 setInterval(() => xRepliesBot.tick().catch(e => console.error("[X-REPLIES]", e.message)), 60_000);
@@ -8363,6 +8441,36 @@ app.get("/agents/autonomous", (_req, res) => {
         details: `Answers replies to our posts · max ${cfg.max_per_thread} per thread · skips spam and trolls`,
         today: { done: st.today, failed: 0, pending: 0 },
         last_run: st.last_check ? { at: st.last_check, status: st.last_error ? "failed" : (last && last.action === "reply" ? "replied" : "checked"), error: st.last_error } : null,
+        running: st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "twitter" && c.engage) {
+      const st = xEngageBot.status(c);
+      const cfg = st.config;
+      jobs.push({
+        id: "x_engage:" + c.id, kind: "x_engage", agent: "community_manager",
+        name: `X Engage · ${c.name}${st.username ? " (@" + st.username + ")" : ""}`,
+        enabled: cfg.enabled, toggle: { channel_id: c.id, field: "engage" },
+        when: `${cfg.per_day}/day · ${cfg.window_start}-${cfg.window_end} ${tz}`,
+        details: `Replies to viral posts in the niche · review in Telegram · ${st.pending.length} waiting · ${st.posted_today} posted today`,
+        today: { done: st.posted_today, failed: 0, pending: st.pending.length },
+        next_run: cfg.enabled ? st.next_at : null,
+        last_run: st.last_run ? { at: st.last_run, status: st.last_error ? "failed" : "checked", error: st.last_error } : null,
+        running: st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.ig_replies) {
+      const st = igRepliesBot.status(c);
+      const cfg = st.config;
+      jobs.push({
+        id: "ig_replies:" + c.id, kind: "ig_replies", agent: "community_manager",
+        name: `Instagram Auto-replies · ${c.name}`,
+        enabled: cfg.enabled, toggle: { channel_id: c.id, field: "ig_replies" },
+        when: `every ${cfg.interval_min} min · max ${cfg.max_per_day}/day`,
+        details: st.needs_scope ? "Needs the comment permission: reconnect Meta in Settings" : `Answers comments under our Instagram posts · max ${cfg.max_per_thread} per thread`,
+        today: { done: st.sent_today, failed: 0, pending: 0 },
+        next_run: cfg.enabled ? st.next_check : null,
+        last_run: st.last_check ? { at: st.last_check, status: st.last_error ? "failed" : "checked", error: st.last_error } : null,
         running: st.running, manage_url: "/community-manager.html",
       });
     }
