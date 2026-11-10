@@ -465,6 +465,13 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
                   <option value="klingai/video-v2-6">Kling V2.6 — with native audio</option>
                   <option value="klingai/video-v2-5">Kling V2.5 Turbo — fast</option>
                   <option value="klingai/video-o1">Kling Omni — unified video gen</option>
+                  <option value="higgsfield/kling-4.0">Kling 4.0 — newest Kling, up to 30 s, always with sound (Higgsfield)</option>
+                  <option value="higgsfield/kling-4.0-flash">Kling 4.0 Flash — fast and cheaper, 720p, always with sound (Higgsfield)</option>
+                </optgroup>
+                <optgroup label="Wan / MiniMax (Higgsfield)">
+                  <option value="higgsfield/wan-3.0">Wan 3.0 — native audio, up to 30 s (Higgsfield)</option>
+                  <option value="higgsfield/wan-3.0-prime">Wan 3.0 Prime — highest quality Wan (Higgsfield)</option>
+                  <option value="higgsfield/minimax-h3">MiniMax H3 — 2K, up to 15 s (Higgsfield)</option>
                 </optgroup>
                 <optgroup label="Seedance (ByteDance)">
                   <option value="bytedance/seedance-2-0">Seedance 2.0 — multimodal</option>
@@ -617,6 +624,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="1080p">1080p</option>
               <option value="480p">480p (cheapest)</option>
             </select>
+          </div>
+          <div id="gj-light-field">
+            <div class="form-label">Model</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim);padding-top:8px;cursor:pointer;">
+              <input type="checkbox" id="gj-light" onchange="updateGjEstimate()" /> Light: cheaper and faster, slightly less detail
+            </label>
           </div>
         </div>
         <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
@@ -1719,6 +1732,10 @@ let gjPresetId = '';            // chosen restyle style
 let gjPresetsLoaded = false;
 let gjVideoSecs = 0;            // duration of the uploaded reference video
 let gjRates = null;             // $/second per mode and resolution
+// Motion transfer and object swap have a cheaper "Light" model (mode motion_light / swap_light).
+function gjEffectiveMode() {
+  return gjMode !== 'restyle' && document.getElementById('gj-light').checked ? gjMode + '_light' : gjMode;
+}
 
 async function loadGjRates() {
   try { gjRates = (await fetch('/influencer/genjutsu/rates').then(r => r.json())).rates; } catch { gjRates = null; }
@@ -1730,7 +1747,8 @@ function updateGjEstimate() {
   const el = document.getElementById('gj-estimate');
   if (!el) return;
   const res = document.getElementById('gj-resolution').value;
-  const rate = gjRates && gjRates[gjMode] ? gjRates[gjMode][res] : null;
+  const m = gjEffectiveMode();
+  const rate = gjRates && gjRates[m] ? gjRates[m][res] : null;
   const hasFile = !!document.getElementById('gj-video').files[0];
   const link = document.getElementById('gj-link').value.trim();
   if (rate == null) { el.textContent = ''; return; }
@@ -1749,6 +1767,7 @@ function setGjMode(mode) {
   document.querySelectorAll('.gj-mode').forEach(b => b.classList.toggle('active', b.dataset.gjmode === mode));
   GJ_MAX_IMAGES = mode === 'restyle' ? 5 : 8;
   document.getElementById('gj-preset-field').style.display = mode === 'restyle' ? '' : 'none';
+  document.getElementById('gj-light-field').style.display = mode === 'restyle' ? 'none' : '';
   if (mode === 'restyle' && !gjPresetsLoaded) loadGjPresets();
   document.getElementById('gj-images-label').textContent = mode === 'swap'
     ? 'Replacement (1–8 reference images of the new person or object)'
@@ -1851,7 +1870,7 @@ async function submitGenjutsu() {
   if (gjImageCount() > GJ_MAX_IMAGES) { st.textContent = `Max ${GJ_MAX_IMAGES} reference images for this mode.`; return; }
   if (video && video.size > 1999 * 1024 * 1024) { st.textContent = `Video is ${Math.round(video.size / 1048576)} MB, the limit is 1999 MB.`; return; }
   const fd = new FormData();
-  fd.append('mode', gjMode);
+  fd.append('mode', gjEffectiveMode());
   if (gjMode === 'restyle') fd.append('preset_id', gjPresetId);
   if (video) fd.append('video', video); else fd.append('source_link', link);
   gjFiles.forEach(f => fd.append('images', f));
@@ -1880,7 +1899,7 @@ async function loadGenjutsu() {
   try { items = await fetch('/influencer/genjutsu').then(r => r.json()); } catch { return; }
   el.innerHTML = items.length ? items.map(t => {
     const time = new Date(t.created_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const kind = { swap: 'Object swap', restyle: 'Restyle' }[t.genjutsu_mode] || 'Motion transfer';
+    const kind = { swap: 'Object swap', restyle: 'Restyle', motion_light: 'Motion transfer (Light)', swap_light: 'Object swap (Light)' }[t.genjutsu_mode] || 'Motion transfer';
     return `<div class="task-card" style="align-items:flex-start;">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
@@ -1942,6 +1961,11 @@ const REF_IMAGES_BY_MODEL = {
   'bytedance/seedance-1-5-pro':  { max: 1, hint: 'One image, used as the opening frame.' },
   'higgsfield/seedance-2.5':      { max: 30, hint: '1 image = first frame. 2-30 images = reference images. With a source video every image counts as a reference.' },
   'higgsfield/seedance-2.5-edit': { max: 30, hint: 'Optional reference images (up to 30) for the rework.' },
+  'higgsfield/kling-4.0':         { max: 1, hint: 'Optional: 1 image = first frame.' },
+  'higgsfield/kling-4.0-flash':   { max: 1, hint: 'Optional: 1 image = first frame.' },
+  'higgsfield/wan-3.0':           { max: 10, hint: '1 image = first frame. 2-10 images = reference images.' },
+  'higgsfield/wan-3.0-prime':     { max: 10, hint: '1 image = first frame. 2-10 images = reference images.' },
+  'higgsfield/minimax-h3':        { max: 9, hint: '1 image = first frame. 2-9 images = reference images.' },
 };
 const REF_IMAGES_DEFAULT = { max: 1, hint: 'One image, used as the opening frame.' };
 
@@ -2109,6 +2133,11 @@ const RATIOS_BY_MODEL = {
   // with a first frame or a source clip the server drops it again.
   'higgsfield/seedance-2.5': ['16:9','9:16','1:1','4:3','3:4','21:9'],
   'higgsfield/seedance-2.5-edit': [],
+  'higgsfield/kling-4.0': ['16:9','9:16','1:1','21:9'],
+  'higgsfield/kling-4.0-flash': ['16:9','9:16','1:1','21:9'],
+  'higgsfield/wan-3.0': ['16:9','9:16','1:1','4:3','3:4'],
+  'higgsfield/wan-3.0-prime': ['16:9','9:16','1:1','4:3','3:4'],
+  'higgsfield/minimax-h3': ['16:9','9:16','1:1','4:3','3:4','21:9'],
 };
 const RATIO_LABELS = {
   '16:9': '16:9 (Landscape)',
@@ -2139,6 +2168,11 @@ const DURATIONS_BY_MODEL = {
   'bytedance/seedance-2-0-studio': [5, 8, 10, 15],
   'bytedance/seedance-2-0-studio-fast': [5, 8, 10, 15],
   'higgsfield/seedance-2.5': [4, 5, 8, 10, 15, 20, 30],
+  'higgsfield/kling-4.0': [3, 5, 8, 10, 15, 20, 30],
+  'higgsfield/kling-4.0-flash': [3, 5, 8, 10, 15, 20, 30],
+  'higgsfield/wan-3.0': [2, 5, 8, 10, 15, 20, 30],
+  'higgsfield/wan-3.0-prime': [2, 5, 8, 10, 15, 20, 30],
+  'higgsfield/minimax-h3': [5, 8, 10, 15],
   // Kling: V3 takes 3-15 s, the others only 5 or 10 (infsh app schemas).
   'klingai/video-v3': [5, 8, 10, 15],
   'klingai/video-v2-6': [5, 10],
@@ -2167,6 +2201,11 @@ const VIDEO_OPTS_BY_MODEL = {
   'alibaba/wan-2-7-t2v': { res: ['1080p', '720p'], audio: false },
   'alibaba/wan-2-7-i2v': { res: ['1080p', '720p'], audio: false },
   'higgsfield/seedance-2.5': HF_OPTS, 'higgsfield/seedance-2.5-edit': HF_OPTS,
+  'higgsfield/kling-4.0': { res: ['1080p', '720p'], audio: false },
+  'higgsfield/kling-4.0-flash': { res: ['720p'], audio: false },
+  'higgsfield/wan-3.0': { res: ['1080p', '720p', '480p'], audio: true },
+  'higgsfield/wan-3.0-prime': { res: ['1080p', '720p', '480p'], audio: true },
+  'higgsfield/minimax-h3': { res: ['2K'], audio: false },
 };
 const RES_LABELS = { '480p': '480p (cheaper)', '720p': '720p', '1080p': '1080p (sharper, costs more)' };
 let aiSrcFile = null;    // uploaded source clip

@@ -1757,6 +1757,11 @@ const VIDEO_IMAGE_INPUTS = {
   "bytedance/seedance-1-5-pro":  { first: "image", max: 1 },
   "higgsfield/seedance-2.5":      { first: "image_url", refs: "image_urls", max: 30 },
   "higgsfield/seedance-2.5-edit": { refs: "image_urls", max: 30 },
+  "higgsfield/kling-4.0":         { first: "image_url", max: 1 },
+  "higgsfield/kling-4.0-flash":   { first: "image_url", max: 1 },
+  "higgsfield/wan-3.0":           { first: "image_url", refs: "image_urls", max: 10 },
+  "higgsfield/wan-3.0-prime":     { first: "image_url", refs: "image_urls", max: 10 },
+  "higgsfield/minimax-h3":        { first: "image_url", refs: "image_urls", max: 9 },
 };
 const VIDEO_IMAGE_DEFAULT = { first: "image", max: 1 };
 
@@ -1776,6 +1781,12 @@ const VIDEO_LIMITS = {
   "xai/grok-imagine-video-1-5": { ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"], durations: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
   "alibaba/wan-2-7-t2v": { ratios: [], durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
   "alibaba/wan-2-7-i2v": { ratios: [], durations: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  // Higgsfield models (aspect lists mirror HF_VIDEO_MODELS)
+  "higgsfield/kling-4.0":       { ratios: ["16:9", "9:16", "1:1", "21:9"], durations: [3, 5, 8, 10, 15, 20, 30] },
+  "higgsfield/kling-4.0-flash": { ratios: ["16:9", "9:16", "1:1", "21:9"], durations: [3, 5, 8, 10, 15, 20, 30] },
+  "higgsfield/wan-3.0":         { ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"], durations: [2, 5, 8, 10, 15, 20, 30] },
+  "higgsfield/wan-3.0-prime":   { ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"], durations: [2, 5, 8, 10, 15, 20, 30] },
+  "higgsfield/minimax-h3":      { ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], durations: [5, 8, 10, 15] },
 };
 // Resolution and audio switches of inference.sh models. Without these the apps
 // fall back to their own defaults: Veo 3.1 renders silent, Grok 1.5 at 480p.
@@ -1874,19 +1885,51 @@ const HF_SEEDANCE_ASPECTS = ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"];
 const HF_SEEDANCE_RESOLUTIONS = ["720p", "480p", "1080p"];
 // Which endpoint a run lands on is decided by what the user supplied, the same
 // way the model page splits its workflows.
+// Per model: resolutions[0] = default, aspects (t2v/ref only), durations
+// [min,max], audio = sends generate_audio, maxImages, body() builds the request.
+// Schemas: docs.higgsfield.ai/docs/models/<name>/<endpoint>.md (Kling 4.0 has
+// no docs page yet: fields read off the API's own 400 messages).
+const hfEp = (base, { images, video }, { ref = true, extend = false } = {}) =>
+  video && extend ? `${base}/video-extend`
+  : images.length > 1 && ref ? `${base}/reference-to-video`
+  : images.length ? `${base}/image-to-video`
+  : `${base}/text-to-video`;
 const HF_VIDEO_MODELS = {
   "higgsfield/seedance-2.5": {
     label: "Seedance 2.5",
-    endpoint: ({ images, video }) =>
-      video ? "bytedance/seedance-2.5/video-extend"
-      : images.length > 1 ? "bytedance/seedance-2.5/reference-to-video"
-      : images.length ? "bytedance/seedance-2.5/image-to-video"
-      : "bytedance/seedance-2.5/text-to-video",
+    resolutions: HF_SEEDANCE_RESOLUTIONS, aspects: HF_SEEDANCE_ASPECTS, durations: [4, 30], audio: true,
+    endpoint: (o) => hfEp("bytedance/seedance-2.5", o, { extend: true }),
   },
   "higgsfield/seedance-2.5-edit": {
     label: "Seedance 2.5 Edit",
+    resolutions: HF_SEEDANCE_RESOLUTIONS, aspects: HF_SEEDANCE_ASPECTS, durations: [4, 30], audio: true,
     needsSource: true,
     endpoint: () => "bytedance/seedance-2.5/video-edit",
+  },
+  "higgsfield/kling-4.0": {
+    label: "Kling 4.0", body: "kling",
+    resolutions: ["1080p", "720p"], aspects: ["16:9", "9:16", "1:1", "21:9"], durations: [3, 30],
+    endpoint: (o) => hfEp("kling-video/v4.0", o, { ref: false }),
+  },
+  "higgsfield/kling-4.0-flash": {
+    label: "Kling 4.0 Flash", body: "kling",
+    resolutions: ["720p"], aspects: ["16:9", "9:16", "1:1", "21:9"], durations: [3, 30],
+    endpoint: (o) => hfEp("kling-video/v4.0-flash", o, { ref: false }),
+  },
+  "higgsfield/wan-3.0": {
+    label: "Wan 3.0", body: "wan",
+    resolutions: ["1080p", "720p", "480p"], aspects: ["16:9", "9:16", "1:1", "4:3", "3:4"], durations: [2, 30], audio: true,
+    endpoint: (o) => hfEp("alibaba/wan-3.0", o),
+  },
+  "higgsfield/wan-3.0-prime": {
+    label: "Wan 3.0 Prime", body: "wan",
+    resolutions: ["1080p", "720p", "480p"], aspects: ["16:9", "9:16", "1:1", "4:3", "3:4"], durations: [2, 30], audio: true,
+    endpoint: (o) => hfEp("alibaba/wan-3.0-prime", o),
+  },
+  "higgsfield/minimax-h3": {
+    label: "MiniMax H3", body: "minimax",
+    resolutions: ["2K"], aspects: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], durations: [5, 15],
+    endpoint: (o) => hfEp("minimax/h3", o),
   },
 };
 const HF_CONTENT_TYPES = {
@@ -1911,24 +1954,33 @@ async function higgsfieldUpload(file) {
   return slot.public_url;
 }
 
-// The parameters every Seedance 2.5 endpoint shares, plus the ones only some of
-// them accept: a clip or a first frame sets the framing itself, so those
-// endpoints reject aspect_ratio, and video-edit takes its length from the source.
-function higgsfieldVideoBody(endpoint, o) {
+// Builds the request body for one Higgsfield video endpoint. Seedance wants
+// output_format and takes reference arrays on extend/edit; Kling/Wan/MiniMax
+// reject unknown fields (or worse, ignore them), so each gets only its own.
+// A clip or a first frame sets the framing itself, so aspect_ratio goes only
+// to text- and reference-to-video; video-edit takes its length from the source.
+function hfClampDuration(m, d) {
+  const [lo, hi] = m.durations || [4, 30];
+  return Math.min(hi, Math.max(lo, Math.round(Number(d) || 5)));
+}
+function higgsfieldVideoBody(endpoint, o, spec) {
+  const m = spec || HF_VIDEO_MODELS["higgsfield/seedance-2.5"]; // character batch = Seedance
+  const kind = m.body || "seedance";
+  const t2vOrRef = endpoint.endsWith("/text-to-video") || endpoint.endsWith("/reference-to-video");
   const body = {
     prompt: o.prompt,
-    resolution: HF_SEEDANCE_RESOLUTIONS.includes(o.resolution) ? o.resolution : HF_SEEDANCE_RESOLUTIONS[0],
-    generate_audio: o.generateAudio !== false,
-    output_format: "mp4",
+    resolution: m.resolutions.includes(o.resolution) ? o.resolution : m.resolutions[0],
   };
-  if (!endpoint.endsWith("/video-edit")) {
-    body.duration = Math.min(30, Math.max(4, Number(o.duration) || 5));
+  if (m.audio) body.generate_audio = o.generateAudio !== false;
+  if (kind === "seedance") body.output_format = "mp4";
+  if (!endpoint.endsWith("/video-edit")) body.duration = hfClampDuration(m, o.duration);
+  if (t2vOrRef) body.aspect_ratio = m.aspects.includes(o.aspectRatio) ? o.aspectRatio : m.aspects[0];
+  if (endpoint.endsWith("/image-to-video")) {
+    body.image_url = o.images[0];
+    if ((kind === "wan" || kind === "minimax") && o.images[1]) body.end_image_url = o.images[1];
+  } else if (o.images.length) {
+    body.image_urls = o.images.slice(0, kind === "minimax" ? 9 : kind === "wan" ? 10 : 30);
   }
-  if (endpoint.endsWith("/text-to-video") || endpoint.endsWith("/reference-to-video")) {
-    body.aspect_ratio = HF_SEEDANCE_ASPECTS.includes(o.aspectRatio) ? o.aspectRatio : "16:9";
-  }
-  if (endpoint.endsWith("/image-to-video")) body.image_url = o.images[0];
-  else if (o.images.length) body.image_urls = o.images.slice(0, 30);
   if (o.video) body.video_url = o.video;
   return body;
 }
@@ -1999,7 +2051,7 @@ async function runHiggsfieldVideoTask(task, cfg, o) {
     if (o.source.file) { try { srcSecs = (await probeVideo(o.source.file)).duration; } catch {} }
     // The request id goes on the task, so a restart can pick up the poll again.
     const url = await apiUsage.withVideoSeconds(srcSecs, () =>
-      higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video }),
+      higgsfieldGenerateVideo(endpoint, higgsfieldVideoBody(endpoint, { ...o, images, video }, cfg),
         { onQueued: (id) => patchAiVideoTask(task.id, { hf_request_id: id, endpoint }) }));
     // Keep our own copy: Higgsfield's URLs expire, and a clip still on disk can
     // be fed straight back in as the source of the next run.
@@ -2127,6 +2179,10 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     dropUploads();
     return res.status(400).json({ error: "This model runs on Higgsfield: set HIGGSFIELD_API_KEY in .env first." });
   }
+  if (HF_VIDEO_MODELS[model] && !prompt.trim()) {
+    dropUploads();
+    return res.status(400).json({ error: "Write a prompt first." });
+  }
   if (!source.file && (HF_VIDEO_MODELS[model] || {}).needsSource) {
     dropUploads();
     return res.status(400).json({ error: "This model edits an existing clip: pick a source video first." });
@@ -2139,7 +2195,8 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
   const wantRes = String(req.body.resolution || "").toLowerCase();
   const resolution = extras
     ? (extras.resolutions.find(r => r.toLowerCase() === wantRes) || extras.resolutions[0])
-    : HF_SEEDANCE_RESOLUTIONS.includes(req.body.resolution) ? req.body.resolution : HF_SEEDANCE_RESOLUTIONS[0];
+    : hfModel ? (hfModel.resolutions.find(r => r.toLowerCase() === wantRes) || hfModel.resolutions[0])
+    : HF_SEEDANCE_RESOLUTIONS[0];
   const generateAudio = !(req.body.generate_audio === "false" || req.body.generate_audio === false);
   if (extras && extras.full8 === resolution) duration = 8;
 
@@ -2147,7 +2204,7 @@ app.post("/video/ai-generate", aiVideoUpload.fields([{ name: "ref_image", maxCou
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     model, prompt, aspect_ratio: aspectRatio, duration,
-    ...(hfModel || extras ? { resolution, generate_audio: hfModel || (extras && extras.audio) ? generateAudio : true } : {}),
+    ...(hfModel || extras ? { resolution, generate_audio: (hfModel && hfModel.audio) || (extras && extras.audio) ? generateAudio : true } : {}),
     brand: brandContext.name,
     brand_context: brandContext,
     ref_image: refImagePaths.length > 0,
@@ -2660,6 +2717,9 @@ app.post("/video/tools", videoToolsUpload, (req, res) => {
 const GENJUTSU_MODES = {
   motion: { label: "Motion transfer", endpoint: "higgsfield/genjutsu/motion-transfer/v1.0" },
   swap:   { label: "Object swap",     endpoint: "higgsfield/genjutsu/object-swap/v1.0" },
+  // Light: same inputs as the full models, cheaper and faster, a bit less detail.
+  motion_light: { label: "Motion transfer (Light)", endpoint: "higgsfield/genjutsu-light/motion-transfer/v1.0" },
+  swap_light:   { label: "Object swap (Light)",     endpoint: "higgsfield/genjutsu-light/object-swap/v1.0" },
   restyle: { label: "Restyle",        endpoint: "higgsfield/genjutsu/restyle/v1.0", maxImages: 5, imagesOptional: true },
 };
 const GENJUTSU_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2794,7 +2854,7 @@ app.post("/influencer/genjutsu", genjutsuUpload, async (req, res) => {
   const task = {
     id: genId(), status: "processing",
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    model: "higgsfield/genjutsu-" + ({ swap: "object-swap", restyle: "restyle" }[b.mode] || "motion-transfer"),
+    model: "higgsfield/genjutsu-" + ({ swap: "object-swap", restyle: "restyle", motion_light: "light-motion-transfer", swap_light: "light-object-swap" }[b.mode] || "motion-transfer"),
     tool: "genjutsu", genjutsu_mode: b.mode,
     ...(presetName ? { preset_id: presetId, preset_name: presetName } : {}),
     prompt: `${mode.label}${presetName ? " · " + presetName : ""}${avatarNames.length ? " · " + avatarNames.join(", ") : ""}${prompt ? ": " + prompt : ""}`,
@@ -2845,7 +2905,7 @@ async function runGenjutsuTask(task, mode, o) {
     }
     info = await probeVideoStrict(src);
     if (info.duration && info.duration < 4) throw new Error(`The reference video is ${info.duration.toFixed(1)} s; Genjutsu needs at least 4 seconds.`);
-    if (task.genjutsu_mode === "swap" && info.width * info.height < GENJUTSU_MIN_PIXELS) {
+    if (/^swap/.test(task.genjutsu_mode || "") && info.width * info.height < GENJUTSU_MIN_PIXELS) {
       throw new Error(`Object swap needs at least ${GENJUTSU_MIN_PIXELS.toLocaleString("en")} pixels per frame (e.g. 854×480); this video is ${info.width}×${info.height}.`);
     }
     const prepared = await prepareGenjutsuVideo(src, info, path.join(__dirname, "data", "ai-video-uploads", `genjutsu-${task.id}.mp4`));
@@ -3856,10 +3916,10 @@ async function estimateCost(b) {
     const model = String(b.model || "");
     const hf = HF_VIDEO_MODELS[model];
     if (hf) {
-      const res = HF_SEEDANCE_RESOLUTIONS.includes(b.resolution) ? b.resolution : HF_SEEDANCE_RESOLUTIONS[0];
+      const res = hf.resolutions.find(r => r.toLowerCase() === String(b.resolution || "").toLowerCase()) || hf.resolutions[0];
       const imgs = Number(b.images) || 0;
-      const ep = hf.endpoint({ images: Array(imgs).fill(1), video: secs > 0 });
-      const out = ep.endsWith("/video-edit") ? 0 : Math.min(30, Math.max(4, Number(b.duration) || 5));
+      const ep = hf.endpoint({ images: Array(imgs).fill(1), video: secs > 0 || b.has_source ? "src" : "" });
+      const out = ep.endsWith("/video-edit") ? 0 : hfClampDuration(hf, b.duration);
       const billed = out + secs * (ep.endsWith("/video-edit") ? 2 : 1);
       if (b.has_source && !secs) notes.push("source length unknown: only the new seconds are counted");
       rows.push({ p: "higgsfield", m: ep + "@" + res, jobs: 1, secs: billed });
