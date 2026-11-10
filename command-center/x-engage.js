@@ -137,15 +137,23 @@ function cardText(channel, p) {
     escHtml(p.text),
     "",
     `<a href="${escHtml(p.url)}">Open the post on X</a> · expires in ${p.expire_hours} h`,
+    `📲 opens X with this reply ready${p.as ? ` (be logged in as <b>@${escHtml(p.as)}</b>)` : ""}, tap Reply there, then ✔ Done here.`,
   ].join("\n");
 }
 
-const keyboard = (channelId, pid) => ({
-  inline_keyboard: [[
-    { text: "✅ Post reply", callback_data: `xe:ok:${channelId}:${pid}` },
-    { text: "❌ Skip", callback_data: `xe:no:${channelId}:${pid}` },
-    { text: "✏ Edit", callback_data: `xe:ed:${channelId}:${pid}` },
-  ]],
+// X's API refuses replies to posts that don't mention us, so the reply is posted by hand
+// through X's own compose screen, pre-filled with the text and the post to reply to.
+const intentUrl = (p, text) => `https://x.com/intent/post?in_reply_to=${encodeURIComponent(p.tweet_id)}&text=${encodeURIComponent(text != null ? text : p.text || "")}`;
+
+const keyboard = (channelId, p) => ({
+  inline_keyboard: [
+    [{ text: "📲 Reply on X (pre-filled)", url: intentUrl(p) }],
+    [
+      { text: "✔ Done", callback_data: `xe:ok:${channelId}:${p.id}` },
+      { text: "❌ Skip", callback_data: `xe:no:${channelId}:${p.id}` },
+      { text: "✏ Edit", callback_data: `xe:ed:${channelId}:${p.id}` },
+    ],
+  ],
 });
 
 // ── runtime ───────────────────────────────────
@@ -277,7 +285,7 @@ Rules for the reply:
 
   async function sendCard(channel, p) {
     if (!tg || !chatId) return null;
-    const r = await tg("sendMessage", { chat_id: chatId, text: cardText(channel, p), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: keyboard(channel.id, p.id) });
+    const r = await tg("sendMessage", { chat_id: chatId, text: cardText(channel, p), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: keyboard(channel.id, p) });
     return r && r.ok && r.result ? r.result.message_id : null;
   }
   async function closeCard(p, label, url) {
@@ -331,7 +339,7 @@ Rules for the reply:
       expires_at: new Date(Date.now() + cfg.expire_hours * 3.6e6).toISOString(), expire_hours: cfg.expire_hours,
       tweet_id: c.tweet_id, url: `https://x.com/${c.author}/status/${c.tweet_id}`, conversation_id: c.tweet_id,
       author: c.author, author_name: c.author_name, followers: c.followers, metrics: c.metrics, created_at_post: c.created_at,
-      their_text: c.text.slice(0, 1000), topic: c.topic, text: d.text, reason: d.reason, manual,
+      their_text: c.text.slice(0, 1000), topic: c.topic, text: d.text, reason: d.reason, manual, as: m.username || null,
     };
     const tgId = await sendCard(channel, { ...p, created_at: c.created_at }).catch(e => { log(`telegram card failed: ${e.message}`); return null; });
     p.tg_msg_id = tgId;
@@ -357,7 +365,17 @@ Rules for the reply:
     });
   }
 
-  // Approve (optionally with edited text) → post the reply on X.
+  // Find the reply we just posted by hand (for the link + so auto-replies can follow it up).
+  async function findOurReply(channel, creds, username, p) {
+    try {
+      const q = encodeURIComponent(`from:${username} conversation_id:${p.conversation_id || p.tweet_id}`);
+      const r = await twitterApi("GET", `https://api.x.com/2/tweets/search/recent?query=${q}&max_results=10&tweet.fields=referenced_tweets,created_at`, creds);
+      const hit = ((r && r.data) || []).find(t => (t.referenced_tweets || []).some(x => x.type === "replied_to" && x.id === p.tweet_id));
+      return hit ? hit.id : null;
+    } catch (e) { log(`find own reply: ${e.message}`); return null; }
+  }
+
+  // Done: the reply was posted by hand via the pre-filled X link. Text = the version used.
   async function approve(channelId, pid, text) {
     const channel = channelById(channelId);
     if (!channel) throw new Error("channel not found");
@@ -366,32 +384,22 @@ Rules for the reply:
     if (p.status !== "pending") throw new Error(`already ${p.status}`);
     const body = text != null ? cleanReply(text) : p.text;
     if (!body) throw new Error("empty reply");
-    if (twitterWeightedLength(body) > 280) throw new Error("reply longer than 280 characters");
     update(channelId, pid, { status: "posting" });
     const creds = twitterCredsFor(channel);
-    try {
-      const m = await me(channel, creds);
-      const res = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: { text: body, reply: { in_reply_to_tweet_id: p.tweet_id } } });
-      const id = res && res.data && res.data.id;
-      const url = id ? `https://x.com/${m.username}/status/${id}` : null;
-      const done = mutate(channelId, s => {
-        rollDay(s);
-        s.posted_today = (s.posted_today || 0) + 1;
-        const q = (s.proposals || []).find(x => x.id === pid);
-        Object.assign(q, { status: "posted", text: body, reply_id: id || null, reply_url: url, decided_at: new Date().toISOString(), error: null });
-        pushLog(s, { action: "posted", to: p.author, tweet_id: p.tweet_id, text: body });
-        return { ...q };
-      });
-      await closeCard(done, "✅ Posted · open on X", url);
-      log(`${channel.name}: replied to @${p.author} (${id})`);
-      return done;
-    } catch (e) {
-      const msg = String(e.message || e).slice(0, 300);
-      const failed = update(channelId, pid, { status: "failed", error: msg, decided_at: new Date().toISOString() });
-      mutate(channelId, s => pushLog(s, { action: "failed", to: p.author, tweet_id: p.tweet_id, reason: msg }));
-      await closeCard(failed, `⚠ Failed: ${msg.slice(0, 50)}`);
-      throw e;
-    }
+    let id = null, username = p.as;
+    try { const m = await me(channel, creds); username = m.username; id = await findOurReply(channel, creds, m.username, p); } catch (e) { log(`done lookup: ${e.message}`); }
+    const url = id ? `https://x.com/${username}/status/${id}` : null;
+    const done = mutate(channelId, s => {
+      rollDay(s);
+      s.posted_today = (s.posted_today || 0) + 1;
+      const q = (s.proposals || []).find(x => x.id === pid);
+      Object.assign(q, { status: "posted", text: body, reply_id: id, reply_url: url, posted_by_hand: true, decided_at: new Date().toISOString(), error: null });
+      pushLog(s, { action: "posted", to: p.author, tweet_id: p.tweet_id, text: body });
+      return { ...q };
+    });
+    await closeCard(done, url ? "✅ Posted · open on X" : "✔ Done", url);
+    log(`${channel.name}: reply to @${p.author} marked done${id ? ` (${id})` : ""}`);
+    return done;
   }
 
   async function skip(channelId, pid) {
@@ -424,8 +432,8 @@ Rules for the reply:
     if (action === "noop") { await answer(); return true; }
     try {
       if (action === "ok") {
-        await answer("Posting…");
         await approve(channelId, pid);
+        await answer("✔ Marked as done");
       } else if (action === "no") {
         await skip(channelId, pid);
         await answer("❌ Skipped");
@@ -437,7 +445,7 @@ Rules for the reply:
         await tg("sendMessage", { chat_id: chatId, text: `✏ Send the new reply to @${p.author} as a message. /cancel to stop.\n\nCurrent:\n${p.text}` });
       } else await answer();
     } catch (e) {
-      await tg("sendMessage", { chat_id: chatId, text: `⚠ Reply not posted: ${String(e.message).slice(0, 300)}` }).catch(() => {});
+      await tg("sendMessage", { chat_id: chatId, text: `⚠ X engage: ${String(e.message).slice(0, 300)}` }).catch(() => {});
     }
     return true;
   }
@@ -538,5 +546,5 @@ Rules for the reply:
 
 module.exports = {
   createEngage, DEFAULTS, MODEL, config, sanitize, inWindow, minutesLeft, nextGapMs, buildEngageQuery,
-  pickTopics, rankPosts, cardText, keyboard, compact,
+  pickTopics, rankPosts, cardText, keyboard, compact, intentUrl,
 };

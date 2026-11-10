@@ -478,7 +478,7 @@ function renderEngage(c) {
   setTimeout(() => loadEngageStatus(c.id), 0);
   return `
     <div class="edit-label" style="margin-top:14px">🔥 Engage (review in Telegram)</div>
-    <div class="discord-banner">A few times a day the bot searches fresh, popular posts on the autopilot topics and curated accounts, picks the one where a reply adds the most and writes that reply. You get it in Telegram with ✅ Post / ❌ Skip / ✏ Edit; nothing is posted without your approval (X does not allow fully automated replies found by search). Unanswered proposals expire. Costs: ~$0.005 per post read (2 searches of 15 per proposal), ~$0.015 per posted reply, plus one Claude call.</div>
+    <div class="discord-banner">A few times a day the bot searches fresh, popular posts on the autopilot topics and curated accounts, picks the one where a reply adds the most and writes that reply. You get it in Telegram: 📲 opens X with the reply already filled in (X's API does not allow replies to posts that don't mention you, so you tap Reply yourself, logged in as this account), then ✔ Done; ❌ Skip / ✏ Edit also work. Unanswered proposals expire. Costs: ~$0.005 per post read (2 searches of 15 per proposal) plus one Claude call.</div>
     <div class="edit-grid">
       <div><label class="edit-label">Engage</label>
         <select class="edit-input" id="ch-eg-enabled-${id}"><option value="false"${e.enabled ? '' : ' selected'}>Off</option><option value="true"${e.enabled ? ' selected' : ''}>On</option></select></div>
@@ -522,7 +522,8 @@ async function loadEngageStatus(id) {
     const card = (p, pending) => {
       const src = `<a href="${esc(safeUrl(p.url))}" target="_blank" rel="noopener">@${esc(p.author)}</a>`;
       const mine = p.reply_url ? ` <a href="${esc(safeUrl(p.reply_url))}" target="_blank" rel="noopener">view</a>` : '';
-      const btns = pending ? `<br>&nbsp;&nbsp;<button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'approve', this)">✅ Post</button> <button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'skip', this)">❌ Skip</button>` : '';
+      const intent = `https://x.com/intent/post?in_reply_to=${encodeURIComponent(p.tweet_id || '')}&text=${encodeURIComponent(p.text || '')}`;
+      const btns = pending ? `<br>&nbsp;&nbsp;<a class="btn-sm" href="${esc(safeUrl(intent))}" target="_blank" rel="noopener">📲 Reply on X</a> <button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'approve', this)">✔ Done</button> <button class="btn-sm" onclick="decideEngage(${jq(id)}, ${jq(p.id)}, 'skip', this)">❌ Skip</button>` : '';
       const icon = { pending: '⏳', posted: '✅', skipped: '❌', expired: '⌛', failed: '⚠', posting: '…' }[p.status] || '•';
       return `<div style="margin-top:6px${pending ? '' : ';opacity:.7'}">${icon} ${src} (❤ ${esc(p.metrics && p.metrics.likes)}): <i>${esc((p.their_text || '').slice(0, 120))}</i><br>&nbsp;&nbsp;→ ${esc(p.text || '')}${mine}${p.error ? ` <span style="color:var(--danger)">${esc(p.error)}</span>` : ''}${btns}</div>`;
     };

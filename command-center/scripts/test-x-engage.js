@@ -85,9 +85,11 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   const card = xe.cardText({ name: "gh<0>st" }, { author: "a<b", followers: 12345, metrics: { likes: 1500, reposts: 3, replies: 4 }, their_text: "x < y & z", text: "our <reply>", url: "https://x.com/a/status/1", expire_hours: 6, created_at: new Date().toISOString(), topic: "BTC" });
   check("card escapes html", card.includes("gh&lt;0&gt;st") && card.includes("x &lt; y &amp; z") && card.includes("our &lt;reply&gt;"));
   check("card compacts numbers", card.includes("12.3k followers") && card.includes("❤ 1.5k"));
-  const kb = xe.keyboard("ch1", "p1");
+  const kb = xe.keyboard("ch1", { id: "p1", tweet_id: "555", text: "hi & bye?" });
   const cbs = JSON.stringify(kb);
-  check("keyboard has ok/no/edit", cbs.includes("xe:ok:ch1:p1") && cbs.includes("xe:no:ch1:p1") && cbs.includes("xe:ed:ch1:p1"));
+  check("keyboard has done/no/edit", cbs.includes("xe:ok:ch1:p1") && cbs.includes("xe:no:ch1:p1") && cbs.includes("xe:ed:ch1:p1"));
+  check("keyboard has pre-filled X reply link", kb.inline_keyboard[0][0].url === "https://x.com/intent/post?in_reply_to=555&text=hi%20%26%20bye%3F");
+  check("intent uses edited text", xe.intentUrl({ tweet_id: "1", text: "a" }, "b c").endsWith("text=b%20c"));
   check("callback data within 64 bytes", kb.inline_keyboard.flat().every(b => !b.callback_data || Buffer.byteLength(b.callback_data) <= 64));
   check("compact", xe.compact(999) === "999" && xe.compact(1000) === "1k" && xe.compact(2500000) === "2.5M");
 
@@ -95,8 +97,9 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "xe-"));
   const channel = { id: "ch1", name: "ourbrandlayer", platform: "twitter", engage: { enabled: true, min_likes: 100 }, autopilot: { topics: ["Bitcoin: bitcoin OR btc", "Ethereum: ethereum"], voice: "crypto trader" } };
   const tgCalls = [], posts = [];
-  let searches = 0;
+  let searches = 0, lookups = 0, lastTweet = null;
   const twitterApi = async (method, url, creds, opts) => {
+    if (method === "GET" && url.includes("conversation_id")) { lookups++; return { data: [{ id: "999", referenced_tweets: [{ type: "replied_to", id: lastTweet }] }] }; }
     if (method === "GET") { searches++; return resp; }
     posts.push(opts.json); return { data: { id: "999" } };
   };
@@ -118,19 +121,24 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   check("nothing posted before approval", posts.length === 0);
 
   const pid = r.proposal.id;
+  lastTweet = r.proposal.tweet_id;
+  check("proposal knows our handle", r.proposal.as === "ourbrand");
+  check("card links to pre-filled reply", JSON.stringify(tgCalls[0][1].reply_markup).includes("intent/post?in_reply_to=" + r.proposal.tweet_id));
   check("edit: callback opens edit", await bot.handleCallback({ id: "c1", data: `xe:ed:ch1:${pid}`, message: { chat: { id: 123 } } }));
   check("edit: text consumed", await bot.handleText(123, "Edited reply here"));
   check("edit: stored", bot.status(channel).pending[0].text === "Edited reply here");
   check("other text not consumed", !(await bot.handleText(123, "hello")));
 
   await bot.handleCallback({ id: "c2", data: `xe:ok:ch1:${pid}`, message: { chat: { id: 123 } } });
-  check("approve posts as reply", posts.length === 1 && posts[0].reply.in_reply_to_tweet_id === r.proposal.tweet_id && posts[0].text === "Edited reply here");
+  check("done does not post via API (X refuses)", posts.length === 0);
+  check("done looks up our hand-posted reply", lookups === 1);
+  check("edited card links edited text", tgCalls.filter(([m]) => m === "sendMessage").some(([, b]) => JSON.stringify(b.reply_markup || {}).includes("Edited%20reply%20here")));
   const st2 = bot.status(channel);
   check("status: posted", st2.posted_today === 1 && st2.recent[0].status === "posted" && st2.recent[0].reply_url === "https://x.com/ourbrand/status/999");
   check("card closed with link", tgCalls.some(([m, b]) => m === "editMessageReplyMarkup" && JSON.stringify(b).includes("status/999")));
   let threw = false;
   try { await bot.approve("ch1", pid); } catch { threw = true; }
-  check("no double post", threw && posts.length === 1);
+  check("no double done", threw && lookups === 1);
   check("ourReplies feeds x-replies", bot.ourReplies(channel)[0].id === "999");
 
   // skip
