@@ -102,6 +102,9 @@ function scheduleDue(sched, now) {
   const tz = sched.tz || "UTC";
   const local = localParts(now, tz);
   if (sched.days && sched.days.length && !sched.days.includes(local.day)) return false;
+  // Optional day-of-month filter, e.g. [1, 15] = twice a month.
+  if (Array.isArray(sched.days_of_month) && sched.days_of_month.length
+      && !sched.days_of_month.map(Number).includes(Number(local.date.slice(8, 10)))) return false;
   const nowMin = local.hour * 60 + local.minute;
   const at = (Number(sched.hour) || 0) * 60 + (Number(sched.minute) || 0);
   const window = Math.max(0, Number(sched.catchup_min) || 0);

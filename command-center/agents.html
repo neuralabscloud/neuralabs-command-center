@@ -585,7 +585,9 @@ async function loadSchedules() {
     const el = document.getElementById('sched-grid');
     if (!scheds.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No scheduled tasks yet</span>'; return; }
     el.innerHTML = scheds.map(s => {
-      const days = (s.days || []).map(d => escHtml(String(d).substring(0,2).toUpperCase())).join(' ');
+      const days = (Array.isArray(s.days_of_month) && s.days_of_month.length)
+        ? 'day ' + s.days_of_month.map(d => escHtml(String(d))).join(' & ') + ' of the month'
+        : (s.days || []).map(d => escHtml(String(d).substring(0,2).toUpperCase())).join(' ');
       const time = `${escHtml(String(s.hour).padStart(2,'0'))}:${escHtml(String(s.minute).padStart(2,'0'))} ${escHtml(s.tz || 'UTC')}`;
       const runBtns = s.agent === 'character_video_batch'
         ? `<div style="display:flex;gap:6px;margin-top:8px">
