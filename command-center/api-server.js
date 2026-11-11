@@ -9872,6 +9872,11 @@ async function charBatchVideo(m, slot, still, opts) {
         let local = "";
         try { await downloadTo(url, path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4")); local = `/video-outputs/${task.id}.mp4`; }
         catch (e) { charLog(m, `slot ${slot.slot} video download failed: ${e.message}`); }
+        // Burn the tagline in (sharp, correctly spelled); the raw clip stays as <id>.raw.mp4.
+        if (local && slot.onscreen_text && opts.text_mode !== "model") {
+          try { await charBatchBurnTagline(path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4"), slot.onscreen_text, m.duration); slot.tagline_burned = true; }
+          catch (e) { charLog(m, `slot ${slot.slot} tagline burn-in failed, posting the raw clip: ${e.message.slice(0, 200)}`); }
+        }
         patchTaskFile("ai-video-tasks.json", task.id, { status: "completed", result_url: local || url, provider_url: url });
         Object.assign(slot, { status: "done", video_url: local || url, provider_url: url, error: null });
         if (rewritten) slot.video_prompt_used = prompt;
@@ -9901,14 +9906,32 @@ async function charBatchVideo(m, slot, still, opts) {
   }
 }
 
+// Tagline over the finished clip: ASS subtitle via libass, audio copied.
+async function charBatchBurnTagline(file, text, duration = 8) {
+  const raw = file.replace(/\.mp4$/, ".raw.mp4");
+  if (!fs.existsSync(raw)) fs.renameSync(file, raw);
+  const info = await probeVideo(raw);
+  const ass = file.replace(/\.mp4$/, ".tagline.ass");
+  fs.writeFileSync(ass, charBatch.taglineAss({ text, width: info.width, height: info.height, end: info.duration || duration }));
+  const esc = (p) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  try {
+    await runFfmpeg(["-y", "-i", raw, "-vf", `ass='${esc(ass)}':fontsdir='${esc(UGC_FONTS_DIR)}'`,
+      "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", file]);
+  } catch (e) {
+    try { fs.copyFileSync(raw, file); } catch {}
+    throw e;
+  } finally { try { fs.unlinkSync(ass); } catch {} }
+}
+
 // Step A: concepts, validated, regenerated once when invalid.
 async function charBatchConcepts(m, payload, ctx) {
+  const n = ctx.week.length;
   const usage = { input_tokens: 0, output_tokens: 0 };
   let errors = [], concepts = null;
   for (let round = 1; round <= 2; round++) {
     const msg = await apiUsage.forTask(m.batch_id, () => anthropic.messages.stream({
       model: charBatch.MODEL, max_tokens: 20000, thinking: { type: "adaptive" },
-      system: charBatch.systemPrompt(payload),
+      system: charBatch.systemPrompt(payload, n),
       messages: [{ role: "user", content: charBatch.userPrompt({ ...ctx, context: payload.context || "", errors }) }],
     }).finalMessage());
     usage.input_tokens += msg.usage?.input_tokens || 0;
@@ -9916,9 +9939,9 @@ async function charBatchConcepts(m, payload, ctx) {
     if (msg.stop_reason === "refusal") throw new Error("Claude refused to write the concepts");
     try {
       const raw = charBatch.extractJson(charBatch.textOf(msg.content)).concepts;
-      concepts = raw.slice(0, charBatch.SLOTS).map((c, i) => charBatch.normalizeConcept(c, i, { ...ctx, payload }));
-      errors = charBatch.validateConcepts(concepts, { recent: ctx.recent, forbidden: payload.forbidden_names || [], payload });
-      if (raw.length !== charBatch.SLOTS) errors.unshift(`Expected exactly ${charBatch.SLOTS} concepts, got ${raw.length}.`);
+      concepts = raw.slice(0, n).map((c, i) => charBatch.normalizeConcept(c, i, { ...ctx, payload }));
+      errors = charBatch.validateConcepts(concepts, { recent: ctx.recent, forbidden: payload.forbidden_names || [], payload, expected: n });
+      if (raw.length !== n) errors.unshift(`Expected exactly ${n} concepts, got ${raw.length}.`);
     } catch (e) { errors = [e.message]; concepts = null; }
     charLog(m, `concepts round ${round}: ${errors.length ? errors.length + " problem(s): " + errors.slice(0, 3).join(" | ") : "valid"}`);
     if (!errors.length) break;
@@ -9931,13 +9954,15 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
   if (charBatchRun) throw new Error("A video batch is already running");
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY missing");
   const tz = payload.tz || TIMEZONE;
-  const week = charBatch.comingWeek(new Date(), tz);
+  const week = charBatch.comingWeek(new Date(), tz, payload.post_days);
+  if (!week.length) throw new Error("payload.post_days has no valid days");
+  const last = week[week.length - 1];
   const id = charBatch.batchId(payload.batch_prefix, week[0].date);
   charBatchRun = { batch_id: id, dry_run: dryRun, started_at: new Date().toISOString(), stage: "concepts", log: [] };
   const all = readCharBatches();
   const m = {
     batch_id: id, title: payload.title || "Weekly video batch", dry_run: dryRun, trigger, schedule_id: scheduleId,
-    created_at: new Date().toISOString(), week_start: week[0].date, week_end: week[6].date, tz,
+    created_at: new Date().toISOString(), week_start: week[0].date, week_end: last.date, tz,
     model: charBatch.MODEL, aspect_ratio: charBatch.DEFAULTS.aspect_ratio, duration: Number(payload.duration) || charBatch.DEFAULTS.duration,
     resolution: payload.resolution || charBatch.DEFAULTS.resolution, video_model: "higgsfield/seedance-2.5", still_model: "nanobanana (gemini-3-1-flash-image, 2K)",
     status: "running", stopped: null, slots: [],
@@ -9955,9 +9980,9 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
       const recent = charBatch.recentCities(all.filter(x => x.batch_id !== id), week[0].date);
       const outfitStart = charBatch.nextOutfitStart(all.filter(x => x.batch_id !== id), outfitsCfg.length);
       m.outfit_start = outfitStart;
-      m.next_outfit = outfitsCfg.length ? (outfitStart + charBatch.SLOTS) % outfitsCfg.length : 0;
+      m.next_outfit = outfitsCfg.length ? (outfitStart + week.length) % outfitsCfg.length : 0;
       m.recent_cities = recent;
-      charLog(m, `start (${dryRun ? "dry run" : trigger}) · week ${week[0].date}..${week[6].date} · outfit start ${outfitStart} · ${recent.length} recent cities excluded`);
+      charLog(m, `start (${dryRun ? "dry run" : trigger}) · week ${week[0].date}..${last.date} (${week.length} clip${week.length === 1 ? "" : "s"}) · outfit start ${outfitStart} · ${recent.length} recent cities excluded`);
 
       const { concepts, errors, usage } = await charBatchConcepts(m, payload, { week, outfits: outfitsCfg, outfitStart, recent });
       m.concepts_usage = usage;
@@ -9994,10 +10019,7 @@ async function runCharacterBatch(payload = {}, { dryRun = false, slots = null, t
       // Step C: videos (waits for the Higgsfield top-up when the balance runs out).
       await charBatchVideosWithRetry(m, payload);
       m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
-      if (buffer.configOf(payload).enabled) {
-        charBatchRun.stage = "buffer";
-        await charBatchToBuffer(m, buffer.configOf(payload)).catch(e => charLog(m, `Buffer failed: ${e.message}`));
-      }
+      await charBatchPublishAll(m, payload);
       return m;
     });
   } catch (e) {
@@ -10105,10 +10127,7 @@ async function retryCharacterBatch(batchId, { includeFailed = false } = {}) {
     await apiUsage.tag("Weekly video batch", async () => {
       await charBatchVideosWithRetry(m, payload);
       m.status = m.slots.every(s => ["done", "skipped"].includes(s.status)) ? "completed" : "partial";
-      if (buffer.configOf(payload).enabled) {
-        charBatchRun.stage = "buffer";
-        await charBatchToBuffer(m, buffer.configOf(payload)).catch(e => charLog(m, `Buffer failed: ${e.message}`));
-      }
+      await charBatchPublishAll(m, payload);
     });
   } catch (e) {
     m.status = "partial";
@@ -10117,6 +10136,75 @@ async function retryCharacterBatch(batchId, { includeFailed = false } = {}) {
     await charBatchFinalize(m);
   }
   return { m, payload };
+}
+
+// Publish step after the videos: direct posts on our own channels and/or Buffer.
+async function charBatchPublishAll(m, payload) {
+  const pub = charBatchPublishCfg(payload);
+  if (pub.enabled) {
+    if (charBatchRun) charBatchRun.stage = "publish";
+    try { await charBatchToChannels(m, pub); } catch (e) { charLog(m, `publish failed: ${e.message}`); }
+  }
+  if (buffer.configOf(payload).enabled) {
+    if (charBatchRun) charBatchRun.stage = "buffer";
+    await charBatchToBuffer(m, buffer.configOf(payload)).catch(e => charLog(m, `Buffer failed: ${e.message}`));
+  }
+}
+
+function charBatchPublishCfg(payload = {}) {
+  const p = payload.publish || {};
+  const time = /^\d{1,2}:\d{2}$/.test(String(p.time || "")) ? String(p.time) : "18:00";
+  return { enabled: !!p.enabled && !!p.channel_id, channel_id: String(p.channel_id || ""), time, instagram: p.instagram !== false };
+}
+
+// Post text for a clip on X: the caption (lowercase line, question, hashtags), cut to fit.
+function charBatchPostText(s) {
+  let text = cleanSocialText(s.caption || [s.caption_line, s.question].filter(Boolean).join("\n"));
+  while (twitterWeightedLength(text) > 280 && /\s#\S+$/.test(text)) text = text.replace(/\s+#\S+$/, "");
+  if (twitterWeightedLength(text) > 280) text = text.slice(0, 270).replace(/\s+\S*$/, "");
+  return text;
+}
+
+// Every finished clip becomes a community task on our own X channel (the
+// regular worker posts it; with Instagram it follows as a Reel), on the clip's
+// own day at cfg.time in the batch time zone. A moment that has passed posts
+// right away. Idempotent: the task id is kept per slot under s.post.
+async function charBatchToChannels(m, cfg) {
+  const ch = readChannels().find(c => c.id === cfg.channel_id);
+  if (!ch) throw new Error(`channel ${cfg.channel_id} not found`);
+  const igAccount = ch.platform === "twitter" && igPublish.config(ch).account_id;
+  const res = { scheduled: 0, kept: 0, errors: [] };
+  const created = [];
+  for (const s of m.slots) {
+    if (s.status !== "done" || !s.video_url) continue;
+    if (s.post?.task_id) { res.kept++; continue; }
+    try {
+      const ai = readTaskFile("ai-video-tasks.json").find(t => t.id === s.video_task_id) || { id: s.video_task_id, result_url: s.video_url };
+      const media = await aiVideoToPostMedia(ai);
+      const due = buffer.zonedTime(s.date, cfg.time, m.tz || TIMEZONE);
+      const when = due.getTime() < Date.now() ? new Date() : due;
+      const now = new Date().toISOString();
+      const wantIg = !!(igAccount && cfg.instagram);
+      const t = {
+        id: genId(), channel_id: ch.id, status: "scheduled", created_at: now, updated_at: now,
+        scheduled_at: when.toISOString(), scheduled_local: null, archetype: null, trigger_word: null,
+        media_path: media, media_paths: [media], text: charBatchPostText(s),
+        published_at: null, message_id: null, attempts: 0, error: null,
+        video_post: true, ai_video_id: s.video_task_id, char_batch_id: m.batch_id, char_batch_slot: s.slot, autopilot: true,
+        ...(wantIg ? { ig_requested: true } : igAccount ? { instagram: { status: "skipped", reason: "Instagram off for this batch" } } : {}),
+      };
+      created.push(t);
+      s.post = { task_id: t.id, channel_id: ch.id, scheduled_at: t.scheduled_at, instagram: wantIg };
+      res.scheduled++;
+    } catch (e) {
+      res.errors.push(`slot ${s.slot}: ${e.message.slice(0, 160)}`);
+    }
+  }
+  if (created.length) writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), ...created]);
+  m.publish = { ...res, channel: ch.name, channel_id: ch.id, instagram: !!(igAccount && cfg.instagram), time: cfg.time, at: new Date().toISOString() };
+  saveCharBatchManifest(m);
+  charLog(m, `publish: ${res.scheduled} post(s) scheduled on ${ch.name}${m.publish.instagram ? " + Instagram" : ""}, ${res.kept} already there, ${res.errors.length} error(s)`);
+  return m.publish;
 }
 
 // Schedule every finished clip of a batch in Buffer: one custom-scheduled post
@@ -10226,7 +10314,7 @@ app.post("/character-batch/run", async (req, res) => {
   const sched = req.body?.schedule_id ? scheds.find(s => s.id === req.body.schedule_id) : scheds[0];
   if (!sched) return res.status(404).json({ error: "No character_video_batch schedule found" });
   const dryRun = req.body?.dry_run === true || req.body?.dry_run === "true";
-  const slots = Array.isArray(req.body?.slots) ? req.body.slots.map(Number).filter(n => n >= 1 && n <= charBatch.SLOTS) : null;
+  const slots = Array.isArray(req.body?.slots) ? req.body.slots.map(Number).filter(n => n >= 1 && n <= 7) : null;
   const notify = req.body?.notify !== false && req.body?.notify !== "false" && (sched.payload || {}).notify !== "false";
   const job = runCharacterBatch(sched.payload || {}, { dryRun, slots, trigger: dryRun ? "dry_run" : slots ? "test" : "manual", scheduleId: sched.id });
   if (dryRun) return res.json(await job);

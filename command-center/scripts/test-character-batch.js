@@ -59,7 +59,7 @@ function raw(i, o = {}) {
     still_scene: "He stands on a rooftop at blue hour, 50mm lens, his phone in hand showing a dark trading chart.",
     camera_move: "slow push-in", light: "blue hour neon",
     beats: { "0-2": "He looks at the phone", "2-5": "He scrolls the chart", "5-8": "He looks up at the skyline" },
-    onscreen_text: "", caption_line: "Patience Pays The Patient", question: "where do you trade from", hashtags: ["trading", "#bitcoin", "#defi", "#tradinglifestyle"],
+    onscreen_text: "stay calm and trade", caption_line: "Patience Pays The Patient", question: "where do you trade from", hashtags: ["trading", "#bitcoin", "#defi", "#tradinglifestyle"],
     music: "deep electronic pulse", sfx: "wind, distant traffic", ...o,
   };
 }
@@ -76,9 +76,11 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   check("video prompt opener", c.video_prompt.startsWith("Cinematic but realistic footage, slow push-in, blue hour neon, subtle film grain."));
   check("video prompt beats in order", /0 to 2 s:.*2 to 5 s:.*5 to 8 s:/.test(c.video_prompt));
   check("objects sentence", c.video_prompt.includes("Only the objects already in the scene exist; light, hologram and energy effects may grow out of them."));
-  check("no-text line without onscreen text", c.video_prompt.includes(r.no_text));
+  check("tagline: model keeps the lower third free (burned in later)", c.video_prompt.includes(r.burn_space) && !c.video_prompt.includes("reading exactly"));
+  const nt = cb.normalizeConcept(raw(0, { onscreen_text: "" }), 0, ctx);
+  check("no-text line without onscreen text", nt.video_prompt.includes(r.no_text));
   check("audio line last", c.video_prompt.endsWith(r.audio.replace("{music}", "deep electronic pulse").replace("{sfx}", "wind, distant traffic")));
-  const t = cb.normalizeConcept(raw(0, { onscreen_text: "risk first — always" }), 0, ctx);
+  const t = cb.normalizeConcept(raw(0, { onscreen_text: "risk first — always" }), 0, { ...ctx, payload: { ...payload, text_mode: "model" } });
   check("text line with exact text, dashes stripped", t.video_prompt.includes("reading exactly: risk first always.") && !t.video_prompt.includes(r.no_text));
   check("caption is 3 lines lowercase", c.caption.split("\n").length === 3 && c.caption === c.caption.toLowerCase());
   check("question gets a question mark", c.caption.split("\n")[1] === "where do you trade from?");
@@ -93,7 +95,10 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
 {
   const v = (list, o = {}) => cb.validateConcepts(list, { payload, forbidden: payload.forbidden_names, ...o });
   const mk = (fn) => Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(fn(i), i, ctx));
-  check("too much on-screen text", v(mk(i => raw(i, { onscreen_text: i < 3 ? "stay calm" : "" }))).some(e => /on-screen text/.test(e)));
+  check("tagline is required", v(mk(i => raw(i, i === 2 ? { onscreen_text: "" } : {}))).some(e => /tagline/.test(e)));
+  check("tagline max 6 words", v(mk(i => raw(i, i === 2 ? { onscreen_text: "one two three four five six seven" } : {}))).some(e => /max 6/.test(e)));
+  check("screen on the back of a phone rejected", v(mk(i => raw(i, i === 1 ? { still_scene: "He holds the phone, the back of the phone shows a glowing chart." } : {}))).some(e => /back of a phone/.test(e)));
+  check("normal phone description is fine", v(mk(i => raw(i, i === 1 ? { still_scene: "Over the shoulder: his phone screen shows a chart, the closed back faces the camera." } : {}))).length === 0);
   check("too few transformations", v(mk(i => raw(i, { scene_type: i === 0 ? "transformation" : raw(i).scene_type === "transformation" ? "other" : raw(i).scene_type }))).some(e => /transformation/.test(e)));
   check("too few phone locations", v(mk(i => raw(i, { scene_type: raw(i).scene_type === "phone_location" ? "other" : raw(i).scene_type }))).some(e => /phone-trading/.test(e)));
   check("recent city rejected", v(concepts, { recent: ["tokyo"] }).some(e => /Tokyo was used/.test(e)));
@@ -103,6 +108,26 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   check("numbers in on-screen text rejected", v(mk(i => raw(i, i === 0 ? { onscreen_text: "up 300 percent" } : {}))).some(e => /numbers/.test(e)));
   check("wrong count", v(concepts.slice(0, 6)).some(e => /exactly 7/.test(e)));
   check("missing beat", v(mk(i => raw(i, i === 3 ? { beats: { "0-2": "x", "2-5": "y" } } : {}))).some(e => /beats/.test(e)));
+}
+
+// ── 3 per week ──
+{
+  const w3 = cb.comingWeek(new Date("2026-11-15T09:00:00Z"), "Europe/Madrid", "mon,wed,fri");
+  check("post_days: 3 slots mon/wed/fri", w3.length === 3 && w3.map(x => x.date).join() === "2026-11-16,2026-11-18,2026-11-20" && w3[2].slot === 3);
+  check("post_days empty = whole week", cb.comingWeek(new Date("2026-11-15T09:00:00Z"), "Europe/Madrid", []).length === 7);
+  check("post_days onzin wordt genegeerd", cb.postDays(["Mon", "xyz", "fri"]).join() === "mon,fri");
+  const m3 = cb.minimums(3);
+  check("minimums for 3 clips", m3.transformation === 1 && m3.phone_location === 1 && m3.futuristic === 2);
+  check("minimums for 7 clips", cb.minimums(7).transformation === 2 && cb.minimums(7).futuristic === 4);
+  const ctx3 = { week: w3, outfits, outfitStart: 0, payload };
+  const three = [0, 2, 4].map((k, i) => cb.normalizeConcept(raw(k), i, ctx3));
+  check("valid set of 3 passes", cb.validateConcepts(three, { payload, forbidden: payload.forbidden_names, expected: 3 }).length === 0);
+  check("3 expected, 7 given = error", cb.validateConcepts(concepts, { payload, expected: 3 }).some(e => /exactly 3/.test(e)));
+  const sp = cb.systemPrompt(payload, 3);
+  check("system prompt names 3 videos + tagline + backs", /3 videos per week/.test(sp) && /onscreen_text tagline/.test(sp) && /Device backs/.test(sp) && /Recognizable first/.test(sp));
+  check("user prompt asks for 3", cb.userPrompt({ week: w3 }).includes("Write the 3 concepts"));
+  const ass = cb.taglineAss({ text: "capital {never} sleeps", width: 720, height: 1280 });
+  check("tagline ASS: uppercase, braces stripped, fade", ass.includes("{\\fad(400,0)}CAPITAL NEVER SLEEPS") && ass.includes("PlayResX: 720"));
 }
 
 // ── parsing ──
