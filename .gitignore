@@ -81,3 +81,8 @@ command-center/data/api-costs-config.json
 command-center/data/edu-reference/
 command-center/data/character-batches/
 command-center/data/character-batches.json
+
+# Rip shorts (uploads, renders, per-install brand config)
+command-center/data/rips/
+command-center/data/rips-config.json
+command-center/data/rips-tasks.json

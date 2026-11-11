@@ -319,6 +319,13 @@ app.get("/share/post-video/:sig/:file", (req, res) => {
   res.type("video/mp4").sendFile(p);
 });
 
+// Rip shorts: signed, 1-hour links to a final video for Instagram Reels (module set up further down).
+let ripsMod = null;
+app.get("/share/rip/:exp/:sig/:id/:n", (req, res) => {
+  if (!ripsMod) return res.status(503).end();
+  ripsMod.servePublic(req, res);
+});
+
 // Public, unauthenticated audio for UGC talking-avatar: Higgsfield's servers
 // fetch the generated voice file by URL (no session cookie). Filenames are
 // random task ids, served read-only from data/ugc-audio.
@@ -8043,6 +8050,11 @@ const TWITTER_MEDIA_TYPES = {
 
 async function twitterUploadMedia(mediaPath, creds) {
   const { full, name } = resolveMediaPath(mediaPath);
+  return twitterUploadFile(full, name, creds);
+}
+
+// Chunked upload of any local file (used by twitterUploadMedia and rip shorts).
+async function twitterUploadFile(full, name, creds) {
   const ext = name.toLowerCase().split(".").pop();
   const kind = TWITTER_MEDIA_TYPES[ext];
   if (!kind) throw new Error(`Unsupported media type for X: .${ext}`);
@@ -8569,6 +8581,29 @@ const listingsBot = listingsMod.createListings({
   notify: sendTelegram,
 });
 setInterval(() => listingsBot.tick().catch(e => console.error("[LISTINGS]", e.message)), 60_000);
+
+// ── RIP SHORTS (Content Creator → review → Instagram Reels + X) ────────
+ripsMod = require("./rips-pipeline").createRips({
+  rootDir: __dirname,
+  anthropic,
+  apiUsage,
+  readChannels,
+  readSocial,
+  writeSocial,
+  twitterCreds,
+  twitterApi,
+  twitterUploadFile,
+  twitterUsageSummary,
+  bumpTwitterUsage,
+  knownPublicOrigin: () => knownPublicOrigin(),
+  sessionSecret: SESSION_SECRET,
+  sendTelegram,
+  writeEnvFile,
+  fontsDir: UGC_FONTS_DIR,
+  listElevenVoices: () => listElevenVoices(),
+});
+ripsMod.mount(app, express);
+setInterval(() => ripsMod.tick().catch(e => console.error("[RIPS]", e.message)), 10_000);
 
 app.get("/community/channels/:id/listings", (req, res) => {
   const channel = getChannel(req.params.id);

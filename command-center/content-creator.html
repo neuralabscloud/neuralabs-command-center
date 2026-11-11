@@ -169,6 +169,37 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   .nav-item { width: 33px; height: 33px; }
   .nav-item svg { width: 15px; height: 15px; }
 }
+/* ── Rip shorts tab ── */
+.mode-tab.active[data-mode="rips"] { color: hsl(43 80% 58%); background: hsla(43 80% 58% / 0.08); border-color: hsla(43 80% 58% / 0.3); }
+.rp-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; background: var(--bg-surface); }
+.rp-drops { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.rp-drop { border: 1.5px dashed var(--border); border-radius: 10px; padding: 14px; text-align: center; cursor: pointer; font-size: 12px; color: var(--text-dim); transition: border-color .2s; position: relative; }
+.rp-drop.over, .rp-drop:hover { border-color: hsl(43 80% 58%); }
+.rp-drop.done { border-style: solid; border-color: var(--success); color: var(--text); }
+.rp-bar { height: 4px; background: hsla(0 0% 100% / .06); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.rp-bar > div { height: 100%; background: hsl(43 80% 58%); width: 0; transition: width .2s; }
+.rp-job { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: linear-gradient(180deg, hsla(0 0% 6% / 1), hsla(0 0% 3% / 1)); }
+.rp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rp-st { font-size: 10px; font-family: var(--font-data); text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-dim); }
+.rp-st.ready_for_review { color: hsl(43 93% 60%); border-color: hsla(43 93% 55% / .4); }
+.rp-st.processing, .rp-st.revising, .rp-st.publishing { color: hsl(200 80% 65%); border-color: hsla(200 80% 60% / .4); }
+.rp-st.approved, .rp-st.published { color: var(--success); border-color: hsla(142 76% 36% / .5); }
+.rp-st.failed { color: var(--danger); border-color: hsla(0 72% 51% / .5); }
+.rp-review { display: grid; grid-template-columns: 270px 1fr; gap: 18px; margin-top: 14px; }
+.rp-review video { width: 270px; aspect-ratio: 9/16; background: #000; border-radius: 10px; }
+.rp-kv { font-size: 12px; display: grid; grid-template-columns: 110px 1fr; gap: 3px 10px; }
+.rp-kv span:nth-child(odd) { color: var(--text-dim); }
+.rp-seg { font-size: 12px; margin: 3px 0; }
+.rp-seg b { font-family: var(--font-data); color: var(--text-dim); font-weight: 500; margin-right: 6px; }
+.rp-chip { padding: 5px 10px; border-radius: 14px; border: 1px solid var(--border); background: none; color: var(--text-dim); font-size: 11px; cursor: pointer; margin: 0 6px 6px 0; }
+.rp-chip.on { color: hsl(43 80% 58%); border-color: hsl(43 80% 58%); }
+.rp-btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: none; color: var(--text); font-size: 12px; cursor: pointer; }
+.rp-btn:hover { border-color: hsl(43 80% 58%); }
+.rp-btn.gold { background: hsl(43 80% 50%); color: #111; border-color: transparent; font-weight: 600; }
+.rp-small { font-size: 11px; color: var(--text-dim); }
+.rp-warn { font-size: 11px; color: var(--warning); }
+.rp-err { font-size: 12px; color: var(--danger); margin-top: 6px; }
+@media (max-width: 760px) { .rp-review { grid-template-columns: 1fr; } .rp-review video { width: 100%; } .rp-drops { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -212,6 +243,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="mode-tab" data-mode="clipper" data-owner-only onclick="switchMode('clipper')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           Clipper
+        </button>
+        <button class="mode-tab" data-mode="rips" data-owner-only onclick="switchMode('rips')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6"/><circle cx="12" cy="16.5" r="1.5"/></svg>
+          <span id="rp-tab-label">Rip shorts</span>
         </button>
       </div>
     </section>
@@ -891,6 +926,23 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       </div>
     </section>
 
+    <!-- RIP SHORTS (pull clip + market check → voiced 9:16 short) -->
+    <section class="fade-up delay-2" id="form-rips" style="display:none;">
+      <div class="section-header" id="rp-title">Rip shorts</div>
+      <div class="task-form">
+        <div class="rp-small" style="margin-bottom:12px;">Per card: drop the pull clip (pack opening) and the market check clip. mp4 or mov, up to 1 GB each. Uploads resume after a dropped connection.</div>
+        <div id="rp-cards"></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="rp-btn" onclick="rpAddCard()">+ Another card</button>
+          <button class="btn-submit" id="rp-start" onclick="rpStart()" disabled>Start</button>
+          <span class="rp-small" id="rp-start-st"></span>
+        </div>
+        <div id="rp-creds" style="margin-top:16px;"></div>
+      </div>
+      <div class="section-header" style="margin-top:28px;">Rip queue</div>
+      <div id="rp-jobs"><div class="rp-small">Loading…</div></div>
+    </section>
+
     <!-- TASK QUEUE -->
     <section class="fade-up delay-3">
       <div class="section-header">Video Queue</div>
@@ -978,6 +1030,8 @@ function switchMode(mode) {
   document.getElementById('form-tools').style.display    = mode === 'tools'    ? '' : 'none';
   document.getElementById('form-influencer').style.display = mode === 'influencer' ? '' : 'none';
   document.getElementById('form-aigen').style.display = mode === 'aigen' ? '' : 'none';
+  document.getElementById('form-rips').style.display = mode === 'rips' ? '' : 'none';
+  if (mode === 'rips') loadRips(); else rpStopPoll();
   if (mode === 'aigen') loadAIVideos();
   if (mode === 'influencer') { loadGjAvatars(); loadGenjutsu(); loadGjRates(); }
   if (mode === 'avatars') loadAvatars();
@@ -2734,6 +2788,351 @@ wireEstimates();
 setUgcMode('clip');
 loadTasks();
 setInterval(loadTasks, 10000);
+
+// ══ Rip shorts ═════════════════════════════════════════════════════════
+const RP_CHUNK = 8 * 1024 * 1024;
+const RP_MAX = 1024 * 1024 * 1024;
+const RP_STATUS_TEXT = { uploaded: 'uploaded', processing: 'processing', ready_for_review: 'ready for review', revising: 'revising', approved: 'approved', publishing: 'publishing', published: 'published', failed: 'failed' };
+const RP_CHIP_TEXT = { shorter: 'Shorter', calmer: 'Calmer', more_excited: 'More excited', new_hook: 'New hook', different_voice_take: 'Different voice take', longer_value_zoom: 'Longer value zoom', caption_only: 'Caption only' };
+let rpCards = [];
+let rpJobs = [];
+let rpCreds = null;
+let rpPollTimer = null;
+const rpOpen = {};      // jobId → review panel open
+const rpSel = {};       // jobId → selected version
+const rpChips = {};     // jobId → Set of chips
+const rpDirty = {};     // jobId → user is editing, skip re-render
+const rpSig = {};       // jobId → last render signature
+
+function rpStopPoll() { if (rpPollTimer) { clearInterval(rpPollTimer); rpPollTimer = null; } }
+function rpFmtSize(b) { return b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(1) + ' MB'; }
+function rpKeyOf(f) { return 'rp_up:' + f.name + ':' + f.size + ':' + f.lastModified; }
+function rpLsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function rpLsSet(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }
+function rpXLen(s) { s = String(s || ''); let n = 0; const t = s.replace(/https?:\/\/\S+/g, () => { n += 23; return ''; }); for (const ch of t) { const c = ch.codePointAt(0); n += (c <= 0x10FF || (c >= 0x2000 && c <= 0x200D) || (c >= 0x2010 && c <= 0x201F) || (c >= 0x2032 && c <= 0x2037)) ? 1 : 2; } return n; }
+
+async function loadRips() {
+  if (!rpCards.length) rpAddCard(true);
+  rpRenderCards();
+  rpLoadCreds();
+  await rpLoadJobs();
+  rpStopPoll();
+  rpPollTimer = setInterval(() => { if (currentMode === 'rips') rpLoadJobs(); }, 4000);
+}
+
+async function rpLoadCreds(check) {
+  try {
+    const r = await fetch('/rips/credentials' + (check ? '?check=1' : ''));
+    rpCreds = await r.json();
+    if (rpCreds.brand) {
+      const t = rpCreds.brand.charAt(0) + rpCreds.brand.slice(1).toLowerCase() + ' rips';
+      document.getElementById('rp-tab-label').textContent = t;
+      document.getElementById('rp-title').textContent = t;
+    }
+  } catch { rpCreds = null; }
+  rpRenderCreds();
+}
+
+function rpRenderCreds() {
+  const el = document.getElementById('rp-creds');
+  if (!rpCreds) { el.innerHTML = '<div class="rp-warn">Could not read publishing credentials.</div>'; return; }
+  const row = (name, c) => {
+    const who = c.username ? ' @' + esc(c.username) : '';
+    if (c.ok) return `<div class="rp-small"><span style="color:var(--success)">●</span> ${name}${who}: ready${(c.warnings || []).map(w => `<div class="rp-warn">⚠ ${esc(w)}</div>`).join('')}</div>`;
+    return `<div class="rp-small"><span style="color:var(--danger)">●</span> ${name}: credentials missing<ul style="margin:4px 0 4px 18px;">${(c.missing || []).map(m => `<li>${esc(m)}</li>`).join('')}</ul>${(c.warnings || []).map(w => `<div class="rp-warn">⚠ ${esc(w)}</div>`).join('')}</div>`;
+  };
+  el.innerHTML = `<div class="form-label">Publishing</div>${row('Instagram', rpCreds.instagram)}${row('X', rpCreds.x)}<button class="rp-btn" style="margin-top:6px;" onclick="rpLoadCreds(true)">Check tokens</button>`;
+}
+
+function rpAddCard(silent) {
+  rpCards.push({ key: Math.random().toString(36).slice(2), label: '', pull: null, market: null });
+  if (!silent) rpRenderCards();
+}
+function rpRemoveCard(key) { rpCards = rpCards.filter(c => c.key !== key || c.pull?.busy || c.market?.busy); if (!rpCards.length) rpAddCard(true); rpRenderCards(); }
+
+function rpSlotHtml(c, kind) {
+  const s = c[kind];
+  const title = kind === 'pull' ? 'Pull clip' : 'Market check clip';
+  const pct = s ? Math.floor((s.received / s.size) * 100) : 0;
+  const body = !s ? `<div style="font-weight:600;color:var(--text);">${title}</div><div>drop or click</div>`
+    : `<div style="font-weight:600;color:var(--text);">${title}</div><div style="word-break:break-all;">${esc(s.name)} · ${rpFmtSize(s.size)}</div>
+       <div>${s.done ? 'uploaded' : s.err ? '<span style="color:var(--danger)">' + esc(s.err) + '</span>' : s.busy ? pct + '%' : 'paused at ' + pct + '%'}</div>
+       ${!s.done && !s.busy && s.file ? `<button class="rp-btn" style="margin-top:6px;" onclick="event.stopPropagation();rpUpload(${jq(c.key)},${jq(kind)})">Resume</button>` : ''}`;
+  return `<div class="rp-drop ${s && s.done ? 'done' : ''}" data-key="${esc(c.key)}" data-kind="${kind}"
+    onclick="rpPick(${jq(c.key)},${jq(kind)})" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
+    ondrop="event.preventDefault();this.classList.remove('over');rpSetFile(${jq(c.key)},${jq(kind)},event.dataTransfer.files[0])">
+    ${body}<div class="rp-bar"><div id="rp-bar-${esc(c.key)}-${kind}" style="width:${pct}%"></div></div></div>`;
+}
+
+function rpRenderCards() {
+  const el = document.getElementById('rp-cards');
+  el.innerHTML = rpCards.map((c, i) => `<div class="rp-card">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div class="form-label" style="margin:0;">Card ${i + 1}</div>
+      <input class="form-input" style="flex:1;padding:6px 10px;" placeholder="Label (optional)" value="${esc(c.label)}" oninput="rpCards.find(x=>x.key===${jq(c.key)}).label=this.value" />
+      <button class="rp-btn" onclick="rpRemoveCard(${jq(c.key)})" title="Remove">✕</button>
+    </div>
+    <div class="rp-drops">${rpSlotHtml(c, 'pull')}${rpSlotHtml(c, 'market')}</div></div>`).join('');
+  const ready = rpCards.filter(c => c.pull?.done && c.market?.done);
+  const busy = rpCards.some(c => c.pull?.busy || c.market?.busy);
+  const btn = document.getElementById('rp-start');
+  btn.disabled = !ready.length || busy;
+  btn.textContent = ready.length > 1 ? `Start ${ready.length} cards` : 'Start';
+}
+
+function rpPick(key, kind) {
+  const c = rpCards.find(x => x.key === key); if (c && c[kind] && (c[kind].busy || c[kind].done)) return;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.mp4,.mov,video/mp4,video/quicktime';
+  inp.onchange = () => inp.files[0] && rpSetFile(key, kind, inp.files[0]);
+  inp.click();
+}
+
+async function rpSetFile(key, kind, file) {
+  const c = rpCards.find(x => x.key === key); if (!c || !file) return;
+  if (c[kind] && c[kind].busy) return;
+  const ext = file.name.toLowerCase().split('.').pop();
+  if (!['mp4', 'mov'].includes(ext)) { c[kind] = { name: file.name, size: file.size, received: 0, err: 'only mp4 or mov' }; return rpRenderCards(); }
+  if (file.size > RP_MAX) { c[kind] = { name: file.name, size: file.size, received: 0, err: 'larger than 1 GB' }; return rpRenderCards(); }
+  c[kind] = { file, name: file.name, size: file.size, received: 0, id: null, done: false, busy: false, err: null };
+  rpUpload(key, kind);
+}
+
+async function rpUpload(key, kind) {
+  const c = rpCards.find(x => x.key === key); const s = c && c[kind]; if (!s || !s.file || s.busy) return;
+  s.busy = true; s.err = null; rpRenderCards();
+  const lsKey = rpKeyOf(s.file);
+  try {
+    // Resume a previous upload of the same file when the server still has it.
+    if (!s.id) {
+      const prev = rpLsGet(lsKey);
+      if (prev) { try { const r = await fetch('/rips/uploads/' + encodeURIComponent(prev)); if (r.ok) { const u = await r.json(); if (u.size === s.size) { s.id = u.id; s.received = u.received; s.done = u.done; } } } catch {} }
+    }
+    if (!s.id) {
+      const r = await fetch('/rips/uploads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.name, size: s.size, kind }) });
+      const u = await r.json(); if (!r.ok) throw new Error(u.error || 'upload refused');
+      s.id = u.id; s.received = 0; rpLsSet(lsKey, u.id);
+    } else {
+      const r = await fetch('/rips/uploads/' + encodeURIComponent(s.id)); if (r.ok) { const u = await r.json(); s.received = u.received; s.done = u.done; }
+    }
+    let fails = 0;
+    while (!s.done) {
+      const end = Math.min(s.size, s.received + RP_CHUNK);
+      try {
+        const r = await fetch(`/rips/uploads/${encodeURIComponent(s.id)}/chunk?offset=${s.received}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: s.file.slice(s.received, end) });
+        const u = await r.json().catch(() => ({}));
+        if (r.status === 409 && typeof u.received === 'number') { s.received = u.received; continue; }
+        if (!r.ok) throw new Error(u.error || 'HTTP ' + r.status);
+        s.received = u.received; s.done = !!u.done; fails = 0;
+      } catch (e) {
+        if (++fails > 5) throw e;
+        await new Promise(r => setTimeout(r, 1500 * fails));
+        try { const r = await fetch('/rips/uploads/' + encodeURIComponent(s.id)); if (r.ok) { const u = await r.json(); s.received = u.received; s.done = u.done; } } catch {}
+      }
+      const bar = document.getElementById(`rp-bar-${key}-${kind}`); if (bar) bar.style.width = Math.floor((s.received / s.size) * 100) + '%';
+      const drop = bar && bar.closest('.rp-drop'); if (drop && drop.children[2]) drop.children[2].textContent = Math.floor((s.received / s.size) * 100) + '%';
+    }
+    rpLsSet(lsKey, null);
+  } catch (e) { s.err = String(e.message || e).slice(0, 80); }
+  s.busy = false; rpRenderCards();
+}
+
+async function rpStart() {
+  const ready = rpCards.filter(c => c.pull?.done && c.market?.done);
+  if (!ready.length) return;
+  const st = document.getElementById('rp-start-st'); st.textContent = 'Starting…';
+  try {
+    const r = await fetch('/rips/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cards: ready.map(c => ({ pull: c.pull.id, market: c.market.id, label: c.label })) }) });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'failed');
+    st.textContent = `Started ${d.jobs.length} job${d.jobs.length > 1 ? 's' : ''}`;
+    const keys = new Set(ready.map(c => c.key));
+    rpCards = rpCards.filter(c => !keys.has(c.key)); if (!rpCards.length) rpAddCard(true);
+    rpRenderCards(); rpLoadJobs();
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 100); }
+}
+
+async function rpLoadJobs() {
+  try { const r = await fetch('/rips/jobs'); if (!r.ok) return; rpJobs = await r.json(); } catch { return; }
+  rpRenderJobs();
+}
+
+function rpRenderJobs() {
+  const el = document.getElementById('rp-jobs');
+  if (!rpJobs.length) { el.innerHTML = '<div class="rp-small">No rip shorts yet.</div>'; for (const k in rpSig) delete rpSig[k]; return; }
+  const ids = rpJobs.map(j => j.id);
+  // Drop nodes of deleted jobs; keep order.
+  [...el.children].forEach(n => { if (!n.dataset.job || !ids.includes(n.dataset.job)) n.remove(); });
+  let prev = null;
+  for (const j of rpJobs) {
+    let node = el.querySelector(`[data-job="${CSS.escape(j.id)}"]`);
+    const sig = [j.updated_at, j.status, j.step, j.current_version, (j.versions || []).length, rpOpen[j.id] ? 1 : 0, rpSel[j.id] || '', [...(rpChips[j.id] || [])].join(',')].join('|');
+    if (!node) { node = document.createElement('div'); node.className = 'rp-job'; node.dataset.job = j.id; }
+    if (rpSig[j.id] !== sig && !(rpDirty[j.id] && node.isConnected)) { node.innerHTML = rpJobHtml(j); rpSig[j.id] = sig; }
+    if (prev ? prev.nextSibling !== node : el.firstChild !== node) el.insertBefore(node, prev ? prev.nextSibling : el.firstChild);
+    prev = node;
+  }
+}
+
+function rpVersion(j) {
+  const want = rpSel[j.id] || j.current_version;
+  return (j.versions || []).find(v => v.n === want) || (j.versions || []).slice(-1)[0] || null;
+}
+
+function rpJobHtml(j) {
+  const steps = ['normalize', 'analyze', 'edit', 'script', 'voice', 'mix', 'captions', 'final', 'post'];
+  const stepTxt = j.step ? ` · ${esc(j.step)} (${steps.indexOf(j.step) + 1}/${steps.length})` : '';
+  const pend = j.pending ? ` · building v${j.pending.n}` : '';
+  const v = rpVersion(j);
+  const canReview = (j.versions || []).some(x => x.status === 'ready');
+  const head = `<div class="rp-head">
+    <div style="font-weight:600;font-size:14px;">${esc(j.card_label || j.id)}</div>
+    <span class="rp-st ${esc(j.status)}">${esc(RP_STATUS_TEXT[j.status] || j.status)}</span>
+    <span class="rp-small">${stepTxt}${pend}${j.current_version ? ' · v' + j.current_version : ''}</span>
+    <span style="flex:1"></span>
+    ${canReview ? `<button class="rp-btn" onclick="rpToggle(${jq(j.id)})">${rpOpen[j.id] ? 'Close' : 'Review'}</button>` : ''}
+    ${j.status === 'failed' ? `<button class="rp-btn gold" onclick="rpRetry(${jq(j.id)})">Retry</button>` : ''}
+    <button class="rp-btn" onclick="rpDelete(${jq(j.id)})" title="Delete">✕</button>
+  </div>
+  ${j.error ? `<div class="rp-err">${esc(j.error)}</div>` : ''}
+  <div class="rp-small" style="margin-top:4px;">${esc(j.uploads?.pull?.name || '')} + ${esc(j.uploads?.market?.name || '')}</div>`;
+  if (!rpOpen[j.id] || !v) return head + rpLogHtml(j);
+  return head + rpReviewHtml(j, v) + rpLogHtml(j);
+}
+
+function rpLogHtml(j) {
+  const lines = (j.log || []).slice(-12);
+  if (!lines.length) return '';
+  return `<details style="margin-top:8px;"><summary class="rp-small" style="cursor:pointer;">Log</summary>${lines.map(l => `<div class="rp-small" style="font-family:var(--font-data);">${esc((l.t || '').slice(11, 19))} ${esc(l.msg)}</div>`).join('')}</details>`;
+}
+
+function rpReviewHtml(j, v) {
+  const a = j.analysis || {};
+  const val = x => x == null ? '<span style="opacity:.5">null</span>' : esc(x);
+  const money = x => x == null ? val(x) : '$' + esc(Number(x).toFixed(2));
+  const card = [a.card, a.set].filter(Boolean).join(' · ');
+  const grade = a.grader || a.grade ? `${a.grader || '?'} ${a.grade ?? '?'}` : null;
+  const ready = (j.versions || []).filter(x => x.status === 'ready');
+  const sel = `<select class="form-select" style="width:auto;padding:5px 8px;" onchange="rpSel[${jq(j.id)}]=Number(this.value);rpRenderJobs()">${ready.map(x => `<option value="${x.n}" ${x.n === v.n ? 'selected' : ''}>v${x.n}${x.n === j.current_version ? ' (latest)' : ''}${x.n === j.approved_version ? ' · approved' : ''}</option>`).join('')}</select>`;
+  const segs = ((v.script || {}).segments || []).map(s => `<div class="rp-seg"><b>${esc(Number(s.start).toFixed(1))}s</b>${esc(s.text)}</div>`).join('');
+  const files = ['analysis.json', 'script.json', 'post.txt'].concat(v.dry_run ? ['publish-dry-run.json'] : []).map(f => `<a href="${safeUrl(`/rips/jobs/${encodeURIComponent(j.id)}/v/${v.n}/file/${f}`)}" target="_blank" class="rp-small" style="margin-right:10px;">${f}</a>`).join('');
+  const cap = v.captions || {};
+  const pub = v.publish || {};
+  const pubRow = p => {
+    const s = pub[p]; if (!s) return '';
+    const name = p === 'x' ? 'X' : 'Instagram';
+    return `<div class="rp-small">${name}: ${esc(s.status || '')}${s.permalink ? ` · <a href="${safeUrl(s.permalink)}" target="_blank">open</a>` : ''}${s.error ? ` · <span style="color:var(--danger)">${esc(s.error)}</span>` : ''}
+      ${s.status === 'failed' ? ` <button class="rp-btn" style="padding:3px 8px;" onclick="rpPublishRetry(${jq(j.id)},${v.n},${jq(p)})">Retry ${name}</button>` : ''}</div>`;
+  };
+  const chips = rpChips[j.id] || (rpChips[j.id] = new Set());
+  const canRevise = ['ready_for_review', 'approved', 'published', 'failed'].includes(j.status) && !j.pending;
+  return `<div class="rp-review">
+    <div>
+      <video controls playsinline preload="metadata" src="${safeUrl(v.video_url || '')}"></video>
+      <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">${sel}<a class="rp-btn" href="${safeUrl(v.video_url || '')}" download="${esc(j.id)}_v${v.n}.mp4">Download</a></div>
+      <div class="rp-small" style="margin-top:6px;">${v.duration ? esc(Number(v.duration).toFixed(1)) + ' s · ' : ''}${esc((v.created_at || '').slice(0, 16).replace('T', ' '))}</div>
+      ${(v.notes || []).map(n => `<div class="rp-warn">${esc(n)}</div>`).join('')}
+    </div>
+    <div>
+      <div class="form-label">Analysis</div>
+      <div class="rp-kv"><span>Card</span><span>${val(card || null)}</span><span>Grade</span><span>${val(grade)}</span><span>Platform</span><span>${val(a.platform)}</span><span>Pack price</span><span>${money(a.pack_price)}</span><span>Buyback</span><span>${money(a.buyback)}</span><span>Market value</span><span>${money(a.market_value)}</span><span>Outcome</span><span>${val(a.outcome)}</span><span>Reveal at</span><span>${a.reveal_t == null ? val(null) : esc(a.reveal_t) + ' s'}</span></div>
+      <div class="form-label" style="margin-top:12px;">Script v${v.n}</div>${segs || '<div class="rp-small">none</div>'}
+      <div style="margin-top:6px;">${files}</div>
+
+      <div class="form-label" style="margin-top:14px;">Caption Instagram</div>
+      <textarea class="form-textarea" style="min-height:110px;" id="rp-cap-ig-${esc(j.id)}" onfocus="rpDirty[${jq(j.id)}]=1">${esc(cap.instagram || '')}</textarea>
+      <div class="form-label" style="margin-top:8px;">Caption X <span id="rp-xc-${esc(j.id)}">${rpXLen(cap.x || '')}/280</span></div>
+      <textarea class="form-textarea" style="min-height:80px;" id="rp-cap-x-${esc(j.id)}" onfocus="rpDirty[${jq(j.id)}]=1" oninput="rpXCount(${jq(j.id)},this.value)">${esc(cap.x || '')}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;"><button class="rp-btn" onclick="rpSaveCaption(${jq(j.id)},${v.n})">Save captions</button><span class="rp-small" id="rp-cap-st-${esc(j.id)}"></span></div>
+
+      <div class="form-label" style="margin-top:14px;">Revise</div>
+      <div>${Object.keys(RP_CHIP_TEXT).map(c => `<button class="rp-chip ${chips.has(c) ? 'on' : ''}" onclick="rpChip(${jq(j.id)},${jq(c)})">${esc(RP_CHIP_TEXT[c])}</button>`).join('')}</div>
+      <textarea class="form-textarea" style="min-height:60px;" id="rp-rev-${esc(j.id)}" placeholder="What should change? (optional with a chip)" onfocus="rpDirty[${jq(j.id)}]=1"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+        <button class="rp-btn" ${canRevise ? '' : 'disabled'} onclick="rpRevise(${jq(j.id)})">Make v${(j.versions || []).length + 1}</button>
+        <button class="rp-btn gold" ${v.status === 'ready' && !['publishing'].includes(j.status) ? '' : 'disabled'} onclick="rpApproveDialog(${jq(j.id)},${v.n})">Approve v${v.n}…</button>
+        <span class="rp-small" id="rp-act-st-${esc(j.id)}"></span>
+      </div>
+      ${v.dry_run ? `<div class="rp-small" style="margin-top:6px;">Dry run built ${esc((v.dry_run.at || '').slice(0, 16).replace('T', ' '))} for ${esc((v.dry_run.platforms || []).join(', '))}, nothing sent.</div>` : ''}
+      ${pubRow('instagram')}${pubRow('x')}
+    </div></div>`;
+}
+
+function rpToggle(id) { rpOpen[id] = !rpOpen[id]; delete rpDirty[id]; rpRenderJobs(); }
+function rpChip(id, c) { const s = rpChips[id] || (rpChips[id] = new Set()); s.has(c) ? s.delete(c) : s.add(c); const t = document.getElementById('rp-rev-' + id); const keep = t ? t.value : ''; delete rpDirty[id]; rpRenderJobs(); const t2 = document.getElementById('rp-rev-' + id); if (t2) t2.value = keep; if (keep) rpDirty[id] = 1; }
+function rpXCount(id, val) { const el = document.getElementById('rp-xc-' + id); const n = rpXLen(val); el.textContent = n + '/280'; el.style.color = n > 280 ? 'var(--danger)' : ''; }
+
+async function rpSaveCaption(id, n) {
+  const st = document.getElementById('rp-cap-st-' + id);
+  const ig = document.getElementById('rp-cap-ig-' + id).value, x = document.getElementById('rp-cap-x-' + id).value;
+  st.textContent = 'Saving…';
+  try {
+    const r = await fetch(`/rips/jobs/${encodeURIComponent(id)}/caption`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: n, instagram: ig, x }) });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'failed');
+    st.textContent = 'Saved'; delete rpDirty[id]; rpLoadJobs();
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 100); }
+}
+
+async function rpRevise(id) {
+  const st = document.getElementById('rp-act-st-' + id);
+  const text = document.getElementById('rp-rev-' + id).value.trim();
+  const chips = [...(rpChips[id] || [])];
+  if (!text && !chips.length) { st.textContent = 'Add a note or pick a chip'; return; }
+  st.textContent = 'Planning revision…';
+  try {
+    const r = await fetch(`/rips/jobs/${encodeURIComponent(id)}/revise`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, chips }) });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error || 'failed');
+    st.textContent = `Building v${d.version}: reruns ${d.steps.join(', ')}`;
+    rpChips[id] = new Set(); delete rpDirty[id]; rpSel[id] = null;
+    setTimeout(rpLoadJobs, 600);
+  } catch (e) { st.textContent = 'Failed: ' + String(e.message).slice(0, 120); }
+}
+
+async function rpRetry(id) { try { await fetch(`/rips/jobs/${encodeURIComponent(id)}/retry`, { method: 'POST' }); } catch {} rpLoadJobs(); }
+async function rpDelete(id) {
+  if (!confirm('Delete this rip short and all its versions?')) return;
+  const r = await fetch(`/rips/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+  if (r && !r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Delete failed'); }
+  rpLoadJobs();
+}
+async function rpPublishRetry(id, n, platform) {
+  const st = document.getElementById('rp-act-st-' + id);
+  const r = await fetch(`/rips/jobs/${encodeURIComponent(id)}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: n, platform }) }).catch(() => null);
+  const d = r ? await r.json().catch(() => ({})) : {};
+  if (st) st.textContent = r && r.ok ? 'Publishing…' : 'Failed: ' + (d.error || 'network') + (d.details ? ' (' + Object.values(d.details).flat().join('; ') + ')' : '');
+  rpLoadJobs();
+}
+
+function rpApproveDialog(id, n) {
+  let dlg = document.getElementById('rp-approve');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'rp-approve'; dlg.style.cssText = 'background:hsl(0 0% 5%);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:420px;width:92vw;'; document.body.appendChild(dlg); }
+  const c = rpCreds || { instagram: {}, x: {} };
+  const line = (key, name) => `<label style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13px;"><input type="checkbox" id="rp-ap-${key}" checked style="margin-top:3px;"> <span>${name}${c[key]?.username ? ' @' + esc(c[key].username) : ''}${c[key]?.ok ? '' : `<div class="rp-warn">credentials missing: ${esc((c[key]?.missing || []).join('; '))}</div>`}</span></label>`;
+  dlg.innerHTML = `<div style="font-weight:600;margin-bottom:8px;">Approve v${n}</div>
+    ${line('instagram', 'Instagram Reel')}${line('x', 'X post')}
+    <label style="display:flex;gap:8px;margin:12px 0;font-size:13px;"><input type="checkbox" id="rp-ap-dry" checked> Dry run (build the API requests, send nothing)</label>
+    <div class="rp-small" id="rp-ap-st" style="min-height:16px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="rp-btn" onclick="document.getElementById('rp-approve').close()">Cancel</button>
+      <button class="rp-btn gold" onclick="rpApprove(${jq(id)},${n})">Approve</button></div>`;
+  dlg.showModal();
+}
+
+async function rpApprove(id, n) {
+  const st = document.getElementById('rp-ap-st');
+  const platforms = ['instagram', 'x'].filter(p => document.getElementById('rp-ap-' + p).checked);
+  const dry = document.getElementById('rp-ap-dry').checked;
+  if (!platforms.length) { st.textContent = 'Pick Instagram and/or X'; return; }
+  if (!dry && !confirm('This publishes the video for real on ' + platforms.join(' and ') + '. Continue?')) return;
+  st.textContent = dry ? 'Building requests…' : 'Starting…';
+  try {
+    const r = await fetch(`/rips/jobs/${encodeURIComponent(id)}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: n, platforms, dry_run: dry }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error((d.error || 'failed') + (d.details ? ': ' + Object.entries(d.details).map(([k, v]) => k + ' needs ' + v.join(', ')).join('; ') : ''));
+    document.getElementById('rp-approve').close();
+    const a = document.getElementById('rp-act-st-' + id);
+    if (a) a.textContent = dry ? 'Dry run saved as publish-dry-run.json, nothing sent' : 'Publishing ' + d.publishing.join(', ');
+    rpLoadJobs();
+  } catch (e) { st.textContent = String(e.message).slice(0, 200); }
+}
 </script>
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>

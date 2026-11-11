@@ -195,6 +195,23 @@
             '!From a finished clip you can post or schedule it to a connected social account, or send it to the Social Media Manager.',
           ],
         },
+        rips: {
+          title: 'Rip shorts',
+          intro: 'Turns two screen recordings of a pack opening into a 20 to 30 second vertical short with an AI voice-over, captions and a market check, ready for review.',
+          steps: [
+            'Drop the pull clip (the pack opening) and the market check clip (the value lookup of the same card) on a card. Uploads are resumable up to 1 GB each.',
+            'Add more cards if you like, then press Start. Each card becomes its own job.',
+            'The pipeline normalizes, reads the screen, edits, writes a script, records the voice, mixes, adds captions and exports. The current step shows next to the status.',
+            'Open Review: watch the video, check the analysis (anything unreadable stays empty), edit the captions per platform.',
+            'Not right? Pick chips (shorter, calmer, new hook, ...) and/or write a note, then make a new version. Only the needed steps run again.',
+            '!Approve opens a dialog with Instagram and X. Leave Dry run on to only build the API requests without sending anything.',
+          ],
+          tips: [
+            'If the market check shows a different card than the pull, the job fails on purpose.',
+            'Values are only used when they are readable on screen. Nothing is guessed.',
+            'Older versions stay available in the version selector.',
+          ],
+        },
       },
     },
 
