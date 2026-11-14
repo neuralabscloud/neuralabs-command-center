@@ -119,15 +119,17 @@
           ],
         },
         voiceover: {
-          title: 'Voiceover',
-          intro: 'Turns text into spoken audio with a realistic AI voice.',
+          title: 'Voice Tools',
+          intro: 'Text to speech turns a script into spoken audio. Voice enhancer cleans up an existing recording: background noise, music and room echo go, the voice stays.',
           steps: [
-            'Write the script, choose the engine, the voice, an emotion and the speed.',
-            'Press Generate Voiceover. The audio file appears in the list below to play or download.',
+            'Text to speech: write the script, choose the engine, the voice, an emotion and the speed, then press Generate Voiceover.',
+            'Voice enhancer: upload an audio or video file (or paste a link), keep "Even out the volume" on for social media, and press Enhance voice.',
+            'Results appear in the list below to play or download. A video keeps its original picture with the cleaned sound under it.',
           ],
           tips: [
             'Voiceovers you make here can be used as the audio track in Video Tools → Lipsync.',
             'Punctuation matters: commas and full stops create natural pauses.',
+            'The enhancer needs at least 5 seconds and at most 1 hour of audio. It removes everything that is not a voice, including music you wanted to keep.',
           ],
         },
         aigen: {

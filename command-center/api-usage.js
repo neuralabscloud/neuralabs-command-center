@@ -123,17 +123,19 @@ const STACK_FEATURES = [
   [/telegram-autopilot\.js/, "Telegram Autopilot"],
   [/slide-designer-ai\.js/, "Designer (slides)"],
   [/opusclip-agent\.js/, "Clipper"],
+  [/rips-pipeline\.js/, "Rip shorts"],
 ];
 
 // Route prefixes → feature, for calls made while handling an HTTP request.
 const ROUTE_FEATURES = [
+  [/^\/rips\//, "Rip shorts"],
   [/^\/ctrl\/chat/, "AI Chat"],
   [/^\/calendar\//, "Calendar"],
   [/^\/marketeer\//, "Marketeer"],
   [/^\/growth\//, "Growth Marketeer"],
   [/^\/settings\//, "Settings (connection tests)"],
   [/^\/community\//, "Social Media Manager"],
-  [/^\/(ugc|content|video|ai-video|opusclip|clipper)/, "Content Creator"],
+  [/^\/(ugc|content|video|ai-video|opusclip|clipper|audio)/, "Content Creator"],
   [/^\/(designer|design|slides|nanobanana)/, "Designer"],
   [/^\/(ads)\//, "Ads"],
   [/^\/(social|yt)\//, "Social Connections"],
@@ -487,6 +489,12 @@ function meterFetch(url, init, res) {
     if (/\/v1\/dubbing\b/.test(u.pathname)) { // status polls and downloads are free
       // Billed per minute of source audio; the caller passes the length along.
       return method === "POST" && ok ? record("elevenlabs", { secs: Number((als.getStore() || {}).video_secs) || 0 }, { feature, model: "dubbing" }) : undefined;
+    }
+    if (/\/v1\/audio-isolation\b/.test(u.pathname)) { // Voice Isolator: billed in credits per minute of audio
+      if (method !== "POST" || !ok) return;
+      const hdr = Number(res.headers && res.headers.get && res.headers.get("character-cost"));
+      const secs = Number((als.getStore() || {}).video_secs) || 0;
+      return record("elevenlabs", { chars: hdr > 0 ? hdr : Math.ceil(secs / 60 * 1000) }, { feature, model: "audio-isolation" });
     }
     if (method === "POST" && /text-to-speech|text-to-dialogue|sound-generation/.test(u.pathname) && ok) {
       const b = parseBody(init && init.body) || {};

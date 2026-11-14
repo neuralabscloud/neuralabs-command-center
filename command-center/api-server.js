@@ -3643,6 +3643,133 @@ app.delete("/audio/voiceovers/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── VOICE ENHANCER (ElevenLabs Voice Isolator) ───────────────────────
+// Strips background noise, music and room echo from a recording and keeps the
+// voice. Takes audio or video: only the audio track goes to ElevenLabs, a video
+// comes back with the original picture untouched and the clean voice under it.
+const ENHANCE_DIR = path.join(VOICEOVER_DIR, "enhanced");
+fs.mkdirSync(ENHANCE_DIR, { recursive: true });
+const ENHANCE_MIN_SECS = 4.6;   // ElevenLabs refuses shorter audio (audio_too_short)
+const ENHANCE_MAX_SECS = 3600;  // and longer than one hour
+const ENHANCE_TASKS = "voice-enhance-tasks.json";
+const enhanceUpload = (req, res, next) =>
+  aiVideoUpload.single("file")(req, res, (err) => {
+    if (!err) return next();
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ error: `File is too large (max ${VIDEO_UPLOAD_MAX_MB} MB).` });
+    res.status(400).json({ error: "Upload failed: " + err.message });
+  });
+
+async function enhanceVoice(task, src) {
+  const key = (process.env.ELEVENLABS_API_KEY || "").trim();
+  if (!key) throw new Error("No ElevenLabs API key configured (Settings → API Integrations).");
+  const work = path.join(__dirname, "data", "ai-video-uploads", `enhance-${task.id}`);
+  fs.mkdirSync(work, { recursive: true });
+  try {
+    const probe = await execFileP("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type:format=duration", "-of", "default=nw=1", src]);
+    if (!/codec_type=audio/.test(probe)) throw new Error("The file has no audio track, so there is no voice to enhance.");
+    const hasVideo = /codec_type=video/.test(probe) && task.keep_video;
+    const secs = Number((probe.match(/duration=([\d.]+)/) || [])[1]) || 0;
+    if (secs && secs < ENHANCE_MIN_SECS) throw new Error(`The audio is ${secs.toFixed(1)} s long; ElevenLabs needs at least ${ENHANCE_MIN_SECS} s.`);
+    if (secs > ENHANCE_MAX_SECS) throw new Error("The audio is longer than one hour. Split it into shorter parts.");
+
+    // Only the audio goes out: a few MB even for a long video.
+    const audioIn = path.join(work, "source.m4a");
+    await execFileP("ffmpeg", ["-y", "-v", "error", "-i", src, "-vn", "-c:a", "aac", "-b:a", "192k", audioIn], { timeout: 1800000 });
+    const fd = new FormData();
+    fd.append("audio", await fs.openAsBlob(audioIn, { type: "audio/mp4" }), "source.m4a");
+    const r = await apiUsage.withVideoSeconds(secs, () => fetch("https://api.elevenlabs.io/v1/audio-isolation", { method: "POST", headers: { "xi-api-key": key }, body: fd }));
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      const d = j.detail;
+      throw new Error("ElevenLabs: " + String((d && (d.message || d)) || `HTTP ${r.status}`).slice(0, 300));
+    }
+    const isolated = path.join(work, "isolated.mp3");
+    fs.writeFileSync(isolated, Buffer.from(await r.arrayBuffer()));
+
+    // Optional loudness pass so the clean voice sits at social-media level.
+    let voice = isolated;
+    if (task.normalize) {
+      voice = path.join(work, "voice.m4a");
+      await execFileP("ffmpeg", ["-y", "-v", "error", "-i", isolated, "-af", "loudnorm=I=-14:TP=-1:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", voice], { timeout: 1800000 });
+    }
+
+    let outFile, ext;
+    if (hasVideo) {
+      ext = ".mp4";
+      outFile = path.join(ENHANCE_DIR, task.id + ext);
+      const mux = (videoArgs) => execFileP("ffmpeg", ["-y", "-v", "error", "-i", src, "-i", voice,
+        "-map", "0:v:0", "-map", "1:a:0", ...videoArgs, "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", outFile], { timeout: 3600000 });
+      try { await mux(["-c:v", "copy"]); }
+      catch { await mux(["-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv420p"]); }
+    } else if (task.normalize) {
+      ext = ".m4a"; outFile = path.join(ENHANCE_DIR, task.id + ext); fs.copyFileSync(voice, outFile);
+    } else {
+      ext = ".mp3"; outFile = path.join(ENHANCE_DIR, task.id + ext); fs.copyFileSync(isolated, outFile);
+    }
+    return { result_url: `/voiceovers/enhanced/${task.id}${ext}`, duration: Math.round(secs) || null, is_video: hasVideo };
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+}
+
+app.get("/audio/enhance", (_req, res) => res.json(apiUsage.attachCosts(readTaskFile(ENHANCE_TASKS))));
+
+app.post("/audio/enhance", enhanceUpload, (req, res) => {
+  const b = req.body || {};
+  const link = String(b.source_link || "").trim();
+  const upload = req.file ? req.file.path : "";
+  const drop = () => { if (upload) { try { fs.unlinkSync(upload); } catch {} } };
+  if (!(process.env.ELEVENLABS_API_KEY || "").trim()) { drop(); return res.status(400).json({ error: "ElevenLabs is not configured: add the API key in Settings." }); }
+  if (!upload && !link) return res.status(400).json({ error: "Upload an audio or video file, or paste a link." });
+  if (!upload && !/^https?:\/\/\S+$/i.test(link)) return res.status(400).json({ error: "The link must start with http:// or https://" });
+  if (!upload && !ytDlpBin()) return res.status(400).json({ error: "yt-dlp is not installed on the server, so links can't be fetched. Upload the file instead." });
+  const flag = (v, dflt) => v === undefined || v === "" ? dflt : /^(1|true|on|yes)$/i.test(String(v));
+  const name = String((req.file && req.file.originalname) || link).replace(/[\r\n]/g, " ").slice(0, 80);
+  const task = {
+    id: genId(), status: "processing",
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    title: name, source: upload ? "upload" : "link",
+    keep_video: flag(b.keep_video, true), normalize: flag(b.normalize, true),
+    result_url: null, duration: null, is_video: false, error: null,
+  };
+  const tasks = readTaskFile(ENHANCE_TASKS);
+  tasks.unshift(task);
+  if (tasks.length > 100) {
+    for (const old of tasks.slice(100)) if (old.result_url) { try { fs.unlinkSync(path.join(ENHANCE_DIR, path.basename(old.result_url))); } catch {} }
+    tasks.length = 100;
+  }
+  writeTaskFile(ENHANCE_TASKS, tasks);
+  res.status(201).json(task);
+
+  apiUsage.forTask(task.id, async () => {
+    let update, src = upload;
+    try {
+      if (!src) src = await downloadLinkedVideo(link, `enhance-${task.id}`);
+      update = { status: "completed", ...(await enhanceVoice(task, src)) };
+      console.log(`[VOICE-ENHANCE] ${task.id} done (${update.duration || "?"} s, ${update.is_video ? "video" : "audio"})`);
+    } catch (e) {
+      update = { status: "failed", error: String(e.message).slice(0, 400) };
+      console.error("[VOICE-ENHANCE] failed:", String(e.message).slice(0, 200));
+    } finally {
+      if (src) { try { fs.unlinkSync(src); } catch {} }
+    }
+    const all = readTaskFile(ENHANCE_TASKS);
+    const idx = all.findIndex(t => t.id === task.id);
+    if (idx === -1) return;
+    Object.assign(all[idx], update, { updated_at: new Date().toISOString() });
+    writeTaskFile(ENHANCE_TASKS, all);
+  });
+});
+
+app.delete("/audio/enhance/:id", (req, res) => {
+  const tasks = readTaskFile(ENHANCE_TASKS);
+  const t = tasks.find(x => x.id === req.params.id);
+  if (t && t.result_url) { try { fs.unlinkSync(path.join(ENHANCE_DIR, path.basename(t.result_url))); } catch {} }
+  writeTaskFile(ENHANCE_TASKS, tasks.filter(x => x.id !== req.params.id));
+  res.json({ ok: true });
+});
+
 // ── UGC AVATAR LIBRARY (Higgsfield Soul portraits) ──────────────────
 // Create reusable avatar portraits from a prompt; the Talking Avatar mode
 // selects them by their generated image URL.
@@ -3970,6 +4097,11 @@ async function estimateCost(b) {
       extra += secs * (b.mode === "precision" ? r.precision : r.speed);
     } else extraUnknown = true;
     if (!secs) notes.push("pick a video to see the price for its length");
+  } else if (kind === "enhance") {
+    // ElevenLabs lists ~1,000 credits per minute; real runs are often cheaper (the meter uses the actual cost).
+    rows.push({ p: "elevenlabs", m: "audio-isolation", chars: Math.ceil(secs / 60 * 1000) });
+    if (!secs) notes.push("pick a file to see the price for its length");
+    else notes.push("upper bound, the real cost is measured afterwards");
   } else if (kind === "clipper") {
     rows.push({ p: "opusclip", m: "clip project", jobs: 1 });
     notes.push("OpusClip runs on your subscription");
