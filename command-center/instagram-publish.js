@@ -72,6 +72,7 @@ function shouldCrosspost(task, channel) {
   if (!cfg.enabled || !channel || channel.platform !== "twitter") return false;
   if (task.instagram) return false;            // already queued, done or failed
   if (!imagePathOf(task) && !videoPathOf(task)) return false; // Instagram needs an image (or a listing video)
+  if (task.pair) return false;                 // hook + reply pair: the hook alone makes no sense on IG
   if (task.instagram_ok === false && !task.promo) return false; // reaction/off-niche: X only
   if (unreadable(task)) return false;          // no readable headline in the image
   return cfg.which === "all" || !!task.promo || !!task.listing || !!task.sold || !!task.ig_requested;
@@ -81,6 +82,10 @@ function shouldCrosspost(task, channel) {
 // (reactie op een tweet of buiten de niche, zo beoordeeld bij het schrijven).
 function skipReason(task, channel) {
   if (!task || task.instagram || task.promo) return null;
+  if (task.pair) {
+    const cfg0 = config(channel);
+    return cfg0.enabled && channel && channel.platform === "twitter" ? "hook + reply pair (X only: the hook points to a reply)" : null;
+  }
   if (task.instagram_ok !== false && !unreadable(task)) return null;
   const cfg = config(channel);
   if (!cfg.enabled || !channel || channel.platform !== "twitter" || cfg.which !== "all" || !imagePathOf(task)) return null;

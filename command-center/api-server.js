@@ -8158,7 +8158,11 @@ async function twitterApi(method, url, creds, { json, form } = {}) {
   try { data = await r.json(); } catch {}
   if (!r.ok) {
     const msg = data.detail || data.title || (Array.isArray(data.errors) && data.errors.map((e) => e.message || e.detail).join("; ")) || `HTTP ${r.status}`;
-    throw new Error(`X API: ${msg}`);
+    const err = new Error(`X API: ${msg}`);
+    err.status = r.status;
+    const reset = Number(r.headers.get("x-rate-limit-reset"));
+    if (reset) err.resetAt = reset * 1000;
+    throw err;
   }
   return data;
 }
@@ -8247,6 +8251,19 @@ async function publishTwitterPost(task, channel) {
 
   const body = { text };
   if (mediaIds.length) body.media = { media_ids: mediaIds };
+
+  // Hook + reply pair: hook first, then each reply chained to the previous one.
+  if (task.pair && Array.isArray(task.pair.replies) && task.pair.replies.length) {
+    if (used + 1 + task.pair.replies.length > limit) throw new Error(`X monthly post limit would be passed by this pair (${used}/${limit})`);
+    const r = await xPairs.publishPair({
+      hookBody: body,
+      replies: task.pair.replies,
+      api: (method, url, json) => twitterApi(method, url, creds, json ? { json } : {}).then(d => { if (method === "POST") bumpTwitterUsage(); return d; }),
+      log: (m) => console.log(`[PAIRS] ${task.id}: ${m}`),
+    });
+    return { message_id: r.hook_id, reply_ids: r.reply_ids };
+  }
+
   const d = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: body });
   if (!d.data?.id) throw new Error("X API: tweet created but no id returned");
   bumpTwitterUsage();
@@ -8396,6 +8413,7 @@ async function processCommunityTasks() {
       task.attempts = (task.attempts || 0) + 1;
       task.updated_at = task.published_at;
       task.error = null;
+      if (task.pair && result.reply_ids) Object.assign(task.pair, { hook_id: result.message_id, reply_ids: result.reply_ids, posted_at: task.published_at });
       save(task);
       console.log(`[WORKER] Community post ${task.id} published (msg ${result.message_id})`);
       if (igPublish.shouldCrosspost(task, channel)) task.instagram = { status: "pending", attempts: 0, queued_at: task.published_at };
@@ -8412,7 +8430,12 @@ async function processCommunityTasks() {
       task.attempts = (task.attempts || 0) + 1;
       task.error = e.message;
       task.updated_at = new Date().toISOString();
-      if (task.autopilot && task.attempts >= 5) {
+      if (e.final && task.pair) {
+        // A reply failed after retries and the hook was cleaned up: never retry (would post the hook again).
+        task.status = "failed";
+        task.pair.deleted_ids = e.deleted || [];
+        sendTelegram(`𝕏 Pair failed (${escapeHtmlTg(channel.name)})`, escapeHtmlTg(e.message.slice(0, 300)), "danger");
+      } else if (task.autopilot && task.attempts >= 5) {
         task.status = "failed";
         sendTelegram(`𝕏 Autopilot post failed (${escapeHtmlTg(channel.name)})`, escapeHtmlTg(e.message.slice(0, 300)), "danger");
       }
@@ -8553,6 +8576,32 @@ setTimeout(() => {
   pollAvatarCreator().catch(() => {});
 }, 3000);
 
+// ── X HOOK + REPLY PAIRS ──────────────────────
+// Some autopilot slots become a hook post + reply payload (profiles in data/x-pair-profiles.json).
+const xPairs = require("./x-pairs");
+const xPairsBot = xPairs.createPairs({
+  dataDir: path.join(__dirname, "data"),
+  mediaDir: MEDIA_DIR,
+  readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
+  addTask: (task) => writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]),
+  updateTask: (id, fn) => {
+    const all = readTaskFile(COMMUNITY_TASKS_FILE);
+    const t = all.find(x => x.id === id);
+    if (!t) return;
+    fn(t);
+    t.updated_at = new Date().toISOString();
+    writeTaskFile(COMMUNITY_TASKS_FILE, all);
+  },
+  anthropic,
+  model: process.env.X_PAIRS_MODEL || process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5",
+  brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
+  twitterApi,
+  twitterCredsFor: (channel) => twitterCreds(channel),
+  apiBase: process.env.X_PAIRS_DATA_API || undefined,
+  log: (m) => console.log(`[PAIRS] ${m}`),
+});
+setInterval(() => xPairsBot.tick(readChannels().filter(c => c.platform === "twitter" && c.enabled !== false)).catch(e => console.error("[PAIRS]", e.message)), 60_000);
+
 // ── SOCIAL MEDIA AUTOPILOT (X) ────────────────
 // Finds well-performing posts per topic, writes an original post, redraws the
 // image in the house style and queues it; processCommunityTasks() publishes it.
@@ -8579,6 +8628,7 @@ const autopilot = require("./social-autopilot").createAutopilot({
   brand: loadBrand,
   brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
   notify: sendTelegram,
+  pairs: xPairsBot,
 });
 setInterval(() => autopilot.tick().catch(e => console.error("[AUTOPILOT]", e.message)), 60_000);
 
@@ -8680,7 +8730,7 @@ const xRepliesBot = xReplies.createReplies({
   anthropic,
   brandKnowledge: (channel) => brandKnowledgeBlock(channel && channel.brand),
   autopilotConfig: (channel) => channel.autopilot || {},
-  extraOurTweets: (channel) => xEngageBot.ourReplies(channel),
+  extraOurTweets: (channel) => [...xEngageBot.ourReplies(channel), ...xPairsBot.ourReplies(channel)],
   notify: sendTelegram,
 });
 setInterval(() => xRepliesBot.tick().catch(e => console.error("[X-REPLIES]", e.message)), 60_000);
@@ -8756,6 +8806,28 @@ app.post("/community/channels/:id/listings/run", (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Hook + reply pairs: status (last 20), run one now (uses the autopilot's mode), dry run (nothing posted).
+app.get("/community/channels/:id/pairs", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  res.json(xPairsBot.status(channel));
+});
+app.post("/community/channels/:id/pairs/run", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  const mode = (req.body || {}).mode === "auto" ? "auto" : "review";
+  try { autopilot.runNow(channel, mode, "pair"); res.json({ ok: true, started: true, mode }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/community/channels/:id/pairs/dry-run", async (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  if (!xPairsBot.profile(channel)) return res.status(400).json({ error: "No pair profile for this channel" });
+  const n = Math.max(1, Math.min(10, Number((req.body || {}).n) || 5));
+  try { res.json(await xPairsBot.dryRun(channel, n)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 const autopilotFor = (channel) => (channel.platform === "telegram" ? tgAutopilot : channel.platform === "twitter" ? autopilot : null);
 
 // Every autonomous job that is not a row in scheduled-tasks.json, so the
@@ -8780,6 +8852,21 @@ app.get("/agents/autonomous", (_req, res) => {
         next_run: cfg.enabled && next ? next.at : null,
         last_run: st.last_run ? { at: st.last_run.finished_at || st.last_run.at, status: st.last_run.status, error: st.last_run.error || null } : null,
         running: !!st.running, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "twitter" && xPairsBot.profile(c)) {
+      const st = xPairsBot.status(c);
+      const prof = st.profile;
+      const last = st.pairs[0];
+      jobs.push({
+        id: "x_pairs:" + c.id, kind: "x_pairs", agent: "community_manager",
+        name: `X Hook + reply pairs · ${c.name}`,
+        enabled: !!(c.autopilot && c.autopilot.enabled), toggle: { channel_id: c.id, field: "autopilot" },
+        when: `${prof.per_day}/day inside the autopilot slots`,
+        details: `${prof.premium ? "Premium: 1 long reply" : "Thread of up to 4 replies"} · ${prof.pillars.length} pillars · metrics at 24h/72h, weekly reweight`,
+        today: null,
+        last_run: last ? { at: last.posted_at || last.created_at, status: last.status, error: last.error || null } : null,
+        running: false, manage_url: "/community-manager.html",
       });
     }
     if (c.platform === "twitter" && c.replies) {

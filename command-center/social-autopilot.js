@@ -364,7 +364,8 @@ function createAutopilot(deps) {
   function ensurePlan(channel, st, now) {
     const cfg = config(channel);
     const day = localDay(now, tz);
-    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}`;
+    const pairsPerDay = deps.pairs ? Math.max(0, Number(deps.pairs.perDay(channel)) || 0) : 0;
+    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}|p${pairsPerDay}`;
     if (st.plan_key === key) return false;
     if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; st.format_counts = {}; }
     const keep = st.day === day ? (st.slots || []).filter(s => s.status !== "pending") : [];
@@ -378,6 +379,13 @@ function createAutopilot(deps) {
     if (cfg.promo_enabled) {
       const promosKept = keep.filter(s => s.kind === "promo" && s.status !== "skipped").length;
       for (const i of pickPromoSlots(fresh.length, cfg.promo_per_day - promosKept)) fresh[i].kind = "promo";
+    }
+    // Hook + reply pairs replace some of the normal slots (volume stays the same), spread over the day.
+    if (pairsPerDay) {
+      const pairsKept = keep.filter(s => s.kind === "pair" && s.status !== "skipped").length;
+      const free = fresh.map((s, i) => s.kind ? -1 : i).filter(i => i >= 0);
+      const want = Math.min(free.length, Math.max(0, pairsPerDay - pairsKept));
+      for (let j = 0; j < want; j++) fresh[free[Math.floor((j + 0.5) * free.length / want)]].kind = "pair";
     }
     st.day = day;
     st.plan_key = key;
@@ -425,12 +433,13 @@ function createAutopilot(deps) {
           if (!sl) return false;
           sl.tries = (sl.tries || 0) + 1;
           sl.error = String(e.message).slice(0, 300);
+          if (e.dropped) { sl.status = "failed"; return true; } // validator already regenerated twice
           if (sl.tries < MAX_TRIES) { sl.status = "pending"; sl.at = new Date(Date.now() + RETRY_DELAY_MS).toISOString(); return false; }
           sl.status = "failed";
           return true;
         });
         log(`${c.name}: slot failed: ${e.message}`);
-        if (final) notify(`𝕏 Autopilot ${due.kind === "promo" ? "promo " : ""}failed (${escHtml(c.name)})`, escHtml(String(e.message).slice(0, 300)), "danger");
+        if (final) notify(`𝕏 Autopilot ${due.kind === "promo" ? "promo " : due.kind === "pair" ? "pair " : ""}failed (${escHtml(c.name)})`, escHtml(String(e.message).slice(0, 300)), "danger");
       }
       return; // one post per tick
     }
@@ -829,7 +838,7 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
 
   async function produce(channel, { mode, trigger, kind }) {
     if (busy) throw new Error(`Autopilot is busy (${busy.step})`);
-    busy = { channel_id: channel.id, step: kind === "promo" ? "writing promo" : "searching X", started_at: new Date().toISOString(), trigger };
+    busy = { channel_id: channel.id, step: kind === "promo" ? "writing promo" : kind === "pair" ? "planning pair" : "searching X", started_at: new Date().toISOString(), trigger };
     const record = patch => mutate(channel.id, st => { st.last_run = { ...(st.last_run || {}), ...patch }; });
     record({ at: busy.started_at, trigger, mode, status: "running", error: null, task_id: null });
     try {
@@ -837,6 +846,10 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
       if (kind === "promo") {
         if (!cfg.promo_enabled) throw new Error("Promo is off or has no product/facts");
         return await producePromo(channel, cfg, mode, record);
+      }
+      if (kind === "pair") {
+        if (!deps.pairs || !deps.pairs.profile(channel)) throw new Error("No hook + reply profile for this channel");
+        return await deps.pairs.produce(channel, { mode, step, record });
       }
       const topics = parseTopics(cfg.topics);
       if (!topics.length && !cfg.accounts.length) throw new Error("No topics or curated accounts configured");
@@ -938,7 +951,8 @@ ${recent.length ? `\nRecent promo posts (use a different angle and different wor
   function runNow(channel, mode, kind) {
     if (busy) throw new Error(`Autopilot is busy (${busy.step})`);
     if (kind === "promo" && !config(channel).promo_enabled) throw new Error("Turn on the daily promo and fill in product + facts first");
-    produce(channel, { mode: mode === "review" ? "review" : "auto", trigger: "manual", kind: kind === "promo" ? "promo" : undefined })
+    if (kind === "pair" && !(deps.pairs && deps.pairs.profile(channel))) throw new Error("This channel has no hook + reply profile");
+    produce(channel, { mode: mode === "review" ? "review" : "auto", trigger: "manual", kind: kind === "promo" || kind === "pair" ? kind : undefined })
       .catch(e => log(`${channel.name}: manual run failed: ${e.message}`));
   }
 

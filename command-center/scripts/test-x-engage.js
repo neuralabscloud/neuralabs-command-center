@@ -48,7 +48,7 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   check("pickTopics: least searched first", p2[0].label === "B" && p2[1].label === "A");
 
   // rankPosts
-  const now = Date.parse("2026-11-10T12:00:00Z");
+  const now = Date.now(); // fixture relative to the real clock (runNow below uses Date.now)
   const ago = (h) => new Date(now - h * 3.6e6).toISOString();
   const tw = (id, o = {}) => ({ id, author_id: o.author_id || "u1", text: o.text || "Interesting market take " + id, created_at: o.created_at || ago(1), public_metrics: { like_count: o.likes ?? 500, retweet_count: 10, reply_count: 20, impression_count: 10000 }, reply_settings: o.reply_settings, possibly_sensitive: o.sensitive });
   const users = [

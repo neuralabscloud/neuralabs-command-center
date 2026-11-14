@@ -1,0 +1,25 @@
+{
+  "<channel id from the Social Media Manager>": {
+    "enabled": true,
+    "name": "my_account",
+    "premium": false,
+    "per_day": 1,
+    "language": "English",
+    "voice": "Who is talking, in one or two sentences. Tone, expertise, what they never do.",
+    "pillars": [
+      { "id": "basics", "label": "Basics", "brief": "What this pillar is about." },
+      { "id": "mistakes", "label": "Common mistakes", "brief": "Errors people make and how to avoid them." }
+    ],
+    "never": ["financial advice framing", "made up numbers"],
+    "banned_patterns": ["\\bguaranteed\\b"],
+    "caps_allow": ["USD", "FAQ"],
+    "tickers": [],
+    "media": { "kind": "library", "ratio": 0.5, "images": ["/media/pairs/example.jpg"] },
+    "link": { "ratio": 0.3333, "urls": [{ "url": "https://example.com", "label": "Example" }] },
+    "brand_mention": null,
+    "numbers_from_api": false,
+    "data": null,
+    "hashtags": [],
+    "learning": { "exploration": 0.15 }
+  }
+}
