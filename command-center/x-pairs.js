@@ -5,6 +5,7 @@
 // Pair slots are part of the existing autopilot day plan; the normal publisher posts them.
 const fs = require("fs");
 const path = require("path");
+const X_IMAGE_MAX = 5 * 1024 * 1024; // limiet van X voor beelden
 
 const FORMULAS = {
   numbered_promise: "Hook promises a specific count (\"3 checks I run before ...\"). The payload is a numbered list with exactly that many items.",
@@ -420,6 +421,13 @@ function createPairs(deps) {
       const ext = path.extname(media.file).toLowerCase() || ".png";
       const name = `${id}${ext}`;
       fs.copyFileSync(media.file, path.join(dir, name));
+      // X weigert beelden boven 5 MB; de gh0st-stills zijn PNG's van 5-7 MB.
+      if (fs.statSync(path.join(dir, name)).size > X_IMAGE_MAX) {
+        const jpg = `${id}.jpg`;
+        require("child_process").execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(dir, name), "-q:v", "3", path.join(dir, jpg)]);
+        fs.unlinkSync(path.join(dir, name));
+        return `/media/pairs/${jpg}`;
+      }
       return `/media/pairs/${name}`;
     }
     const r = await fetchImpl(media.url, { signal: AbortSignal.timeout(20000) });
@@ -427,7 +435,7 @@ function createPairs(deps) {
     const type = r.headers.get("content-type") || "";
     const ext = type.includes("png") ? ".png" : type.includes("webp") ? ".webp" : ".jpg";
     const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length > 5 * 1024 * 1024) throw new Error("slab photo over 5 MB");
+    if (buf.length > X_IMAGE_MAX) throw new Error("slab photo over 5 MB");
     const name = `${id}${ext}`;
     fs.writeFileSync(path.join(dir, name), buf);
     return `/media/pairs/${name}`;
