@@ -1377,6 +1377,17 @@ async function clipToCommunity(taskId, clipIdx) {
   } catch (e) { alert('Failed: ' + e.message); }
 }
 
+// Polled lists: only touch the DOM when the content really changed, and never
+// while a video/audio inside is playing or fullscreen (a rebuild kills the player).
+function renderList(el, html) {
+  if (!el || el._html === html) return;
+  const busy = [...el.querySelectorAll('video,audio')].some(m => !m.paused && !m.ended)
+    || (document.fullscreenElement && el.contains(document.fullscreenElement));
+  if (busy) return;
+  el._html = html;
+  el.innerHTML = html;
+}
+
 async function loadTasks() {
   try {
     const [ugcTasks, clipperTasks] = await Promise.all([
@@ -1390,8 +1401,8 @@ async function loadTasks() {
     ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     const el = document.getElementById('tasks-list');
-    if (!all.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No video tasks yet</div>'; return; }
-    el.innerHTML = all.map(t => {
+    if (!all.length) { renderList(el, '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No video tasks yet</div>'); return; }
+    renderList(el, all.map(t => {
       const time = new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       const isClipper = t._type === 'clipper';
       const isUgc = t._type === 'ugc';
@@ -1435,8 +1446,8 @@ async function loadTasks() {
         </div>
         ${clipsBlock}
       </div>`;
-    }).join('');
-  } catch { document.getElementById('tasks-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'; }
+    }).join(''));
+  } catch { renderList(document.getElementById('tasks-list'), '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not connect to API</div>'); }
 }
 
 // Autopilot / caption tasks: who made it, the ready-to-post caption and the file.
@@ -1703,7 +1714,7 @@ async function loadVoiceovers() {
   if (!list) return;
   let items = [];
   try { items = await (await fetch('/audio/voiceovers')).json(); } catch { return; }
-  list.innerHTML = items.length ? items.map(v => `
+  renderList(list, items.length ? items.map(v => `
     <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v.title || '')}</div>
@@ -1712,7 +1723,7 @@ async function loadVoiceovers() {
       ${v.result_url ? `<audio controls preload="none" src="${esc(safeUrl(v.result_url))}" style="height:32px;"></audio>
         <a class="task-link" href="${esc(safeUrl(v.result_url))}" download>Download</a>` : ''}
       <button class="task-delete" onclick="deleteVoiceover(${jq(v.id)})" title="Delete">&#x2715;</button>
-    </div>`).join('') : '<div class="empty-state">No voiceovers yet.</div>';
+    </div>`).join('') : '<div class="empty-state">No voiceovers yet.</div>');
   clearTimeout(_voPollTimer);
   if (items.some(v => v.status === 'processing')) _voPollTimer = setTimeout(loadVoiceovers, 5000);
 }
@@ -1763,7 +1774,7 @@ async function loadEnhanced() {
   let items = [];
   try { items = await (await fetch('/audio/enhance')).json(); } catch { return; }
   if (!Array.isArray(items)) items = [];
-  list.innerHTML = items.length ? items.map(v => {
+  renderList(list, items.length ? items.map(v => {
     const url = v.result_url ? esc(safeUrl(v.result_url)) : '';
     const player = !url ? '' : v.is_video
       ? `<video controls preload="none" src="${url}" style="max-width:260px;max-height:200px;border-radius:6px;"></video>`
@@ -1779,7 +1790,7 @@ async function loadEnhanced() {
       ${url ? `<a class="task-link" href="${url}" download>Download</a>` : ''}
       <button class="task-delete" onclick="deleteEnhanced(${jq(v.id)})" title="Delete">&#x2715;</button>
     </div>`;
-  }).join('') : '<div class="empty-state">Nothing enhanced yet.</div>';
+  }).join('') : '<div class="empty-state">Nothing enhanced yet.</div>');
   clearTimeout(_enhPollTimer);
   if (items.some(v => v.status === 'processing')) _enhPollTimer = setTimeout(loadEnhanced, 5000);
 }
@@ -2054,7 +2065,7 @@ async function loadGenjutsu() {
   const el = document.getElementById('gj-list');
   let items = [];
   try { items = await fetch('/influencer/genjutsu').then(r => r.json()); } catch { return; }
-  el.innerHTML = items.length ? items.map(t => {
+  renderList(el, items.length ? items.map(t => {
     const time = new Date(t.created_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     const kind = { swap: 'Object swap', restyle: 'Restyle', motion_light: 'Motion transfer (Light)', swap_light: 'Object swap (Light)' }[t.genjutsu_mode] || 'Motion transfer';
     return `<div class="task-card" style="align-items:flex-start;">
@@ -2075,7 +2086,7 @@ async function loadGenjutsu() {
         <button class="task-delete" onclick="deleteGenjutsu(${jq(t.id)})" title="Delete">&#x2715;</button>
       </div>
     </div>`;
-  }).join('') : '<div class="empty-state">No AI influencer videos yet.</div>';
+  }).join('') : '<div class="empty-state">No AI influencer videos yet.</div>');
   clearTimeout(_gjPollTimer);
   if (items.some(t => t.status === 'processing') && currentMode === 'influencer') _gjPollTimer = setTimeout(loadGenjutsu, 8000);
 }
@@ -2582,8 +2593,8 @@ async function loadAIVideos() {
     aiVideoTasks = tasks;
     fillSourceOptions();
     const el = document.getElementById('ai-video-list');
-    if (!tasks.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No AI videos generated yet</div>'; return; }
-    el.innerHTML = tasks.map(t => {
+    if (!tasks.length) { renderList(el, '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:30px;">No AI videos generated yet</div>'); return; }
+    renderList(el, tasks.map(t => {
       const time = new Date(t.created_at).toLocaleString('nl-NL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
       const modelName = String(t.model || t.tool || 'video').split('/').pop();
       return `<div class="vt-card">
@@ -2609,9 +2620,9 @@ async function loadAIVideos() {
         </div>
         <button onclick="deleteAIVideo(${jq(t.id)})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:4px;" title="Delete">&#x2715;</button>
       </div>`;
-    }).join('');
+    }).join(''));
   } catch(e) {
-    document.getElementById('ai-video-list').innerHTML = '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not load AI videos</div>';
+    renderList(document.getElementById('ai-video-list'), '<div style="color:var(--danger);font-size:12px;text-align:center;padding:20px;">Could not load AI videos</div>');
   }
 }
 
