@@ -141,7 +141,8 @@ function layoutDeficits(history, now = Date.now(), acct) {
   // Proportional to WEEKLY_MIX (3/2/1/1), so the mix holds at any number of sets per day.
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const mixSum = Object.values(WEEKLY_MIX).reduce((a, b) => a + b, 0);
-  return Object.fromEntries(LAYOUTS.map(l => [l, Math.round((WEEKLY_MIX[l] / mixSum * (total + 1) - counts[l]) * 1000) / 1000]));
+  // A layout with weight 0 (or missing) is never planned for that account.
+  return Object.fromEntries(LAYOUTS.filter(l => (WEEKLY_MIX[l] || 0) > 0).map(l => [l, Math.round((WEEKLY_MIX[l] / mixSum * (total + 1) - counts[l]) * 1000) / 1000]));
 }
 
 // Plan the day: for each slot pick the most-needed layout, then the best fresh non-duplicate item that fits it.
@@ -154,7 +155,7 @@ function planDay(candidates, history, { count = 1, weights = {}, rand = Math.ran
   const hist = [...(history || [])];
   for (let i = 0; i < count; i++) {
     const def = layoutDeficits(hist, now, acct);
-    const ordered = [...LAYOUTS].sort((a, b) => def[b] - def[a]);
+    const ordered = Object.keys(def).sort((a, b) => def[b] - def[a] || LAYOUTS.indexOf(a) - LAYOUTS.indexOf(b));
     const top = ordered.filter(l => def[l] === def[ordered[0]]);
     const first = xPairs.weightedPick(top, weights.layout || {}, rand);
     let pick = null;

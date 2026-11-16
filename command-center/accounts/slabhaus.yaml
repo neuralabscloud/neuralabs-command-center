@@ -16,21 +16,21 @@ schedule:
   times: ["08:10"]
   sets_per_run: 1
 
-layout_labels: {"signal": "breaking", "number": "number", "versus": "then vs now", "persona": "haus take"}
-pills: ["breaking", "market", "grading", "pop report", "new set", "then vs now", "haus take", "did you know"]
-# 3 breaking/market, 2 number, 1 versus, 1 haus take per week.
-weekly_mix: {"signal": 3, "number": 2, "versus": 1, "persona": 1}
+layout_labels: {"signal": "breaking", "number": "number", "versus": "then vs now"}
+pills: ["breaking", "market", "grading", "pop report", "new set", "then vs now", "did you know"]
+# 3 breaking/market, 2 number, 1 versus per week. No persona (haus take) for Slabhaus: weight 0 = never planned.
+weekly_mix: {"signal": 3, "number": 2, "versus": 1, "persona": 0}
 
 pill_rules:
   base: ["breaking", "did you know"]
-  by_layout: {"versus": ["then vs now"], "persona": ["haus take"], "number": ["pop report", "market"]}
+  by_layout: {"versus": ["then vs now"], "number": ["pop report", "market"]}
   match:
     - {"pill": "market", "entities": ["market"], "text": "\\b(sales?|sold|auction|market|price|prices|volume|record)\\b"}
     - {"pill": "grading", "entities": ["psa", "cgc", "bgs", "beckett", "sgc", "tag"], "text": "\\b(psa|cgc|bgs|beckett|sgc|grading|graded|grader|slab|slabs)\\b"}
     - {"pill": "pop report", "entities": ["pop"], "text": "\\b(pop|population|gem rate|pop report)\\b"}
     - {"pill": "new set", "entities": ["release"], "text": "\\b(set|expansion|release|releases|prerelease|booster|reveal|revealed)\\b"}
   by_kind: {"metric": ["market", "pop report"], "evergreen": ["did you know"]}
-  fixed_by_layout: {"versus": ["then vs now"], "persona": ["haus take"]}
+  fixed_by_layout: {"versus": ["then vs now"]}
   use_hints: true
 
 sources:
@@ -49,11 +49,11 @@ scoring:
 voice:
   intro: You write one news card set for Slabhaus, a Pokémon TCG graded-slab account for collectors and dealers. Calm, knowledgeable, no hype. Output strict JSON only, no prose, no code fences.
   rules: |
-    Layout names: signal = breaking/market card, number = one number card, versus = then vs now, persona = the haus take.
+    Layout names: signal = breaking/market card, number = one number card, versus = then vs now.
     number layout: number (string, e.g. "669") and unit (e.g. "PSA 10 copies"). If the item has a pop_report, the number comes from it and the unit says which grade and grader. series only if given in the item. versus layout: versus = {left:{label,value,unit},right:{label,value,unit}} with values only from the item.
     Rules: English, written for collectors and dealers. Headline max 70 characters, sentence case, max 4 lines. Mark the payoff or number with [a]...[/a] and the set or card name with [p]...[/p], at most one of each.
     Exactly one number, set name or card name in the headline (grades like PSA 10 do not count as the number), and it must reappear in the payload items. Use only facts and numbers from the item; never invent prices, pop counts or dates.
-    Persona layout (haus take) only: first-person past tense from the Slabhaus desk about reading the data in the item (I checked, I pulled, I compared, I stopped). Never claim we own, bought, sold, cracked or graded a specific card. Other layouts never start with I.
+    Never start with I. Never claim we own, bought, sold, cracked or graded a specific card.
     Never investment framing (invest, portfolio, returns, flip for profit, undervalued, asset), never price predictions, never the word will, never name or tag individual sellers or buyers, never judge a grade from photos.
     No em or en dashes. No ALL CAPS except PSA, CGC, BGS, TAG, SGC, TCG, EX, GX, V, VMAX, VSTAR, HP and set codes.
     No hollow superlatives (insane, game changer, grail of grails, you won't believe), no engagement bait.
@@ -81,8 +81,7 @@ image_policy:
   # Nano Banana only for neutral object scenes, with this fixed rule.
   rules: "No people, no faces, no readable text, no logos, no characters, no card art."
   neutral_scenes: ["A dark walnut desk with three empty clear graded-card slab cases, soft top light, shallow depth of field.", "A heavy steel vault door slightly open in a dim room, warm rim light.", "A brass magnifier lying on a dark slate surface next to an empty clear slab case, low warm light."]
-  layouts: {"signal": "gallery", "versus": "gallery", "persona": "gallery_hand", "number": "none"}   # informational; tiers per layout live in images/policy.js
-  persona: gallery_hand
+  layouts: {"signal": "gallery", "versus": "gallery", "number": "none"}   # informational; tiers per layout live in images/policy.js
   # Per source (images/policy.js): official = press image from the newsmaker's own domain, card_db = card scan from the
   # card database, shown whole in a slab frame. Any source not listed here is none (own gallery, neutral scene, pattern).
   sources:

@@ -20,7 +20,16 @@ t("gh0stlayer blijft eigen map en media", G.DIR === process.env.NEWS_CARDS_DIR &
 t("slabhaus: eigen map, media/cards/slabhaus, 1 per dag", S.DIR.endsWith("/slabhaus") && S.MEDIA_REL === "/media/cards/slabhaus" && S.config().platforms.instagram.max_per_day === 1 && S.config().platforms.x.max_per_day === 1);
 t("slabhaus: kanaal + Madrid 08:10", S.config().channel_id === "slabcok4gtn6" && S.account.profile.schedule.tz === "Europe/Madrid" && S.account.profile.schedule.times[0] === "08:10");
 t("geen buffer/tiktok platforms", S.PLATFORMS.join() === "instagram,x" && G.PLATFORMS.join() === "instagram,x");
-t("pills slabhaus", S.account.pills.length === 8 && S.account.pills.includes("haus take") && S.account.pills.includes("pop report"));
+t("pills slabhaus zonder haus take", S.account.pills.length === 7 && !S.account.pills.includes("haus take") && S.account.pills.includes("pop report"));
+{
+  const items = ["a", "b", "c", "d", "e", "f", "g", "h"].map((k, i) => ({ kind: "news", source: "PokeGuardian", url: `https://www.pokeguardian.com/${k}`, title: `Pokémon TCG set ${k} released with ${100 + i} cards`, summary: `pokemon tcg set release with ${100 + i} cards`, numbers: [String(100 + i)], published_at: new Date().toISOString(), entities: ["release"] }));
+  const gItems = ["a", "b", "c", "d", "e", "f", "g", "h"].map((k, i) => ({ kind: "news", source: "CoinDesk", url: `https://www.coindesk.com/${k}`, title: `Bitcoin ETF inflows hit ${500 + i} million ${k}`, summary: `bitcoin etf inflows ${500 + i} million`, numbers: [String(500 + i)], published_at: new Date().toISOString(), entities: ["BTC"] }));
+  const plan = nc.planDay(items, [], { count: 8, account: "slabhaus", minScore: 0, rand: () => 0 });
+  t("slabhaus: nooit persona gepland", plan.length > 0 && plan.every(p => p.layout !== "persona"));
+  t("slabhaus: dry-run layouts zonder persona", S.planLayouts(items, [], ["signal", "persona"], Date.now()).every(p => p.layout !== "persona"));
+  const gp = nc.planDay(gItems, [], { count: 8, account: "gh0stlayer", minScore: 0, rand: () => 0 });
+  t("gh0stlayer: persona blijft mogelijk", gp.some(p => p.layout === "persona"));
+}
 
 // galerij-matcher
 const photos = [

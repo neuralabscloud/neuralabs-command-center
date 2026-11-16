@@ -153,7 +153,7 @@ function createPipeline(accountId) {
     const scored = items.map(item => ({ item, score: nc.scoreItem(item, now, A) }))
       .filter(c => !c.score.reject).sort((a, b) => b.score.total - a.score.total);
     const used = new Set();
-    return layouts.map(layout => {
+    return layouts.filter(l => (A.weeklyMix[l] || 0) > 0).map(layout => {
       const c = scored.find(c => !used.has(c) && nc.compatibleLayouts(c.item).includes(layout));
       if (!c) return null;
       used.add(c);
