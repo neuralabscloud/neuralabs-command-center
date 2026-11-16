@@ -25,7 +25,8 @@ const DEFAULTS = {
   persona_rotation_days: 14,
   platforms: {
     instagram: { enabled: true, every_days: 1, time: "18:30" },
-    tiktok: { enabled: true, every_days: 1, time: "19:00", buffer_channel: "6ac0da6cea19ca0bde626191" },
+    // TikTok via Buffer staat uit (owner 2026-11-16). Aanzetten: "tiktok": {"enabled": true} in data/news-cards/config.json.
+    tiktok: { enabled: false, every_days: 1, time: "19:00", buffer_channel: "6ac0da6cea19ca0bde626191" },
     x: { enabled: true, every_days: 1, time: "17:00" },
   },
 };

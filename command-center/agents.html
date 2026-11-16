@@ -334,7 +334,7 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
               <option value="growth_marketeer">Growth Marketeer (weekly research + ideas)</option>
               <option value="edu_designer">Designer: educational post (daily, ready to post)</option>
               <option value="character_video_batch">Weekly character video batch (7 stills + 7 videos)</option>
-              <option value="news_cards">gh0stlayer news cards (daily card set for IG, TikTok and X)</option>
+              <option value="news_cards">gh0stlayer news cards (daily card set for IG and X)</option>
             </select>
             <div id="sched-agent-desc" style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.4"></div>
           </div>
@@ -530,7 +530,7 @@ const AGENT_DESCRIPTIONS = {
   ads_optimizer: 'AI-driven Meta Ads optimizer — analyzes campaign ROAS, spend & CTR, then automatically pauses losers, scales winners, and adjusts budgets.',
   opusclip: 'Watches a YouTube channel. Each run picks the newest video that has not been clipped yet and submits it to OpusClip to generate viral short-form clips. Requires YOUTUBE_API_KEY + OPUSCLIP_API_KEY.',
   ugc_autopilot: 'The Marketeer writes a 15-30 s UGC testimonial script with a strong hook, the Content Creator renders it as a talking-avatar video with burned-in captions and delivers it ready to post, with an IG Reels / TikTok caption.',
-  news_cards: 'Once a day: fetches real crypto news and market facts (RSS, CoinGecko, DefiLlama, mempool.space, Hyperliquid, evergreen pool), picks one item, Claude writes a 2 to 3 slide card set in the gh0stlayer template, renders it and posts it as an Instagram carousel, a TikTok photo carousel (Buffer) and an X hook + reply. Times and cadence: data/news-cards/config.json.',
+  news_cards: 'Once a day: fetches real crypto news and market facts (RSS, CoinGecko, DefiLlama, mempool.space, Hyperliquid, evergreen pool), picks one item, Claude writes a 2 to 3 slide card set in the gh0stlayer template, renders it and posts it as an Instagram carousel and an X hook + reply (TikTok via Buffer is off). Times and cadence: data/news-cards/config.json.',
   edu_designer: 'Scouts X, Instagram, TikTok and the web for educational trading and crypto posts (term lists, cheat sheets, step by step), extracts the lesson and designs it in your house style without any logos. Delivers the image plus a ready-to-post caption on the Designer page and via Telegram.',
   character_video_batch: 'Once a week: Claude writes 7 cinematic concepts (one per day of the coming week) for one recurring character, the Designer renders a 9:16 start frame per day (face + rotating outfit from the reference library) and Seedance 2.5 turns each frame into an 8 s clip with music and sound effects. Stills land in the Designer gallery, videos in Content Creator, a summary goes to Telegram. post_days limits which weekdays get a clip, every clip gets a short tagline burned in, and with a publish block each clip is queued as a video post on a Social Media Manager channel (plus Instagram Reel) on its own day; a buffer block schedules it in Buffer instead. Without either, nothing is posted.',
   growth_marketeer: 'Acts as your growth marketer: researches your product online, competitors, gaps in the market and buzz opportunities, then delivers a report with concrete growth ideas (newsletter, ads, UGC, community actions and more) on the Marketing page.',

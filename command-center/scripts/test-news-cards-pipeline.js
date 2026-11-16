@@ -37,6 +37,14 @@ const deps = mode => ({
   notify: () => {},
 });
 (async () => {
+  t("TikTok staat standaard uit", P.config().platforms.tiktok.enabled === false);
+  const off = mkSet("s0");
+  await P.schedulePublish({ deps: deps("auto"), m: off, nowMs: now - 3 * 864e5 });
+  t("TikTok uit: geen Buffer-call", off.posts.tiktok.status === "off" && calls.buf.length === 0);
+  fs.rmSync(path.join(P.SETS_DIR, "s0.json"));
+  calls.x.length = 0;
+  // rest van de tests: TikTok tijdelijk aan in de temp-config om de Buffer-route te blijven testen
+  fs.writeFileSync(path.join(P.DIR, "config.json"), JSON.stringify({ platforms: { tiktok: { enabled: true } } }));
   const m = mkSet("s1");
   await P.schedulePublish({ deps: deps("auto"), m, nowMs: now });
   t("auto: alle drie platforms ingepland", m.posts.instagram.status === "scheduled" && m.posts.x.status === "scheduled" && m.posts.tiktok.status === "queued");
