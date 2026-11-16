@@ -76,5 +76,14 @@ const plain = ov.buildFfmpegArgs({ input: "i", output: "o" });
 ok(!plain.includes("-filter_complex") && plain.includes("0:v"), "zonder overlays geen filter");
 ok(ov.buildFfmpegArgs({ input: "i", output: "o", audio: "copy" }).join(" ").includes("-c:a copy"), "audio copy-optie");
 
+// trim (in-point) for video overlays
+const tr = ov.buildFfmpegArgs({ input: "i", output: "o", overlays: [{ path: "/x/c.mp4", kind: "video", position: "full", scale: 100, opacity: 1, start: 9, duration: 8, trim: 1 }] });
+const tfc = tr[tr.indexOf("-filter_complex") + 1];
+ok(/\[1:v\]trim=start=1,format=rgba/.test(tfc), "video-overlay begint 1 s later (trim)");
+ok(/between\(t,9,17\)/.test(tfc), "cutaway-venster 9 t/m 17 s");
+const ti = ov.buildFfmpegArgs({ input: "i", output: "o", overlays: [{ path: "/x/l.png", kind: "image", trim: 2 }] });
+ok(!/trim=/.test(ti[ti.indexOf("-filter_complex") + 1]), "trim geldt niet voor afbeeldingen");
+ok(ov.normalize({ trim: 3 }).trim === 3, "trim via normalize");
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);

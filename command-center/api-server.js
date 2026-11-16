@@ -1003,11 +1003,13 @@ function markOverlaysUsed(ids) {
 }
 // Composite the overlays for `type` (+ optional tail filter such as ASS
 // captions) onto `input`, writing `output`. Returns the ids used.
-async function applyOverlays(input, output, type, { tailFilter = "", picked } = {}) {
+async function applyOverlays(input, output, type, { tailFilter = "", picked, maxDuration = 0 } = {}) {
   const chosen = picked || overlaysFor(type);
   const info = await probeVideo(input).catch(() => null);
   const width = (info && info.width) || 1080, height = (info && info.height) || 1920;
-  const duration = (info && info.duration) || 0;
+  const full = (info && info.duration) || 0;
+  // maxDuration: cut the output right after the last spoken word (no dead air).
+  const duration = maxDuration > 0 ? Math.min(full || maxDuration, maxDuration) : full;
   const args = overlaysMod.buildFfmpegArgs({
     input, output, width, height, duration, tailFilter,
     overlays: chosen.map(o => ({ ...o, path: path.join(OVERLAYS_DIR, path.basename(o.file)), kind: overlaysMod.kindOf(o.file) })),
@@ -5337,6 +5339,9 @@ async function handleTgMessage(msg) {
   // X engage review: edited reply text
   if (await xEngageBot.handleText(chatId, text)) return;
 
+  // NeuraShield UGC review: feedback for a new version
+  if (nsEditState.has(chatId)) { await handleNsUgcFeedback(chatId, text); return; }
+
   // Community manager review: edit-text capture
   if (communityEditState.has(chatId)) {
     const { postId } = communityEditState.get(chatId);
@@ -5637,6 +5642,107 @@ async function sendManualSuggestion(chatId, task) {
   });
 }
 
+// ── NeuraShield UGC review (Telegram) ───────────────────────────────
+const nsEditState = new Map(); // chatId -> { taskId, startedAt }
+const NS_UGC_CHANNEL = process.env.NEURASHIELD_UGC_CHANNEL || "mud1u9q9bqh1"; // gh0stlayer
+
+async function ugcVideoToPostMedia(t) {
+  const src = path.join(MEDIA_DIR, String(t.result_url || "").replace(/^\/media\//, ""));
+  if (!/^\/media\/ugc\/[\w.-]+\.mp4$/.test(t.result_url || "") || !fs.existsSync(src)) throw new Error("video file not found");
+  fs.mkdirSync(POST_MEDIA_DIR, { recursive: true });
+  const file = `${t.id}.mp4`;
+  fs.copyFileSync(src, path.join(POST_MEDIA_DIR, file));
+  return `/media/posts/${file}`;
+}
+
+function updateUgcTask(id, patch) {
+  const all = readTaskFile("ugc-tasks.json");
+  const t = all.find(x => x.id === id);
+  if (!t) return null;
+  Object.assign(t, patch);
+  writeTaskFile("ugc-tasks.json", all);
+  return t;
+}
+
+async function approveNsUgc(t) {
+  const channel = readChannels().find(c => c.id === NS_UGC_CHANNEL);
+  if (!channel) throw new Error("gh0stlayer channel not found");
+  const text = cleanSocialText(t.x_text || t.post_caption || "");
+  if (twitterWeightedLength(text) > 280) throw new Error(`text too long for X (${twitterWeightedLength(text)}/280)`);
+  const media = await ugcVideoToPostMedia(t);
+  const igAccount = channel.platform === "twitter" && igPublish.config(channel).account_id;
+  const now = new Date().toISOString();
+  const post = {
+    id: genId(), channel_id: channel.id, status: "scheduled",
+    created_at: now, updated_at: now, scheduled_at: now, scheduled_local: null,
+    archetype: null, trigger_word: null, media_path: media, media_paths: [media],
+    text, published_at: null, message_id: null, attempts: 0, error: null,
+    video_post: true, ugc_task_id: t.id,
+    ...(igAccount ? { ig_requested: true } : {}),
+  };
+  writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), post]);
+  updateUgcTask(t.id, { review_status: "approved", approved_at: now, community_post_id: post.id });
+  return { post, instagram: !!igAccount, channel };
+}
+
+async function handleNsUgcCallback(cq, chatId, msgId, data) {
+  const [, action, id] = data.split(":");
+  const t = readTaskFile("ugc-tasks.json").find(x => x.id === id);
+  const mark = (label) => tgApiCall("editMessageReplyMarkup", { chat_id: chatId, message_id: msgId,
+    reply_markup: { inline_keyboard: [[{ text: label, callback_data: "ns:noop" }]] } });
+  if (action === "noop") { await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id }); return; }
+  if (!t) { await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Video niet gevonden.", show_alert: true }); return; }
+  if (t.review_status && t.review_status !== "pending") {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: `Al afgehandeld (${t.review_status}).`, show_alert: true });
+    return;
+  }
+  if (action === "ok") {
+    try {
+      const r = await approveNsUgc(t);
+      await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "✅ Approved" });
+      await mark(`✅ Approved, gaat nu naar ${r.channel.name || "gh0stlayer"}${r.instagram ? " + Instagram" : ""}`);
+      if (!r.instagram) tgSend(chatId, "⚠️ Op het gh0stlayer-kanaal staat geen Instagram-account gekoppeld, dus hij gaat alleen naar X.");
+    } catch (e) {
+      await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Mislukt: " + e.message, show_alert: true });
+    }
+  } else if (action === "skip") {
+    updateUgcTask(id, { review_status: "skipped" });
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "❌ Skipped" });
+    await mark("❌ Skipped");
+  } else if (action === "edit") {
+    nsEditState.set(chatId, { taskId: id, startedAt: Date.now() });
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id, text: "Stuur wat er anders moet" });
+    tgSend(chatId, "✏️ *Wat moet er anders?*\n\nStuur je feedback (bijv. \"korter\", \"andere hook\", \"ander verhaal\", \"andere avatar\"). Ik maak dan een nieuwe versie met dezelfde avatar en hetzelfde verhaal, tenzij je iets anders vraagt. /cancel om af te breken.");
+  } else {
+    await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id });
+  }
+}
+
+async function handleNsUgcFeedback(chatId, text) {
+  const { taskId } = nsEditState.get(chatId);
+  nsEditState.delete(chatId);
+  if (text === "/cancel") { tgSend(chatId, "Aanpassen geannuleerd. De video wacht nog op je keuze."); return; }
+  const orig = readTaskFile("ugc-tasks.json").find(x => x.id === taskId);
+  if (!orig) { tgSend(chatId, "Die video bestaat niet meer."); return; }
+  const lc = text.toLowerCase();
+  const newAvatar = /andere?\s+(avatar|persoon|spreker)|other avatar|different avatar/.test(lc);
+  const newStory = /ander\s+verhaal|andere\s+story|other story|different story/.test(lc);
+  try {
+    const t = await createUgcAutopilotTask({
+      ...(orig.payload || {}), preset: "neurashield",
+      avatar_id: newAvatar ? "" : orig.avatar_id,
+      exclude_avatar_id: newAvatar ? orig.avatar_id : "",
+      story_id: newStory ? "" : orig.story_id,
+      feedback: text, previous: orig.script,
+      revision: (orig.revision || 0) + 1, revises: orig.id,
+    });
+    updateUgcTask(taskId, { review_status: "revised", revised_by: t.id });
+    tgSend(chatId, `🔁 Nieuwe versie in de maak (${t.avatar_name}, ${t.words} woorden). Hij komt hier binnen zodra hij klaar is.`);
+  } catch (e) {
+    tgSend(chatId, "Nieuwe versie mislukt: " + e.message);
+  }
+}
+
 async function handleTgCallback(cq) {
   const chatId = String(cq.message?.chat?.id || cq.from?.id || "");
   const data = cq.data || "";
@@ -5649,6 +5755,8 @@ async function handleTgCallback(cq) {
 
   // X engage review cards (x-engage.js)
   if (data.startsWith("xe:")) { await xEngageBot.handleCallback(cq); return; }
+  // NeuraShield UGC review cards
+  if (data.startsWith("ns:")) { await handleNsUgcCallback(cq, chatId, msgId, data); return; }
 
   if (!data.startsWith("sm:")) {
     await tgApiCall("answerCallbackQuery", { callback_query_id: cq.id });
@@ -7900,13 +8008,31 @@ async function finishUgcVideo(id) {
   if (!fs.existsSync(raw)) await downloadTo(t.remote_url || t.result_url, raw);
   const patch = { status: "completed", raw_url: `/media/ugc/${id}-raw.mp4`, result_url: `/media/ugc/${id}-raw.mp4` };
   // Overlays allowed for "ugc" only (strict, see overlays.js).
-  const picked = overlaysFor("ugc");
+  let picked = overlaysFor("ugc");
   let assFile = "", tailFilter = "";
+  // Real word timings from the TTS (used for captions, end trim and cutaway).
+  let aligned = [];
+  try { aligned = ugcAuto.wordsFromAlignment(JSON.parse(fs.readFileSync(path.join(__dirname, "data", "ugc-audio", id + ".words.json"), "utf8"))); } catch {}
+  // End the video right after the last word (only when we know the real timing).
+  const rawInfo = await probeVideo(raw).catch(() => null);
+  let maxDur = ugcAuto.trimEnd(aligned);
+  if (maxDur && rawInfo && rawInfo.duration && maxDur >= rawInfo.duration - 0.05) maxDur = 0;
+  if (maxDur) patch.trimmed_to = maxDur;
+  // NeuraShield preset: video overlays from the library play as a cutaway
+  // shot in the middle, the speaker opens and closes on camera.
+  if (t.preset === "neurashield" && picked.length) {
+    const speechEnd = aligned.length ? aligned[aligned.length - 1].end : ((rawInfo && rawInfo.duration) || t.audio_duration || 0);
+    const cut = ugcAuto.overlayCutaway(speechEnd);
+    picked = picked.map(o => {
+      if (overlaysMod.kindOf(o.file) !== "video") return o;
+      return cut ? { ...o, ...cut, trim: o.trim || 1 } : null;
+    }).filter(Boolean);
+    if (cut) patch.cutaway = cut;
+  }
   if (t.captions) {
     try {
-      const info = await probeVideo(raw);
-      let words = [];
-      try { words = ugcAuto.wordsFromAlignment(JSON.parse(fs.readFileSync(path.join(__dirname, "data", "ugc-audio", id + ".words.json"), "utf8"))); } catch {}
+      const info = rawInfo || await probeVideo(raw);
+      let words = aligned.slice();
       if (!words.length) words = ugcAuto.wordsEvenly(t.script, info.duration || t.audio_duration || 20);
       assFile = path.join(UGC_MEDIA_DIR, `${id}.ass`);
       fs.writeFileSync(assFile, ugcAuto.buildAss({ words, width: info.width, height: info.height, hook: t.on_screen_hook || "", hookSeconds: Math.min(3, (words[0] && words[words.length - 1].end) || 3) }));
@@ -7917,9 +8043,9 @@ async function finishUgcVideo(id) {
       console.error(`[UGC] captions failed for ${id}:`, patch.caption_error);
     }
   }
-  if (tailFilter || picked.length) {
+  if (tailFilter || picked.length || maxDur) {
     const tryRender = async (withOverlays, tail) => {
-      const ids = await applyOverlays(raw, out, "ugc", { tailFilter: tail, picked: withOverlays ? picked : [] });
+      const ids = await applyOverlays(raw, out, "ugc", { tailFilter: tail, picked: withOverlays ? picked : [], maxDuration: maxDur });
       patch.final_url = `/media/ugc/${id}.mp4`;
       patch.result_url = patch.final_url;
       return ids;
@@ -7932,7 +8058,7 @@ async function finishUgcVideo(id) {
       if (picked.length) {
         patch.overlay_error = String(e.message).slice(0, 300);
         console.error(`[UGC] overlays failed for ${id}:`, patch.overlay_error);
-        if (tailFilter) {
+        if (tailFilter || maxDur) {
           try { await tryRender(false, tailFilter); }
           catch (e2) { patch.caption_error = String(e2.message).slice(0, 300); }
         }
@@ -7955,19 +8081,35 @@ function escTg(s) { return String(s || "").replace(/[&<>]/g, c => ({ "&": "&amp;
 async function deliverUgcToTelegram(t) {
   if (!TG_TOKEN || !TG_CHAT) return;
   const file = path.join(MEDIA_DIR, String(t.result_url || "").replace(/^\/media\//, ""));
-  const head = `🎬 <b>UGC video ready</b> · ${escTg(t.avatar_name || "")}${t.angle ? " · " + escTg(t.angle) : ""}`;
+  const head = t.review
+    ? `🛡 <b>NeuraShield UGC ter review</b> · ${escTg(t.avatar_name || "")}${t.story_title ? " · " + escTg(t.story_title) : ""}${t.revision ? ` · versie ${t.revision + 1}` : ""}\nNa ✅ gaat hij naar gh0stlayer op X en Instagram.`
+    : `🎬 <b>UGC video ready</b> · ${escTg(t.avatar_name || "")}${t.angle ? " · " + escTg(t.angle) : ""}`;
+  const reviewKb = t.review ? JSON.stringify({ inline_keyboard: [[
+    { text: "✅ Approve", callback_data: `ns:ok:${t.id}` },
+    { text: "✏️ Aanpassen", callback_data: `ns:edit:${t.id}` },
+    { text: "❌ Skip", callback_data: `ns:skip:${t.id}` },
+  ]] }) : "";
   if (fs.existsSync(file) && fs.statSync(file).size < 49 * 1024 * 1024) {
     const form = new FormData();
     form.append("chat_id", String(TG_CHAT));
     form.append("caption", head);
     form.append("parse_mode", "HTML");
+    if (reviewKb) form.append("reply_markup", reviewKb);
     form.append("supports_streaming", "true");
     form.append("video", new Blob([fs.readFileSync(file)], { type: "video/mp4" }), path.basename(file));
     const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendVideo`, { method: "POST", body: form });
     const d = await r.json().catch(() => ({}));
     if (!d.ok) throw new Error(d.description || "sendVideo failed");
   } else {
-    sendTelegram("UGC video ready", `${head}\nToo large for Telegram, open it on the Content Creator page.`, "info");
+    if (reviewKb) {
+      await tgApiCall("sendMessage", { chat_id: TG_CHAT, parse_mode: "HTML", text: `${head}\nTe groot voor Telegram, bekijk hem in de Content Creator.`, reply_markup: JSON.parse(reviewKb) });
+    } else sendTelegram("UGC video ready", `${head}\nToo large for Telegram, open it on the Content Creator page.`, "info");
+  }
+  if (t.review && t.x_text) {
+    await tgApiCall("sendMessage", { chat_id: TG_CHAT, parse_mode: "HTML", disable_web_page_preview: true,
+      text: `<b>Posttekst (X + Instagram):</b>\n\n${escTg(t.x_text)}` });
+    console.log(`[UGC] ${t.id} sent to Telegram for review`);
+    return;
   }
   const caption = t.post_caption || "";
   if (caption) {
@@ -10747,12 +10889,28 @@ async function listElevenVoices() {
   return Array.isArray(data.voices) ? data.voices : [];
 }
 
+// X/IG post text for a UGC script: caption + hashtags, within 280 weighted
+// characters (hashtags go first, then the caption is cut at a sentence/word).
+function ugcXText(s) {
+  let tags = (s.hashtags || []).map(t => "#" + String(t).replace(/^#/, ""));
+  let cap = cleanSocialText(s.caption || "");
+  const join = () => [cap, tags.join(" ")].filter(Boolean).join("\n\n");
+  while (tags.length && twitterWeightedLength(join()) > 280) tags.pop();
+  while (twitterWeightedLength(join()) > 280) {
+    const cut = cap.slice(0, cap.length - 10);
+    const at = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(" "));
+    cap = (at > 40 ? cut.slice(0, at) : cut).replace(/[\s,;:]+$/, "");
+  }
+  return join();
+}
+
 async function createUgcAutopilotTask(p = {}) {
   const origin = knownPublicOrigin();
   if (!origin) throw new Error("No public address known yet: open the dashboard once via its domain, or set PUBLIC_BASE_URL in .env");
   const tasks = readTaskFile("ugc-tasks.json");
   const recent = tasks.filter(t => t.autopilot);
-  const avatar = ugcAuto.pickAvatar(readTaskFile("ugc-avatars.json").filter(a => !a.owner_user || a.id === p.avatar_id), recent.map(t => t.avatar_id), p.avatar_id || "");
+  const isNs = p.preset === "neurashield";
+  const avatar = ugcAuto.pickAvatar(readTaskFile("ugc-avatars.json").filter(a => (!a.owner_user || a.id === p.avatar_id) && (!p.exclude_avatar_id || a.id !== p.exclude_avatar_id)), recent.map(t => t.avatar_id), p.avatar_id || "");
   if (!avatar) throw new Error("No ready avatar with a recognisable gender in the Avatar library");
   const gender = ugcAuto.inferGender(avatar);
 
@@ -10763,11 +10921,15 @@ async function createUgcAutopilotTask(p = {}) {
   if (!voice) throw new Error(`No ${gender} ElevenLabs voice available (check ELEVENLABS_API_KEY)`);
 
   const brand = p.brand || defaultBrandKey();
+  // NeuraShield preset: one of the fixed user stories, least recently told first.
+  const story = isNs ? ugcAuto.pickStory(recent.filter(t => t.preset === "neurashield").map(t => t.story_id), p.story_id || "") : null;
   const prompt = ugcAuto.buildScriptPrompt({
-    focus: p.focus || "",
+    focus: story ? ugcAuto.neurashieldFocus(story) : (p.focus || ""),
     persona: ugcAuto.personaFor(avatar),
-    recentHooks: recent.map(t => t.hook),
+    recentHooks: (isNs ? recent.filter(t => t.preset === "neurashield") : recent).map(t => t.hook),
     brandKnowledge: brandKnowledgeBlock(brand),
+    feedback: p.feedback || "",
+    previous: p.previous || "",
   });
   const model = (process.env.UGC_AUTOPILOT_MODEL || "claude-opus-5-5").trim();
   const taskId = "ugc_" + Date.now().toString(36);
@@ -10796,7 +10958,7 @@ async function createUgcAutopilotTask(p = {}) {
     status: "pending",
     mode: "speak",
     image_url: avatar.image_url,
-    prompt: p.scene_prompt || "",
+    prompt: p.scene_prompt || (story ? ugcAuto.sceneFor(avatar, story) : ""),
     script: script.script,
     model: "dop-lite", motion_id: "",
     voice_id: voice.voice_id, voice_name: voice.name || "", voice_provider: "elevenlabs",
@@ -10818,6 +10980,16 @@ async function createUgcAutopilotTask(p = {}) {
     angle: script.angle, hook: script.hook, on_screen_hook: p.hook_title === "false" ? "" : script.on_screen_hook,
     post_caption: ugcAuto.postCaption(script), words: script.words,
   };
+  if (isNs) {
+    const { feedback, previous, revision, revises, exclude_avatar_id, ...base } = p;
+    Object.assign(task, {
+      preset: "neurashield", story_id: story.id, story_title: story.title,
+      review: p.review !== "false" && p.review !== false, review_status: "pending",
+      payload: base, revision: Number(revision) || 0, revises: revises || "",
+      feedback: feedback || "", x_text: ugcXText(script),
+      description: `NeuraShield UGC · ${avatar.name} · ${story.title}`,
+    });
+  }
   const all = readTaskFile("ugc-tasks.json");
   all.unshift(task);
   if (all.length > 50) all.length = 50;

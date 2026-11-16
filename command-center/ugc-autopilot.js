@@ -83,7 +83,7 @@ function personaFor(avatar) {
 // ── Script writing ──────────────────────────────────────────────────
 const WORDS_MIN = 38, WORDS_MAX = 72; // ≈ 15-30 s of natural speech
 
-function buildScriptPrompt({ focus, persona, recentHooks = [], brandKnowledge = "" }) {
+function buildScriptPrompt({ focus, persona, recentHooks = [], brandKnowledge = "", feedback = "", previous = "" }) {
   const avoid = recentHooks.filter(Boolean).slice(0, 12);
   return `You write scripts for short UGC talking-head videos (TikTok / Instagram Reels). A real-looking person talks straight into their phone camera.
 
@@ -107,13 +107,14 @@ RETENTION STRUCTURE
 5. Proof in their own experience (a feeling or a routine change). Never invent results, returns, prices or features that are not in the brand knowledge. No promises of profit. No financial advice.
 6. Soft CTA with a reason: e.g. "link's in my bio", "check it before your next trade".
 Short spoken sentences, contractions, natural rhythm. Write numbers the way they are spoken.
+Make it sound like a real person, not a script: an occasional natural filler ("honestly", "like", "I mean"), a self-correction or a short pause sentence is fine. The LAST sentence is the last thing said: no trailing "bye" or filler after the CTA.
 
 STYLE RULES (hard)
 - English only.
 - Never use em dashes or en dashes anywhere. Use periods, commas or line breaks.
 - No emojis and no hashtags inside the script.
 - No stage directions, no brackets, no speaker labels. Only the words that are spoken.
-${avoid.length ? `\nHOOKS ALREADY USED (write something clearly different):\n${avoid.map(h => "- " + h).join("\n")}\n` : ""}
+${feedback ? `\nREVISION REQUEST FROM THE OWNER (follow this exactly):\n${feedback}\n${previous ? `Previous script that needs changing:\n${previous}\n` : ""}` : ""}${avoid.length ? `\nHOOKS ALREADY USED (write something clearly different):\n${avoid.map(h => "- " + h).join("\n")}\n` : ""}
 OUTPUT
 Return ONLY a JSON object, no prose around it:
 {
@@ -254,9 +255,94 @@ function buildAss({ words, width = 1080, height = 1920, hook = "", hookSeconds =
   return lines.join("\n") + "\n";
 }
 
+// ── NeuraShield preset ──────────────────────────────────────────────
+// Weekly UGC about NeuraShield. Every video tells one personal story (rotating,
+// least recently used first) and then explains what NeuraShield does. FACTS is
+// the ONLY source of claims the writer may use (from neuralabscapital.com/neurashield).
+const NEURASHIELD_FACTS = `NEURASHIELD FACTS (the only claims you may make):
+- NeuraShield is a small macOS menu-bar app (about 1.5 MB). Works on macOS 13 or newer, Apple silicon and Intel. Free download at neuralabscapital.com/neurashield. Trusted by 700+ crypto users. Windows version is coming soon (not available yet).
+- Guards (all free):
+  * Fake installers: warns when an app is a look-alike of Zoom, Teams, Ledger Live, Trezor Suite, TradingView, MetaTrader, ChatGPT or Telegram, by checking the Apple Developer ID and notarization before you open it.
+  * Clipboard: catches "ClickFix" tricks (a website telling you to paste a command in Terminal) and base64 commands; clears seed phrases and private keys from the clipboard after 60 seconds; warns when a wallet address in the clipboard is swapped (clipper malware, address poisoning) by checking it against your trusted addresses; flags look-alike meeting links.
+  * Startup hijacks: shows new LaunchAgents, login items, shell profile and git hook changes, removable in one click.
+  * Fake password prompts: calls out fake macOS password pop-ups.
+- Tools: Check a link, Check a file, Exposure scan, Trusted addresses (5 free), and the free "I think this Mac is infected" incident check (deletes nothing, writes a report).
+- Privacy: nothing leaves your Mac. The free version makes no network connections.
+- Premium (EUR 9.99 a month or 59.99 a year) adds a tampered-wallet-app guard and includes NeuraTrade. You do NOT need Premium to be protected; all core guards are free.
+NEVER SAY: that it stops all malware or makes you 100% safe, that it is an antivirus or replaces one (it works alongside antivirus), real-time scanning, that it works on iPhone, Android, Windows or in the browser, that Premium is needed for safety, any number or result not listed here, or that NeuraShield could have recovered lost funds.`;
+
+const NEURASHIELD_STORIES = [
+  { id: "fake_zoom", title: "Hacked via a fake Zoom installer",
+    story: "Got a 'meeting invite' from a so-called investor, the link said Zoom needed an update, downloaded the installer, typed the Mac password. A few days later the hot wallet was drained. Wishes they had known NeuraShield checks installers (Developer ID, notarization) and flags Zoom look-alikes." },
+  { id: "clickfix", title: "ClickFix: pasted a command into Terminal",
+    story: "A website showed a fake 'verify you are human' check and told them to paste a line into Terminal. They did it without thinking. That command installed a stealer. NeuraShield flags ClickFix commands and base64 commands in the clipboard before you paste them." },
+  { id: "clipper", title: "Wallet address swapped in the clipboard",
+    story: "Copied their own exchange deposit address, pasted it, sent the funds. The address had been swapped by clipper malware, the first and last characters looked the same. Money gone. NeuraShield checks clipboard addresses against your trusted addresses and warns when one is swapped." },
+  { id: "fake_password", title: "Fake macOS password prompt",
+    story: "A pop-up that looked exactly like macOS asked for the Mac password 'to finish an update'. It was fake and gave a stealer what it needed to open the keychain. NeuraShield calls out fake password prompts." },
+  { id: "seed_clipboard", title: "Seed phrase left in the clipboard",
+    story: "Copied a seed phrase once to back it up and forgot it was still in the clipboard. Something on the Mac read it later. NeuraShield clears seed phrases and private keys from the clipboard after 60 seconds." },
+  { id: "launchagent", title: "Something hiding in startup",
+    story: "The Mac felt normal, but a hidden LaunchAgent started every time they logged in and kept stealing sessions. They only found it weeks later. NeuraShield shows new LaunchAgents and login items and removes them in one click." },
+  { id: "fake_meeting", title: "Look-alike meeting link",
+    story: "A 'Teams' link from a recruiter on Telegram was one letter off. It asked to install an app to join. NeuraShield flags look-alike meeting links and fake Teams installers." },
+  { id: "near_miss", title: "The near miss",
+    story: "Was about to install a 'Ledger Live update' from a link in an email. NeuraShield popped up and said the app was not from the real developer. Deleted it. Tells the story of how close it was, from the point of view of someone who now uses it daily." },
+  { id: "friend_hacked", title: "My friend got hacked, so I installed it",
+    story: "A close friend lost their savings after downloading a fake TradingView installer. The speaker got scared, checked their own Mac with the free 'I think this Mac is infected' check and now keeps NeuraShield in the menu bar." },
+];
+
+// Least recently used story (recentIds newest first). A preferred id wins.
+function pickStory(recentIds = [], preferredId = "", stories = NEURASHIELD_STORIES) {
+  if (preferredId) { const hit = stories.find(s => s.id === preferredId); if (hit) return hit; }
+  const rank = (s) => { const i = recentIds.indexOf(s.id); return i === -1 ? Infinity : i; };
+  return stories.slice().sort((a, b) => rank(b) - rank(a))[0];
+}
+
+// Scene prompt for the talking-avatar render: handheld phone selfie, real room,
+// natural light, so it reads as a real person and not a studio avatar.
+function sceneFor(avatar, story) {
+  const worried = story && story.id !== "near_miss";
+  return [
+    "Ultra realistic handheld vertical smartphone selfie video, filmed by the person themself at arm's length.",
+    "Natural daylight from a window, real lived-in room at home, slight natural handheld camera sway, subtle autofocus.",
+    `The person talks directly into the phone camera like a real creator, ${worried ? "sincere and a bit frustrated, telling a personal story" : "relieved and honest, telling a personal story"}.`,
+    "Natural blinking, small head movements, natural micro expressions, realistic skin texture, lips in sync with speech.",
+    "No text, no subtitles, no logos, no studio lighting, no background music.",
+  ].join(" ");
+}
+
+function neurashieldFocus(story) {
+  return `NeuraShield, a free macOS security app for crypto users (neuralabscapital.com/neurashield).
+THE STORY THIS VIDEO TELLS (first person, as if it happened to the speaker or someone close to them): ${story.title}. ${story.story}
+Structure: start with the moment it went wrong (or almost did), make the viewer feel it, then explain in plain words what NeuraShield does that would have caught it (one or two concrete guards), mention it is free and stays on your Mac, end with a soft CTA ("link's in my bio" or "it's free, just get it").
+Do not dramatise beyond the story. Do not name a real person. Do not give amounts unless they are vague ("my savings", "everything on that wallet").
+${NEURASHIELD_FACTS}`;
+}
+
+// Where the overlay library clip plays as a cutaway: from ~38% of the speech
+// for up to 8 s, and always ending at least 3 s before the last word so the
+// speaker closes the video on camera.
+function overlayCutaway(speechEnd, { at = 0.38, maxLen = 8, tail = 3, minLen = 2.5 } = {}) {
+  const end = Number(speechEnd) || 0;
+  if (end <= 0) return null;
+  const start = Math.max(1.5, Math.round(end * at * 10) / 10);
+  const len = Math.min(maxLen, end - tail - start);
+  if (len < minLen) return null;
+  return { start, duration: Math.round(len * 10) / 10 };
+}
+
+// Final video length: right after the last spoken word (no dead air).
+function trimEnd(words, pad = 0.15) {
+  const w = (words || []).filter(x => Number.isFinite(x.end));
+  if (!w.length) return 0;
+  return Math.round((w[w.length - 1].end + pad) * 1000) / 1000;
+}
+
 module.exports = {
   inferGender, inferAge, ageBucket, pickVoice, pickAvatar, personaFor,
   buildScriptPrompt, parseScriptJson, postCaption, countWords, stripDashes,
   wordsFromAlignment, wordsEvenly, chunkWords, buildAss, assTime,
   WORDS_MIN, WORDS_MAX,
+  NEURASHIELD_FACTS, NEURASHIELD_STORIES, pickStory, sceneFor, neurashieldFocus, overlayCutaway, trimEnd,
 };

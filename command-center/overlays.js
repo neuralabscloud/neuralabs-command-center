@@ -48,6 +48,7 @@ function normalize(input, prev = {}) {
   if (has("margin")) o.margin = num(b.margin, prev.margin ?? 4, 0, 20);       // % of video width
   if (has("opacity")) o.opacity = num(b.opacity, prev.opacity ?? 1, 0.05, 1);
   if (has("start")) o.start = num(b.start, prev.start ?? 0, 0, 600);           // seconds
+  if (has("trim")) o.trim = num(b.trim, prev.trim ?? 0, 0, 600);               // skip the first N s of a video overlay
   if (has("duration")) o.duration = num(b.duration, prev.duration ?? 0, 0, 600); // 0 = till the end
   if (has("enabled")) o.enabled = b.enabled === true || b.enabled === "true" || b.enabled === "1" || b.enabled === 1;
   return o;
@@ -109,8 +110,9 @@ function buildFfmpegArgs({ input, output, overlays = [], width = 1080, height = 
     const w = Math.max(2, Math.round(width * (Number(o.scale) || 20) / 100 / 2) * 2);
     const scale = o.position === "full" ? `scale=${width}:${height}:force_original_aspect_ratio=decrease` : `scale=${w}:-2`;
     const alpha = Number(o.opacity) < 1 ? `,colorchannelmixer=aa=${Number(o.opacity).toFixed(2)}` : "";
+    const trim = o.kind === "video" && Number(o.trim) > 0 ? `trim=start=${Number(o.trim)},` : "";
     const shift = start > 0 ? `,setpts=PTS-STARTPTS+${start}/TB` : ",setpts=PTS-STARTPTS";
-    parts.push(`[${idx}:v]format=rgba,${scale}${alpha}${shift}[ov${idx}]`);
+    parts.push(`[${idx}:v]${trim}format=rgba,${scale}${alpha}${shift}[ov${idx}]`);
     const { x, y } = xyFor(o.position, width * (Number(o.margin) || 0) / 100);
     const enable = end ? `:enable='between(t,${start},${end})'` : (start ? `:enable='gte(t,${start})'` : "");
     const out = `[v${idx}]`;

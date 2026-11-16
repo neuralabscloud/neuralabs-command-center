@@ -79,5 +79,29 @@ check("hook line uppercased, braces stripped", ass.includes("STOP BUYING TOPS"))
 check("one event per spoken word", (ass.match(/,Cap,/g) || []).length === 3);
 check("current word highlighted", ass.includes("{\\c&H00E6FF&}HI{\\c&H00FFFFFF&} THERE,"));
 
+// ── NeuraShield preset ──
+{
+  const ua = require("../ugc-autopilot");
+  check("stories >= 8 met unieke ids", ua.NEURASHIELD_STORIES.length >= 8 && new Set(ua.NEURASHIELD_STORIES.map(s => s.id)).size === ua.NEURASHIELD_STORIES.length);
+  const ids = ua.NEURASHIELD_STORIES.map(s => s.id);
+  check("pickStory: nooit gebruikt wint", ua.pickStory(ids.slice(0, -1)).id === ids[ids.length - 1]);
+  check("pickStory: alles gebruikt = oudste", ua.pickStory(ids.slice().reverse()).id === ids[0]);
+  check("pickStory: voorkeur wint", ua.pickStory([], "clipper").id === "clipper");
+  check("feiten noemen grenzen (geen antivirus/realtime)", /not an antivirus|NEVER SAY/i.test(ua.NEURASHIELD_FACTS) && /real-time/.test(ua.NEURASHIELD_FACTS));
+  check("geen streepjes in feiten/verhalen", !/[—–]/.test(ua.NEURASHIELD_FACTS + JSON.stringify(ua.NEURASHIELD_STORIES)));
+  const f = ua.neurashieldFocus(ua.NEURASHIELD_STORIES[0]);
+  check("focus bevat verhaal + feiten", f.includes(ua.NEURASHIELD_STORIES[0].title) && f.includes("NEURASHIELD FACTS"));
+  check("scene = handheld selfie zonder tekst", /handheld/.test(ua.sceneFor({}, ua.NEURASHIELD_STORIES[0])) && /No text/.test(ua.sceneFor({})));
+  const c = ua.overlayCutaway(24);
+  check("cutaway start ~38% en max 8 s", c.start === 9.1 && c.duration === 8);
+  check("cutaway eindigt >= 3 s voor het einde", c.start + c.duration <= 24 - 3);
+  check("cutaway te kort = null", ua.overlayCutaway(8) === null && ua.overlayCutaway(0) === null);
+  check("trimEnd = laatste woord + 0.15", ua.trimEnd([{ end: 1 }, { end: 21.4 }]) === 21.55);
+  check("trimEnd zonder woorden = 0", ua.trimEnd([]) === 0);
+  const p2 = ua.buildScriptPrompt({ focus: "x", persona: "p", feedback: "maak korter", previous: "oud script" });
+  check("feedback + vorig script in prompt", p2.includes("maak korter") && p2.includes("oud script"));
+  check("geen feedback-blok zonder feedback", !ua.buildScriptPrompt({ focus: "x", persona: "p" }).includes("REVISION"));
+}
+
 console.log(`\n${pass} ok, ${fail} FOUT`);
 process.exit(fail ? 1 : 0);
