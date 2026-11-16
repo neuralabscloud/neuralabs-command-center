@@ -132,4 +132,19 @@ async function deletePost(id, opts) {
   return true;
 }
 
-module.exports = { ENDPOINT, apiKey, gql, account, channels, tzOffsetMin, zonedTime, configOf, captionFor, metadataFor, postInput, createPost, deletePost };
+// Photo post (TikTok photo carousel, IG carousel): images in order, posted at dueAt or added to the queue.
+function imagePostInput({ channelId, service, text, imageUrls, altTexts = [], title = "", dueAt }) {
+  const input = {
+    channelId,
+    text: captionFor({ caption: text }),
+    assets: imageUrls.map((url, i) => ({ image: { url, metadata: { altText: String(altTexts[i] || "").slice(0, 400) } } })),
+    schedulingType: "automatic",
+    needsApproval: false,
+    ...(dueAt ? { mode: "customScheduled", dueAt: dueAt.toISOString() } : { mode: "addToQueue" }),
+  };
+  const t = String(title).replace(/[—–]/g, ",").slice(0, 90);
+  if (service === "tiktok") input.metadata = { tiktok: { isAiGenerated: true, ...(t ? { title: t } : {}) } };
+  return input;
+}
+
+module.exports = { ENDPOINT, apiKey, gql, account, channels, tzOffsetMin, zonedTime, configOf, captionFor, metadataFor, postInput, imagePostInput, createPost, deletePost };

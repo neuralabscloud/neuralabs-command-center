@@ -1,0 +1,28 @@
+<!-- layout: versus. Two 1:1-ish image panels side by side, label + value on each. -->
+<div class="card versus">
+  {{top}}
+  <div style="position:absolute;top:200px;left:var(--pad);right:var(--pad);height:560px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
+    <div style="position:relative;border-radius:28px;overflow:hidden;border:2px solid var(--border)">
+      <div class="bg-img" style="background-image:url('{{left_image}}')"></div>
+      <div class="shade" style="background:linear-gradient(180deg,transparent 35%,hsl(0 0% 0% / .9))"></div>
+      <div style="position:absolute;left:30px;right:30px;bottom:30px">
+        <div style="font:700 26px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">{{left_label}}</div>
+        <div style="font:400 64px/1.05 var(--display);font-stretch:125%;margin-top:10px">{{left_value}}</div>
+      </div>
+    </div>
+    <div style="position:relative;border-radius:28px;overflow:hidden;border:2px solid hsl(264 65% 60% / .8);box-shadow:0 0 50px hsl(264 65% 50% / .35)">
+      <div class="bg-img" style="background-image:url('{{right_image}}')"></div>
+      <div class="shade" style="background:linear-gradient(180deg,transparent 35%,hsl(0 0% 0% / .9))"></div>
+      <div style="position:absolute;left:30px;right:30px;bottom:30px">
+        <div style="font:700 26px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-glow)">{{right_label}}</div>
+        <div style="font:400 64px/1.05 var(--display);font-stretch:125%;margin-top:10px">{{right_value}}</div>
+      </div>
+    </div>
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:var(--bg);border:3px solid var(--accent);display:grid;place-items:center;font:400 30px/1 var(--display);font-stretch:125%;color:var(--fg)">VS</div>
+  </div>
+  <div class="body" style="bottom:170px">
+    <h1 class="headline fit" data-max="72" data-min="42" style="max-height:300px">{{headline}}</h1>
+    <p class="hint" style="margin-top:22px">{{context_line}}</p>
+  </div>
+  {{foot}}
+</div>

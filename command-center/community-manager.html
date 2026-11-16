@@ -370,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderIgReplies(c) + renderReplies(c) + renderEngage(c) + renderListings(c) + renderPairs(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderIgReplies(c) + renderReplies(c) + renderEngage(c) + renderListings(c) + renderPairs(c) + renderNewsCards(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -613,6 +613,75 @@ async function runIgReplies(id, btn) {
 }
 // Hook + reply pairs: some autopilot slots become a short hook post with the payload as reply.
 // Profiles live in a config file on the server (data/x-pair-profiles.json); this panel only shows them.
+// gh0stlayer news cards: daily card set (IG carousel, TikTok via Buffer, X hook + reply). Shown on the configured channel only.
+let NC_CHANNEL = null;
+function renderNewsCards(c) {
+  setTimeout(() => loadNewsCards(c.id), 0);
+  return `<div id="news-cards-wrap-${esc(c.id)}"></div>`;
+}
+const NC_STATUS = { scheduled: 'scheduled', awaiting_approval: 'awaiting approval', published: 'published', failed: 'failed', skipped: 'skipped', queued: 'queued in Buffer' };
+async function loadNewsCards(chId) {
+  const wrap = document.getElementById(`news-cards-wrap-${chId}`);
+  if (!wrap) return;
+  let st;
+  try { st = await fetchJson('/news-cards/status'); } catch { return; }
+  if (st.config.channel_id !== chId) { wrap.innerHTML = ''; return; }
+  NC_CHANNEL = chId;
+  let sets = [];
+  try { sets = await fetchJson('/news-cards/sets?limit=30'); } catch {}
+  const plat = Object.entries(st.config.platforms || {}).map(([k, v]) => `${esc(k)} ${v.enabled === false ? 'off' : `every ${esc(v.every_days)} day(s) at ${esc(v.time)}`}`).join(' · ');
+  const last = st.last_run ? `Last run ${esc(fmt(st.last_run.at))} (${esc(st.last_run.reason || '')}): ${(st.last_run.sets || []).map(x => `${esc(x.layout)} ${esc(x.status)}`).join(', ') || 'no suitable item'}` : 'No run yet';
+  const rows = sets.map(m => {
+    const posts = Object.entries(m.posts || {}).map(([p, v]) => {
+      const label = `${esc(p)}: ${esc(NC_STATUS[v.status] || v.status)}`;
+      return v.permalink ? `<a href="${esc(v.permalink)}" target="_blank" rel="noopener">${label}</a>` : `<span title="${esc(v.error || '')}">${label}</span>`;
+    }).join(' · ');
+    const mt = m.metrics || {};
+    const mtxt = ['h24', 'h72'].map(w => {
+      const parts = Object.entries(mt).map(([p, x]) => x && x[w] ? `${p} ${Object.entries(x[w]).filter(([, v]) => typeof v === 'number').map(([k, v]) => `${k} ${v}`).join(' ')}` : '').filter(Boolean);
+      return parts.length ? `${w}: ${parts.join(' | ')}` : '';
+    }).filter(Boolean).join('<br>');
+    const needsOk = Object.values(m.posts || {}).some(v => v.status === 'awaiting_approval');
+    return `<div style="display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+      ${m.thumb ? `<a href="${esc(m.thumb)}" target="_blank" rel="noopener"><img src="${esc(m.thumb)}" alt="" style="width:64px;height:80px;object-fit:cover;border-radius:6px"></a>` : '<div style="width:64px"></div>'}
+      <div style="flex:1;min-width:0;font-size:11px;line-height:1.5">
+        <div style="color:var(--text)">${esc(m.headline)}</div>
+        <div style="color:var(--text-dim)">${esc(fmt(m.created_at))} · ${esc(m.layout)} · ${esc(m.pill || '')} · ${esc(m.status)}${m.perf != null ? ` · score ${esc(m.perf)}` : ''}${m.source?.url ? ` · <a href="${esc(m.source.url)}" target="_blank" rel="noopener">${esc(m.source.name || 'source')}</a>` : ''}</div>
+        ${posts ? `<div>${posts}</div>` : ''}
+        ${m.reason ? `<div style="color:var(--text-dim)">${esc(m.reason)}</div>` : ''}
+        ${mtxt ? `<div style="color:var(--text-dim)">${mtxt}</div>` : ''}
+        ${m.slides.length > 1 ? `<div>${m.slides.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">slide ${i + 1}</a>`).join(' · ')}</div>` : ''}
+        ${needsOk ? `<button class="btn-sm" data-owner-only onclick="approveNewsCards(${jq(m.id)}, this)">Approve and schedule</button>` : ''}
+      </div></div>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div class="edit-label" style="margin-top:14px" id="news-cards">🗞 gh0stlayer news cards</div>
+    <div class="discord-banner">Every day at ${esc(String(st.config.tz))} 07:30 the agent picks one real news item or market fact, Claude writes a 2 to 3 slide set and it is rendered and scheduled. Settings: data/news-cards/config.json.</div>
+    <div class="ap-status">${st.running ? 'Running now…' : last}<br>${plat}${st.reweighted_at ? `<br>Weights updated ${esc(fmt(st.reweighted_at))}` : ''}</div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" data-owner-only>
+      <button class="btn-sm primary" onclick="runNewsCards(this)">Generate gh0stlayer news cards</button>
+    </div>
+    <div style="margin-top:8px">${rows || '<div class="ap-status">No sets yet.</div>'}</div>`;
+}
+async function runNewsCards(btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/news-cards/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    btn.textContent = 'Started, this takes a few minutes…';
+    setTimeout(() => loadNewsCards(NC_CHANNEL), 90000);
+  } catch (e) { alert(`Could not start: ${e.message}`); btn.disabled = false; }
+}
+async function approveNewsCards(id, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/news-cards/sets/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    loadNewsCards(NC_CHANNEL);
+  } catch (e) { alert(`Approve failed: ${e.message}`); btn.disabled = false; }
+}
 function renderPairs(c) {
   const id = esc(c.id);
   setTimeout(() => loadPairsStatus(c.id), 0);
@@ -864,6 +933,13 @@ function renderAutopilot(c) {
           <label class="edit-label">Template wordmark (template modes)</label>
           <input class="edit-input" id="ch-ap-mark-${esc(c.id)}" value="${v('template_mark', '')}" placeholder="e.g. your account name">
         </div>
+        <div>
+          <label class="edit-label">Trending scan (find and rewrite X posts)</label>
+          <select class="edit-select" id="ch-ap-trending-${esc(c.id)}">
+            <option value="true"${ap.trending_enabled !== false ? ' selected' : ''}>On</option>
+            <option value="false"${ap.trending_enabled === false ? ' selected' : ''}>Off (promo and hook + reply only)</option>
+          </select>
+        </div>
         <div class="full" style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
           <label class="edit-label">★ Daily promo: some of the day's posts promote your own product (counted within posts per day)</label>
         </div>
@@ -1082,6 +1158,7 @@ function collectAutopilot(id) {
     image_mode: g('imgmode') ? g('imgmode').value : 'ai_card',
     template_mark: g('mark') ? g('mark').value.trim() : '',
     style_refs: (apRefs[id] || []).slice(),
+    ...(g('trending') ? { trending_enabled: g('trending').value !== 'false' } : {}),
     ...(g('promo') ? {
       promo_enabled: g('promo').value === 'true',
       promo_per_day: Math.max(1, Number(g('promoppd').value) || 1),

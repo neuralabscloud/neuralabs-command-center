@@ -1,0 +1,11 @@
+<!-- layout: payload. Title + 3 numbered items + source. No image. -->
+<div class="card payload">
+  <div style="position:absolute;inset:0;background:radial-gradient(70% 45% at 15% 0%, hsl(264 65% 40% / .35), transparent 70%)"></div>
+  {{top}}
+  <div class="body" style="top:220px;bottom:200px;display:flex;flex-direction:column">
+    <h2 class="headline fit" data-max="64" data-min="40" style="max-height:230px">{{title}}</h2>
+    <ol class="items fit-list" style="list-style:none;margin-top:44px;display:flex;flex-direction:column;gap:34px">{{items}}</ol>
+    <p class="src" style="margin-top:auto">{{source}}</p>
+  </div>
+  {{foot}}
+</div>

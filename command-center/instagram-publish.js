@@ -164,4 +164,21 @@ async function publishImage({ fetch: fetchFn = fetch, igUserId, token, imageUrl,
   return finish(fetchFn, igUserId, c.id, token);
 }
 
-module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, videoPathOf, shouldCrosspost, skipReason, caption, padTarget, publishImage, publishVideo };
+// Carousel: one child container per image (is_carousel_item), then the CAROUSEL container.
+async function publishCarousel({ fetch: fetchFn = fetch, igUserId, token, imageUrls, caption: text, pollMs = 3000, maxWaitMs = 120000, sleep }) {
+  const wait = sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  if (!Array.isArray(imageUrls) || imageUrls.length < 2 || imageUrls.length > 10) throw new Error("Instagram: carousel needs 2 to 10 images");
+  const children = [];
+  for (const url of imageUrls) {
+    const c = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media`, { image_url: url, is_carousel_item: "true", access_token: token });
+    if (!c.id) throw new Error("Instagram: no child container id");
+    children.push(c.id);
+  }
+  for (const id of children) await waitContainer(fetchFn, id, token, pollMs, maxWaitMs, wait);
+  const c = await graph(fetchFn, "POST", `${GRAPH}/${igUserId}/media`, { media_type: "CAROUSEL", children: children.join(","), caption: text, access_token: token });
+  if (!c.id) throw new Error("Instagram: no carousel container id");
+  await waitContainer(fetchFn, c.id, token, pollMs, maxWaitMs, wait);
+  return finish(fetchFn, igUserId, c.id, token);
+}
+
+module.exports = { GRAPH, config, sanitize, parseHashtags, imagePathOf, videoPathOf, shouldCrosspost, skipReason, caption, padTarget, publishImage, publishVideo, publishCarousel };

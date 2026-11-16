@@ -1,0 +1,153 @@
+# gh0stlayer news cards: evergreen pool. Verifiable protocol facts, each with a source URL.
+# Format (own minimal parser, sources/evergreen.js): "- key: value" starts an item; values in [..] or {..} are JSON.
+# Used when the day's news scores low, and by --dry-run to cover every layout.
+
+- id: btc-halving-schedule
+  title: "Bitcoin's block subsidy fell to 3.125 BTC at the April 2024 halving"
+  summary: "The block subsidy halves every 210,000 blocks: 50 BTC at launch, 25 at block 210,000 (2012), 12.5 at 420,000 (2016), 6.25 at 630,000 (2020) and 3.125 at 840,000 (20 April 2024)."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Controlled_supply
+  date: 2024-04-20
+  numbers: [3.125, 6.25, 12.5, 25, 50, 210000, 840000]
+  entities: [Bitcoin, Miners]
+  layouts: [number, versus, signal]
+  series: [["2009", 50], ["2012", 25], ["2016", 12.5], ["2020", 6.25], ["2024", 3.125]]
+  versus: {"left": {"label": "2020 halving", "value": "6.25", "unit": "BTC per block"}, "right": {"label": "2024 halving", "value": "3.125", "unit": "BTC per block"}}
+
+- id: btc-supply-cap
+  title: "Bitcoin's supply is capped at 21 million coins, each split into 100,000,000 sats"
+  summary: "The protocol caps total supply just under 21 million BTC. One bitcoin is 100,000,000 satoshis, the smallest unit on chain."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Controlled_supply
+  numbers: [21000000, 100000000]
+  entities: [Bitcoin]
+  layouts: [number, signal]
+
+- id: btc-difficulty-retarget
+  title: "Bitcoin retargets mining difficulty every 2,016 blocks to keep blocks near 10 minutes"
+  summary: "Every 2,016 blocks, about two weeks, the network adjusts difficulty so the average block time stays near the 10 minute target, whatever hashrate joins or leaves."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Difficulty
+  numbers: [2016, 10]
+  entities: [Bitcoin, Miners]
+  layouts: [number, signal]
+
+- id: btc-genesis
+  title: "Bitcoin's genesis block was mined on 3 January 2009"
+  summary: "Block 0, the genesis block, is dated 3 January 2009. Its 50 BTC coinbase output cannot be spent."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Genesis_block
+  date: 2009-01-03
+  numbers: [50]
+  entities: [Bitcoin]
+  layouts: [signal, number]
+
+- id: btc-pizza
+  title: "On 22 May 2010 someone paid 10,000 BTC for two pizzas"
+  summary: "Laszlo Hanyecz paid 10,000 BTC for two pizzas on 22 May 2010, the first widely cited real world purchase with bitcoin."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Laszlo_Hanyecz
+  date: 2010-05-22
+  numbers: [10000]
+  entities: [Bitcoin]
+  layouts: [signal, persona]
+
+- id: btc-segwit
+  title: "SegWit activated on Bitcoin at block 481,824 on 24 August 2017"
+  summary: "Segregated Witness activated at block 481,824 on 24 August 2017, moving signature data out of the base block and fixing transaction malleability."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Segregated_Witness
+  date: 2017-08-24
+  numbers: [481824]
+  entities: [Bitcoin]
+  layouts: [signal, number]
+
+- id: btc-taproot
+  title: "Taproot activated on Bitcoin at block 709,632 in November 2021"
+  summary: "The Taproot soft fork activated at block 709,632 on 14 November 2021, adding Schnorr signatures and cheaper complex spending conditions."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Taproot
+  date: 2021-11-14
+  numbers: [709632]
+  entities: [Bitcoin]
+  layouts: [signal, number]
+
+- id: eth-merge
+  title: "The Merge moved Ethereum to proof of stake on 15 September 2022"
+  summary: "Ethereum switched from proof of work to proof of stake at The Merge on 15 September 2022, cutting its energy use by about 99.95%."
+  source: ethereum.org
+  url: https://ethereum.org/en/roadmap/merge/
+  date: 2022-09-15
+  numbers: [99.95]
+  entities: [Ethereum]
+  layouts: [signal, number, versus]
+  versus: {"left": {"label": "before the Merge", "value": "PoW", "unit": "miners"}, "right": {"label": "after the Merge", "value": "PoS", "unit": "validators"}}
+
+- id: eth-london-1559
+  title: "Since the London upgrade in August 2021, Ethereum burns the base fee of every transaction"
+  summary: "EIP-1559 shipped with the London upgrade on 5 August 2021. Every transaction pays a base fee that is burned, plus an optional tip to the block proposer."
+  source: ethereum.org
+  url: https://ethereum.org/en/history/
+  date: 2021-08-05
+  numbers: [1559]
+  entities: [Ethereum]
+  layouts: [signal]
+
+- id: eth-shapella
+  title: "Shapella enabled Ethereum staking withdrawals on 12 April 2023"
+  summary: "The Shanghai and Capella upgrade (Shapella) went live on 12 April 2023 and let validators withdraw staked ETH for the first time since staking began in December 2020."
+  source: ethereum.org
+  url: https://ethereum.org/en/history/
+  date: 2023-04-12
+  numbers: []
+  entities: [Ethereum]
+  layouts: [signal, versus]
+
+- id: eth-slot-time
+  title: "Ethereum proposes a block every 12 seconds, one per slot"
+  summary: "Under proof of stake, time is divided into 12 second slots and 32 slot epochs. One validator is chosen to propose a block in each slot."
+  source: ethereum.org
+  url: https://ethereum.org/en/developers/docs/consensus-mechanisms/pos/
+  numbers: [12, 32]
+  entities: [Ethereum]
+  layouts: [number, signal]
+
+- id: us-spot-btc-etf
+  title: "The SEC approved 11 US spot bitcoin ETFs on 10 January 2024"
+  summary: "On 10 January 2024 the SEC approved the listing of 11 spot bitcoin exchange traded products, which began trading the next day."
+  source: SEC
+  url: https://www.sec.gov/news/statement/gensler-statement-spot-bitcoin-011023
+  date: 2024-01-10
+  numbers: [11]
+  entities: [Bitcoin, ETF, SEC]
+  layouts: [signal, number]
+
+- id: mtgox
+  title: "Mt. Gox halted withdrawals in February 2014 and reported about 850,000 BTC missing"
+  summary: "Mt. Gox, then the largest bitcoin exchange, halted withdrawals in February 2014 and filed for bankruptcy, reporting about 850,000 BTC missing."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Mt._Gox
+  date: 2014-02-28
+  numbers: [850000]
+  entities: [Bitcoin]
+  layouts: [persona, signal]
+
+- id: ftx
+  title: "FTX filed for bankruptcy on 11 November 2022 after customers could not withdraw"
+  summary: "FTX paused customer withdrawals and filed for Chapter 11 bankruptcy on 11 November 2022, days after a run on the exchange."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Bankruptcy_of_FTX
+  date: 2022-11-11
+  numbers: []
+  entities: []
+  layouts: [persona, signal]
+
+- id: terra
+  title: "TerraUSD lost its dollar peg in May 2022 and LUNA collapsed with it"
+  summary: "In May 2022 the algorithmic stablecoin TerraUSD (UST) lost its 1 dollar peg and its sister token LUNA collapsed, wiping out tens of billions in value."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Terra_(blockchain)
+  date: 2022-05-09
+  numbers: []
+  entities: [Stablecoins]
+  layouts: [persona, signal]

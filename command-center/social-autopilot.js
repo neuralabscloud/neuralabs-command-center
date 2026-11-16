@@ -34,6 +34,9 @@ const DEFAULTS = {
                            // template = source photo in a fixed template (card-template.js)
   template_mark: "",       // small wordmark at the bottom of the template
   template_hue: 43,        // accent colour of the template (hsl hue)
+  // false = the trending scan + rewrite slots are not planned any more (code kept); promo and
+  // hook + reply slots still run. gh0stlayer: replaced by the daily news cards (news-cards.js).
+  trending_enabled: true,
   // Daily promo: N of the day's slots promote your own product instead of reacting to X.
   promo_enabled: false,
   promo_per_day: 1,
@@ -365,7 +368,7 @@ function createAutopilot(deps) {
     const cfg = config(channel);
     const day = localDay(now, tz);
     const pairsPerDay = deps.pairs ? Math.max(0, Number(deps.pairs.perDay(channel)) || 0) : 0;
-    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}|p${pairsPerDay}`;
+    const key = `${day}|${cfg.posts_per_day}|${cfg.window_start}|${cfg.window_end}|${cfg.promo_enabled ? cfg.promo_per_day : 0}|p${pairsPerDay}|t${cfg.trending_enabled === false ? 0 : 1}`;
     if (st.plan_key === key) return false;
     if (st.day !== day) { st.authors_today = []; st.topic_counts = {}; st.topic_rejects = {}; st.format_counts = {}; }
     const keep = st.day === day ? (st.slots || []).filter(s => s.status !== "pending") : [];
@@ -387,9 +390,11 @@ function createAutopilot(deps) {
       const want = Math.min(free.length, Math.max(0, pairsPerDay - pairsKept));
       for (let j = 0; j < want; j++) fresh[free[Math.floor((j + 0.5) * free.length / want)]].kind = "pair";
     }
+    // Trending off: drop the plain (scan + rewrite) slots, keep promo and pair slots.
+    const planned = cfg.trending_enabled === false ? fresh.filter(s => s.kind) : fresh;
     st.day = day;
     st.plan_key = key;
-    st.slots = [...keep, ...fresh].sort((a, b) => a.at.localeCompare(b.at));
+    st.slots = [...keep, ...planned].sort((a, b) => a.at.localeCompare(b.at));
     return true;
   }
 

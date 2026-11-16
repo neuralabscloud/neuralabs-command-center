@@ -89,3 +89,8 @@ command-center/data/character-batches.json
 command-center/data/rips/
 command-center/data/rips-config.json
 command-center/data/rips-tasks.json
+
+# gh0stlayer news cards: manifests, state, dry-run renders (runtime)
+command-center/data/news-cards/
+# Akira Expanded demo font: personal-use licence, not redistributable (live only; cards fall back to Archivo)
+command-center/assets/fonts/Akira*

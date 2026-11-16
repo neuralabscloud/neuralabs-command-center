@@ -1,0 +1,15 @@
+<!-- layout: number. One huge number + unit, optional sparkline (only for a real series). -->
+<div class="card number">
+  <div style="position:absolute;inset:0;background:radial-gradient(80% 55% at 70% 30%, hsl(264 65% 40% / .45), transparent 70%)"></div>
+  {{top}}
+  <div class="body" style="top:230px">
+    <div class="big fit-num" style="font:400 230px/0.95 var(--display);font-stretch:125%;color:var(--accent-glow);text-shadow:0 0 60px hsl(264 65% 55% / .5);white-space:nowrap">{{number}}</div>
+    <div style="font:700 44px/1.1 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--fg);margin-top:18px">{{unit}}</div>
+    <div class="chart" style="margin-top:46px;height:{{chart_h}}px">{{chart_svg}}</div>
+  </div>
+  <div class="body" style="bottom:170px">
+    <h1 class="headline fit" data-max="70" data-min="42" style="max-height:330px">{{headline}}</h1>
+    <p class="hint" style="margin-top:22px">{{context_line}}</p>
+  </div>
+  {{foot}}
+</div>
