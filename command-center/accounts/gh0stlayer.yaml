@@ -10,7 +10,7 @@ media_path: media/news-cards
 theme: gh0stlayer              # templates/cards/themes/gh0stlayer.css
 brand_mark: gh0stlayer         # templates/cards/brand/gh0stlayer.html
 payload_tagline: ""
-fallback_pattern: none         # image zone without an image stays black
+fallback_pattern: chart        # faint chart silhouette when there is no image
 
 schedule:
   tz: Europe/Madrid
@@ -64,6 +64,7 @@ image_policy:
   rules: Cinematic, realistic, dark, purple-tinted light. No people, no faces, no readable text, no numbers, no logos, no brand marks.
   persona: gh0st_stills
   persona_rotation_days: 14
+  sources: {}                  # every source is image_policy none: no downloads (tier 3 and 4 only)
 
 credentials:
   instagram: channel           # channel.instagram.account_id → Settings → Meta connection

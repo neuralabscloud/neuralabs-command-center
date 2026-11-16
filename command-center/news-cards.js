@@ -321,6 +321,18 @@ function slabPatternSvg() {
   return `<svg class="slabpat" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><pattern id="slab" width="150" height="200" patternUnits="userSpaceOnUse"><rect x="20" y="20" width="110" height="160" rx="12" fill="none" stroke="#232326" stroke-width="3"/><rect x="32" y="32" width="86" height="24" rx="5" fill="none" stroke="#232326" stroke-width="3"/><rect x="32" y="66" width="86" height="100" rx="6" fill="none" stroke="#232326" stroke-width="2"/></pattern></defs><rect width="100%" height="100%" fill="#141416"/><rect width="100%" height="100%" fill="url(#slab)"/></svg>`;
 }
 
+// Image fallback (accounts with fallback_pattern: chart): faint stepped chart silhouette, no numbers.
+function chartPatternSvg(color = "hsl(264 65% 58%)") {
+  const pts = [62, 58, 60, 49, 53, 41, 45, 33, 38, 27, 30, 22];
+  let d = "M0," + pts[0] * 10; pts.forEach((v, i) => { if (i) d += ` H${i * 98} V${v * 10}`; }); d += " H1080";
+  return `<svg class="chartpat" style="position:absolute;inset:0" width="100%" height="100%" viewBox="0 0 1080 1350" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="cpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".22"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><path d="${d} V1350 H0 Z" fill="url(#cpg)"/><path d="${d}" fill="none" stroke="${color}" stroke-opacity=".35" stroke-width="4"/></svg>`;
+}
+// Tier 4 with a series on the item: the item's own data as an SVG chart in the image zone.
+function zoneChartSvg(series, A) {
+  const svg = A.chartColor ? chartSvg(series, 900, 420, A.chartColor, A.chartColor) : chartSvg(series, 900, 420);
+  return svg ? `<div class="zonechart" style="position:absolute;left:0;right:0;top:12%;display:flex;justify-content:center;opacity:.9">${svg}</div>` : "";
+}
+
 function fill(tpl, vars) { return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] == null ? "" : String(vars[k])); }
 function tpl(name) { return fs.readFileSync(path.join(TPL_DIR, `${name}.html`), "utf8"); }
 function topHtml(pill, i, n) { return `<div class="top"><span class="pill">${esc(pill)}</span><span class="counter">0${i + 1} / 0${n}</span></div>`; }
@@ -334,9 +346,13 @@ function buildSlides(card, images = {}, acct) {
   const pill = card.pill || "signal";
   const L = card.layout;
   const base = i => ({ top: topHtml(pill, i, n), foot: footHtml(i, n, A) });
-  const fb = img => (A.fallback === "slab" && !safeImg(img) ? slabPatternSvg() : "");
+  const fb = (img, series) => {
+    if (safeImg(img)) return "";
+    if (series) { const c = zoneChartSvg(series, A); if (c) return c; }
+    return A.fallback === "slab" ? slabPatternSvg() : A.fallback === "chart" ? chartPatternSvg(A.chartColor || undefined) : "";
+  };
   let hook;
-  if (L === "signal") hook = fill(tpl("signal"), { ...base(0), image: safeImg(images.hook), fallback: fb(images.hook), headline: highlight(card.headline), hint: esc(card.hint || "swipe for the breakdown") });
+  if (L === "signal") hook = fill(tpl("signal"), { ...base(0), image: safeImg(images.hook), fallback: fb(images.hook, images.hook_series), headline: highlight(card.headline), hint: esc(card.hint || "swipe for the breakdown") });
   else if (L === "persona") hook = fill(tpl("persona"), { ...base(0), image: safeImg(images.hook), headline: highlight(card.headline), hint: esc(card.hint || card.context_line || "swipe for the breakdown") });
   else if (L === "number") {
     const bars = card.pop ? popBarsSvg(card.pop) : "";
@@ -345,7 +361,7 @@ function buildSlides(card, images = {}, acct) {
   } else if (L === "versus") {
     const v = card.versus || {};
     const side = s => `${esc(s?.value)}${s?.unit ? ` <span style="font:700 26px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${esc(s.unit)}</span>` : ""}`;
-    hook = fill(tpl("versus"), { ...base(0), left_image: safeImg(images.left), right_image: safeImg(images.right), left_fallback: fb(images.left), right_fallback: fb(images.right), left_label: esc(v.left?.label), right_label: esc(v.right?.label), left_value: side(v.left), right_value: side(v.right), headline: highlight(card.headline), context_line: esc(card.context_line || card.hint || "") });
+    hook = fill(tpl("versus"), { ...base(0), left_image: safeImg(images.left), right_image: safeImg(images.right), left_fallback: fb(images.left, images.left_series), right_fallback: fb(images.right, images.right_series), left_label: esc(v.left?.label), right_label: esc(v.right?.label), left_value: side(v.left), right_value: side(v.right), headline: highlight(card.headline), context_line: esc(card.context_line || card.hint || "") });
   } else throw new Error(`onbekende layout ${L}`);
   const p = card.payload || {};
   const items = (p.items || []).map((it, k) => `<li><b class="n">0${k + 1}</b><div><h3>${esc(stripMarks(it.title))}</h3><p>${esc(stripMarks(it.body))}</p></div></li>`).join("");

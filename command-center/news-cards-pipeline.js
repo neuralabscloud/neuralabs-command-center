@@ -7,6 +7,8 @@ const path = require("path");
 const nc = require("./news-cards");
 const accounts = require("./accounts");
 const xPairs = require("./x-pairs");
+const policy = require("./images/policy");
+const ncSource = require("./sources/tcg/nc");
 
 const ROOT = __dirname;
 const PLATFORMS = ["instagram", "x"];
@@ -160,52 +162,70 @@ function createPipeline(accountId) {
   }
 
   // ---------- images ----------
+  // Image policy (images/policy.js, same for every account). Per slot: own matching photo, official press image,
+  // card database scan in a slab frame, generic own photo, then own SVG chart / Nano Banana neutral scene / pattern.
+  // Persona takes own images only (tier 3); number and payload have no image. Every choice lands in m.images.
   async function imagesFor({ deps, m, card, plan, setId, hist, now }) {
     const images = {};
     const L = plan.layout;
-    if (IP.kind !== "gallery") {
-      // gh0stlayer: Nano Banana scenes for signal/versus, gh0st stills for persona.
-      if (L === "signal" && deps.genImage) {
-        const r = await deps.genImage({ prompt: nc.imagePrompt(card.image_brief, A), aspect: "4:5", setId, label: "signal", account: A.id });
-        images.hook = nc.dataUri(r.file); m.images.hook = r;
-      } else if (L === "versus" && deps.genImage) {
-        for (const side of ["left", "right"]) {
-          const label = card.versus?.[side]?.label || side;
-          const r = await deps.genImage({ prompt: nc.imagePrompt(`${card.image_brief}. This frame shows: ${label}`, A), aspect: "1:1", setId, label: `versus ${side}`, account: A.id });
-          images[side] = nc.dataUri(r.file); m.images[side] = r;
-        }
-      } else if (L === "persona" && deps.personaStills) {
-        const still = pickPersonaStill(deps.personaStills(), hist, now, config().persona_rotation_days);
-        if (still) { images.hook = nc.dataUri(still.file); m.images.persona_task_id = still.id; m.images.hook = { url: still.url, task_id: still.id }; }
-        else log(m, "geen gh0st still gevonden; persona zonder beeld");
-      }
-      return images;
-    }
-    // Gallery policy (Slabhaus): own photos only. No downloads from news sites or marketplaces, no generated card art.
-    const mode = (IP.layouts || {})[L] || "none";
-    if (mode === "none") { m.images.source = "none"; return images; }
-    const photos = GALLERY_DIR ? galleryPhotos(GALLERY_DIR) : [];
+    const item = plan.item;
+    if (!(policy.LAYOUT_TIERS[L] || []).length) { m.images.source = "none"; return images; }
+    const gallery = IP.kind === "gallery";
+    const photos = gallery && GALLERY_DIR ? galleryPhotos(GALLERY_DIR) : [];
     const recent = hist.filter(h => now - Date.parse(h.created_at) < 14 * 864e5).flatMap(h => h.photos || []);
-    const text = [card.image_brief, nc.stripMarks(card.headline), plan.item.title, (plan.item.entities || []).join(" ")].join(" ");
+    const text = [card.image_brief, nc.stripMarks(card.headline), item.title, (item.entities || []).join(" ")].join(" ");
+    const series = Array.isArray(item.series) && item.series.length >= 2 ? item.series : null;
+    const used = [];
     m.images.photos = [];
-    const use = (slot, hit) => { images[slot] = nc.dataUri(hit.photo.path); m.images[slot] = { source: "gallery", file: hit.photo.file, match: hit.match }; m.images.photos.push(hit.photo.file); };
-    if (mode === "gallery_hand") {
-      const hit = pickGalleryPhoto(photos, text, { kinds: ["in_hand", "desk"], recent });
-      if (hit) use("hook", hit);
-      else if (deps.genImage && (IP.neutral_scenes || []).length) {
-        const scene = IP.neutral_scenes[Math.floor(Math.random() * IP.neutral_scenes.length)];
-        const r = await deps.genImage({ prompt: `${scene} ${A.imageRules}`, aspect: "4:5", setId, label: "haus take scene", account: A.id });
-        images.hook = nc.dataUri(r.file); m.images.hook = { ...r, source: "nano_banana_neutral", scene };
-      } else m.images.hook = { source: "pattern" };
-    } else if (L === "versus") {
-      for (const side of ["left", "right"]) {
-        const hit = pickGalleryPhoto(photos, `${card.versus?.[side]?.label || ""} ${text}`, { recent, exclude: m.images.photos });
-        if (hit) use(side, hit); else m.images[side] = { source: "pattern" };
-      }
-    } else {
-      const hit = pickGalleryPhoto(photos, text, { recent });
-      if (hit) use("hook", hit); else m.images.hook = { source: "pattern" };
+    const own = hit => ({ file: hit.photo.path, record: { source: "gallery", file: hit.photo.file, match: hit.match } });
+    const cardImage = deps.cardImage || (c => ncSource.cardImage({ base: (P.sources || {}).nc_api, key: process.env[(P.credentials || {}).nc_api_key_env || "NC_API_KEY"], card: c }));
+    const slots = L === "versus" ? ["left", "right"] : ["hook"];
+    for (const slot of slots) {
+      const slotText = slot === "hook" ? text : `${card.versus?.[slot]?.label || ""} ${text}`;
+      const kinds = L === "persona" ? ["in_hand", "desk"] : ["slab"];
+      const ctx = {
+        used, cardImage, log: s => log(m, s),
+        async galleryMatch() {
+          if (L === "persona" && !gallery) {
+            if (!deps.personaStills) return null;
+            const still = pickPersonaStill(deps.personaStills(), hist, now, config().persona_rotation_days);
+            if (!still) return null;
+            m.images.persona_task_id = still.id;
+            return { file: still.file, record: { source: "persona_still", url: still.url, task_id: still.id, match: "persona" } };
+          }
+          const hit = gallery ? pickGalleryPhoto(photos, slotText, { kinds, recent, exclude: m.images.photos }) : null;
+          return hit && (hit.match !== "generic" || L === "persona") ? own(hit) : null;
+        },
+        async galleryGeneric() {
+          const hit = gallery ? pickGalleryPhoto(photos, slotText, { kinds, recent, exclude: m.images.photos }) : null;
+          return hit ? own(hit) : null;
+        },
+        async tier4() {
+          if (series) return { chart: series, record: { source: "svg_chart" } };
+          if (!deps.genImage) return null;
+          const aspect = slot === "hook" ? "4:5" : "1:1";
+          if (gallery) {
+            if (!(IP.neutral_scenes || []).length) return null;
+            const scene = IP.neutral_scenes[Math.floor(Math.random() * IP.neutral_scenes.length)];
+            const r = await deps.genImage({ prompt: `${scene} ${A.imageRules}`, aspect, setId, label: `${L} ${slot} scene`, account: A.id });
+            return { file: r.file, record: { ...r, source: "nano_banana_neutral", scene } };
+          }
+          const brief = slot === "hook" ? card.image_brief : `${card.image_brief}. This frame shows: ${card.versus?.[slot]?.label || slot}`;
+          const r = await deps.genImage({ prompt: nc.imagePrompt(brief, A), aspect, setId, label: slot === "hook" ? L : `versus ${slot}`, account: A.id });
+          return { file: r.file, record: { ...r, source: "nano_banana_neutral" } };
+        },
+      };
+      const r = await policy.resolve({ A, item, layout: L, slot, setId, dataDir: DIR, ctx, io: deps.imageIo || {} });
+      m.images[slot] = r.record;
+      if (r.record.source === "gallery") m.images.photos.push(r.record.file);
+      if (r.file) images[slot] = nc.dataUri(r.file);
+      else if (r.chart) images[`${slot}_series`] = r.chart;
+      log(m, `beeld ${slot}: ${r.record.policy_tier ? `tier ${r.record.policy_tier} ` : ""}${r.record.source}`);
     }
+    if (L === "persona" && !images.hook) log(m, "geen eigen beeld voor de persona; render zonder beeld");
+    // Caption credit when a downloaded image (tier 1 or 2) is used.
+    const credit = policy.creditLine(slots.map(s => m.images[s]));
+    if (credit && card.caption && !card.caption.includes(credit)) { card.caption = `${card.caption.trimEnd()}\n${credit}`; m.images.credit = credit; }
     return images;
   }
 

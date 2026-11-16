@@ -53,7 +53,8 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
       title: `PSA 10 population of ${cardLabel(c)} rose from ${fmt(it.psa10_then)} to ${fmt(it.psa10_now)} since ${it.since}`,
       summary: `NeuraCollectibles pop data as of ${it.as_of || r.as_of}: ${cardLabel(c)} (${c.language || "en"}) had ${fmt(it.psa10_then)} PSA 10 copies on ${it.since} and ${fmt(it.psa10_now)} now, a ${Math.round(it.growth_pct)}% increase.`,
       numbers: [{ raw: fmt(it.psa10_now), value: it.psa10_now }, { raw: fmt(it.psa10_then), value: it.psa10_then }, { raw: `${Math.round(it.growth_pct)}%`, value: it.growth_pct }],
-      entities: [c.name, "pop", "psa"], pill_hint: "pop report", layouts: pop ? ["versus", "number", "persona"] : ["versus", "persona"],
+      entities: [c.name, "pop", "psa"], pill_hint: "pop report", layouts: pop ? ["versus", "number", "persona", "signal"] : ["versus", "persona", "signal"],
+      card: cardRef(c),
       versus: { left: { label: `PSA 10 pop on ${it.since}`, value: fmt(it.psa10_then), unit: "copies" }, right: { label: "PSA 10 pop now", value: fmt(it.psa10_now), unit: "copies" } },
       pop, nc_endpoint: "pop-shock",
     }, at));
@@ -72,6 +73,7 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
       summary: `PSA population for ${cardLabel(c)} as of ${pop.as_of || it.pop_as_of}: ${["6", "7", "8", "9", "10"].filter(g => pop[g] != null).map(g => `PSA ${g}: ${fmt(pop[g])}`).join(", ")}.${pop.gem_rate_pct != null ? ` Gem rate ${pop.gem_rate_pct}%.` : ""}`,
       numbers: [{ raw: fmt(pop["10"]), value: pop["10"] }, ...(pop.total ? [{ raw: fmt(pop.total), value: pop.total }] : [])],
       entities: [c.name, "pop", "psa"], pill_hint: "pop report", layouts: ["number"], pop, nc_endpoint: "analytics/grading/leaders",
+      card: cardRef(c),
     }, at));
   });
 
@@ -106,4 +108,24 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
   return out;
 }
 
-module.exports = { DEFAULT_BASE, client, popFor, metricItems };
+// Card identity on an item, for the image policy (tier 2: card image from the NC card database).
+function cardRef(c) { return { card_id: c.card_id, name: c.name, set_name: c.set_name, number: c.number || null }; }
+
+// Tier 2 lookup: the card's own scan from the NC card database (cards/{id}, else cards/search by name + set).
+// Returns { image_url, source_page_url, card_id } or null. The image host is checked by images/policy.js.
+async function cardImage({ base, key, card }) {
+  if (!card || (!card.card_id && !card.name)) return null;
+  const api = client({ base: base || DEFAULT_BASE, key });
+  let c = null;
+  if (card.card_id) c = await api(`cards/${encodeURIComponent(card.card_id)}`).catch(() => null);
+  if (!c?.image_large_url && !c?.image_url && card.name) {
+    const r = await api("cards/search", { q: card.name, language: "en", limit: 20 }).catch(() => null);
+    const list = (r?.items || r?.data || r?.results || []).filter(x => (x.image_large_url || x.image_url) && String(x.name).toLowerCase() === String(card.name).toLowerCase());
+    c = list.find(x => card.set_name && String(x.set_name).toLowerCase() === String(card.set_name).toLowerCase() && (!card.number || String(x.number) === String(card.number)))
+      || list.find(x => card.set_name && String(x.set_name).toLowerCase() === String(card.set_name).toLowerCase()) || null;
+  }
+  const url = c && (c.image_large_url || c.image_url);
+  return url ? { image_url: url, source_page_url: `${PUBLIC_URL}/collectibles/v1/cards/${encodeURIComponent(c.card_id)}`, card_id: c.card_id } : null;
+}
+
+module.exports = { DEFAULT_BASE, client, popFor, metricItems, cardImage, cardRef };

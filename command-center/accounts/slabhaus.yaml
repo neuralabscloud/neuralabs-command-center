@@ -74,15 +74,20 @@ voice:
     - {"pattern": "\\b(going to (rise|climb|moon|explode)|next (charizard|grail)|before it'?s too late)\\b", "reason": "prijsvoorspelling"}
 
 image_policy:
-  kind: gallery                # own slab photos only, never downloaded card art
+  kind: gallery                # own slab photos first; downloads only per image_policy.sources (images/policy.js)
   brief_required: true
   gallery_dir: data/brand-assets/SLABHAUS/slabs
   gallery_tag: SLABHAUS
   # Nano Banana only for neutral object scenes, with this fixed rule.
   rules: "No people, no faces, no readable text, no logos, no characters, no card art."
   neutral_scenes: ["A dark walnut desk with three empty clear graded-card slab cases, soft top light, shallow depth of field.", "A heavy steel vault door slightly open in a dim room, warm rim light.", "A brass magnifier lying on a dark slate surface next to an empty clear slab case, low warm light."]
-  layouts: {"signal": "gallery", "versus": "gallery", "persona": "gallery_hand", "number": "none"}
+  layouts: {"signal": "gallery", "versus": "gallery", "persona": "gallery_hand", "number": "none"}   # informational; tiers per layout live in images/policy.js
   persona: gallery_hand
+  # Per source (images/policy.js): official = press image from the newsmaker's own domain, card_db = card scan from the
+  # card database, shown whole in a slab frame. Any source not listed here is none (own gallery, neutral scene, pattern).
+  sources:
+    "NeuraCollectibles API": {"policy": "card_db", "hosts": ["images.pokemontcg.io", "images.scrydex.com"], "credit": {"images.pokemontcg.io": "pokemontcg.io", "images.scrydex.com": "scrydex"}}
+    "pokemon.com": {"policy": "official", "hosts": ["pokemon.com", "www.pokemon.com", "assets.pokemon.com"], "credit": "pokemon.com"}
 
 credentials:
   instagram: ig_17841437483407922   # data/social connection, same as the rips tab
