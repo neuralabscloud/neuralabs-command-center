@@ -312,6 +312,15 @@ function sceneFor(avatar, story) {
   ].join(" ");
 }
 
+// Talking-avatar renders: microphones and other props must stay put. Kling
+// otherwise glues a mic to the head and it moves along with it (16-11).
+const STILL_PROPS = "Any microphone, mic stand, pop filter, headphones on a stand or other object in the scene stays completely still and fixed in place, it is not attached to the person and does not move with the head or body.";
+function withStillProps(prompt) {
+  const p = String(prompt || "").trim();
+  if (!p || p.includes(STILL_PROPS)) return p;
+  return p + " " + STILL_PROPS;
+}
+
 function neurashieldFocus(story) {
   return `NeuraShield, a free macOS security app for crypto users (neuralabscapital.com/neurashield).
 THE STORY THIS VIDEO TELLS (first person, as if it happened to the speaker or someone close to them): ${story.title}. ${story.story}
@@ -344,5 +353,5 @@ module.exports = {
   buildScriptPrompt, parseScriptJson, postCaption, countWords, stripDashes,
   wordsFromAlignment, wordsEvenly, chunkWords, buildAss, assTime,
   WORDS_MIN, WORDS_MAX,
-  NEURASHIELD_FACTS, NEURASHIELD_STORIES, pickStory, sceneFor, neurashieldFocus, overlayCutaway, trimEnd,
+  NEURASHIELD_FACTS, NEURASHIELD_STORIES, pickStory, sceneFor, STILL_PROPS, withStillProps, neurashieldFocus, overlayCutaway, trimEnd,
 };

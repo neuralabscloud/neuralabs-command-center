@@ -7760,8 +7760,8 @@ async function processUgcTasks() {
         // this video for?", e.g. "product ad") used to leak in here as the
         // scene direction and made the avatar hold products.
         // Kling requires a prompt: fall back to a neutral talking head.
-        const scenePrompt = (t.prompt || "").trim()
-          || (speakModel === "kling" ? "A person talking naturally to the camera, selfie-style UGC video, relaxed natural gestures, empty hands, steady framing" : "");
+        const scenePrompt = ugcAuto.withStillProps((t.prompt || "").trim()
+          || (speakModel === "kling" ? "A person talking naturally to the camera, selfie-style UGC video, relaxed natural gestures, empty hands, steady framing" : ""));
         params = {
           input_image: { type: "image_url", image_url: inputImageUrl },
           input_audio: { type: "audio_url", audio_url: t.audio_url },
