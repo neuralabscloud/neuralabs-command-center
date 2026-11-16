@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# cards run --account slabhaus [--dry-run] [--layouts a,b] [--no-images]
+set -euo pipefail
+DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  run) exec node "$DIR/scripts/news-cards.js" "$@" ;;
+  *) echo "Gebruik: cards run --account <gh0stlayer|slabhaus> --dry-run"; exit 1 ;;
+esac

@@ -613,23 +613,32 @@ async function runIgReplies(id, btn) {
 }
 // Hook + reply pairs: some autopilot slots become a short hook post with the payload as reply.
 // Profiles live in a config file on the server (data/x-pair-profiles.json); this panel only shows them.
-// gh0stlayer news cards: daily card set (IG carousel, TikTok via Buffer, X hook + reply). Shown on the configured channel only.
+// News cards per account (accounts/<name>.yaml): IG carousel + X hook + reply, direct APIs. Shown on a channel that
+// belongs to an account; the switcher shows the last 30 sets of any account.
 let NC_CHANNEL = null;
+const NC_ACCOUNT = {};
 function renderNewsCards(c) {
   setTimeout(() => loadNewsCards(c.id), 0);
   return `<div id="news-cards-wrap-${esc(c.id)}"></div>`;
 }
-const NC_STATUS = { scheduled: 'scheduled', awaiting_approval: 'awaiting approval', published: 'published', failed: 'failed', skipped: 'skipped', queued: 'queued in Buffer' };
-async function loadNewsCards(chId) {
+const NC_STATUS = { scheduled: 'scheduled', awaiting_approval: 'awaiting approval', published: 'published', failed: 'failed', skipped: 'skipped', off: 'off' };
+async function loadNewsCards(chId, accountId) {
   const wrap = document.getElementById(`news-cards-wrap-${chId}`);
   if (!wrap) return;
-  let st;
-  try { st = await fetchJson('/news-cards/status'); } catch { return; }
-  if (st.config.channel_id !== chId) { wrap.innerHTML = ''; return; }
+  let accounts = [];
+  try { accounts = await fetchJson('/news-cards/accounts'); } catch { return; }
+  const own = accounts.find(a => a.channel_id === chId);
+  if (!own) { wrap.innerHTML = ''; return; }
+  const hashAcc = (location.hash.match(/^#news-cards:([a-z0-9_-]+)$/) || [])[1];
+  const acc = accountId || NC_ACCOUNT[chId] || (accounts.some(a => a.id === hashAcc) ? hashAcc : own.id);
+  NC_ACCOUNT[chId] = acc;
   NC_CHANNEL = chId;
+  const q = `account=${encodeURIComponent(acc)}`;
+  let st;
+  try { st = await fetchJson(`/news-cards/status?${q}`); } catch { return; }
   let sets = [];
-  try { sets = await fetchJson('/news-cards/sets?limit=30'); } catch {}
-  const plat = Object.entries(st.config.platforms || {}).map(([k, v]) => `${esc(k)} ${v.enabled === false ? 'off' : `${esc(v.delay_min)} min after each run, max ${esc(v.max_per_day)}/day`}`).join(' · ');
+  try { sets = await fetchJson(`/news-cards/sets?limit=30&${q}`); } catch {}
+  const plat = Object.entries(st.config.platforms || {}).map(([k, v]) => `${esc(k)} ${k === 'x' && !st.x_creds ? 'off (no X credentials)' : v.enabled === false ? 'off' : `${esc(v.delay_min)} min after each run, max ${esc(v.max_per_day)}/day`}`).join(' · ');
   const last = st.last_run ? `Last run ${esc(fmt(st.last_run.at))} (${esc(st.last_run.reason || '')}): ${(st.last_run.sets || []).map(x => `${esc(x.layout)} ${esc(x.status)}`).join(', ') || 'no suitable item'}` : 'No run yet';
   const rows = sets.map(m => {
     const posts = Object.entries(m.posts || {}).map(([p, v]) => {
@@ -646,37 +655,39 @@ async function loadNewsCards(chId) {
       ${m.thumb ? `<a href="${esc(m.thumb)}" target="_blank" rel="noopener"><img src="${esc(m.thumb)}" alt="" style="width:64px;height:80px;object-fit:cover;border-radius:6px"></a>` : '<div style="width:64px"></div>'}
       <div style="flex:1;min-width:0;font-size:11px;line-height:1.5">
         <div style="color:var(--text)">${esc(m.headline)}</div>
-        <div style="color:var(--text-dim)">${esc(fmt(m.created_at))} · ${esc(m.layout)} · ${esc(m.pill || '')} · ${esc(m.status)}${m.perf != null ? ` · score ${esc(m.perf)}` : ''}${m.source?.url ? ` · <a href="${esc(m.source.url)}" target="_blank" rel="noopener">${esc(m.source.name || 'source')}</a>` : ''}</div>
+        <div style="color:var(--text-dim)">${esc(fmt(m.created_at))} · ${esc(m.layout_label || m.layout)} · ${esc(m.pill || '')} · ${esc(m.status)}${m.perf != null ? ` · score ${esc(m.perf)}` : ''}${m.source?.url ? ` · <a href="${esc(m.source.url)}" target="_blank" rel="noopener">${esc(m.source.name || 'source')}</a>` : ''}</div>
         ${posts ? `<div>${posts}</div>` : ''}
         ${m.reason ? `<div style="color:var(--text-dim)">${esc(m.reason)}</div>` : ''}
         ${mtxt ? `<div style="color:var(--text-dim)">${mtxt}</div>` : ''}
         ${m.slides.length > 1 ? `<div>${m.slides.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">slide ${i + 1}</a>`).join(' · ')}</div>` : ''}
-        ${needsOk ? `<button class="btn-sm" data-owner-only onclick="approveNewsCards(${jq(m.id)}, this)">Approve and schedule</button>` : ''}
+        ${needsOk ? `<button class="btn-sm" data-owner-only onclick="approveNewsCards(${jq(m.id)}, ${jq(acc)}, this)">Approve and schedule</button>` : ''}
       </div></div>`;
   }).join('');
+  const tabs = accounts.map(a => `<button class="btn-sm${a.id === acc ? ' primary' : ''}" onclick="loadNewsCards(${jq(chId)}, ${jq(a.id)})">${esc(a.id)}</button>`).join('');
   wrap.innerHTML = `
-    <div class="edit-label" style="margin-top:14px" id="news-cards">🗞 gh0stlayer news cards</div>
-    <div class="discord-banner">Runs at ${(st.runs || []).map(esc).join(', ') || 'no time set'} (${esc(String(st.config.tz))}, change in Scheduler). Each run picks the strongest fresh news item or market fact, Claude writes a 2 to 3 slide set and it is rendered and scheduled. Settings: data/news-cards/config.json.</div>
+    <div class="edit-label" style="margin-top:14px" id="news-cards">🗞 ${esc(st.label || 'News cards')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" aria-label="Account">${tabs}</div>
+    <div class="discord-banner">Runs at ${(st.runs || []).map(esc).join(', ') || 'no time set'} (${esc(String(st.config.tz))}, change in Scheduler). Each run picks the strongest fresh item, Claude writes a card set in the ${esc(acc)} template, it is rendered and posted directly via Instagram and X. Profile: accounts/${esc(acc)}.yaml.</div>
     <div class="ap-status">${st.running ? 'Running now…' : last}<br>${plat}${st.reweighted_at ? `<br>Weights updated ${esc(fmt(st.reweighted_at))}` : ''}</div>
     <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" data-owner-only>
-      <button class="btn-sm primary" onclick="runNewsCards(this)">Generate gh0stlayer news cards</button>
+      <button class="btn-sm primary" onclick="runNewsCards(${jq(acc)}, this)">Generate ${esc(acc)} news cards</button>
     </div>
     <div style="margin-top:8px">${rows || '<div class="ap-status">No sets yet.</div>'}</div>`;
 }
-async function runNewsCards(btn) {
+async function runNewsCards(acc, btn) {
   btn.disabled = true;
   try {
-    const r = await fetch('/news-cards/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const r = await fetch('/news-cards/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: acc }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     btn.textContent = 'Started, this takes a few minutes…';
     setTimeout(() => loadNewsCards(NC_CHANNEL), 90000);
   } catch (e) { alert(`Could not start: ${e.message}`); btn.disabled = false; }
 }
-async function approveNewsCards(id, btn) {
+async function approveNewsCards(id, acc, btn) {
   btn.disabled = true;
   try {
-    const r = await fetch(`/news-cards/sets/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+    const r = await fetch(`/news-cards/sets/${encodeURIComponent(id)}/approve?account=${encodeURIComponent(acc)}`, { method: 'POST' });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     loadNewsCards(NC_CHANNEL);

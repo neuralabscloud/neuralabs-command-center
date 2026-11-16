@@ -1,0 +1,81 @@
+# gh0stlayer news cards profile. Code: news-cards.js + news-cards-pipeline.js (shared by every account).
+# Values here reproduce the original gh0stlayer pipeline exactly; change with care.
+name: gh0stlayer
+label: gh0stlayer news cards
+channel_id: mud1u9q9bqh1
+# Runtime data (manifests, config.json overrides, state, dry-run). gh0stlayer keeps the original folder.
+data_dir: data/news-cards
+# Public media path for rendered slides (served from public/<media_path>).
+media_path: media/news-cards
+theme: gh0stlayer              # templates/cards/themes/gh0stlayer.css
+brand_mark: gh0stlayer         # templates/cards/brand/gh0stlayer.html
+payload_tagline: ""
+fallback_pattern: none         # image zone without an image stays black
+
+schedule:
+  tz: Europe/Madrid
+  times: ["07:30", "13:00", "18:00"]
+  sets_per_run: 1
+
+layout_labels: {"signal": "signal", "number": "number", "versus": "versus", "persona": "persona"}
+pills: ["signal", "on-chain", "macro", "defi", "ai", "then vs now", "trader's take", "did you know"]
+weekly_mix: {"signal": 3, "number": 2, "versus": 1, "persona": 1}
+
+pill_rules:
+  base: ["signal", "did you know"]
+  by_layout: {"versus": ["then vs now"], "persona": ["trader's take"]}
+  match:
+    - {"pill": "on-chain", "entities": ["miners"], "text": "hashrate|on-?chain|block|mempool|halving|difficulty"}
+    - {"pill": "defi", "entities": ["defi", "stablecoins", "hyperliquid"], "text": "\\btvl\\b|defi|stablecoin|funding|open interest"}
+    - {"pill": "macro", "entities": ["etf", "sec"], "text": "\\b(fed|rates?|inflation|etf|sec|treasury|macro)\\b"}
+    - {"pill": "ai", "text": "\\b(ai|artificial intelligence|agent)\\b"}
+  by_kind: {"metric": ["trader's take"]}
+
+sources:
+  pack: crypto                 # sources/index.js (RSS, CoinGecko, DefiLlama, mempool.space, Hyperliquid, evergreen)
+
+scoring:
+  max_age_hours: 24
+  min_score: 50
+  relevant: "\\b(liquidity|liquidation|funding|open interest|leverage|order ?book|spread|volume|structure|supply|issuance|halving|hashrate|difficulty|miners?|fees?|stablecoins?|tvl|treasury|reserves?|etf|regulat\\w*|sec|cftc|mica|law|bill|court|infra\\w*|upgrade|fork|validator|staking|exchange|outflows?|inflows?|custody|ai|agents?|onchain|on-chain|defi|lending|yield|rate|fed|inflation|cpi|dominance|market cap|unlock|hack|exploit)\\b"
+  reject: "\\b(memecoins?|meme ?coins?|celebrity|kardashian|airdrop farming|presale|token launch|launches (its|a) token|price prediction|price targets?|could (hit|reach|fall|drop|rally|surge)|risks? (falling|dropping|a drop)|eyes \\$|predicts?|forecasts?|to the moon|100x|nft drop|giveaway)\\b"
+  reject_reason: niet trader-relevant (gossip/memecoin/launch/predictie)
+
+voice:
+  intro: You write one news card set for gh0stlayer, a crypto trading brand for traders. Output strict JSON only, no prose, no code fences.
+  rules: |
+    number layout: number (string, e.g. "3.125") and unit (e.g. "BTC per block"); series only if given in the item. versus layout: versus = {left:{label,value,unit},right:{label,value,unit}}.
+    Rules: English. Headline max 70 characters, sentence case, max 4 lines. Mark the payoff or number with [a]...[/a] and the subject with [p]...[/p], at most one of each.
+    Exactly one number or named fact in the headline, and it must reappear in the payload items. Use only facts and numbers from the item; never invent numbers.
+    Persona layout only: first-person past tense hook (I did, I stopped, I lost). Other layouts never start with I.
+    Never a price prediction, never the word will, never signals, entries or targets. No em or en dashes. No ALL CAPS except tickers and acronyms like BTC, ETH, ETF, TVL.
+    No hollow superlatives (insane, game changer, you won't believe), no engagement bait.
+    payload: title (short, may use one [a]) and exactly 3 items, each a short title plus one explaining sentence. closer: one line plus one question that invites comments.
+    caption: all lowercase, exactly 3 lines: hook line, one question, four hashtags. No NeuraLabs mention, no links except the words link in bio.
+    x_hook: max 240 characters, no hashtags, no links. x_reply: the payload in text form, max 270 characters, ends with the source name.
+    image_brief: one sentence describing a cinematic object or scene shot (no people, no text, no logos).
+  caps_allow: ["ETF", "ETFs", "TVL", "US", "EU", "UK", "SEC", "CFTC", "FOMC", "CPI", "ATH", "CME", "OI", "L2", "DEX", "CEX", "MEV", "RWA", "VS", "BTC", "ETH", "SOL", "XRP", "BNB", "USDT", "USDC", "DOGE", "ADA", "AVAX", "LINK", "DOT", "TRX", "TON", "HYPE", "SUI", "LTC", "ARB", "OP", "UNI", "AAVE", "MKR", "DAI"]
+  caption_caps: ["BTC", "ETH", "SOL", "XRP", "BNB", "USDT", "USDC", "DOGE", "ADA", "AVAX", "LINK", "DOT", "TRX", "TON", "HYPE", "SUI", "LTC", "ARB", "OP", "UNI", "AAVE", "MKR", "DAI", "ETF", "TVL", "AI", "DeFi"]
+  forbid: []
+  headline_anchor: false
+
+image_policy:
+  kind: ai                     # Nano Banana for signal/versus, gh0st stills for persona
+  rules: Cinematic, realistic, dark, purple-tinted light. No people, no faces, no readable text, no numbers, no logos, no brand marks.
+  persona: gh0st_stills
+  persona_rotation_days: 14
+
+credentials:
+  instagram: channel           # channel.instagram.account_id → Settings → Meta connection
+  x: channel                   # data/community/x-credentials.json[channel_id] via the X task worker
+  nc_api_key_env: ""
+
+publish:
+  x_premium: false
+  x_links: []
+  platforms:
+    instagram: {"enabled": true, "delay_min": 45, "max_per_day": 3, "min_gap_hours": 3}
+    x: {"enabled": true, "delay_min": 20, "max_per_day": 3, "min_gap_hours": 3}
+
+metrics:
+  weights: {"ig_likes": 1, "ig_comments": 2, "ig_saved": 3, "ig_shares": 3, "x": 1}

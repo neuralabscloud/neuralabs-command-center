@@ -9230,16 +9230,18 @@ app.get("/agents/autonomous", (_req, res) => {
       last_run: last ? { at: last, status: "triggered" } : null,
     });
   }
-  {
-    const ns = newsCards.status();
+  for (const accId of newsCards.accountIds()) {
+    const pl = newsCards.forAccount(accId);
+    const ns = pl.status();
     const pc = ns.config.platforms;
+    const xOk = newsCardsXCredsOk(ns.config.channel_id, accId);
     jobs.push({
-      id: "news_cards_worker", kind: "news_cards", agent: "community_manager",
-      name: "gh0stlayer news cards: publisher + metrics", enabled: ns.config.enabled !== false,
+      id: accId === "gh0stlayer" ? "news_cards_worker" : `news_cards_worker_${accId}`, kind: "news_cards", agent: "community_manager",
+      name: `${pl.label}: publisher + metrics`, enabled: ns.config.enabled !== false,
       when: "every minute (IG carousel at its time, metrics at 24h/72h, weekly reweight)",
-      details: `Posts the card sets made by the news card runs. X ${pc.x.enabled ? `${pc.x.delay_min} min` : "off"}, Instagram ${pc.instagram.enabled ? `${pc.instagram.delay_min} min` : "off"} after each run, TikTok ${pc.tiktok.enabled ? "on" : "off"}. Max ${pc.x.max_per_day} per day · ${ns.sets} sets so far`,
+      details: `Posts the card sets made by the ${pl.label} runs, direct via Instagram Graph and X. X ${!xOk ? "off (no credentials)" : pc.x.enabled ? `${pc.x.delay_min} min` : "off"}, Instagram ${pc.instagram.enabled ? `${pc.instagram.delay_min} min` : "off"} after each run. Max ${pc.instagram.max_per_day} per day · ${ns.sets} sets so far`,
       last_run: ns.last_run ? { at: ns.last_run.at, status: ns.last_run.sets.map(x => x.status).join(", ") || "no item", error: null } : null,
-      running: ns.running, manage_url: "/community-manager.html#news-cards",
+      running: ns.running, manage_url: `/community-manager.html#news-cards${accId === "gh0stlayer" ? "" : `:${accId}`}`,
     });
   }
   const queued = readTaskFile(COMMUNITY_TASKS_FILE).filter(t => t.status === "scheduled");
@@ -9640,8 +9642,9 @@ async function executeSchedule(schedule) {
     } else if (schedule.agent === "character_video_batch") {
       await executeCharacterBatchSchedule(schedule);
     } else if (schedule.agent === "news_cards") {
-      if (newsCards.config().enabled === false) console.log("[NEWS-CARDS] disabled in data/news-cards/config.json");
-      else await newsCards.run({ deps: newsCardsDeps, reason: "schedule" });
+      const pl = newsCards.forAccount((schedule.payload && schedule.payload.account) || "gh0stlayer");
+      if (pl.config().enabled === false) console.log(`[NEWS-CARDS] ${pl.id} disabled in ${pl.DIR}/config.json`);
+      else await pl.run({ deps: newsCardsDeps, reason: "schedule" });
     }
   } catch (e) {
     console.error(`[SCHEDULER] Failed to execute ${schedule.name}:`, e.message);
@@ -10354,8 +10357,8 @@ function charBatchStillsFor(batchId, slots) {
   return { stills: new Map(slots.map((s, i) => [s, recent[i]]).filter(([, t]) => t)), fallback: true };
 }
 
-// ── gh0stlayer NEWS CARDS ──
-// Daily card sets (news-cards-pipeline.js). Platform glue lives here; the pipeline gets it injected.
+// ── NEWS CARDS (per account: accounts/<name>.yaml) ──
+// Card sets (news-cards-pipeline.js). Platform glue lives here; the pipeline gets it injected. Direct Graph/X APIs, no Buffer.
 const newsCards = require("./news-cards-pipeline");
 const NEWS_CARDS_MODEL = process.env.NEWS_CARDS_MODEL || "claude-opus-5-5";
 
@@ -10367,7 +10370,8 @@ async function newsCardsJpegs(m) {
   const urls = [];
   for (const s of m.slides) {
     const src = path.join(__dirname, "public", s.rel);
-    if (!src.startsWith(path.join(MEDIA_DIR, "news-cards") + path.sep) || !fs.existsSync(src)) throw new Error(`slide ${s.slide} missing`);
+    const okDir = newsCards.accountIds().some(a => src.startsWith(newsCards.forAccount(a).MEDIA_DIR + path.sep));
+    if (!okDir || !src.startsWith(MEDIA_DIR + path.sep) || !fs.existsSync(src)) throw new Error(`slide ${s.slide} missing`);
     const file = `nc_${String(m.id).replace(/[^\w-]/g, "")}_${s.slide}.jpg`;
     const out = path.join(IG_MEDIA_DIR, file);
     if (!fs.existsSync(out)) await run("convert", [src + "[0]", "-background", "black", "-flatten", "-strip", "-quality", "92", out]);
@@ -10376,12 +10380,21 @@ async function newsCardsJpegs(m) {
   return urls;
 }
 
-function newsCardsIgConn(channel) {
+// Instagram connection: the channel's Meta connection, or a fixed connection id from the account profile.
+function newsCardsIgConn(channel, A) {
   const cfg = igPublish.config(channel);
-  const conn = (readSocial() || []).find(c => c.id === cfg.account_id && c.platform === "instagram");
+  const fixed = A && A.profile && A.profile.credentials && A.profile.credentials.instagram;
+  const connId = fixed && fixed !== "channel" ? fixed : cfg.account_id;
+  const conn = (readSocial() || []).find(c => c.id === connId && c.platform === "instagram");
   if (!conn || !conn.ig_user_id || !conn.page_access_token) throw new Error("Instagram account not connected (Settings → Meta)");
   return { cfg, conn };
 }
+
+// X: own channel credentials. Only gh0stlayer may fall back to the env keys; other accounts without creds = X off.
+function newsCardsXCredsOk(channelId, accountId) {
+  return !!channelXCreds(channelId) || (accountId === "gh0stlayer" && envXCredsComplete());
+}
+const ncAcct = (a) => newsCards.forAccount(a || "gh0stlayer");
 
 const newsCardsDeps = {
   llm: async (system, user) => {
@@ -10389,13 +10402,13 @@ const newsCardsDeps = {
     return charBatch.textOf(msg.content);
   },
   // Nano Banana image for the image zone, saved to the gallery (designer task) with set_id.
-  genImage: async ({ prompt, aspect, setId, label }) => {
+  genImage: async ({ prompt, aspect, setId, label, account }) => {
     const now = new Date().toISOString();
     const task = {
       id: genId(), status: "processing", created_at: now, updated_at: now,
       design_type: "instagram_post", brand: "", engine: "nanobanana", design_style: "",
       aspect_ratio: aspect, custom_width: null, custom_height: null,
-      description: `gh0stlayer news card ${setId} · ${label}`, prompt, set_id: setId, news_card: true, autopilot: true,
+      description: `${ncAcct(account).id} news card ${setId} · ${label}`, prompt, set_id: setId, news_card: true, news_account: ncAcct(account).id, autopilot: true,
       result_url: null, result_thumbnail: null, result_design_id: null, error: null,
     };
     writeTaskFile("designer-tasks.json", [task, ...readTaskFile("designer-tasks.json")]);
@@ -10421,14 +10434,15 @@ const newsCardsDeps = {
     .map(t => ({ id: t.id, prompt: t.prompt, url: t.result_url, file: path.join(__dirname, "data", "generated-images", path.basename(t.result_url)) }))
     .filter(t => fs.existsSync(t.file)),
   // Rendered slide → gallery item (designer task) tagged set_id / slide / layout / pill / source.
-  gallery: ({ setId, slide, layout, pill, url, headline, source }) => {
+  gallery: ({ setId, slide, layout, pill, url, headline, source, account }) => {
+    const A = ncAcct(account).account;
     const now = new Date().toISOString();
     const task = {
       id: genId(), status: "completed", created_at: now, updated_at: now,
-      design_type: "instagram_carousel", brand: "", engine: "news_cards", design_style: "gh0stlayer cards",
+      design_type: "instagram_carousel", brand: A.id === "gh0stlayer" ? "" : String(A.profile.image_policy?.gallery_tag || ""), engine: "news_cards", design_style: `${A.id} cards`,
       aspect_ratio: "4:5", custom_width: 1080, custom_height: 1350,
-      description: `gh0stlayer news card ${setId} · slide ${slide} · ${layout} · ${pill}`, prompt: headline,
-      set_id: setId, slide, layout, pill, source_name: source?.name || "", source_url: source?.url || "", news_card: true, autopilot: true,
+      description: `${A.id} news card ${setId} · slide ${slide} · ${layout} · ${pill}`, prompt: headline,
+      set_id: setId, news_account: A.id, slide, layout, pill, source_name: source?.name || "", source_url: source?.url || "", news_card: true, autopilot: true,
       result_url: url, result_thumbnail: url, result_design_id: null, error: null,
     };
     writeTaskFile("designer-tasks.json", [task, ...readTaskFile("designer-tasks.json")]);
@@ -10437,7 +10451,7 @@ const newsCardsDeps = {
   channel: (id) => readChannels().find(c => c.id === id) || null,
   addXTask: (fields) => {
     const now = new Date().toISOString();
-    const task = { id: genId(), created_at: now, updated_at: now, archetype: "", trigger_word: "", published_at: null, message_id: null, attempts: 0, error: null, autopilot: true, reason: "gh0stlayer news card", ...fields };
+    const task = { id: genId(), created_at: now, updated_at: now, archetype: "", trigger_word: "", published_at: null, message_id: null, attempts: 0, error: null, autopilot: true, reason: `${fields.news_account || "gh0stlayer"} news card`, ...fields };
     writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]);
     return task;
   },
@@ -10450,20 +10464,22 @@ const newsCardsDeps = {
     writeTaskFile(COMMUNITY_TASKS_FILE, all);
     return t;
   },
-  shareUrls: newsCardsJpegs,
-  bufferPost: (input) => buffer.createPost(input),
-  igCarousel: async (m) => {
-    const channel = readChannels().find(c => c.id === newsCards.config().channel_id);
+  xCredsOk: (channelId, accountId) => newsCardsXCredsOk(channelId, accountId),
+  igCarousel: async (m, A) => {
+    const pl = ncAcct(A && A.id);
+    const channel = readChannels().find(c => c.id === pl.config().channel_id);
     if (!channel) throw new Error("channel removed");
-    const { cfg, conn } = newsCardsIgConn(channel);
+    const { cfg, conn } = newsCardsIgConn(channel, pl.account);
     const imageUrls = await newsCardsJpegs(m);
-    const caption = igPublish.caption(m.card.caption, { hashtags: cfg.hashtags });
+    // Accounts with fixed caption hashtags (Slabhaus) get exactly the card's caption, no channel extras.
+    const caption = igPublish.caption(m.card.caption, { hashtags: pl.account.hashtags && pl.account.hashtags.length ? "" : cfg.hashtags });
     return igPublish.publishCarousel({ igUserId: conn.ig_user_id, token: conn.page_access_token, imageUrls, caption });
   },
   // Carousel insights (reach, likes, comments, saved, shares); token as the Graph API expects it.
-  igMetrics: async (mediaId) => {
-    const channel = readChannels().find(c => c.id === newsCards.config().channel_id);
-    const { conn } = newsCardsIgConn(channel);
+  igMetrics: async (mediaId, A) => {
+    const pl = ncAcct(A && A.id);
+    const channel = readChannels().find(c => c.id === pl.config().channel_id);
+    const { conn } = newsCardsIgConn(channel, pl.account);
     const q = new URLSearchParams({ metric: "reach,likes,comments,saved,shares", access_token: conn.page_access_token });
     const r = await fetch(`${igPublish.GRAPH}/${encodeURIComponent(mediaId)}/insights?${q}`);
     const d = await r.json().catch(() => ({}));
@@ -10475,28 +10491,43 @@ const newsCardsDeps = {
   notify: (title, body, level) => sendTelegram(`🗞 ${escapeHtmlTg(title)}`, escapeHtmlTg(body || ""), level || "info"),
 };
 
-app.get("/news-cards/status", (_req, res) => {
-  const runs = readTaskFile("scheduled-tasks.json").filter(x => x.agent === "news_cards" && x.enabled)
+// Routes take ?account= (or body.account); default gh0stlayer.
+function newsCardsFor(req, res) {
+  const id = String((req.body && req.body.account) || req.query.account || "gh0stlayer").toLowerCase();
+  if (!newsCards.accountIds().includes(id)) { res.status(400).json({ error: "unknown account" }); return null; }
+  return newsCards.forAccount(id);
+}
+app.get("/news-cards/accounts", (_req, res) => res.json(newsCards.accountIds().map(id => {
+  const pl = newsCards.forAccount(id);
+  return { id, label: pl.label, channel_id: pl.config().channel_id, x_creds: newsCardsXCredsOk(pl.config().channel_id, id) };
+})));
+app.get("/news-cards/status", (req, res) => {
+  const pl = newsCardsFor(req, res); if (!pl) return;
+  const runs = readTaskFile("scheduled-tasks.json").filter(x => x.agent === "news_cards" && x.enabled && ((x.payload && x.payload.account) || "gh0stlayer") === pl.id)
     .map(x => `${String(x.hour).padStart(2, "0")}:${String(x.minute).padStart(2, "0")}`).sort();
-  res.json({ ...newsCards.status(), runs });
+  res.json({ ...pl.status(), runs, x_creds: newsCardsXCredsOk(pl.config().channel_id, pl.id) });
 });
-app.get("/news-cards/sets", (req, res) => res.json(newsCards.panel(Math.min(100, Number(req.query.limit) || 30))));
-// Manual trigger. Body: { dry_run, only: ["instagram"], immediate, layouts: ["signal", ...] }. Runs in the background.
+app.get("/news-cards/sets", (req, res) => { const pl = newsCardsFor(req, res); if (pl) res.json(pl.panel(Math.min(100, Number(req.query.limit) || 30))); });
+// Manual trigger. Body: { account, dry_run, only: ["instagram"], immediate, layouts: ["signal", ...] }. Runs in the background.
 app.post("/news-cards/run", (req, res) => {
-  if (newsCards.isRunning()) return res.status(409).json({ error: "news cards are already running" });
+  const pl = newsCardsFor(req, res); if (!pl) return;
+  if (pl.isRunning()) return res.status(409).json({ error: "news cards are already running" });
   const b = req.body || {};
-  const only = Array.isArray(b.only) ? b.only.filter(p => newsCards.PLATFORMS.includes(p)) : null;
+  const only = Array.isArray(b.only) ? b.only.filter(p => pl.PLATFORMS.includes(p)) : null;
   const layouts = Array.isArray(b.layouts) ? b.layouts.filter(l => ["signal", "number", "versus", "persona"].includes(l)) : null;
-  newsCards.run({ deps: newsCardsDeps, dryRun: !!b.dry_run, only: only && only.length ? only : null, immediate: !!b.immediate, layouts: layouts && layouts.length ? layouts : null, reason: "manual" })
-    .then(r => console.log(`[NEWS-CARDS] manual run: ${r.sets.map(s => `${s.id} ${s.status}`).join(", ") || "no item"}`))
-    .catch(e => console.error("[NEWS-CARDS] manual run failed:", e.message));
-  res.json({ ok: true, started: true });
+  pl.run({ deps: newsCardsDeps, dryRun: !!b.dry_run, only: only && only.length ? only : null, immediate: !!b.immediate, layouts: layouts && layouts.length ? layouts : null, reason: "manual" })
+    .then(r => console.log(`[NEWS-CARDS ${pl.id}] manual run: ${r.sets.map(s => `${s.id} ${s.status}`).join(", ") || "no item"}`))
+    .catch(e => console.error(`[NEWS-CARDS ${pl.id}] manual run failed:`, e.message));
+  res.json({ ok: true, started: true, account: pl.id });
 });
 app.post("/news-cards/sets/:id/approve", async (req, res) => {
-  try { res.json(await newsCards.approve(newsCardsDeps, String(req.params.id))); }
+  const pl = newsCardsFor(req, res); if (!pl) return;
+  try { res.json(await pl.approve(newsCardsDeps, String(req.params.id))); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
-setInterval(() => newsCards.tick(newsCardsDeps).catch(e => console.error("[NEWS-CARDS] tick:", e.message)), 60 * 1000);
+setInterval(() => {
+  for (const id of newsCards.accountIds()) newsCards.forAccount(id).tick(newsCardsDeps).catch(e => console.error(`[NEWS-CARDS ${id}] tick:`, e.message));
+}, 60 * 1000);
 
 async function charBatchRewrite(prompt, reason) {
   const msg = await anthropic.messages.create({

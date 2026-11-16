@@ -1,23 +1,27 @@
 #!/usr/bin/env node
-// gh0stlayer news cards CLI.
-//   node scripts/news-cards.js --dry-run                 one set per layout (signal, number, versus, persona), render locally, publish nothing
-//   node scripts/news-cards.js --dry-run --layouts number,versus --no-images
-// Output: data/news-cards/dry-run/set_<id>_slide_<n>.png + dry-run-<timestamp>.json (cards, scores, validator, sources).
+// News cards CLI, per account (accounts/<name>.yaml).
+//   node scripts/news-cards.js run --account slabhaus --dry-run    (alias: cards run --account slabhaus --dry-run)
+//   node scripts/news-cards.js --dry-run                            gh0stlayer, one set per layout, publish nothing
+//   node scripts/news-cards.js --dry-run --account slabhaus --layouts number,versus --no-images
+// Output: <data_dir>/dry-run/set_<id>_slide_<n>.png + dry-run-<timestamp>.json (cards, scores, validator, sources).
 // A real run (publish) goes through the service: POST /news-cards/run or the button on the Social Media Manager page.
 const path = require("path");
 const fs = require("fs");
 const { execFile } = require("child_process");
 const ROOT = path.join(__dirname, "..");
 require("dotenv").config({ path: path.join(ROOT, ".env"), quiet: true });
-const pipeline = require("../news-cards-pipeline");
+const pipelines = require("../news-cards-pipeline");
 const nc = require("../news-cards");
 
 const args = process.argv.slice(2);
 const flag = n => args.includes(n);
 const opt = n => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
+const account = String(opt("--account") || "gh0stlayer").toLowerCase();
+if (!pipelines.accountIds().includes(account)) { console.error(`FOUT onbekend account: ${account} (bekend: ${pipelines.accountIds().join(", ")})`); process.exit(1); }
+const pipeline = pipelines.forAccount(account);
 
 if (!flag("--dry-run")) {
-  console.log("Alleen --dry-run hier. Echte run: POST /news-cards/run (of de knop op de Social Media Manager pagina).");
+  console.log("Alleen --dry-run hier. Echte run: POST /news-cards/run {account} (of de knop op de Social Media Manager pagina).");
   process.exit(1);
 }
 
@@ -30,6 +34,7 @@ async function llm(system, user) {
 }
 
 // Nano Banana via the inference.sh CLI (same app as the service), saved next to the dry-run PNGs.
+// For Slabhaus the pipeline only asks for neutral object scenes (imagePolicy), never card art.
 function genImage({ prompt, aspect, setId, label }) {
   const tag = `${setId}-${label.replace(/\W+/g, "-")}`;
   const input = path.join(pipeline.DRY_DIR, `nb-input-${tag}.json`);
@@ -71,6 +76,7 @@ function personaStills() {
   const jsonFile = path.join(pipeline.DRY_DIR, `dry-run-${stamp}.json`);
   fs.mkdirSync(pipeline.DRY_DIR, { recursive: true });
   fs.writeFileSync(jsonFile, JSON.stringify(r, null, 2));
+  console.log(`account: ${pipeline.id}`);
   console.log("bronnen:");
   for (const [k, v] of Object.entries(r.sources)) console.log(`  ${k}: ${v}`);
   console.log(`kandidaten ${r.candidates}, sets ${r.sets.length}`);

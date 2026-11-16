@@ -28,31 +28,21 @@ const mkSet = id => ({ id, created_at: new Date(now).toISOString(), status: "ren
   item: { url: "https://example.org/a" }, validator: { ok: true },
   card: { headline: "Fees fell to **3.125** BTC", x_hook: "hook 👇", x_reply: "reply", caption: "cap", payload: { title: "p" }, closer: { line: "c" } },
   slides: [1, 2, 3].map(n => ({ slide: n, rel: `/media/news-cards/set_${id}_slide_${n}.png` })) });
-const calls = { x: [], buf: [] };
+const calls = { x: [] };
 const deps = mode => ({
   channel: () => ({ id: "ch1", autopilot: { mode } }),
   addXTask: f => { calls.x.push(f); return { id: "x" + calls.x.length, ...f }; },
   shareUrls: async m => m.slides.map(s => `https://h/${s.slide}.jpg`),
-  bufferPost: async i => { calls.buf.push(i); return { id: "b1", status: "scheduled" }; },
   notify: () => {},
 });
 (async () => {
-  t("TikTok staat standaard uit", P.config().platforms.tiktok.enabled === false);
-  const off = mkSet("s0");
-  await P.schedulePublish({ deps: deps("auto"), m: off, nowMs: now - 3 * 864e5 });
-  t("TikTok uit: geen Buffer-call", off.posts.tiktok.status === "off" && calls.buf.length === 0);
-  fs.rmSync(path.join(P.SETS_DIR, "s0.json"));
-  calls.x.length = 0;
-  // rest van de tests: TikTok tijdelijk aan in de temp-config om de Buffer-route te blijven testen
-  fs.writeFileSync(path.join(P.DIR, "config.json"), JSON.stringify({ platforms: { tiktok: { enabled: true } } }));
+  t("geen TikTok of Buffer meer", !P.config().platforms.tiktok && P.PLATFORMS.join() === "instagram,x");
   const m = mkSet("s1");
   await P.schedulePublish({ deps: deps("auto"), m, nowMs: now });
-  t("auto: alle drie platforms ingepland", m.posts.instagram.status === "scheduled" && m.posts.x.status === "scheduled" && m.posts.tiktok.status === "queued");
+  t("auto: IG en X ingepland, geen tiktok", m.posts.instagram.status === "scheduled" && m.posts.x.status === "scheduled" && !m.posts.tiktok);
   t("auto: X task scheduled met pair hook+reply", calls.x[0].status === "scheduled" && calls.x[0].pair.hook === "hook 👇" && calls.x[0].pair.replies[0] === "reply");
   t("auto: X alleen slide 1", calls.x[0].media_paths.length === 1 && /slide_1/.test(calls.x[0].media_paths[0]));
   t("IG 45 min, X 20 min na de run", m.posts.instagram.due_at === new Date(now + 45 * 60000).toISOString() && m.posts.x.due_at === new Date(now + 20 * 60000).toISOString());
-  const bi = calls.buf[0];
-  t("TikTok Buffer: 3 beelden, AI-label, customScheduled", bi.assets.length === 3 && bi.metadata?.tiktok?.isAiGenerated === true && bi.mode === "customScheduled");
 
   const m2 = mkSet("s2");
   await P.schedulePublish({ deps: deps("auto"), m: m2, nowMs: now + 3600e3 });
@@ -69,9 +59,8 @@ const deps = mode => ({
   for (const r of runs) fs.rmSync(path.join(P.SETS_DIR, r.id + ".json"));
 
   const m3 = mkSet("s3");
-  const bufBefore = calls.buf.length;
   await P.schedulePublish({ deps: deps("review"), m: m3, nowMs: now + 3 * 864e5 });
-  t("niet-auto: IG wacht op goedkeuring, X draft, geen Buffer", m3.posts.instagram.status === "awaiting_approval" && calls.x[calls.x.length - 1].status === "draft" && calls.buf.length === bufBefore);
+  t("niet-auto: IG wacht op goedkeuring, X draft", m3.posts.instagram.status === "awaiting_approval" && calls.x[calls.x.length - 1].status === "draft");
 
   const m4 = mkSet("s4");
   await P.schedulePublish({ deps: deps("auto"), m: m4, only: ["instagram"], immediate: true, nowMs: now + 5 * 864e5 });

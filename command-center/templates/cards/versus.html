@@ -3,18 +3,18 @@
   {{top}}
   <div style="position:absolute;top:200px;left:var(--pad);right:var(--pad);height:560px;display:grid;grid-template-columns:1fr 1fr;gap:24px">
     <div style="position:relative;border-radius:28px;overflow:hidden;border:2px solid var(--border)">
-      <div class="bg-img" style="background-image:url('{{left_image}}')"></div>
+      <div class="bg-img imgzone" style="background-image:url('{{left_image}}')">{{left_fallback}}</div>
       <div class="shade" style="background:linear-gradient(180deg,transparent 35%,hsl(0 0% 0% / .9))"></div>
       <div style="position:absolute;left:30px;right:30px;bottom:30px">
         <div style="font:700 26px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">{{left_label}}</div>
         <div style="font:400 64px/1.05 var(--display);font-stretch:125%;margin-top:10px">{{left_value}}</div>
       </div>
     </div>
-    <div style="position:relative;border-radius:28px;overflow:hidden;border:2px solid hsl(264 65% 60% / .8);box-shadow:0 0 50px hsl(264 65% 50% / .35)">
-      <div class="bg-img" style="background-image:url('{{right_image}}')"></div>
+    <div class="vs-right" style="position:relative;border-radius:28px;overflow:hidden;border:2px solid hsl(264 65% 60% / .8);box-shadow:0 0 50px hsl(264 65% 50% / .35)">
+      <div class="bg-img imgzone" style="background-image:url('{{right_image}}')">{{right_fallback}}</div>
       <div class="shade" style="background:linear-gradient(180deg,transparent 35%,hsl(0 0% 0% / .9))"></div>
       <div style="position:absolute;left:30px;right:30px;bottom:30px">
-        <div style="font:700 26px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-glow)">{{right_label}}</div>
+        <div class="vs-right-label" style="font:700 26px/1.2 var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-glow)">{{right_label}}</div>
         <div style="font:400 64px/1.05 var(--display);font-stretch:125%;margin-top:10px">{{right_value}}</div>
       </div>
     </div>

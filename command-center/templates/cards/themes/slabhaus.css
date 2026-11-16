@@ -1,0 +1,33 @@
+/* Slabhaus theme on top of base.css. Spec palette first, then mapped onto the base variables. */
+:root{--ground:#0c0c0e; --surface:#17171a; --line:#26262b; --dot:#2f2f35; --text:#ffffff; --cream:#f3efe6; --muted:#a8a399; --muted2:#c9c4b8; --dim:#6b665c; --accent:#e8b43a; --accent-light:#f0d58a; --accent2:#e8b43a; --pill-text:#0c0c0e;}
+.pill{color:var(--pill-text);}
+.headline .a{color:var(--accent);}
+.headline .p{color:var(--accent-light);}
+.imgzone{background-color:#141416;}
+.persona-frame{border-radius:28px;border:2px solid var(--line);}
+
+/* Mapping: the shared templates use .hl-a / .hl-p and the base variables. */
+:root{--bg:var(--ground); --fg:var(--text); --card:var(--surface); --border:var(--line); --accent-glow:var(--accent-light); --accent-deep:#7a5a14; --pen:rgba(232,180,58,.28);}
+.card::after{background:radial-gradient(120% 80% at 50% 110%, rgba(232,180,58,.10), transparent 60%);}
+.pill{background:var(--accent);border-color:var(--accent);}
+.pill::before{background:var(--pill-text);box-shadow:none;}
+.headline .hl-a{color:var(--accent);text-shadow:none;}
+.headline .hl-p{color:var(--accent-light);background:none;padding:0;}
+.hl-a{color:var(--accent);text-shadow:none;}
+.mark{color:var(--cream);}
+.dots i{background:var(--dot);}
+.dots i.on{background:var(--accent);box-shadow:none;}
+.counter{color:var(--muted2);}
+.hint{color:var(--muted);}
+.src{color:var(--dim);}
+.items .n{color:var(--accent) !important;}
+.items p{color:var(--muted2) !important;}
+.glow{background:radial-gradient(70% 50% at 70% 20%, rgba(232,180,58,.08), transparent 70%) !important;}
+.number .big{color:var(--cream) !important;text-shadow:none !important;}
+.vs-right{border-color:var(--accent) !important;box-shadow:none !important;}
+.vs-right-label{color:var(--accent) !important;}
+.rule{box-shadow:none !important;}
+.persona-frame{inset:24px;}
+.brand{display:flex;align-items:center;gap:14px;}
+.tagline{font:600 16px/1 var(--body);letter-spacing:.3em;color:var(--dim);margin-top:14px;text-transform:none;}
+.slabpat{position:absolute;inset:0;}

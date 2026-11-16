@@ -1,0 +1,32 @@
+# Slabhaus evergreen pool: sourced Pokémon TCG facts (own parser: sources/evergreen.js).
+# "- key: value" starts an item; values in [..] or {..} are JSON. Only facts with a source URL.
+
+- id: base-set-1999
+  title: "Base Set reached US shelves in 1999 with 102 cards, 16 of them holo rares"
+  summary: "The English Base Set released on 9 January 1999 in the United States. It has 102 cards, including 16 holographic rares such as Charizard, Blastoise and Venusaur."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_(TCG)
+  date: 1999-01-09
+  numbers: [102, 16, 1999]
+  entities: [release]
+  layouts: [number, signal]
+
+- id: base-set-holo-count
+  title: "Base Set has 16 holo rares out of 102 cards"
+  summary: "Of the 102 cards in Base Set, numbers 1 to 16 are the holographic rares, from Alakazam to Zapdos. Charizard is card 4/102."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_(TCG)
+  numbers: [16, 102]
+  entities: [release]
+  layouts: [number, signal]
+
+- id: tcg-japan-1996
+  title: "The Pokémon TCG launched in Japan in October 1996, two years before Base Set"
+  summary: "The Pokémon Trading Card Game first released in Japan on 20 October 1996. The English Base Set followed in the US on 9 January 1999."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Pok%C3%A9mon_Trading_Card_Game
+  date: 1996-10-20
+  numbers: [1996, 1999]
+  entities: [release]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Japan launch", "value": "1996", "unit": "October"}, "right": {"label": "Base Set US", "value": "1999", "unit": "January"}}

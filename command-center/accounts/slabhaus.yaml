@@ -1,0 +1,101 @@
+# Slabhaus news cards profile (Pokémon TCG, graded slabs). Shared code: news-cards.js + news-cards-pipeline.js.
+name: slabhaus
+label: Slabhaus news cards
+channel_id: slabcok4gtn6
+data_dir: data/news-cards/slabhaus
+media_path: media/cards/slabhaus
+theme: slabhaus                # templates/cards/themes/slabhaus.css
+brand_mark: slabhaus           # templates/cards/brand/slabhaus.html
+payload_tagline: GRADED · VAULTED · VERIFIED
+fallback_pattern: slab         # slab-outline pattern when there is no gallery photo
+chart_color: "#e8b43a"
+font_aliases: [{"from": "Akira", "to": "Akira Expanded"}]
+
+schedule:
+  tz: Europe/Madrid
+  times: ["08:10"]
+  sets_per_run: 1
+
+layout_labels: {"signal": "breaking", "number": "number", "versus": "then vs now", "persona": "haus take"}
+pills: ["breaking", "market", "grading", "pop report", "new set", "then vs now", "haus take", "did you know"]
+# 3 breaking/market, 2 number, 1 versus, 1 haus take per week.
+weekly_mix: {"signal": 3, "number": 2, "versus": 1, "persona": 1}
+
+pill_rules:
+  base: ["breaking", "did you know"]
+  by_layout: {"versus": ["then vs now"], "persona": ["haus take"], "number": ["pop report", "market"]}
+  match:
+    - {"pill": "market", "entities": ["market"], "text": "\\b(sales?|sold|auction|market|price|prices|volume|record)\\b"}
+    - {"pill": "grading", "entities": ["psa", "cgc", "bgs", "beckett", "sgc", "tag"], "text": "\\b(psa|cgc|bgs|beckett|sgc|grading|graded|grader|slab|slabs)\\b"}
+    - {"pill": "pop report", "entities": ["pop"], "text": "\\b(pop|population|gem rate|pop report)\\b"}
+    - {"pill": "new set", "entities": ["release"], "text": "\\b(set|expansion|release|releases|prerelease|booster|reveal|revealed)\\b"}
+  by_kind: {"metric": ["market", "pop report"], "evergreen": ["did you know"]}
+  fixed_by_layout: {"versus": ["then vs now"], "persona": ["haus take"]}
+  use_hints: true
+
+sources:
+  pack: tcg                    # sources/tcg/ (news listings, Reddit trending, NeuraCollectibles numbers, evergreen.yaml)
+  nc_api: http://127.0.0.1:8000/collectibles/v1
+
+scoring:
+  max_age_hours: 48
+  min_score: 50
+  kind_freshness: {"metric": 40, "evergreen": 30}   # same-run NC numbers rank above evergreen facts
+  relevant: "\\b(pok[eé]mon|tcg|psa|cgc|bgs|beckett|sgc|slab|slabs|graded|grading|pop|population|gem|set|expansion|booster|charizard|pikachu|holo|illustration rare|special illustration|alt art|promo|base set|sales?|auction|record|reprint|print run|vault|vaulted|japanese|english)\\b"
+  reject: "\\b(giveaway|sweepstakes|coupon|discount code|promo code|deal of the day|leak(ed)? rumou?r|price prediction|price targets?|could (hit|reach|double|triple)|invest(ment|ing)?|portfolio|nft drop|scalper drama|arrested|lawsuit gossip|video game|anime episode|pok[eé]mon go|unite|movie)\\b"
+  reject_reason: niet relevant voor Slabhaus (deal/giveaway/game/investering/gossip)
+  trending: {"outlets_min": 3, "outlets_bonus": 10, "reddit_each": 4, "reddit_max": 8}
+
+voice:
+  intro: You write one news card set for Slabhaus, a Pokémon TCG graded-slab account for collectors and dealers. Calm, knowledgeable, no hype. Output strict JSON only, no prose, no code fences.
+  rules: |
+    Layout names: signal = breaking/market card, number = one number card, versus = then vs now, persona = the haus take.
+    number layout: number (string, e.g. "669") and unit (e.g. "PSA 10 copies"). If the item has a pop_report, the number comes from it and the unit says which grade and grader. series only if given in the item. versus layout: versus = {left:{label,value,unit},right:{label,value,unit}} with values only from the item.
+    Rules: English, written for collectors and dealers. Headline max 70 characters, sentence case, max 4 lines. Mark the payoff or number with [a]...[/a] and the set or card name with [p]...[/p], at most one of each.
+    Exactly one number, set name or card name in the headline (grades like PSA 10 do not count as the number), and it must reappear in the payload items. Use only facts and numbers from the item; never invent prices, pop counts or dates.
+    Persona layout (haus take) only: first-person past tense from the Slabhaus desk about reading the data in the item (I checked, I pulled, I compared, I stopped). Never claim we own, bought, sold, cracked or graded a specific card. Other layouts never start with I.
+    Never investment framing (invest, portfolio, returns, flip for profit, undervalued, asset), never price predictions, never the word will, never name or tag individual sellers or buyers, never judge a grade from photos.
+    No em or en dashes. No ALL CAPS except PSA, CGC, BGS, TAG, SGC, TCG, EX, GX, V, VMAX, VSTAR, HP and set codes.
+    No hollow superlatives (insane, game changer, grail of grails, you won't believe), no engagement bait.
+    payload: title (short, may use one [a]) and exactly 3 items, each a short title plus one explaining sentence. closer: one line plus one question for collectors.
+    caption: all lowercase, exactly 3 lines: hook line, then one question followed by " link in bio", then exactly these four hashtags: #pokemontcg #psa10 #slabs #pokemoncards. No URLs; the words link in bio are required.
+    x_hook: max 240 characters, no hashtags, no links. x_reply: the payload in text form, max 250 characters, ends with the source name, no links.
+    image_brief: one sentence naming the card or set the item is about (used to pick our own slab photo), never a description of card art.
+  caps_allow: ["PSA", "CGC", "BGS", "TAG", "SGC", "TCG", "EX", "GX", "V", "VMAX", "VSTAR", "ex", "HP", "VS", "US", "UK", "EU", "JP", "NM", "SV", "SWSH", "SM", "XY", "BW", "SVI", "PAL", "OBF", "MEW", "PAR", "PAF", "TEF", "TWM", "SFA", "SCR", "SSP", "PRE", "JTG", "DRI", "BLK", "WHT", "MEG", "PFL", "ASC", "CRZ", "SIT", "LOR", "PGO", "ASR", "BRS", "FST", "CEL", "EVS", "CRE", "BST", "SHF", "VIV", "DAA", "RCL", "SSH", "PR", "SVP", "SWSHP"]
+  caption_caps: []
+  hashtags: ["#pokemontcg", "#psa10", "#slabs", "#pokemoncards"]
+  caption_required: ["link in bio"]
+  headline_anchor: true
+  grade_pattern: "\\b(PSA|CGC|BGS|TAG|SGC)\\s?\\d+(\\.\\d)?\\b"
+  forbid:
+    - {"pattern": "\\b(invest(ment|ments|ing|or|ors)?|portfolio|returns? on|roi|profit(s|able)?|flip(ping|ped)?|undervalued|overvalued|asset class|store of value|buy the dip|appreciat(e|es|ion))\\b", "reason": "investeringsframing"}
+    - {"pattern": "(@\\w{2,}|\\b(seller|sold by|buyer|bought by)\\s+[A-Z@]\\w+)", "reason": "verkoper of koper genoemd"}
+    - {"pattern": "\\b(looks like a (psa |cgc |bgs )?10|would (grade|get)|should grade|grade(d)? from (the )?photos?|centering looks|gem from (the )?photo)\\b", "reason": "graden op basis van foto"}
+    - {"pattern": "\\b(going to (rise|climb|moon|explode)|next (charizard|grail)|before it'?s too late)\\b", "reason": "prijsvoorspelling"}
+
+image_policy:
+  kind: gallery                # own slab photos only, never downloaded card art
+  brief_required: true
+  gallery_dir: data/brand-assets/SLABHAUS/slabs
+  gallery_tag: SLABHAUS
+  # Nano Banana only for neutral object scenes, with this fixed rule.
+  rules: "No people, no faces, no readable text, no logos, no characters, no card art."
+  neutral_scenes: ["A dark walnut desk with three empty clear graded-card slab cases, soft top light, shallow depth of field.", "A heavy steel vault door slightly open in a dim room, warm rim light.", "A brass magnifier lying on a dark slate surface next to an empty clear slab case, low warm light."]
+  layouts: {"signal": "gallery", "versus": "gallery", "persona": "gallery_hand", "number": "none"}
+  persona: gallery_hand
+
+credentials:
+  instagram: ig_17841437483407922   # data/social connection, same as the rips tab
+  x: channel                        # data/community/x-credentials.json[slabcok4gtn6]
+  nc_api_key_env: NC_API_KEY
+
+publish:
+  x_premium: pair_profile           # data/x-pair-profiles.json[slabcok4gtn6].premium
+  x_links_from: pair_profile        # .link.urls (enabled, non-empty) ; max 1 in 3 sets
+  x_link_ratio: 0.3333
+  platforms:
+    instagram: {"enabled": true, "delay_min": 45, "max_per_day": 1, "min_gap_hours": 3}
+    x: {"enabled": true, "delay_min": 20, "max_per_day": 1, "min_gap_hours": 3}
+
+metrics:
+  weights: {"ig_likes": 1, "ig_comments": 2, "ig_saved": 4, "ig_shares": 3, "x": 1}

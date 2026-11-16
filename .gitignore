@@ -94,3 +94,6 @@ command-center/data/rips-tasks.json
 command-center/data/news-cards/
 # Akira Expanded demo font: personal-use licence, not redistributable (live only; cards fall back to Archivo)
 command-center/assets/fonts/Akira*
+
+# Slabhaus own slab photo gallery (runtime)
+command-center/data/brand-assets/SLABHAUS/
