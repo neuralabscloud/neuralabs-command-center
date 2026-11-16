@@ -9237,7 +9237,7 @@ app.get("/agents/autonomous", (_req, res) => {
       id: "news_cards_worker", kind: "news_cards", agent: "community_manager",
       name: "gh0stlayer news cards: publisher + metrics", enabled: ns.config.enabled !== false,
       when: "every minute (IG carousel at its time, metrics at 24h/72h, weekly reweight)",
-      details: `IG ${pc.instagram.enabled ? pc.instagram.time : "off"} · TikTok ${pc.tiktok.enabled ? pc.tiktok.time : "off"} · X ${pc.x.enabled ? pc.x.time : "off"} (${ns.config.tz}) · ${ns.sets} sets`,
+      details: `Posts the card sets made by the news card runs. X ${pc.x.enabled ? `${pc.x.delay_min} min` : "off"}, Instagram ${pc.instagram.enabled ? `${pc.instagram.delay_min} min` : "off"} after each run, TikTok ${pc.tiktok.enabled ? "on" : "off"}. Max ${pc.x.max_per_day} per day · ${ns.sets} sets so far`,
       last_run: ns.last_run ? { at: ns.last_run.at, status: ns.last_run.sets.map(x => x.status).join(", ") || "no item", error: null } : null,
       running: ns.running, manage_url: "/community-manager.html#news-cards",
     });

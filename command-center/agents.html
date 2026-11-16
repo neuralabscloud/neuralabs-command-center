@@ -80,6 +80,67 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
   font-size: 11px; font-weight: 600; cursor: pointer; letter-spacing: 0.05em; transition: all 0.2s;
 }
 .sched-add-btn:hover { filter: brightness(1.15); }
+/* Scheduler board */
+.bk-top { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+.bk-summary { flex: 1; display: flex; gap: 8px; flex-wrap: wrap; }
+.bk-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 112px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-dim); cursor: pointer; font-family: var(--font-data); transition: all .2s; text-align: left; }
+.bk-tile b { font-size: 20px; color: var(--text); font-weight: 700; line-height: 1.1; }
+.bk-tile span { font-size: 11px; }
+.bk-tile:hover { border-color: var(--primary-dim); }
+.bk-tile.sel { border-color: var(--primary); background: hsla(264 65% 49% / 0.1); }
+.bk-tile.ok b { color: var(--success); } .bk-tile.warn b { color: var(--warning); } .bk-tile.off b { color: var(--text-dim); }
+.bk-upcoming { margin-bottom: 22px; }
+.bk-up-title { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+.bk-up { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.bk-up-item { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--brand); font-family: var(--font-data); max-width: 240px; }
+.bk-up-item b { font-size: 14px; color: var(--text); }
+.bk-up-item span { font-size: 11px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bk-up-item em { font-style: normal; font-size: 10px; color: var(--text-dim); }
+.bk-group { margin-bottom: 26px; }
+.bk-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.bk-group-head h3 { font-family: var(--font-body); font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
+.bk-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 10px var(--brand); }
+.bk-meta { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+.bk-meta .warn { color: var(--warning); }
+.bk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.bk-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); border-top: 2px solid var(--brand); background: linear-gradient(180deg, hsla(0 0% 6% / 1) 0%, hsla(0 0% 3% / 1) 100%); transition: border-color .2s; min-width: 0; }
+.bk-card:hover { border-color: hsla(264 65% 49% / 0.4); border-top-color: var(--brand); }
+.bk-card.is-attention { border-color: hsla(45 93% 55% / 0.45); border-top-color: var(--warning); }
+.bk-card.is-paused { opacity: .55; border-top-color: var(--border); }
+.bk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bk-state { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-data); font-size: 11px; font-weight: 600; color: var(--text-dim); }
+.bk-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+.bk-state.active { color: var(--success); } .bk-state.active i { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.bk-state.running { color: var(--premium); } .bk-state.running i { background: var(--premium); animation: bkpulse 1.2s infinite; }
+.bk-state.attention { color: var(--warning); } .bk-state.attention i { background: var(--warning); }
+@keyframes bkpulse { 50% { opacity: .3; } }
+.bk-kind { font-family: var(--font-data); font-size: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+.bk-kind.sched { color: hsl(205 90% 70%); border-color: hsla(205 90% 60% / .35); }
+.bk-kind.auto { color: hsl(264 80% 75%); border-color: hsla(264 65% 60% / .35); }
+.bk-name { font-family: var(--font-body); font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; overflow-wrap: anywhere; }
+.bk-role { font-family: var(--font-data); font-size: 11px; font-weight: 600; margin-top: -4px; }
+.bk-what { font-family: var(--font-data); font-size: 12px; color: var(--text-dim); line-height: 1.5; overflow-wrap: anywhere; }
+.bk-rows { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px; background: hsla(0 0% 100% / 0.025); }
+.bk-row { display: grid; grid-template-columns: 52px 1fr; gap: 8px; font-family: var(--font-data); font-size: 11px; color: var(--text); }
+.bk-row > span { color: var(--text-dim); }
+.bk-row b { font-weight: 600; }
+.bk-dim { color: var(--text-dim); }
+.bk-err { font-family: var(--font-data); font-size: 11px; color: hsl(0 80% 72%); background: hsla(0 72% 51% / 0.08); border: 1px solid hsla(0 72% 51% / 0.25); border-radius: 6px; padding: 6px 8px; line-height: 1.4; }
+.bk-cb:empty { display: none; }
+.bk-cb { font-family: var(--font-data); font-size: 11px; color: var(--text-dim); }
+.bk-actions { display: flex; gap: 6px; align-items: center; margin-top: auto; padding-top: 4px; flex-wrap: wrap; }
+.bk-actions .sched-btn { font-size: 11px; padding: 4px 10px; }
+.bk-spacer { flex: 1; }
+.bk-paused { margin-top: 10px; }
+.bk-paused summary { cursor: pointer; font-family: var(--font-data); font-size: 12px; color: var(--text-dim); padding: 6px 0; list-style: none; }
+.bk-paused summary::before { content: '▸ '; } .bk-paused[open] summary::before { content: '▾ '; }
+.bk-paused summary:hover { color: var(--text); }
+.bk-paused .bk-grid { margin-top: 6px; }
+.bk-empty { font-family: var(--font-data); font-size: 12px; color: var(--text-dim); padding: 16px 0; }
+.task-more { margin-top: 10px; width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-family: var(--font-data); font-size: 12px; cursor: pointer; }
+.task-more:hover { border-color: var(--primary); color: var(--text); }
+@media (max-width: 600px) { .bk-grid { grid-template-columns: 1fr; } .bk-top { flex-direction: column-reverse; align-items: stretch; } .bk-summary { display: grid; grid-template-columns: 1fr 1fr; } .bk-tile { min-width: 0; } }
+
 /* ── SCHEDULE MODAL ── */
 .sched-modal-bg {
   display: none; position: fixed; inset: 0; z-index: 1000;
@@ -300,12 +361,12 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
     <!-- SCHEDULED TASKS -->
     <section class="fade-up delay-3">
       <div class="section-header">Scheduled Tasks</div>
-      <div style="margin-top:-8px;margin-bottom:14px;text-align:right">
-        <button class="sched-add-btn" onclick="openScheduleModal()">+ New Schedule</button>
+      <div class="bk-top">
+        <div id="bk-summary" class="bk-summary"></div>
+        <button class="sched-add-btn" onclick="openScheduleModal()">+ New schedule</button>
       </div>
-      <div id="sched-grid" class="sched-grid"></div>
-      <div class="sched-sub">Always-on agent jobs</div>
-      <div id="auto-grid" class="sched-grid"></div>
+      <div id="bk-upcoming" class="bk-upcoming"></div>
+      <div id="bk-groups"></div>
     </section>
 
     <!-- SCHEDULE MODAL -->
@@ -392,6 +453,7 @@ const AGENT_COLORS = {
 
 let currentFilter = 'all';
 let allTasks = [];
+let feedLimit = 40;
 
 function fmtTime(iso) {
   if (!iso) return '-';
@@ -412,6 +474,7 @@ function safeRel(u) { u = String(u ?? ''); return /^\/(?![\/\\])/.test(u) || /^[
 
 function setFilter(f) {
   currentFilter = f;
+  feedLimit = 40;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
   renderTaskFeed();
 }
@@ -466,7 +529,7 @@ function renderTaskFeed() {
     return;
   }
 
-  feed.innerHTML = filtered.map(t => {
+  feed.innerHTML = filtered.slice(0, feedLimit).map(t => {
     const color = AGENT_COLORS[t._type] || 'var(--text-dim)';
     const hasResult = t.status === 'completed' && (t.result || t.result_url);
     const preview = t._preview ? esc(t._preview.substring(0, 120)) + (t._preview.length > 120 ? '...' : '') : '';
@@ -487,6 +550,7 @@ function renderTaskFeed() {
       <div class="task-time">${fmtTime(t.created_at)}</div>
     </div>`;
   }).join('');
+  if (filtered.length > feedLimit) feed.innerHTML += `<button class="task-more" onclick="feedLimit += 40; renderTaskFeed()">Show ${Math.min(40, filtered.length - feedLimit)} more (${filtered.length - feedLimit} hidden)</button>`;
 }
 
 // ── CANCEL TASK ──
@@ -576,6 +640,8 @@ function buildScheduleSummary(s) {
         ? ` · posts directly at ${escHtml(p.publish.time || '18:00')}${p.publish.instagram === false ? '' : ' + Instagram Reel'}` : '';
       return `${escHtml((p.character && p.character.name) || 'character')} · ${n} outfit${n === 1 ? '' : 's'} · Seedance 2.5 ${escHtml(p.resolution || '720p')} · stills in the <a href="designer.html" style="color:inherit">Designer</a>, videos in <a href="content-creator.html" style="color:inherit">Content Creator</a> · ${escHtml(days)}${pub}${bf}`;
     }
+    case 'news_cards':
+      return `Fetches fresh crypto news and makes one card set: X about 20 min after the run, Instagram about 45 min after (max 3 per day each) · sets on the <a href="community-manager.html" style="color:inherit">Social Media Manager</a> page`;
     case 'growth_marketeer':
       return `Goal: ${p.goal ? `"${escHtml(p.goal.substring(0, 80))}"` : 'grow the main product'} · report on the <a href="marketing.html" style="color:inherit">Marketing page</a>`;
     default:
@@ -583,78 +649,215 @@ function buildScheduleSummary(s) {
   }
 }
 
+// ── Scheduler board: scheduled tasks and always-on jobs, grouped per brand ──
+let schedData = null, autoData = null, boardFilter = 'all';
+const openPaused = new Set();
+const BRANDS = [
+  { key: 'gh0stlayer', label: 'gh0stlayer', re: /gh0st/i, color: 'hsl(264 80% 68%)' },
+  { key: 'slabhaus', label: 'Slabhaus TCG', re: /slabhaus/i, color: 'hsl(38 92% 58%)' },
+  { key: 'neuralabs', label: 'NeuraLabs and NeuraTrade', re: /neuratrade|neuralabs/i, color: 'hsl(205 90% 60%)' },
+  { key: 'neurashield', label: 'NeuraShield', re: /neurashield/i, color: 'hsl(160 70% 48%)' },
+  { key: 'general', label: 'General', re: null, color: 'hsl(215 20% 65%)' },
+];
+const brandInfo = k => BRANDS.find(b => b.key === k) || BRANDS[BRANDS.length - 1];
+function brandOf(it) {
+  const txt = `${it.name || ''} ${JSON.stringify(it.payload || {})}`;
+  const b = BRANDS.find(b => b.re && b.re.test(txt));
+  return b ? b.key : 'general';
+}
+function roleLabel(agent) {
+  const raw = AGENT_LABELS[agent] || String(agent || '').replace(/_/g, ' ');
+  const s = raw.toLowerCase().replace(/\s[–—]\s/g, ' → ');
+  return (s.charAt(0).toUpperCase() + s.slice(1)).replace(/\bugc\b/g, 'UGC').replace(/\bedu\b/g, 'education').replace(/\bopusclip\b/g, 'OpusClip');
+}
+
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_SHORT = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+const DAY_LONG = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+function schedDays(s) { return (s.days || []).map(x => String(x).slice(0, 3).toLowerCase()); }
+function daysText(s) {
+  if (Array.isArray(s.days_of_month) && s.days_of_month.length) return `Day ${s.days_of_month.join(' and ')} of the month`;
+  const d = schedDays(s);
+  const has = list => list.length === d.length && list.every(x => d.includes(x));
+  if (d.length === 7) return 'Every day';
+  if (has(['mon', 'tue', 'wed', 'thu', 'fri'])) return 'Weekdays';
+  if (has(['sat', 'sun'])) return 'Weekends';
+  if (d.length === 1) return `Every ${DAY_LONG[d[0]] || d[0]}`;
+  return DAY_ORDER.filter(x => d.includes(x)).map(x => DAY_SHORT[x]).join(', ') || 'No days set';
+}
+function tzShort(tz) { return !tz || tz === 'UTC' ? 'UTC' : tz.split('/').pop().replace(/_/g, ' '); }
+const hhmm = (h, m) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+// Next run of a schedule, in its own timezone (same rules as the server: days or days_of_month at hour:minute).
+function tzParts(ms, tz) {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hourCycle: 'h23' });
+  const o = {}; for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value; return o;
+}
+function localToUtc(y, mo, d, h, mi, tz) {
+  const want = Date.UTC(y, mo - 1, d, h, mi);
+  let guess = want;
+  for (let i = 0; i < 2; i++) { const p = tzParts(guess, tz); guess += want - Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute); }
+  return guess;
+}
+function nextSchedRun(s, now = Date.now()) {
+  const tz = s.tz || 'UTC';
+  const dom = Array.isArray(s.days_of_month) && s.days_of_month.length ? s.days_of_month.map(Number) : null;
+  const days = schedDays(s);
+  for (let i = 0; i < 40; i++) {
+    const p = tzParts(now + i * 864e5, tz);
+    if (dom ? !dom.includes(+p.day) : !days.includes(p.weekday.slice(0, 3).toLowerCase())) continue;
+    const t = localToUtc(+p.year, +p.month, +p.day, +s.hour, +s.minute, tz);
+    if (t > now) return t;
+  }
+  return null;
+}
+function whenLabel(ms) {
+  if (!ms || isNaN(ms)) return '';
+  const d = new Date(ms), now = new Date();
+  const t = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const diff = Math.floor((ms - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 864e5);
+  if (diff === 0) return `today ${t}`;
+  if (diff === 1) return `tomorrow ${t}`;
+  if (diff === -1) return `yesterday ${t}`;
+  return `${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} ${t}`;
+}
+function inLabel(ms) {
+  const m = Math.round((ms - Date.now()) / 60000);
+  if (m < 1) return 'due now';
+  if (m < 60) return `in ${m} min`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return `in ${h} h${r ? ` ${r} min` : ''}`;
+}
+
+function normSched(s) {
+  return {
+    kind: 'sched', id: s.id, raw: s, name: s.name, agent: s.agent, enabled: !!s.enabled, running: false,
+    brand: brandOf(s), when: `${daysText(s)} at ${hhmm(s.hour, s.minute)} ${tzShort(s.tz)}`,
+    detailsHtml: buildScheduleSummary(s), next: s.enabled ? nextSchedRun(s) : null,
+    last: s.last_run ? { at: Date.parse(s.last_run), status: '' } : null, error: null, today: null,
+  };
+}
+function normAuto(j) {
+  const lr = j.last_run || null;
+  return {
+    kind: 'auto', id: j.id, raw: j, name: j.name, agent: j.agent, enabled: !!j.enabled, running: !!j.running,
+    brand: brandOf(j), when: j.when || 'Continuous', detailsHtml: escHtml(j.details || ''),
+    next: j.enabled && j.next_run ? Date.parse(j.next_run) : null,
+    last: lr && lr.at ? { at: Date.parse(lr.at), status: lr.status || '' } : null,
+    error: lr && lr.status === 'failed' && lr.error ? lr.error : null, today: j.today || null,
+  };
+}
+function stateOf(it) { return it.running ? 'running' : !it.enabled ? 'paused' : it.error ? 'attention' : 'active'; }
+const STATE_LABEL = { running: 'Running now', paused: 'Paused', attention: 'Needs attention', active: 'Active' };
+
+function boardCard(it) {
+  const st = stateOf(it);
+  const b = brandInfo(it.brand);
+  const lastStatus = it.last && it.last.status ? ` · ${escHtml(it.last.status)}` : '';
+  const rows = [
+    ['When', escHtml(it.when)],
+    it.next ? ['Next', `<b>${escHtml(whenLabel(it.next))}</b> <span class="bk-dim">(${escHtml(inLabel(it.next))})</span>`] : null,
+    ['Last', it.last ? `${escHtml(whenLabel(it.last.at))}${lastStatus}` : '<span class="bk-dim">Not run yet</span>'],
+    it.today ? ['Today', `${escHtml(it.today.done)} done · ${escHtml(it.today.failed)} failed or skipped · ${escHtml(it.today.pending)} to go`] : null,
+  ].filter(Boolean).map(([k, v]) => `<div class="bk-row"><span>${k}</span><div>${v}</div></div>`).join('');
+  const err = it.error ? `<div class="bk-err" title="${escHtml(it.error)}">${escHtml(it.error.substring(0, 160))}${it.error.length > 160 ? '...' : ''}</div>` : '';
+  let actions = '';
+  if (it.kind === 'sched') {
+    const s = it.raw;
+    const cb = s.agent === 'character_video_batch'
+      ? `<button class="sched-btn" onclick="runCharBatch(${jq(s.id)},false,this)">▶ Run now</button><button class="sched-btn" onclick="runCharBatch(${jq(s.id)},true,this)">Dry run</button>` : '';
+    actions = `${cb}<span class="bk-spacer"></span>
+      <button class="sched-btn" onclick="toggleSchedule(${jq(s.id)},${!s.enabled})">${s.enabled ? 'Pause' : 'Enable'}</button>
+      <button class="sched-btn" onclick="editSchedule(${jq(s.id)})">Edit</button>
+      <button class="sched-btn del" onclick="deleteSchedule(${jq(s.id)})">Delete</button>`;
+  } else {
+    const j = it.raw;
+    actions = `<span class="bk-spacer"></span>
+      ${j.toggle ? `<button class="sched-btn" onclick="toggleAutonomous(${jq(j.toggle.channel_id)},${jq(j.toggle.field)},${!j.enabled})">${j.enabled ? 'Pause' : 'Enable'}</button>` : ''}
+      ${j.manage_url ? `<button class="sched-btn" onclick="location.href=${jq(safeRel(j.manage_url))}">Settings</button>` : ''}`;
+  }
+  const cbStatus = it.kind === 'sched' && it.agent === 'character_video_batch' ? `<div class="bk-cb" id="cb-status-${escHtml(it.id)}"></div>` : '';
+  return `
+    <div class="bk-card is-${st}" style="--brand:${b.color}">
+      <div class="bk-head">
+        <span class="bk-state ${st}"><i></i>${STATE_LABEL[st]}</span>
+        <span class="bk-kind ${it.kind}">${it.kind === 'sched' ? 'Scheduled' : 'Always on'}</span>
+      </div>
+      <div class="bk-name">${escHtml(it.name)}</div>
+      <div class="bk-role" style="${AGENT_STYLES[it.agent] || ''}">${escHtml(roleLabel(it.agent))}</div>
+      <div class="bk-what">${it.detailsHtml || '<span class="bk-dim">No details</span>'}</div>
+      <div class="bk-rows">${rows}</div>
+      ${err}${cbStatus}
+      <div class="bk-actions">${actions}</div>
+    </div>`;
+}
+
+function setBoardFilter(f) { boardFilter = f; renderBoard(); }
+function togglePaused(key, open) { if (open) openPaused.add(key); else openPaused.delete(key); }
+
+function renderBoard() {
+  if (!schedData && !autoData) return;
+  const items = [...(schedData || []).map(normSched), ...(autoData || []).map(normAuto)];
+  const count = st => items.filter(i => stateOf(i) === st).length;
+  const n = { all: items.length, active: count('active') + count('running'), paused: count('paused'), attention: count('attention') };
+  const tiles = [
+    ['all', 'All jobs', n.all, ''],
+    ['active', 'Active', n.active, 'ok'],
+    ['attention', 'Needs attention', n.attention, n.attention ? 'warn' : ''],
+    ['paused', 'Paused', n.paused, 'off'],
+  ];
+  document.getElementById('bk-summary').innerHTML = tiles.map(([k, label, v, cls]) =>
+    `<button class="bk-tile ${cls} ${boardFilter === k ? 'sel' : ''}" onclick="setBoardFilter('${k}')"><b>${v}</b><span>${label}</span></button>`).join('');
+
+  // Next 24 hours: planned runs only (always-on jobs tick all day and would drown the list).
+  const soon = items.filter(i => i.kind === 'sched' && i.next && i.next - Date.now() < 864e5).sort((a, b) => a.next - b.next);
+  document.getElementById('bk-upcoming').innerHTML = soon.length
+    ? `<div class="bk-up-title">Coming up in the next 24 hours</div><div class="bk-up">${soon.map(i =>
+        `<div class="bk-up-item" style="--brand:${brandInfo(i.brand).color}"><b>${escHtml(new Date(i.next).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }))}</b><span>${escHtml(i.name)}</span><em>${escHtml(inLabel(i.next))}</em></div>`).join('')}</div>`
+    : '<div class="bk-up-title">No planned runs in the next 24 hours</div>';
+
+  const match = i => boardFilter === 'all' || (boardFilter === 'active' ? ['active', 'running'].includes(stateOf(i)) : stateOf(i) === boardFilter);
+  const rank = { attention: 0, running: 1, active: 2, paused: 3 };
+  const sorted = items.filter(match).sort((a, b) => rank[stateOf(a)] - rank[stateOf(b)]
+    || (a.kind === b.kind ? 0 : a.kind === 'sched' ? -1 : 1)
+    || (a.next || Infinity) - (b.next || Infinity) || a.name.localeCompare(b.name));
+  const groups = BRANDS.map(b => ({ b, list: sorted.filter(i => i.brand === b.key) })).filter(g => g.list.length);
+  const el = document.getElementById('bk-groups');
+  if (!groups.length) { el.innerHTML = '<div class="bk-empty">Nothing here for this filter</div>'; return; }
+  el.innerHTML = groups.map(({ b, list }) => {
+    const live = boardFilter === 'all' ? list.filter(i => i.enabled) : list;
+    const paused = boardFilter === 'all' ? list.filter(i => !i.enabled) : [];
+    const att = list.filter(i => stateOf(i) === 'attention').length;
+    const meta = [`${list.filter(i => i.enabled).length} active`, list.some(i => !i.enabled) ? `${list.filter(i => !i.enabled).length} paused` : '', att ? `<span class="warn">${att} need${att === 1 ? 's' : ''} attention</span>` : ''].filter(Boolean).join(' · ');
+    const pausedBlock = paused.length
+      ? `<details class="bk-paused" ${openPaused.has(b.key) ? 'open' : ''} ontoggle="togglePaused(${jq(b.key)},this.open)"><summary>Paused (${paused.length})</summary><div class="bk-grid">${paused.map(boardCard).join('')}</div></details>` : '';
+    return `<div class="bk-group" style="--brand:${b.color}">
+      <div class="bk-group-head"><span class="bk-dot"></span><h3>${escHtml(b.label)}</h3><span class="bk-meta">${meta}</span></div>
+      ${live.length ? `<div class="bk-grid">${live.map(boardCard).join('')}</div>` : ''}${pausedBlock}
+    </div>`;
+  }).join('');
+  (schedData || []).filter(s => s.agent === 'character_video_batch').forEach(s => pollCharBatch(s.id));
+}
+
 async function loadSchedules() {
   try {
     const res = await fetch('/scheduled-tasks', { credentials: 'include' });
     if (!res.ok) { console.error('loadSchedules failed:', res.status); return; }
-    const scheds = await res.json();
-    const el = document.getElementById('sched-grid');
-    if (!scheds.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No scheduled tasks yet</span>'; return; }
-    el.innerHTML = scheds.map(s => {
-      const days = (Array.isArray(s.days_of_month) && s.days_of_month.length)
-        ? 'day ' + s.days_of_month.map(d => escHtml(String(d))).join(' & ') + ' of the month'
-        : (s.days || []).map(d => escHtml(String(d).substring(0,2).toUpperCase())).join(' ');
-      const time = `${escHtml(String(s.hour).padStart(2,'0'))}:${escHtml(String(s.minute).padStart(2,'0'))} ${escHtml(s.tz || 'UTC')}`;
-      const runBtns = s.agent === 'character_video_batch'
-        ? `<div style="display:flex;gap:6px;margin-top:8px">
-             <button class="sched-btn" onclick="runCharBatch(${jq(s.id)},false,this)">▶ Run ${escHtml(s.name)}</button>
-             <button class="sched-btn" onclick="runCharBatch(${jq(s.id)},true,this)">Dry run</button>
-           </div><div class="sched-last" id="cb-status-${escHtml(s.id)}"></div>` : '';
-      const summary = buildScheduleSummary(s);
-      const lastRun = s.last_run ? new Date(s.last_run).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'never';
-      return `
-        <div class="sched-card ${s.enabled ? '' : 'disabled'}">
-          <div class="sched-actions">
-            <button class="sched-btn" onclick="toggleSchedule(${jq(s.id)},${!s.enabled})">${s.enabled ? 'Pause' : 'Enable'}</button>
-            <button class="sched-btn" onclick="editSchedule(${jq(s.id)})">Edit</button>
-            <button class="sched-btn del" onclick="deleteSchedule(${jq(s.id)})">Del</button>
-          </div>
-          <div class="sched-name">${escHtml(s.name)}</div>
-          <div class="sched-agent" style="${AGENT_STYLES[s.agent] || ''}">${AGENT_LABELS[s.agent] || escHtml(s.agent)}</div>
-          <div class="sched-time"><span class="sched-badge ${s.enabled ? 'on' : 'off'}">${s.enabled ? 'active' : 'paused'}</span>${time} &middot; ${days}</div>
-          <div class="sched-details">${summary}</div>
-          <div class="sched-last">Last run: ${lastRun}</div>${runBtns}
-        </div>`;
-    }).join('');
-    scheds.filter(s => s.agent === 'character_video_batch').forEach(s => pollCharBatch(s.id));
-  } catch { document.getElementById('sched-grid').innerHTML = ''; }
+    schedData = await res.json();
+    renderBoard();
+  } catch (e) { console.error('loadSchedules', e); }
 }
 
-// Built-in autonomous jobs (X autopilot, channel reviews, ads rules, publisher).
-// They are configured on their own pages; here they can only be paused.
 function fmtWhen(iso) {
   return iso ? new Date(iso).toLocaleString('nl-NL', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
 }
 async function loadAutonomous() {
-  const el = document.getElementById('auto-grid');
   try {
     const res = await fetch('/agents/autonomous', { credentials: 'include' });
     if (!res.ok) return;
-    const jobs = await res.json();
-    if (!jobs.length) { el.innerHTML = '<span style="font-size:11px;color:var(--text-dim)">No always-on jobs</span>'; return; }
-    el.innerHTML = jobs.map(j => {
-      const badge = j.running ? '<span class="sched-badge run">running</span>'
-        : `<span class="sched-badge ${j.enabled ? 'on' : 'off'}">${j.enabled ? 'active' : 'paused'}</span>`;
-      const today = j.today ? `<div class="sched-details">Today: ${escHtml(j.today.done)} posted · ${escHtml(j.today.failed)} failed/skipped · ${escHtml(j.today.pending)} to go</div>` : '';
-      const next = j.next_run ? `Next: ${fmtWhen(j.next_run)}` : '';
-      const last = j.last_run ? `Last run: ${fmtWhen(j.last_run.at)} · ${escHtml(j.last_run.status || '')}` : '';
-      const err = j.last_run && j.last_run.error && j.last_run.status === 'failed'
-        ? `<div class="sched-last err" title="${escHtml(j.last_run.error)}">${escHtml(j.last_run.error.substring(0, 110))}${j.last_run.error.length > 110 ? '...' : ''}</div>` : '';
-      const toggle = j.toggle ? `<button class="sched-btn" onclick="toggleAutonomous(${jq(j.toggle.channel_id)},${jq(j.toggle.field)},${!j.enabled})">${j.enabled ? 'Pause' : 'Enable'}</button>` : '';
-      const manage = j.manage_url ? `<button class="sched-btn" onclick="location.href=${jq(safeRel(j.manage_url))}">Open</button>` : '';
-      return `
-        <div class="sched-card ${j.enabled ? '' : 'disabled'}">
-          <div class="sched-actions">${toggle}${manage}</div>
-          <div class="sched-name">${escHtml(j.name)}</div>
-          <div class="sched-agent" style="${AGENT_STYLES[j.agent] || ''}">${AGENT_LABELS[j.agent] || escHtml(j.agent)}</div>
-          <div class="sched-time">${badge}${escHtml(j.when || '')}</div>
-          <div class="sched-details">${escHtml(j.details || '')}</div>
-          ${today}
-          <div class="sched-last">${[next, last].filter(Boolean).join(' &middot; ') || '&nbsp;'}</div>
-          ${err}
-        </div>`;
-    }).join('');
-  } catch { el.innerHTML = ''; }
+    autoData = await res.json();
+    renderBoard();
+  } catch (e) { console.error('loadAutonomous', e); }
 }
 
 async function toggleAutonomous(channelId, field, enabled) {

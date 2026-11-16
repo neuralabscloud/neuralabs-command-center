@@ -32,8 +32,10 @@
       steps: [
         'Click "+ New Schedule", pick an agent and fill in what it should do (focus, topics, language, sizes…).',
         'Choose the days and time. Times without a timezone run in UTC.',
-        'Save. The card shows the next run; "▶ Run" starts it right away, "Dry run" (where offered) tests without spending credits.',
+        'Save. The card shows when it runs and the next run; "▶ Run now" starts it right away, "Dry run" (where offered) tests without spending credits.',
         'Use Pause/Enable to stop a schedule without deleting it.',
+        'Jobs are grouped per brand. The tiles at the top filter on Active, Needs attention (last run failed) or Paused; paused jobs fold away under "Paused" in each brand.',
+        '"Coming up in the next 24 hours" lists the planned runs in your local time.',
         'Task History at the bottom shows every run with its result; filter on Completed or Failed.',
       ],
       tips: [
