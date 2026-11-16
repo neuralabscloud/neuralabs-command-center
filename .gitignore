@@ -71,6 +71,8 @@ Thumbs.db
 command-center/data/brand-knowledge/
 command-center/data/ref-library/
 command-center/data/ref-library.json
+command-center/data/overlays/
+command-center/data/overlays.json
 command-center/data/x-pair-profiles.json
 command-center/data/users.json
 

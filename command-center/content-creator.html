@@ -202,6 +202,22 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
 .rp-warn { font-size: 11px; color: var(--warning); }
 .rp-err { font-size: 12px; color: var(--danger); margin-top: 6px; }
 @media (max-width: 760px) { .rp-review { grid-template-columns: 1fr; } .rp-review video { width: 100%; } .rp-drops { grid-template-columns: 1fr; } }
+
+.ov-note{font-size:13px;color:hsl(215 20% 65%);margin-bottom:14px;line-height:1.5}
+.ov-types,.ov-edit{display:flex;flex-wrap:wrap;gap:8px 16px}
+.ov-chk{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.ov-card{display:flex;gap:12px;background:hsl(0 0% 5%);border:1px solid hsl(217 32% 20%);border-radius:12px;padding:12px}
+.ov-card.ov-off{opacity:.5}
+.ov-prev{width:96px;height:96px;flex:none;border-radius:8px;overflow:hidden;background:repeating-conic-gradient(hsl(0 0% 14%) 0 25%,hsl(0 0% 9%) 0 50%) 0 0/16px 16px;display:flex;align-items:center;justify-content:center}
+.ov-prev img,.ov-prev video{max-width:100%;max-height:100%;object-fit:contain}
+.ov-body{min-width:0;flex:1}
+.ov-name{font-weight:600;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.ov-chip{font-size:11px;padding:2px 8px;border-radius:999px;background:hsl(264 65% 49% / .2);color:hsl(264 65% 75%)}
+.ov-chip.ov-warn{background:hsl(45 93% 55% / .15);color:hsl(45 93% 60%)}
+.ov-edit{font-size:12px;border-top:1px solid hsl(217 32% 20%);padding-top:8px}
+@media (max-width:700px){#form-overlays .form-grid{grid-template-columns:1fr 1fr!important}}
 </style>
 </head>
 <body>
@@ -249,6 +265,10 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
         <button class="mode-tab" data-mode="rips" data-owner-only onclick="switchMode('rips')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6"/><circle cx="12" cy="16.5" r="1.5"/></svg>
           <span id="rp-tab-label">Rip shorts</span>
+        </button>
+        <button class="mode-tab" data-mode="overlays" data-owner-only onclick="switchMode('overlays')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="14" height="14" rx="2"/><rect x="7" y="7" width="14" height="14" rx="2"/></svg>
+          Overlays
         </button>
       </div>
     </section>
@@ -979,6 +999,44 @@ body::after { content: ''; position: fixed; inset: 0; z-index: 0; background-ima
       <div id="rp-jobs"><div class="rp-small">Loading…</div></div>
     </section>
 
+    <!-- OVERLAY LIBRARY -->
+    <section class="fade-up delay-2" id="form-overlays" style="display:none;">
+      <div class="section-header">Overlay library</div>
+      <div class="task-form">
+        <div class="ov-note">Upload a logo, badge, frame, sticker or short clip. It is mounted on a finished video <b>only</b> for the video types you tick. No type ticked = never used.</div>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div>
+            <div class="form-label">File (PNG, JPG, WEBP, GIF, MP4, MOV, WEBM; max 50 MB)</div>
+            <input class="form-input" type="file" id="ov-file" accept=".png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm" />
+          </div>
+          <div>
+            <div class="form-label">Name</div>
+            <input class="form-input" id="ov-name" placeholder="e.g. Logo corner" autocomplete="off" />
+          </div>
+        </div>
+        <div class="form-label" style="margin-top:12px;">Use on these video types</div>
+        <div id="ov-types" class="ov-types"></div>
+        <div class="form-grid" style="grid-template-columns:repeat(4,1fr);margin-top:12px;">
+          <div><div class="form-label">Position</div><select class="form-select" id="ov-position"></select></div>
+          <div><div class="form-label">Width (% of video)</div><input class="form-input" type="number" id="ov-scale" min="5" max="100" value="20" /></div>
+          <div><div class="form-label">Margin (%)</div><input class="form-input" type="number" id="ov-margin" min="0" max="20" value="4" /></div>
+          <div><div class="form-label">Opacity (0.05–1)</div><input class="form-input" type="number" id="ov-opacity" min="0.05" max="1" step="0.05" value="1" /></div>
+          <div><div class="form-label">Start (s)</div><input class="form-input" type="number" id="ov-start" min="0" value="0" /></div>
+          <div><div class="form-label">Duration (s, 0 = to the end)</div><input class="form-input" type="number" id="ov-duration" min="0" value="0" /></div>
+          <div><div class="form-label">Mode</div><select class="form-select" id="ov-mode">
+            <option value="always">Always (every video of the type)</option>
+            <option value="rotate">Rotate (one per video from the pool)</option>
+          </select></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:14px;">
+          <button class="btn-submit" onclick="ovUpload()">Upload overlay</button>
+          <span class="rp-small" id="ov-status"></span>
+        </div>
+      </div>
+      <div class="section-header" style="margin-top:28px;">Overlays</div>
+      <div id="ov-list" class="ov-grid"><div class="rp-small">Loading…</div></div>
+    </section>
+
     <!-- TASK QUEUE -->
     <section class="fade-up delay-3">
       <div class="section-header">Video Queue</div>
@@ -1056,6 +1114,85 @@ async function submitUgcTask() {
   } catch (e) { st.textContent = 'Failed'; }
 }
 
+// ── Overlay library ──────────────────────────────────────────────
+let OV_META = null, OV_LIST = [];
+async function ovMeta() {
+  if (OV_META) return OV_META;
+  const r = await fetch('/overlays/types'); OV_META = await r.json();
+  document.getElementById('ov-types').innerHTML = Object.entries(OV_META.types).map(([k, v]) =>
+    `<label class="ov-chk"><input type="checkbox" value="${esc(k)}"> ${esc(v)}</label>`).join('');
+  document.getElementById('ov-position').innerHTML = OV_META.positions.map(p =>
+    `<option value="${esc(p)}"${p === 'top-right' ? ' selected' : ''}>${esc(p)}</option>`).join('');
+  return OV_META;
+}
+function ovTypesSel(root) { return [...root.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value); }
+async function loadOverlays() {
+  try { await ovMeta(); const r = await fetch('/overlays'); OV_LIST = r.ok ? await r.json() : []; }
+  catch { OV_LIST = []; }
+  ovRender();
+}
+function ovRender() {
+  const el = document.getElementById('ov-list');
+  if (!OV_LIST.length) { el.innerHTML = '<div class="rp-small">No overlays yet.</div>'; return; }
+  const T = (OV_META && OV_META.types) || {};
+  el.innerHTML = OV_LIST.map(o => {
+    const url = safeUrl(o.url);
+    const media = o.kind === 'video'
+      ? `<video src="${esc(url)}" muted loop autoplay playsinline></video>`
+      : `<img src="${esc(url)}" alt="">`;
+    const types = (o.allowed_types || []).length
+      ? o.allowed_types.map(t => `<span class="ov-chip">${esc(T[t] || t)}</span>`).join('')
+      : '<span class="ov-chip ov-warn">no type: never used</span>';
+    const boxes = Object.entries(T).map(([k, v]) =>
+      `<label class="ov-chk"><input type="checkbox" value="${esc(k)}"${(o.allowed_types || []).includes(k) ? ' checked' : ''} onchange="ovSetTypes(${jq(o.id)}, this)"> ${esc(v)}</label>`).join('');
+    return `<div class="ov-card${o.enabled === false ? ' ov-off' : ''}">
+      <div class="ov-prev">${media}</div>
+      <div class="ov-body">
+        <div class="ov-name">${esc(o.name || 'overlay')}</div>
+        <div class="rp-small">${esc(o.position)} · ${esc(o.scale)}% · opacity ${esc(o.opacity)} · ${esc(o.mode)}${o.start ? ' · from ' + esc(o.start) + 's' : ''}${o.duration ? ' · ' + esc(o.duration) + 's' : ''} · used ${esc(o.uses || 0)}×</div>
+        <div class="ov-chips">${types}</div>
+        <div class="ov-edit">${boxes}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="rp-btn" onclick="ovToggle(${jq(o.id)})">${o.enabled === false ? 'Enable' : 'Disable'}</button>
+          <button class="rp-btn" onclick="ovDelete(${jq(o.id)})">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function ovPatch(id, body) {
+  const r = await fetch('/overlays/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) { alert('Saving failed'); }
+  await loadOverlays();
+}
+function ovSetTypes(id, input) { ovPatch(id, { allowed_types: ovTypesSel(input.closest('.ov-edit')) }); }
+function ovToggle(id) { const o = OV_LIST.find(x => x.id === id); if (o) ovPatch(id, { enabled: o.enabled === false }); }
+async function ovDelete(id) {
+  if (!confirm('Delete this overlay?')) return;
+  await fetch('/overlays/' + encodeURIComponent(id), { method: 'DELETE' });
+  loadOverlays();
+}
+async function ovUpload() {
+  const st = document.getElementById('ov-status');
+  const f = document.getElementById('ov-file').files[0];
+  if (!f) { st.textContent = 'Choose a file first'; return; }
+  const types = ovTypesSel(document.getElementById('ov-types'));
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('name', document.getElementById('ov-name').value.trim() || f.name.replace(/\.[^.]+$/, ''));
+  fd.append('allowed_types', types.join(','));
+  for (const k of ['position', 'scale', 'margin', 'opacity', 'start', 'duration', 'mode']) fd.append(k, document.getElementById('ov-' + k).value);
+  st.textContent = 'Uploading…';
+  try {
+    const r = await fetch('/overlays', { method: 'POST', body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { st.textContent = d.error || ('Failed: ' + r.status); return; }
+    st.textContent = types.length ? 'Saved' : 'Saved, but no type ticked: it will not be used until you tick one';
+    document.getElementById('ov-file').value = ''; document.getElementById('ov-name').value = '';
+    loadOverlays();
+  } catch (e) { st.textContent = 'Failed: ' + e.message; }
+}
+
 function switchMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
@@ -1067,6 +1204,8 @@ function switchMode(mode) {
   document.getElementById('form-influencer').style.display = mode === 'influencer' ? '' : 'none';
   document.getElementById('form-aigen').style.display = mode === 'aigen' ? '' : 'none';
   document.getElementById('form-rips').style.display = mode === 'rips' ? '' : 'none';
+  const ovSec = document.getElementById('form-overlays'); if (ovSec) ovSec.style.display = mode === 'overlays' ? '' : 'none';
+  if (mode === 'overlays') loadOverlays();
   if (mode === 'rips') loadRips(); else rpStopPoll();
   if (mode === 'aigen') loadAIVideos();
   if (mode === 'influencer') { loadGjAvatars(); loadGenjutsu(); loadGjRates(); }

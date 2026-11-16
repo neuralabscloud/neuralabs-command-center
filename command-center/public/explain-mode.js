@@ -214,6 +214,21 @@
             'Older versions stay available in the version selector.',
           ],
         },
+        overlays: {
+          title: 'Overlays',
+          intro: 'A library of media (logo, badge, frame, sticker, short clip) that is mounted on top of finished videos, but only on the video types you tick.',
+          steps: [
+            'Upload a PNG, JPG, WEBP, GIF or a short MP4/MOV/WEBM (WEBM keeps transparency).',
+            'Tick the video types it may be used on. No type ticked means it is never used, also not by accident on other videos.',
+            'Choose position, width, margin, opacity and when it shows (start + duration, 0 = until the end).',
+            'Mode Always puts it on every video of that type. Mode Rotate picks one per video from the rotate pool, least used first.',
+          ],
+          tips: [
+            'Captions always stay on top of the overlays.',
+            'If mounting an overlay fails, the video is still finished without it.',
+            'Disable an overlay to pause it without deleting it.',
+          ],
+        },
       },
     },
 

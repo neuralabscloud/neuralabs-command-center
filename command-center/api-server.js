@@ -976,6 +976,96 @@ app.delete("/designer/ref-library/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ── OVERLAY LIBRARY ─────────────────────────
+// Media files (logo, badge, sticker, short clip) composited onto finished
+// videos. Each overlay lists the video types it may be used on; selection is
+// strict (overlays.js pickOverlays). Owner-only: not in users.js RULES, so a
+// team user gets 403. Files in data/overlays/, index in data/overlays.json.
+const overlaysMod = require("./overlays");
+const OVERLAYS_DIR = path.join(__dirname, "data", "overlays");
+const OVERLAYS_FILE = path.join(__dirname, "data", "overlays.json");
+const OVERLAY_MAX_MB = 50;
+function readOverlays() {
+  try { const l = JSON.parse(fs.readFileSync(OVERLAYS_FILE, "utf8")); return Array.isArray(l) ? l : []; }
+  catch { return []; }
+}
+function writeOverlays(list) { fs.writeFileSync(OVERLAYS_FILE, JSON.stringify(list, null, 2)); }
+function overlayExists(o) { return !!o && !!o.file && fs.existsSync(path.join(OVERLAYS_DIR, path.basename(o.file))); }
+function overlaysFor(type) {
+  return overlaysMod.pickOverlays(readOverlays(), type, { exists: overlayExists });
+}
+function markOverlaysUsed(ids) {
+  if (!ids || !ids.length) return;
+  const list = readOverlays();
+  const now = new Date().toISOString();
+  for (const o of list) if (ids.includes(o.id)) { o.last_used_at = now; o.uses = (o.uses || 0) + 1; }
+  writeOverlays(list);
+}
+// Composite the overlays for `type` (+ optional tail filter such as ASS
+// captions) onto `input`, writing `output`. Returns the ids used.
+async function applyOverlays(input, output, type, { tailFilter = "", picked } = {}) {
+  const chosen = picked || overlaysFor(type);
+  const info = await probeVideo(input).catch(() => null);
+  const width = (info && info.width) || 1080, height = (info && info.height) || 1920;
+  const duration = (info && info.duration) || 0;
+  const args = overlaysMod.buildFfmpegArgs({
+    input, output, width, height, duration, tailFilter,
+    overlays: chosen.map(o => ({ ...o, path: path.join(OVERLAYS_DIR, path.basename(o.file)), kind: overlaysMod.kindOf(o.file) })),
+  });
+  await runFfmpeg(args);
+  return chosen.map(o => o.id);
+}
+app.get("/overlays/types", (_req, res) => {
+  res.json({ types: overlaysMod.VIDEO_TYPES, positions: overlaysMod.POSITIONS, modes: overlaysMod.MODES, max_per_video: overlaysMod.MAX_PER_VIDEO });
+});
+app.get("/overlays", (_req, res) => {
+  res.json(readOverlays().filter(overlayExists).map(o => ({ ...o, kind: overlaysMod.kindOf(o.file) })));
+});
+app.get("/overlays/file/:file", (req, res) => {
+  const full = path.join(OVERLAYS_DIR, path.basename(req.params.file));
+  if (!fs.existsSync(full)) return res.status(404).end();
+  res.sendFile(full);
+});
+app.post("/overlays", (req, res) => {
+  designerUpload.single("file")(req, res, (err) => {
+    const f = req.file;
+    const drop = () => { if (f) try { fs.unlinkSync(f.path); } catch {} };
+    if (err) { drop(); return res.status(400).json({ error: err.code === "LIMIT_FILE_SIZE" ? `File too large (max ${OVERLAY_MAX_MB}MB)` : "Upload failed: " + err.message }); }
+    if (!f) return res.status(400).json({ error: "Choose a file first." });
+    const ext = path.extname(f.originalname || "").toLowerCase();
+    if (!overlaysMod.kindOf("x" + ext)) { drop(); return res.status(400).json({ error: "Allowed: PNG, JPG, WEBP, GIF, MP4, MOV, WEBM (no SVG)." }); }
+    fs.mkdirSync(OVERLAYS_DIR, { recursive: true });
+    const id = "ovl_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const file = id + ext;
+    fs.renameSync(f.path, path.join(OVERLAYS_DIR, file));
+    const body = { ...(req.body || {}) };
+    if (!body.name) body.name = path.basename(f.originalname || "overlay", ext);
+    if (body.allowed_types === undefined) body.allowed_types = [];
+    const item = { id, file, url: `/overlays/file/${file}`, created_at: new Date().toISOString(),
+      ...overlaysMod.normalize(body, { ...overlaysMod.defaults(), name: "overlay" }) };
+    writeOverlays([item].concat(readOverlays()));
+    res.json({ ok: true, item: { ...item, kind: overlaysMod.kindOf(file) } });
+  });
+});
+app.patch("/overlays/:id", (req, res) => {
+  const list = readOverlays();
+  const i = list.findIndex(o => o.id === req.params.id);
+  if (i < 0) return res.status(404).json({ error: "Not found" });
+  const b = { ...(req.body || {}) };
+  for (const k of ["id", "file", "url", "created_at", "last_used_at", "uses"]) delete b[k];
+  list[i] = overlaysMod.normalize(b, list[i]);
+  writeOverlays(list);
+  res.json({ ok: true, item: { ...list[i], kind: overlaysMod.kindOf(list[i].file) } });
+});
+app.delete("/overlays/:id", (req, res) => {
+  const list = readOverlays();
+  const item = list.find(o => o.id === req.params.id);
+  if (!item) return res.status(404).json({ error: "Not found" });
+  try { fs.unlinkSync(path.join(OVERLAYS_DIR, path.basename(item.file))); } catch {}
+  writeOverlays(list.filter(o => o.id !== item.id));
+  res.json({ ok: true });
+});
+
 function loadBrandContext(brandName) {
   const brand = String(brandName || (loadBrand().company_name || "DEFAULT")).toUpperCase();
   let brandConfig = { colors: [], fonts: [] };
@@ -7727,7 +7817,7 @@ async function pollUgcStatus() {
         if (status === "completed") {
           const url = (data.video && data.video.url) || (Array.isArray(data.videos) && data.videos[0] && data.videos[0].url) || "";
           if (!url) { t.status = "failed"; t.error = "finished without a video URL"; }
-          else if (t.captions || t.autopilot) { t.status = "finishing"; t.remote_url = url; t.result_url = url; }
+          else if (t.captions || t.autopilot || overlaysFor("ugc").length) { t.status = "finishing"; t.remote_url = url; t.result_url = url; }
           else { t.status = "completed"; t.result_url = url; }
           changed = true;
         } else if (["failed", "nsfw", "canceled", "cancelled", "error"].includes(status)) {
@@ -7748,7 +7838,7 @@ async function pollUgcStatus() {
       if (status === "completed" || status === "success") {
         // Caption/autopilot tasks get a finishing stage: download (Higgsfield
         // links expire), burn in captions, deliver.
-        if (t.captions || t.autopilot) { t.status = "finishing"; t.remote_url = url; }
+        if (t.captions || t.autopilot || overlaysFor("ugc").length) { t.status = "finishing"; t.remote_url = url; }
         else t.status = "completed";
         t.result_url = url; changed = true;
       } else if (status === "failed" || status === "nsfw" || status === "error") {
@@ -7809,26 +7899,52 @@ async function finishUgcVideo(id) {
   const out = path.join(UGC_MEDIA_DIR, `${id}.mp4`);
   if (!fs.existsSync(raw)) await downloadTo(t.remote_url || t.result_url, raw);
   const patch = { status: "completed", raw_url: `/media/ugc/${id}-raw.mp4`, result_url: `/media/ugc/${id}-raw.mp4` };
+  // Overlays allowed for "ugc" only (strict, see overlays.js).
+  const picked = overlaysFor("ugc");
+  let assFile = "", tailFilter = "";
   if (t.captions) {
     try {
       const info = await probeVideo(raw);
       let words = [];
       try { words = ugcAuto.wordsFromAlignment(JSON.parse(fs.readFileSync(path.join(__dirname, "data", "ugc-audio", id + ".words.json"), "utf8"))); } catch {}
       if (!words.length) words = ugcAuto.wordsEvenly(t.script, info.duration || t.audio_duration || 20);
-      const assFile = path.join(UGC_MEDIA_DIR, `${id}.ass`);
+      assFile = path.join(UGC_MEDIA_DIR, `${id}.ass`);
       fs.writeFileSync(assFile, ugcAuto.buildAss({ words, width: info.width, height: info.height, hook: t.on_screen_hook || "", hookSeconds: Math.min(3, (words[0] && words[words.length - 1].end) || 3) }));
-      await runFfmpeg(["-y", "-i", raw, "-vf", `ass=${assFile}:fontsdir=${UGC_FONTS_DIR}`,
-        "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out]);
-      try { fs.unlinkSync(assFile); } catch {}
-      patch.final_url = `/media/ugc/${id}.mp4`;
-      patch.result_url = patch.final_url;
+      // Same unquoted form as before (paths are fixed, id is alphanumeric).
+      tailFilter = `ass=${assFile}:fontsdir=${UGC_FONTS_DIR}`;
     } catch (e) {
       patch.caption_error = String(e.message).slice(0, 300);
       console.error(`[UGC] captions failed for ${id}:`, patch.caption_error);
     }
   }
+  if (tailFilter || picked.length) {
+    const tryRender = async (withOverlays, tail) => {
+      const ids = await applyOverlays(raw, out, "ugc", { tailFilter: tail, picked: withOverlays ? picked : [] });
+      patch.final_url = `/media/ugc/${id}.mp4`;
+      patch.result_url = patch.final_url;
+      return ids;
+    };
+    try {
+      const ids = await tryRender(true, tailFilter);
+      if (ids.length) { patch.overlay_ids = ids; markOverlaysUsed(ids); }
+    } catch (e) {
+      // An overlay must never cost the video: retry with captions only.
+      if (picked.length) {
+        patch.overlay_error = String(e.message).slice(0, 300);
+        console.error(`[UGC] overlays failed for ${id}:`, patch.overlay_error);
+        if (tailFilter) {
+          try { await tryRender(false, tailFilter); }
+          catch (e2) { patch.caption_error = String(e2.message).slice(0, 300); }
+        }
+      } else {
+        patch.caption_error = String(e.message).slice(0, 300);
+        console.error(`[UGC] captions failed for ${id}:`, patch.caption_error);
+      }
+    }
+    if (assFile) try { fs.unlinkSync(assFile); } catch {}
+  }
   const done = updateUgcTask(id, patch);
-  console.log(`[UGC] ${id} finished${patch.final_url ? " with captions" : ""}`);
+  console.log(`[UGC] ${id} finished${patch.final_url ? " (captions/overlays)" : ""}${patch.overlay_ids ? " overlays=" + patch.overlay_ids.join(",") : ""}`);
   if (done && done.autopilot) deliverUgcToTelegram(done).catch(e => console.error("[UGC] telegram delivery failed:", e.message));
 }
 
@@ -10130,6 +10246,24 @@ async function charBatchVideo(m, slot, still, opts) {
         if (local && slot.onscreen_text && opts.text_mode !== "model") {
           try { await charBatchBurnTagline(path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4"), slot.onscreen_text, m.duration); slot.tagline_burned = true; }
           catch (e) { charLog(m, `slot ${slot.slot} tagline burn-in failed, posting the raw clip: ${e.message.slice(0, 200)}`); }
+        }
+        // Overlays allowed for "character_batch" only (strict, see overlays.js).
+        if (local) {
+          const picked = overlaysFor("character_batch");
+          if (picked.length) {
+            const fin = path.join(VIDEO_OUTPUT_DIR, task.id + ".mp4");
+            const tmp = path.join(VIDEO_OUTPUT_DIR, task.id + ".ovl.mp4");
+            try {
+              const ids = await applyOverlays(fin, tmp, "character_batch", { picked });
+              fs.renameSync(tmp, fin);
+              slot.overlay_ids = ids; markOverlaysUsed(ids);
+              patchTaskFile("ai-video-tasks.json", task.id, { overlay_ids: ids });
+              charLog(m, `slot ${slot.slot} overlays: ${ids.join(", ")}`);
+            } catch (e) {
+              try { fs.unlinkSync(tmp); } catch {}
+              charLog(m, `slot ${slot.slot} overlays failed, posting without: ${e.message.slice(0, 200)}`);
+            }
+          }
         }
         patchTaskFile("ai-video-tasks.json", task.id, { status: "completed", result_url: local || url, provider_url: url });
         Object.assign(slot, { status: "done", video_url: local || url, provider_url: url, error: null });
