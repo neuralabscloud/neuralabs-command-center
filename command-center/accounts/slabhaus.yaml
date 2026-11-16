@@ -13,7 +13,7 @@ font_aliases: [{"from": "Akira", "to": "Akira Expanded"}]
 
 schedule:
   tz: Europe/Madrid
-  times: ["08:10"]
+  times: ["08:10", "13:30", "18:40"]   # one data/scheduled-tasks.json row per time
   sets_per_run: 1
 
 layout_labels: {"signal": "breaking", "number": "number", "versus": "then vs now"}
@@ -98,8 +98,8 @@ publish:
   x_links_from: pair_profile        # .link.urls (enabled, non-empty) ; max 1 in 3 sets
   x_link_ratio: 0.3333
   platforms:
-    instagram: {"enabled": true, "delay_min": 45, "max_per_day": 1, "min_gap_hours": 3}
-    x: {"enabled": true, "delay_min": 20, "max_per_day": 1, "min_gap_hours": 3}
+    instagram: {"enabled": true, "delay_min": 45, "max_per_day": 3, "min_gap_hours": 3}
+    x: {"enabled": true, "delay_min": 20, "max_per_day": 3, "min_gap_hours": 3}
 
 metrics:
   weights: {"ig_likes": 1, "ig_comments": 2, "ig_saved": 4, "ig_shares": 3, "x": 1}

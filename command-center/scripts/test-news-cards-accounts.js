@@ -17,7 +17,7 @@ t("accounts: pad-injectie geweigerd", threw);
 
 const G = NC.forAccount("gh0stlayer"), S = NC.forAccount("slabhaus");
 t("gh0stlayer blijft eigen map en media", G.DIR === process.env.NEWS_CARDS_DIR && G.MEDIA_REL === "/media/news-cards");
-t("slabhaus: eigen map, media/cards/slabhaus, 1 per dag", S.DIR.endsWith("/slabhaus") && S.MEDIA_REL === "/media/cards/slabhaus" && S.config().platforms.instagram.max_per_day === 1 && S.config().platforms.x.max_per_day === 1);
+t("slabhaus: eigen map, media/cards/slabhaus, 3 per dag", S.DIR.endsWith("/slabhaus") && S.MEDIA_REL === "/media/cards/slabhaus" && S.config().platforms.instagram.max_per_day === 3 && S.account.profile.schedule.times.length === 3 && S.config().platforms.x.max_per_day === 3);
 t("slabhaus: kanaal + Madrid 08:10", S.config().channel_id === "slabcok4gtn6" && S.account.profile.schedule.tz === "Europe/Madrid" && S.account.profile.schedule.times[0] === "08:10");
 t("geen buffer/tiktok platforms", S.PLATFORMS.join() === "instagram,x" && G.PLATFORMS.join() === "instagram,x");
 t("pills slabhaus zonder haus take", S.account.pills.length === 7 && !S.account.pills.includes("haus take") && S.account.pills.includes("pop report"));
