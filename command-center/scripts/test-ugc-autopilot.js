@@ -93,6 +93,8 @@ check("current word highlighted", ass.includes("{\\c&H00E6FF&}HI{\\c&H00FFFFFF&}
   check("focus bevat verhaal + feiten", f.includes(ua.NEURASHIELD_STORIES[0].title) && f.includes("NEURASHIELD FACTS"));
   check("mic blijft stil: zin wordt toegevoegd", /microphone/.test(ua.withStillProps("A person talking")) && /does not move with the head/.test(ua.STILL_PROPS));
   check("mic-zin niet dubbel, lege prompt blijft leeg", ua.withStillProps(ua.withStillProps("x")).split(ua.STILL_PROPS).length === 2 && ua.withStillProps("") === "");
+  check("posttekst: elke regel eigen alinea", ua.spaceLines("A.\nB.\n\n\nC") === "A.\n\nB.\n\nC");
+  check("postCaption zet lege regel tussen captionregels", ua.postCaption({ caption: "Hook.\nCTA.", hashtags: ["x"] }) === "Hook.\n\nCTA.\n\n#x");
   check("scene = handheld selfie zonder tekst", /handheld/.test(ua.sceneFor({}, ua.NEURASHIELD_STORIES[0])) && /No text/.test(ua.sceneFor({})));
   const c = ua.overlayCutaway(24);
   check("cutaway start ~38% en max 8 s", c.start === 9.1 && c.duration === 8);

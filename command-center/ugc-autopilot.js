@@ -122,7 +122,7 @@ Return ONLY a JSON object, no prose around it:
   "hook": "the first sentence, exactly as spoken",
   "on_screen_hook": "max 6 words shown as a title for the first seconds, punchy, can differ from the spoken hook",
   "script": "the full spoken script including the hook",
-  "caption": "Instagram Reels / TikTok caption: 1 to 3 short lines, a curiosity line plus a CTA, max 220 characters, no dashes, max 2 emojis",
+  "caption": "Instagram Reels / TikTok caption: 1 to 3 short lines, each on its own line (newline between them), a curiosity line plus a CTA, max 220 characters, no dashes, max 2 emojis",
   "hashtags": ["5 to 8 relevant hashtags without the # sign"]
 }`;
 }
@@ -157,9 +157,20 @@ function parseScriptJson(text) {
   };
 }
 
+// Every line its own paragraph: on X and Instagram single line breaks
+// otherwise read as one crammed block.
+function spaceLines(text) {
+  return String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/([^\n])\n(?=[^\n])/g, "$1\n\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function postCaption(s) {
   const tags = (s.hashtags || []).map(t => "#" + t).join(" ");
-  return [s.caption, tags].filter(Boolean).join("\n\n");
+  return [spaceLines(s.caption), tags].filter(Boolean).join("\n\n");
 }
 
 // ── Captions ────────────────────────────────────────────────────────
@@ -350,7 +361,7 @@ function trimEnd(words, pad = 0.15) {
 
 module.exports = {
   inferGender, inferAge, ageBucket, pickVoice, pickAvatar, personaFor,
-  buildScriptPrompt, parseScriptJson, postCaption, countWords, stripDashes,
+  buildScriptPrompt, parseScriptJson, postCaption, spaceLines, countWords, stripDashes,
   wordsFromAlignment, wordsEvenly, chunkWords, buildAss, assTime,
   WORDS_MIN, WORDS_MAX,
   NEURASHIELD_FACTS, NEURASHIELD_STORIES, pickStory, sceneFor, STILL_PROPS, withStillProps, neurashieldFocus, overlayCutaway, trimEnd,

@@ -5667,7 +5667,7 @@ function updateUgcTask(id, patch) {
 async function approveNsUgc(t) {
   const channel = readChannels().find(c => c.id === NS_UGC_CHANNEL);
   if (!channel) throw new Error("gh0stlayer channel not found");
-  const text = cleanSocialText(t.x_text || t.post_caption || "");
+  const text = ugcAuto.spaceLines(cleanSocialText(t.x_text || t.post_caption || ""));
   if (twitterWeightedLength(text) > 280) throw new Error(`text too long for X (${twitterWeightedLength(text)}/280)`);
   const media = await ugcVideoToPostMedia(t);
   const igAccount = channel.platform === "twitter" && igPublish.config(channel).account_id;
@@ -10893,7 +10893,7 @@ async function listElevenVoices() {
 // characters (hashtags go first, then the caption is cut at a sentence/word).
 function ugcXText(s) {
   let tags = (s.hashtags || []).map(t => "#" + String(t).replace(/^#/, ""));
-  let cap = cleanSocialText(s.caption || "");
+  let cap = ugcAuto.spaceLines(cleanSocialText(s.caption || ""));
   const join = () => [cap, tags.join(" ")].filter(Boolean).join("\n\n");
   while (tags.length && twitterWeightedLength(join()) > 280) tags.pop();
   while (twitterWeightedLength(join()) > 280) {
