@@ -629,7 +629,7 @@ async function loadNewsCards(chId) {
   NC_CHANNEL = chId;
   let sets = [];
   try { sets = await fetchJson('/news-cards/sets?limit=30'); } catch {}
-  const plat = Object.entries(st.config.platforms || {}).map(([k, v]) => `${esc(k)} ${v.enabled === false ? 'off' : `every ${esc(v.every_days)} day(s) at ${esc(v.time)}`}`).join(' · ');
+  const plat = Object.entries(st.config.platforms || {}).map(([k, v]) => `${esc(k)} ${v.enabled === false ? 'off' : `${esc(v.delay_min)} min after each run, max ${esc(v.max_per_day)}/day`}`).join(' · ');
   const last = st.last_run ? `Last run ${esc(fmt(st.last_run.at))} (${esc(st.last_run.reason || '')}): ${(st.last_run.sets || []).map(x => `${esc(x.layout)} ${esc(x.status)}`).join(', ') || 'no suitable item'}` : 'No run yet';
   const rows = sets.map(m => {
     const posts = Object.entries(m.posts || {}).map(([p, v]) => {
@@ -656,7 +656,7 @@ async function loadNewsCards(chId) {
   }).join('');
   wrap.innerHTML = `
     <div class="edit-label" style="margin-top:14px" id="news-cards">🗞 gh0stlayer news cards</div>
-    <div class="discord-banner">Every day at ${esc(String(st.config.tz))} 07:30 the agent picks one real news item or market fact, Claude writes a 2 to 3 slide set and it is rendered and scheduled. Settings: data/news-cards/config.json.</div>
+    <div class="discord-banner">Runs at ${(st.runs || []).map(esc).join(', ') || 'no time set'} (${esc(String(st.config.tz))}, change in Scheduler). Each run picks the strongest fresh news item or market fact, Claude writes a 2 to 3 slide set and it is rendered and scheduled. Settings: data/news-cards/config.json.</div>
     <div class="ap-status">${st.running ? 'Running now…' : last}<br>${plat}${st.reweighted_at ? `<br>Weights updated ${esc(fmt(st.reweighted_at))}` : ''}</div>
     <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" data-owner-only>
       <button class="btn-sm primary" onclick="runNewsCards(this)">Generate gh0stlayer news cards</button>

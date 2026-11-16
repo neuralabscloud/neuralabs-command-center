@@ -94,7 +94,10 @@ function compatibleLayouts(item) {
 function layoutDeficits(history, now = Date.now()) {
   const counts = Object.fromEntries(LAYOUTS.map(l => [l, 0]));
   for (const h of history || []) if (now - Date.parse(h.created_at || 0) < 7 * 86400e3 && counts[h.layout] != null) counts[h.layout]++;
-  return Object.fromEntries(LAYOUTS.map(l => [l, WEEKLY_MIX[l] - counts[l]]));
+  // Proportional to WEEKLY_MIX (3/2/1/1), so the mix holds at any number of sets per day.
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const mixSum = Object.values(WEEKLY_MIX).reduce((a, b) => a + b, 0);
+  return Object.fromEntries(LAYOUTS.map(l => [l, Math.round((WEEKLY_MIX[l] / mixSum * (total + 1) - counts[l]) * 1000) / 1000]));
 }
 
 // Plan the day: for each slot pick the most-needed layout, then the best fresh non-duplicate item that fits it.

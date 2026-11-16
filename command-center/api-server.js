@@ -10475,7 +10475,11 @@ const newsCardsDeps = {
   notify: (title, body, level) => sendTelegram(`🗞 ${escapeHtmlTg(title)}`, escapeHtmlTg(body || ""), level || "info"),
 };
 
-app.get("/news-cards/status", (_req, res) => res.json(newsCards.status()));
+app.get("/news-cards/status", (_req, res) => {
+  const runs = readTaskFile("scheduled-tasks.json").filter(x => x.agent === "news_cards" && x.enabled)
+    .map(x => `${String(x.hour).padStart(2, "0")}:${String(x.minute).padStart(2, "0")}`).sort();
+  res.json({ ...newsCards.status(), runs });
+});
 app.get("/news-cards/sets", (req, res) => res.json(newsCards.panel(Math.min(100, Number(req.query.limit) || 30))));
 // Manual trigger. Body: { dry_run, only: ["instagram"], immediate, layouts: ["signal", ...] }. Runs in the background.
 app.post("/news-cards/run", (req, res) => {

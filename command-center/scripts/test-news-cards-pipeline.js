@@ -50,24 +50,35 @@ const deps = mode => ({
   t("auto: alle drie platforms ingepland", m.posts.instagram.status === "scheduled" && m.posts.x.status === "scheduled" && m.posts.tiktok.status === "queued");
   t("auto: X task scheduled met pair hook+reply", calls.x[0].status === "scheduled" && calls.x[0].pair.hook === "hook 👇" && calls.x[0].pair.replies[0] === "reply");
   t("auto: X alleen slide 1", calls.x[0].media_paths.length === 1 && /slide_1/.test(calls.x[0].media_paths[0]));
-  t("IG 18:30 Madrid = 17:30 UTC", m.posts.instagram.due_at === "2026-11-16T17:30:00.000Z");
+  t("IG 45 min, X 20 min na de run", m.posts.instagram.due_at === new Date(now + 45 * 60000).toISOString() && m.posts.x.due_at === new Date(now + 20 * 60000).toISOString());
   const bi = calls.buf[0];
   t("TikTok Buffer: 3 beelden, AI-label, customScheduled", bi.assets.length === 3 && bi.metadata?.tiktok?.isAiGenerated === true && bi.mode === "customScheduled");
 
   const m2 = mkSet("s2");
   await P.schedulePublish({ deps: deps("auto"), m: m2, nowMs: now + 3600e3 });
-  t("cadence: tweede set dezelfde dag overgeslagen", m2.posts.instagram.status === "skipped" && !m2.posts.x?.task_id);
+  t("cadence: binnen 3 uur overgeslagen", m2.posts.instagram.status === "skipped" && !m2.posts.x?.task_id);
+  fs.rmSync(path.join(P.SETS_DIR, "s2.json"));
+  const runs = [];
+  for (const [i, h] of [[5, 5.5], [6, 10.5], [7, 13.5]]) {
+    const mm = mkSet("r" + i);
+    await P.schedulePublish({ deps: deps("auto"), m: mm, nowMs: now + h * 3.6e6 });
+    runs.push(mm);
+  }
+  t("drie runs per dag: run 2 en 3 gaan door", runs[0].posts.instagram.status === "scheduled" && runs[1].posts.instagram.status === "scheduled");
+  t("max 3 per dag: vierde post overgeslagen", runs[2].posts.instagram.status === "skipped" && /max 3/.test(runs[2].posts.instagram.reason));
+  for (const r of runs) fs.rmSync(path.join(P.SETS_DIR, r.id + ".json"));
 
   const m3 = mkSet("s3");
+  const bufBefore = calls.buf.length;
   await P.schedulePublish({ deps: deps("review"), m: m3, nowMs: now + 3 * 864e5 });
-  t("niet-auto: IG wacht op goedkeuring, X draft, geen Buffer", m3.posts.instagram.status === "awaiting_approval" && calls.x[1].status === "draft" && calls.buf.length === 1);
+  t("niet-auto: IG wacht op goedkeuring, X draft, geen Buffer", m3.posts.instagram.status === "awaiting_approval" && calls.x[calls.x.length - 1].status === "draft" && calls.buf.length === bufBefore);
 
   const m4 = mkSet("s4");
   await P.schedulePublish({ deps: deps("auto"), m: m4, only: ["instagram"], immediate: true, nowMs: now + 5 * 864e5 });
   t("only instagram + immediate: alleen IG, nu", Object.keys(m4.posts).join() === "instagram" && m4.posts.instagram.due_at === new Date(now + 5 * 864e5).toISOString());
 
   t("setScore IG + X", P.setScore({ metrics: { instagram: { h72: { reach: 100, likes: 10, comments: 0, saved: 0, shares: 0 } }, x: { score: { score: 0.5 } } } }) === 0.75);
-  t("panel toont sets", P.panel(30).length === 4 && P.panel(30)[0].slides.length === 3);
+  t("panel toont sets", P.panel(30).length === 3 && P.panel(30)[0].slides.length === 3);
   fs.rmSync(process.env.NEWS_CARDS_DIR, { recursive: true, force: true });
   console.log(fails ? `${fails} FOUT` : "alles ok");
   process.exit(fails ? 1 : 0);

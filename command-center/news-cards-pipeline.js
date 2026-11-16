@@ -15,19 +15,21 @@ const STATE_FILE = path.join(DIR, "state.json");
 const MEDIA_DIR = path.join(__dirname, "public", "media", "news-cards");
 const DRY_DIR = path.join(DIR, "dry-run");
 
-// Cadence per platform: every_days (1 = daily) and the local post time. Override in data/news-cards/config.json.
+// Several runs per day (one news_cards schedule entry per run, see Scheduler). Each run builds sets_per_run sets;
+// each platform posts delay_min after the run, at most max_per_day per local day and min_gap_hours apart.
+// Override in data/news-cards/config.json.
 const DEFAULTS = {
   enabled: true,
   channel_id: "mud1u9q9bqh1",
-  sets_per_day: 1,
+  sets_per_run: 1,
   tz: "Europe/Madrid",
   min_score: 50,
   persona_rotation_days: 14,
   platforms: {
-    instagram: { enabled: true, every_days: 1, time: "18:30" },
+    instagram: { enabled: true, delay_min: 45, max_per_day: 3, min_gap_hours: 3 },
     // TikTok via Buffer staat uit (owner 2026-11-16). Aanzetten: "tiktok": {"enabled": true} in data/news-cards/config.json.
-    tiktok: { enabled: false, every_days: 1, time: "19:00", buffer_channel: "6ac0da6cea19ca0bde626191" },
-    x: { enabled: true, every_days: 1, time: "17:00" },
+    tiktok: { enabled: false, delay_min: 60, max_per_day: 3, min_gap_hours: 3, buffer_channel: "6ac0da6cea19ca0bde626191" },
+    x: { enabled: true, delay_min: 20, max_per_day: 3, min_gap_hours: 3 },
   },
 };
 const PLATFORMS = ["instagram", "tiktok", "x"];
@@ -44,7 +46,7 @@ function config() {
   const c = readJson(CONFIG_FILE, {});
   const out = { ...DEFAULTS, ...c, platforms: {} };
   for (const p of PLATFORMS) out.platforms[p] = { ...DEFAULTS.platforms[p], ...((c.platforms || {})[p] || {}) };
-  out.sets_per_day = Math.min(3, Math.max(1, Number(out.sets_per_day) || 1));
+  out.sets_per_run = Math.min(3, Math.max(1, Number(out.sets_per_run) || 1));
   return out;
 }
 
@@ -181,16 +183,17 @@ async function buildSet({ deps, plan, setId, dryRun, now, weights, hist }) {
 }
 
 // ---------- publish ----------
-function dueAt(day, hhmm, tz, nowMs) {
-  const t = buffer.zonedTime(day, hhmm, tz).getTime();
-  return new Date(Math.max(t, nowMs + 5 * 60000));
-}
-// Cadence: skip a platform when the last set on it was posted less than every_days ago.
-function cadenceAllows(platform, cfg, nowMs, exceptId) {
-  const every = Math.max(1, Number(cfg.platforms[platform].every_days) || 1);
-  const last = listSets({ limit: 50 }).filter(m => m.id !== exceptId && m.posts?.[platform] && !["failed", "skipped"].includes(m.posts[platform].status))
-    .map(m => Date.parse(m.posts[platform].due_at || m.created_at)).sort((a, b) => b - a)[0];
-  return !last || nowMs - last >= (every - 0.25) * 864e5;
+// Cadence: at most max_per_day posts per local day on a platform, and min_gap_hours between two posts.
+function cadenceAllows(platform, cfg, dueMs, exceptId) {
+  const pc = cfg.platforms[platform];
+  const max = Math.max(1, Number(pc.max_per_day) || 1);
+  const gap = Math.max(0, Number(pc.min_gap_hours) || 0) * 3.6e6;
+  const day = localDay(new Date(dueMs), cfg.tz);
+  const times = listSets({ limit: 100 }).filter(m => m.id !== exceptId && m.posts?.[platform] && !["failed", "skipped", "off"].includes(m.posts[platform].status))
+    .map(m => Date.parse(m.posts[platform].due_at || m.created_at)).filter(Number.isFinite);
+  if (times.filter(t => localDay(new Date(t), cfg.tz) === day).length >= max) return { ok: false, reason: `max ${max} per dag` };
+  if (times.some(t => Math.abs(dueMs - t) < gap)) return { ok: false, reason: `minder dan ${pc.min_gap_hours} uur na vorige post` };
+  return { ok: true };
 }
 
 // mode auto: schedule on every enabled platform. Other modes: X draft + IG/TikTok wait for approval in the dashboard.
@@ -200,14 +203,14 @@ async function schedulePublish({ deps, m, only = null, immediate = false, nowMs 
   if (!channel) throw new Error(`kanaal ${cfg.channel_id} niet gevonden`);
   const mode = (channel.autopilot && channel.autopilot.mode) || "auto";
   const auto = mode === "auto";
-  const day = localDay(new Date(nowMs), cfg.tz);
   m.publish_mode = mode;
   for (const p of PLATFORMS) {
     const pc = cfg.platforms[p];
     if (only && !only.includes(p)) continue;
     if (!pc.enabled) { m.posts[p] = { status: "off" }; continue; }
-    if (!only && !cadenceAllows(p, cfg, nowMs, m.id)) { m.posts[p] = { status: "skipped", reason: "cadence" }; continue; }
-    const due = immediate ? new Date(nowMs) : dueAt(day, pc.time, cfg.tz, nowMs);
+    const due = new Date(immediate ? nowMs : nowMs + Math.max(5, Number(pc.delay_min) || 0) * 60000);
+    const cad = only ? { ok: true } : cadenceAllows(p, cfg, due.getTime(), m.id);
+    if (!cad.ok) { m.posts[p] = { status: "skipped", reason: `cadence: ${cad.reason}` }; continue; }
     m.posts[p] = { status: auto ? "scheduled" : "awaiting_approval", due_at: due.toISOString() };
   }
   if (m.posts.x && ["scheduled", "awaiting_approval"].includes(m.posts.x.status)) {
@@ -285,7 +288,7 @@ async function run({ deps, dryRun = false, layouts = null, count = null, only = 
     const weights = loadState().weights || {};
     const plans = layouts
       ? planLayouts(src.items, hist, layouts, now)
-      : nc.planDay(src.items, hist, { count: count || cfg.sets_per_day, weights, now, minScore: cfg.min_score });
+      : nc.planDay(src.items, hist, { count: count || cfg.sets_per_run, weights, now, minScore: cfg.min_score });
     const sets = [];
     for (const plan of plans) {
       let m;
