@@ -74,19 +74,33 @@ voice:
     - {"pattern": "\\b(going to (rise|climb|moon|explode)|next (charizard|grail)|before it'?s too late)\\b", "reason": "prijsvoorspelling"}
 
 image_policy:
-  kind: gallery                # own slab photos first; downloads only per image_policy.sources (images/policy.js)
+  kind: web                    # real media from the web for the hook slide (images/web.js); gh0stlayer keeps images/policy.js
   brief_required: true
-  gallery_dir: data/brand-assets/SLABHAUS/slabs
+  gallery_dir: data/brand-assets/SLABHAUS/slabs   # haus take, vault listings and sold cards: own photos only
   gallery_tag: SLABHAUS
-  # Nano Banana only for neutral object scenes, with this fixed rule.
   rules: "No people, no faces, no readable text, no logos, no characters, no card art."
-  neutral_scenes: ["A dark walnut desk with three empty clear graded-card slab cases, soft top light, shallow depth of field.", "A heavy steel vault door slightly open in a dim room, warm rim light.", "A brass magnifier lying on a dark slate surface next to an empty clear slab case, low warm light."]
-  layouts: {"signal": "gallery", "versus": "gallery", "number": "none"}   # informational; tiers per layout live in images/policy.js
-  # Per source (images/policy.js): official = press image from the newsmaker's own domain, card_db = card scan from the
-  # card database, shown whole in a slab frame. Any source not listed here is none (own gallery, neutral scene, pattern).
-  sources:
-    "NeuraCollectibles API": {"policy": "card_db", "hosts": ["images.pokemontcg.io", "images.scrydex.com"], "credit": {"images.pokemontcg.io": "pokemontcg.io", "images.scrydex.com": "scrydex"}}
-    "pokemon.com": {"policy": "official", "hosts": ["pokemon.com", "www.pokemon.com", "assets.pokemon.com"], "credit": "pokemon.com"}
+  layouts: {"signal": "web", "versus": "web", "persona": "own photos", "number": "none", "payload": "none"}
+  # Order: article og:image + in-article images, other coverage of the same story, image search, card DB scan in the
+  # slab frame (real grade or none), set art. Nothing found = the set stops and notifies. No Nano Banana.
+  web:
+    vision_model: claude-sonnet-5-5
+    min_long_side: 1000
+    blur_min: 60                 # Laplacian variance (sharpest quarter of 4x4 tiles, 1000 px copy)
+    text_max: 0.25               # max share of the frame covered by OCR words
+    fill_pref: 0.4               # prefer images where the subject fills at least 40% of the frame
+    rotation_days: 30            # same image URL not again within 30 days (live sets)
+    max_vision_per_slot: 8
+    max_candidates_per_step: 12
+    blocklist: data/slabhaus/image_blocklist.yaml
+    log: data/slabhaus/image_log.jsonl
+    takedown_log: data/slabhaus/takedown_log.jsonl
+    takedown_repost: false       # true = after a takedown the re-rendered set is scheduled again
+    # Image search. google_cse (Custom Search JSON API: closed to new customers, off on 2027-01-01) or brave
+    # (Brave Search API). Keys only in .env, sent in a header. No key = step 3 is skipped and logged.
+    search: {"provider": "none", "key_env": "BRAVE_SEARCH_KEY"}
+    prefer_domains: ["pokeguardian.com", "news.cardmarket.com", "cardmarket.com", "tcgplayer.com", "ebay.com", "pwccmarketplace.com", "goldin.com", "heritageauctions.com", "ha.com", "fanaticscollect.com", "psacard.com", "cgccards.com", "beckett.com", "pokemon.com", "pokebeach.com", "pokemon-card.com", "elitefourum.com"]
+    avoid_domains: ["reddit.com", "redd.it", "pinterest.com", "facebook.com", "x.com", "twitter.com", "instagram.com", "tiktok.com", "quora.com"]
+    card_db_hosts: ["images.scrydex.com", "images.pokemontcg.io"]
 
 credentials:
   instagram: ig_17841437483407922   # data/social connection, same as the rips tab

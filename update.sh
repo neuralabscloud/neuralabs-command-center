@@ -117,6 +117,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/character-batches/' \
         --exclude='data/character-batches.json' \
         --exclude='data/news-cards/' \
+        --exclude='data/slabhaus/' \
         --exclude='data/vault-posts/' \
         --exclude='assets/fonts/Akira*' \
         --exclude='data/rips/' \

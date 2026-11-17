@@ -10559,6 +10559,23 @@ const newsCardsDeps = {
     return out;
   },
   notify: (title, body, level) => sendTelegram(`🗞 ${escapeHtmlTg(title)}`, escapeHtmlTg(body || ""), level || "info"),
+  // Takedown (web media): delete the IG carousel and the X hook + replies of a set via the direct APIs.
+  igDelete: async (mediaId, A) => {
+    const pl = ncAcct(A && A.id);
+    const channel = readChannels().find(c => c.id === pl.config().channel_id);
+    const { conn } = newsCardsIgConn(channel, pl.account);
+    const r = await fetch(`${igPublish.GRAPH}/${encodeURIComponent(mediaId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${conn.page_access_token}` } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error || d.success === false) throw new Error(`Instagram delete: ${d.error?.message || "HTTP " + r.status} (verwijder de post handmatig in de app)`);
+    return true;
+  },
+  xDelete: async (channelId, tweetId) => {
+    const channel = readChannels().find(c => c.id === channelId);
+    if (!channel) throw new Error("kanaal niet gevonden");
+    if (!/^\d{5,25}$/.test(String(tweetId))) throw new Error("ongeldig tweet-id");
+    await twitterApi("DELETE", `https://api.x.com/2/tweets/${tweetId}`, twitterCreds(channel));
+    return true;
+  },
 };
 
 // Routes take ?account= (or body.account); default gh0stlayer.
@@ -10589,6 +10606,14 @@ app.post("/news-cards/run", (req, res) => {
     .then(r => console.log(`[NEWS-CARDS ${pl.id}] manual run: ${r.sets.map(s => `${s.id} ${s.status}`).join(", ") || "no item"}`))
     .catch(e => console.error(`[NEWS-CARDS ${pl.id}] manual run failed:`, e.message));
   res.json({ ok: true, started: true, account: pl.id });
+});
+// Takedown of a web image (Slabhaus): delete posts, blocklist the source domain, re-render with the next candidate.
+app.post("/news-cards/sets/:id/takedown", async (req, res) => {
+  const pl = newsCardsFor(req, res); if (!pl) return;
+  const b = req.body || {};
+  const slot = ["hook", "left", "right"].includes(b.slot) ? b.slot : null;
+  try { res.json(await pl.takedown(newsCardsDeps, String(req.params.id), { reason: String(b.reason || "").slice(0, 300), by: "dashboard", slot })); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.post("/news-cards/sets/:id/approve", async (req, res) => {
   const pl = newsCardsFor(req, res); if (!pl) return;

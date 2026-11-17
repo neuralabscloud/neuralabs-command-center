@@ -3,6 +3,7 @@
 //   node scripts/news-cards.js run --account slabhaus --dry-run    (alias: cards run --account slabhaus --dry-run)
 //   node scripts/news-cards.js --dry-run                            gh0stlayer, one set per layout, publish nothing
 //   node scripts/news-cards.js --dry-run --account slabhaus --layouts number,versus --no-images
+//   node scripts/news-cards.js takedown --set <id> --account slabhaus    (alias: cards takedown --set <id>)
 // Output: <data_dir>/dry-run/set_<id>_slide_<n>.png + dry-run-<timestamp>.json (cards, scores, validator, sources).
 // A real run (publish) goes through the service: POST /news-cards/run or the button on the Social Media Manager page.
 const path = require("path");
@@ -20,7 +21,7 @@ const account = String(opt("--account") || "gh0stlayer").toLowerCase();
 if (!pipelines.accountIds().includes(account)) { console.error(`FOUT onbekend account: ${account} (bekend: ${pipelines.accountIds().join(", ")})`); process.exit(1); }
 const pipeline = pipelines.forAccount(account);
 
-if (!flag("--dry-run")) {
+if (args[0] !== "takedown" && !flag("--dry-run")) {
   console.log("Alleen --dry-run hier. Echte run: POST /news-cards/run {account} (of de knop op de Social Media Manager pagina).");
   process.exit(1);
 }
@@ -31,6 +32,38 @@ async function llm(system, user) {
   if (!anthropic) { const Anthropic = require("@anthropic-ai/sdk"); anthropic = new (Anthropic.default || Anthropic)(); }
   const msg = await anthropic.messages.create({ model: MODEL, max_tokens: 4000, system, messages: [{ role: "user", content: user }] });
   return (msg.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+}
+
+// cards takedown --set <id> [--account slabhaus] [--reason "..."] [--slot hook|left|right]
+// Live set: through the service (it holds the IG/X connections), local call with the internal header.
+// Dry-run set: here, same flow, no platform calls.
+if (args[0] === "takedown") {
+  (async () => {
+    const id = opt("--set");
+    if (!id || !/^[\w-]+$/.test(id)) { console.error("FOUT gebruik: cards takedown --set <id> [--account slabhaus] [--reason tekst]"); process.exit(1); }
+    const m = pipeline.loadSet(id);
+    if (!m) { console.error(`FOUT set ${id} niet gevonden bij ${account}`); process.exit(1); }
+    const body = { account, reason: opt("--reason") || "", slot: opt("--slot") || null };
+    let r;
+    if (m.dry_run) r = await pipeline.takedown({ llm }, id, { reason: body.reason, by: "cli", slot: body.slot });
+    else {
+      const res = await fetch(`http://127.0.0.1:3004/news-cards/sets/${encodeURIComponent(id)}/takedown?account=${account}`, {
+        method: "POST", headers: { "content-type": "application/json", "x-internal": "scheduler", "x-internal-secret": process.env.INTERNAL_SECRET || "" }, body: JSON.stringify(body) });
+      r = await res.json().catch(() => ({}));
+      if (!res.ok) { console.error(`FOUT ${r.error || res.status}`); process.exit(1); }
+    }
+    await nc.closeBrowser();
+    const a = r.action;
+    console.log(`takedown ${r.set} (${a.dry_run ? "dry run" : "live"}): status ${r.status}`);
+    console.log(`  beelden: ${a.images.map(i => `${i.slot} ${i.source_domain} (${i.credit_name})`).join(", ")}`);
+    console.log(`  verwijderd: ${JSON.stringify(a.deleted)}`);
+    console.log(`  blocklist: ${a.blocklisted.join(", ") || "(stond er al)"}`);
+    console.log(`  opnieuw gerenderd: ${a.rerender.ok ? a.rerender.images.map(i => `${i.slot} ${i.step} ${i.credit_name}`).join(", ") : a.rerender.error}`);
+    for (const s of a.rerender.slides || []) console.log(`    ${s}`);
+    console.log(`  repost: ${a.repost.ok ? JSON.stringify(a.repost.posts) : a.repost.note || a.repost.error}`);
+    process.exit(0);
+  })().catch(e => { console.error("FOUT", e.message); process.exit(1); });
+  return;
 }
 
 // Nano Banana via the inference.sh CLI (same app as the service), saved next to the dry-run PNGs.

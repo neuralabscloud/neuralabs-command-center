@@ -1,7 +1,8 @@
 // Slabhaus TCG sources. fetchAll() -> { items, status, fetched_at }.
 // News (max 48 h) from outlet listings, Reddit only as a trending signal (never a fact source),
 // numbers ONLY from the NeuraCollectibles API in the same run (timestamped), evergreen facts from evergreen.yaml.
-// Never: card images, logos or photos from news sites or marketplaces; never marketplace scraping for numbers.
+// Never marketplace scraping for numbers. Hook images: images/web.js (article og:image, other coverage via
+// item.trend.related, image search, card DB, set art), each with a credit line and an entry in data/slabhaus/image_log.jsonl.
 const path = require("path");
 const { get } = require("../http");
 const T = require("../text");
@@ -93,9 +94,14 @@ function applyTrend(news, redditTitles) {
   const rt = redditTitles.map(tokens);
   news.forEach((n, i) => {
     const outlets = new Set([n.source]);
-    news.forEach((o, j) => { if (j !== i && overlap(tk[i], tk[j]) >= 2) outlets.add(o.source); });
+    const related = [];
+    news.forEach((o, j) => {
+      if (j === i || overlap(tk[i], tk[j]) < 2) return;
+      outlets.add(o.source);
+      if (o.url && o.url !== n.url && !related.some(r => r.url === o.url)) related.push({ source: o.source, url: o.url, title: o.title });
+    });
     const reddit = rt.filter(r => overlap(tk[i], r) >= 2).length;
-    n.trend = { outlets: outlets.size, reddit };
+    n.trend = { outlets: outlets.size, reddit, related: related.slice(0, 6) };
   });
 }
 

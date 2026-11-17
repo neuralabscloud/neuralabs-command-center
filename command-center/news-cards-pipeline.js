@@ -8,6 +8,7 @@ const nc = require("./news-cards");
 const accounts = require("./accounts");
 const xPairs = require("./x-pairs");
 const policy = require("./images/policy");
+const web = require("./images/web");
 const ncSource = require("./sources/tcg/nc");
 
 const ROOT = __dirname;
@@ -109,7 +110,11 @@ function createPipeline(accountId) {
 
   // ---------- manifests ----------
   function setFile(id) { return path.join(SETS_DIR, `${String(id).replace(/[^\w-]/g, "")}.json`); }
-  function loadSet(id) { return readJson(setFile(id), null); }
+  // Dry-run manifests live in <data_dir>/dry-run/sets/ (never in history, cadence or the panel), so a takedown can
+  // be rehearsed on them.
+  function drySetFile(id) { return path.join(DRY_DIR, "sets", `${String(id).replace(/[^\w-]/g, "")}.json`); }
+  function loadSet(id) { return readJson(setFile(id), null) || readJson(drySetFile(id), null); }
+  function saveDrySet(m) { m.updated_at = new Date().toISOString(); m.account = A.id; writeJson(drySetFile(m.id), m); return m; }
   function saveSet(m) { m.updated_at = new Date().toISOString(); m.account = A.id; writeJson(setFile(m.id), m); return m; }
   function listSets({ limit = 30, includeDry = false } = {}) {
     let files = [];
@@ -165,12 +170,13 @@ function createPipeline(accountId) {
   // Image policy (images/policy.js, same for every account). Per slot: own matching photo, official press image,
   // card database scan in a slab frame, generic own photo, then own SVG chart / Nano Banana neutral scene / pattern.
   // Persona takes own images only (tier 3); number and payload have no image. Every choice lands in m.images.
-  async function imagesFor({ deps, m, card, plan, setId, hist, now }) {
+  async function imagesFor({ deps, m, card, plan, setId, hist, now, dryRun = false, exclude = [] }) {
     const images = {};
     const L = plan.layout;
     const item = plan.item;
     if (!(policy.LAYOUT_TIERS[L] || []).length) { m.images.source = "none"; return images; }
-    const gallery = IP.kind === "gallery";
+    if (IP.kind === "web" && (L === "signal" || L === "versus")) return webImagesFor({ deps, m, card, plan, setId, dryRun, exclude });
+    const gallery = IP.kind === "gallery" || IP.kind === "web";   // web: persona (haus take) still takes own photos only
     const photos = gallery && GALLERY_DIR ? galleryPhotos(GALLERY_DIR) : [];
     const recent = hist.filter(h => now - Date.parse(h.created_at) < 14 * 864e5).flatMap(h => h.photos || []);
     const text = [card.image_brief, nc.stripMarks(card.headline), item.title, (item.entities || []).join(" ")].join(" ");
@@ -202,7 +208,7 @@ function createPipeline(accountId) {
         },
         async tier4() {
           if (series) return { chart: series, record: { source: "svg_chart" } };
-          if (!deps.genImage) return null;
+          if (!deps.genImage || IP.kind === "web") return null;   // web (Slabhaus): never Nano Banana, not even a scene
           const aspect = slot === "hook" ? "4:5" : "1:1";
           if (gallery) {
             if (!(IP.neutral_scenes || []).length) return null;
@@ -226,6 +232,53 @@ function createPipeline(accountId) {
     // Caption credit when a downloaded image (tier 1 or 2) is used.
     const credit = policy.creditLine(slots.map(s => m.images[s]));
     if (credit && card.caption && !card.caption.includes(credit)) { card.caption = `${card.caption.trimEnd()}\n${credit}`; m.images.credit = credit; }
+    return images;
+  }
+
+  // Web media (image_policy.kind: web, Slabhaus): the real card, slab, product or event from the web, see images/web.js.
+  // No Nano Banana and no pattern fallback: nothing from steps 1 to 5 = web.NoImageError, the set stops.
+  function setArtLookup() {
+    let cache = null;
+    const api = () => ncSource.client({ base: (P.sources || {}).nc_api || ncSource.DEFAULT_BASE, key: process.env[(P.credentials || {}).nc_api_key_env || "NC_API_KEY"] });
+    return async name => {
+      if (!cache) {
+        cache = [];
+        for (let off = 0; off < 1000; off += 100) {
+          const r = await api()("releases", { limit: 100, offset: off });
+          cache.push(...(r.items || []));
+          if (!r.has_more) break;
+        }
+      }
+      const n = norm(name);
+      const hit = cache.find(x => x.language === "en" && norm(x.name) === n) || cache.find(x => norm(x.name) === n);
+      return hit && hit.logo_url ? { logo_url: hit.logo_url, source_page_url: `https://api.neuralabs.cloud/collectibles/v1/releases/${encodeURIComponent(hit.set_id)}` } : null;
+    };
+  }
+  let _setArt = null;
+  async function webImagesFor({ deps, m, card, plan, setId, dryRun, exclude = [] }) {
+    const L = plan.layout, item = plan.item;
+    const slots = L === "versus" ? ["left", "right"] : ["hook"];
+    const images = {};
+    const cardImage = deps.cardImage || (c => ncSource.cardImage({ base: (P.sources || {}).nc_api, key: process.env[(P.credentials || {}).nc_api_key_env || "NC_API_KEY"], card: c }));
+    const setArt = deps.setArt || (_setArt = _setArt || setArtLookup());
+    const usedInSet = [];
+    m.images.policy = "web";
+    for (const slot of slots) {
+      const r = await web.resolveSlot({ A, item, card, layout: L, slot, setId, dataDir: DIR, io: deps.webIo || {},
+        ctx: { llm: deps.llm, cardImage, setArt, dryRun, excludeUrls: exclude, usedInSet, log: s => log(m, s) } });
+      // versus: subject per half (the LLM sees that half's label: 1996 Japan launch vs 1999 Base Set); never the same photo twice
+      usedInSet.push(r.record.image_url);
+      m.images[slot] = r.record;
+      images[slot] = nc.dataUri(r.file);
+      images[`${slot}_fit`] = r.mode;
+      if (r.logo) images[`${slot}_logo`] = nc.dataUri(r.logo);
+      log(m, `beeld ${slot}: web ${r.record.step} ${r.record.source_domain} (${r.record.credit_name}), ${r.record.mode}`);
+    }
+    const credit = web.creditLine(slots.map(s => m.images[s]));
+    if (credit && card.caption) {
+      card.caption = `${card.caption.replace(/\n+image: [^\n]*\s*$/, "").trimEnd()}\n${credit}`;
+      m.images.credit = credit;
+    }
     return images;
   }
 
@@ -254,8 +307,23 @@ function createPipeline(accountId) {
     m.validator = { ok: true, errors: [] };
 
     let images = {};
-    try { images = await imagesFor({ deps, m, card, plan, setId, hist, now }); }
+    try { images = await imagesFor({ deps, m, card, plan, setId, hist, now, dryRun }); }
     catch (e) {
+      if (e.code === "NO_IMAGE") {
+        // Web media accounts: no image = no set. Stop and notify; never a generated or empty image.
+        m.status = "failed"; m.reason = `geen beeld: ${e.message.slice(0, 200)}`;
+        m.images.error = e.message.slice(0, 300); m.images.steps = e.steps || [];
+        log(m, `gestopt: ${m.reason}`);
+        if (dryRun) log(m, "melding overgeslagen (dry run)");
+        else deps.notify?.(`${A.label}: geen beeld`, `${nc.stripMarks(card.headline)}\n${e.message}`.slice(0, 400), "danger");
+        return dryRun ? saveDrySet(m) : saveSet(m);
+      }
+      if (IP.kind === "web" && (plan.layout === "signal" || plan.layout === "versus")) {
+        m.status = "failed"; m.reason = `beeld mislukt: ${e.message.slice(0, 200)}`; m.images.error = e.message.slice(0, 300);
+        log(m, `gestopt: ${m.reason}`);
+        if (!dryRun) deps.notify?.(`${A.label}: beeld mislukt`, e.message.slice(0, 300), "danger");
+        return dryRun ? saveDrySet(m) : saveSet(m);
+      }
       log(m, `beeld mislukt: ${e.message.slice(0, 200)}; render zonder beeld`);
       m.images.error = e.message.slice(0, 300);
     }
@@ -271,7 +339,8 @@ function createPipeline(accountId) {
       }
     }
     m.status = "rendered";
-    return dryRun ? m : saveSet(m);
+    m.plan = { item: plan.item, layout: plan.layout, score: plan.score };   // for a takedown re-render
+    return dryRun ? saveDrySet(m) : saveSet(m);
   }
 
   // ---------- publish ----------
@@ -326,7 +395,10 @@ function createPipeline(accountId) {
     if (m.posts.x && ["scheduled", "awaiting_approval"].includes(m.posts.x.status)) {
       let reply = m.card.x_reply;
       const link = xReplyLink(channel.id, m.id);
-      if (link && xPairs.weightedLength(`${reply}\n${link.url}`) <= 280) { reply = `${reply}\n${link.url}`; m.posts.x.link = link.url; }
+      const credit = m.images?.credit || "";      // web media: "image: <credit>" at the end of the reply post
+      const withCredit = r => credit ? `${r}\n${credit}` : r;
+      if (link && xPairs.weightedLength(withCredit(`${reply}\n${link.url}`)) <= 280) { reply = `${reply}\n${link.url}`; m.posts.x.link = link.url; }
+      reply = withCredit(reply);
       const task = deps.addXTask({
         channel_id: channel.id, status: auto ? "scheduled" : "draft", scheduled_at: m.posts.x.due_at,
         text: m.card.x_hook, media_path: m.slides[0].rel, media_paths: [m.slides[0].rel],
@@ -365,6 +437,82 @@ function createPipeline(accountId) {
     if (m.posts.x?.task_id) deps.updateXTask(m.posts.x.task_id, t => { if (t.status === "draft") t.status = "scheduled"; });
     m.approved_at = new Date().toISOString();
     return saveSet(m);
+  }
+
+  // ---------- takedown (web media) ----------
+  // Dashboard button / `cards takedown --set <id>`: delete the IG post and the X posts of the set (direct APIs), put the
+  // source domain on the blocklist, re-render with the next image candidate, repost only when
+  // image_policy.web.takedown_repost is true, log everything. Dry-run sets: same flow, no platform calls.
+  async function takedown(deps, id, { reason = "", by = "dashboard", slot = null, now = Date.now() } = {}) {
+    const m = loadSet(id);
+    if (!m) throw new Error("set niet gevonden");
+    if (m.images?.policy !== "web") throw new Error("deze set gebruikt geen webbeeld");
+    const cfg = web.settings(A);
+    const slots = (slot ? [slot] : ["hook", "left", "right"]).filter(s => m.images[s]?.source === "web");
+    if (!slots.length) throw new Error("geen webbeeld in deze set");
+    const at = new Date(now).toISOString();
+    const taken = slots.map(s => ({ slot: s, image_url: m.images[s].image_url, source_page_url: m.images[s].source_page_url, source_domain: m.images[s].source_domain, credit_name: m.images[s].credit_name }));
+    const action = { at, action: "takedown", account: A.id, set_id: m.id, dry_run: !!m.dry_run, by, reason: String(reason || "").slice(0, 300), images: taken, deleted: {}, blocklisted: [], rerender: null, repost: null };
+
+    // 1 delete the live posts (never for dry runs)
+    if (m.dry_run) action.deleted = { note: "dry run: geen live posts, geen API-calls" };
+    else {
+      const ig = m.posts?.instagram;
+      if (ig?.media_id && ig.status === "published") {
+        try { await deps.igDelete(ig.media_id, A); action.deleted.instagram = { ok: true, media_id: ig.media_id }; Object.assign(ig, { status: "deleted", deleted_at: at }); }
+        catch (e) { action.deleted.instagram = { ok: false, media_id: ig.media_id, error: e.message.slice(0, 200) }; }
+      } else if (ig && ["scheduled", "awaiting_approval"].includes(ig.status)) { Object.assign(ig, { status: "off", reason: "takedown" }); action.deleted.instagram = { ok: true, note: "nog niet gepost, ingetrokken" }; }
+      const x = m.posts?.x;
+      if (x?.hook_id) {
+        const ids = [...(x.reply_ids || [])].reverse().concat(x.hook_id);
+        const res = [];
+        for (const tid of ids) {
+          try { await deps.xDelete(config().channel_id, tid); res.push({ id: tid, ok: true }); }
+          catch (e) { res.push({ id: tid, ok: false, error: e.message.slice(0, 160) }); }
+        }
+        action.deleted.x = res;
+        if (res.every(r => r.ok)) Object.assign(x, { status: "deleted", deleted_at: at });
+      } else if (x?.task_id) {
+        deps.updateXTask(x.task_id, t => { if (t.status !== "published") { t.status = "failed"; t.error = "takedown: beeld ingetrokken"; } });
+        Object.assign(x, { status: "off", reason: "takedown" });
+        action.deleted.x = { ok: true, note: "nog niet gepost, taak ingetrokken" };
+      }
+    }
+    // 2 blocklist the source domains
+    for (const t of taken) if (t.source_domain && web.addToBlocklist(cfg.blocklist, t.source_domain, `takedown ${m.id} ${at.slice(0, 10)}`)) action.blocklisted.push(t.source_domain);
+    for (const t of taken) web.appendLog(cfg.log, { used_at: at, action: "takedown", account: A.id, set_id: m.id, slot: t.slot, dry_run: !!m.dry_run, image_url: t.image_url, source_page_url: t.source_page_url, source_domain: t.source_domain, credit_name: t.credit_name, reason: action.reason });
+
+    // 3 re-render with the next candidate (taken URLs excluded, blocked domains skipped by the resolver)
+    const plan = m.plan || { item: m.item, layout: m.layout, score: m.score };
+    const card = m.card;
+    const before = { images: m.images, slides: m.slides };
+    m.images = { previous: { ...before.images, previous: undefined } };
+    try {
+      const images = await webImagesFor({ deps, m, card, plan, setId: m.id, dryRun: !!m.dry_run, exclude: taken.map(t => t.image_url) });
+      const n = (m.takedowns || []).length + 1;
+      const outDir = m.dry_run ? DRY_DIR : MEDIA_DIR;
+      const slides = await nc.renderSet(card, { setId: `${m.id}-t${n}`, outDir, images, account: A });
+      m.slides = slides.map(s => ({ ...s, rel: m.dry_run ? null : `${MEDIA_REL}/${path.basename(s.path)}` }));
+      action.rerender = { ok: true, slides: slides.map(s => s.path), images: ["hook", "left", "right"].filter(s => m.images[s]).map(s => ({ slot: s, step: m.images[s].step, image_url: m.images[s].image_url, credit_name: m.images[s].credit_name })) };
+      m.status = "rendered";
+      log(m, `takedown: opnieuw gerenderd met ${action.rerender.images.map(i => `${i.slot} ${i.credit_name}`).join(", ")}`);
+    } catch (e) {
+      action.rerender = { ok: false, error: e.message.slice(0, 300) };
+      m.status = "taken_down"; m.reason = `takedown, geen ander beeld: ${e.message.slice(0, 200)}`;
+      log(m, `takedown: geen ander beeld (${e.message.slice(0, 160)})`);
+    }
+    // 4 repost (configured) or park the set
+    if (action.rerender.ok && !m.dry_run && cfg.takedown_repost) {
+      try { m.posts = {}; await schedulePublish({ deps, m, nowMs: Date.now() }); action.repost = { ok: true, posts: Object.fromEntries(Object.entries(m.posts).map(([p, v]) => [p, v.status])) }; }
+      catch (e) { action.repost = { ok: false, error: e.message.slice(0, 200) }; }
+    } else action.repost = { ok: false, note: m.dry_run ? "dry run" : !action.rerender.ok ? "geen nieuw beeld" : "repost staat uit (image_policy.web.takedown_repost)" };
+    if (!action.repost.ok && action.rerender.ok) m.status = "taken_down";
+    m.takedowns = [...(m.takedowns || []), action];
+    log(m, `takedown door ${by}: ${taken.map(t => t.source_domain).join(", ")} op de blocklist`);
+    web.appendLog(cfg.takedown_log, action);
+    if (!m.dry_run) deps.notify?.(`${A.label}: takedown ${m.id}`, `${taken.map(t => t.source_domain).join(", ")} geblokkeerd. ${action.rerender.ok ? "Nieuw beeld gerenderd" : "Geen ander beeld"}${action.repost.ok ? ", opnieuw ingepland" : ""}.`, "warning");
+    m.dry_run ? saveDrySet(m) : saveSet(m);
+    return { set: m.id, status: m.status, action };
   }
 
   // ---------- run ----------
@@ -500,6 +648,9 @@ function createPipeline(accountId) {
       thumb: m.slides?.[0]?.rel || null, slides: (m.slides || []).map(s => s.rel).filter(Boolean),
       posts: Object.fromEntries(Object.entries(m.posts || {}).filter(([p]) => PLATFORMS.includes(p)).map(([p, v]) => [p, { status: v.status, due_at: v.due_at, permalink: v.permalink || null, hook_id: v.hook_id || null, error: v.error || v.reason || null }])),
       metrics: m.metrics || {}, perf: m.score?.perf ?? null, mode: m.publish_mode || null,
+      web_images: m.images?.policy === "web" ? ["hook", "left", "right"].filter(k => m.images[k]?.source === "web")
+        .map(k => ({ slot: k, credit: m.images[k].credit_name, domain: m.images[k].source_domain, page: m.images[k].source_page_url, step: m.images[k].step })) : null,
+      takedowns: (m.takedowns || []).length,
     }));
   }
 
@@ -510,7 +661,7 @@ function createPipeline(accountId) {
 
   return {
     account: A, id: A.id, label: A.label, DIR, SETS_DIR, MEDIA_DIR, MEDIA_REL, DRY_DIR, GALLERY_DIR, DEFAULTS, PLATFORMS,
-    config, loadSet, saveSet, listSets, history, localDay,
+    config, loadSet, saveSet, saveDrySet, listSets, takedown, webImagesFor, history, localDay,
     pillOptions, pickPill, planLayouts, pickPersonaStill, imagesFor, buildSet, schedulePublish, publishInstagram, approve, xReplyLink, xPremium,
     run, tick, collectMetrics, setScore, maybeReweight, panel, status, isRunning: () => running,
   };

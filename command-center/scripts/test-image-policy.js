@@ -9,7 +9,12 @@ const NC = require("../news-cards-pipeline");
 let fails = 0;
 const t = (name, cond) => { console.log(`${cond ? "ok  " : "FOUT"} ${name}`); if (!cond) fails++; };
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "img-policy-"));
-const S = nc.account("slabhaus"), G = nc.account("gh0stlayer");
+// images/policy.js stays the generic policy (gh0stlayer, any gallery account). Slabhaus itself moved to images/web.js
+// (scripts/test-web-images.js), so the gallery/card_db cases run on a fixture: the Slabhaus profile with its old policy.
+const OLD_POLICY = { kind: "gallery", brief_required: true, gallery_dir: "data/brand-assets/SLABHAUS/slabs", gallery_tag: "SLABHAUS",
+  sources: { "NeuraCollectibles API": { policy: "card_db", hosts: ["images.pokemontcg.io", "images.scrydex.com"], credit: { "images.pokemontcg.io": "pokemontcg.io", "images.scrydex.com": "scrydex" } },
+    "pokemon.com": { policy: "official", hosts: ["pokemon.com", "www.pokemon.com", "assets.pokemon.com"], credit: "pokemon.com" } } };
+const S = nc.account({ ...require("../accounts").load("slabhaus"), image_policy: OLD_POLICY }), G = nc.account("gh0stlayer");
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
 
 (async () => {
@@ -101,13 +106,8 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   r = await P.resolve({ A: off, item: { source: "pokemon.com", url: "https://www.pokemon.com/us/news/y" }, layout: "signal", slot: "hook", setId: "t10", dataDir: path.join(tmp, "f"), io: { ...offIo, getPage: async () => '<meta property="og:image" content="https://i.ytimg.com/a.jpg">' } });
   t("tier 1: og:image op vreemde host geweigerd", r.record.source === "pattern");
 
-  // pipeline: caption-credit + manifest
-  const SP = NC.forAccount("slabhaus");
-  const card = { layout: "signal", headline: "x", image_brief: "Sprigatito", caption: "line one\nwhat do you think link in bio\n#pokemontcg #psa10 #slabs #pokemoncards" };
-  const m = { images: {}, log: [] };
-  const imgs = await SP.imagesFor({ deps: { cardImage, imageIo: goodIo() }, m, card, plan: { layout: "signal", item: ncItem }, setId: "p1", hist: [], now: Date.now() });
-  t("pipeline: caption eindigt op image-regel", card.caption.split("\n").pop() === "image: scrydex" && m.images.credit === "image: scrydex");
-  t("pipeline: manifest + data-URI", m.images.hook.policy_tier === 2 && /^data:image\/png;base64,/.test(imgs.hook));
+  // pipeline: Slabhaus now runs on images/web.js (no tier/pattern path any more)
+  t("pipeline: slabhaus op web-beleid", NC.forAccount("slabhaus").account.imagePolicy.kind === "web" && G.imagePolicy.kind !== "web");
 
   // render: grafiek en patronen
   const html = s => nc.buildSlides({ layout: "signal", pill: "signal", headline: "x [a]1[/a]", payload: { title: "t", items: [] } }, s, "gh0stlayer").map(x => x.html || x).join("");
@@ -129,7 +129,8 @@ im=Image.new("RGB",(1200,1500),(240,240,240)); d=ImageDraw.Draw(im); d.text((80,
   t("inspect.py: watermerktekst gevonden", iw.watermark.includes("shutterstock"));
   const out = path.join(tmp, "slab.png");
   py("slab", small, out);
-  t("inspect.py: slab-kader 1200x1500", py("inspect", out).width === 1200 && py("inspect", out).height === 1500);
+  const so = py("inspect", out);
+  t("inspect.py: slab-kader bijgesneden, staand, transparant", so.width < 1200 && so.height < 1500 && so.height > so.width && so.height >= 900);
 
   // nooit open web of beeldzoeker
   const src = fs.readFileSync(path.join(__dirname, "..", "images", "policy.js"), "utf8");

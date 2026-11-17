@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # cards run --account slabhaus [--dry-run] [--layouts a,b] [--no-images]
+# cards takedown --set <id> [--account slabhaus] [--reason tekst] [--slot hook|left|right]
 set -euo pipefail
 DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 cmd="${1:-}"; shift || true
 case "$cmd" in
   run) exec node "$DIR/scripts/news-cards.js" "$@" ;;
-  *) echo "Gebruik: cards run --account <gh0stlayer|slabhaus> --dry-run"; exit 1 ;;
+  takedown)
+    case " $* " in *" --account "*) exec node "$DIR/scripts/news-cards.js" takedown "$@" ;;
+      *) exec node "$DIR/scripts/news-cards.js" takedown --account slabhaus "$@" ;; esac ;;
+  *) echo "Gebruik: cards run --account <gh0stlayer|slabhaus> --dry-run | cards takedown --set <id>"; exit 1 ;;
 esac

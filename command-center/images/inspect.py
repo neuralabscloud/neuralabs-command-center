@@ -2,7 +2,13 @@
 # Image checks + slab composition for the news cards image policy (images/policy.js).
 # Run isolated so the pip numpy in /usr/local cannot shadow the apt OpenCV build:
 #   python3 -I -S images/inspect.py inspect <file>          -> JSON {width, height, faces, watermark: [tokens]}
-#   python3 -I -S images/inspect.py slab <in> <out>         -> card image whole inside a slab frame, 4:5, no crop
+#   python3 -I -S images/inspect.py slab <in> <out> [name] [grade] -> card whole inside a slab frame, 4:5, no crop;
+#                                                             label shows the card name and the real grade (or none)
+#   python3 -I -S images/inspect.py web <file>              -> inspect + blur (Laplacian variance) + text_ratio (OCR word area)
+#   python3 -I -S images/inspect.py thumb <in> <out> [long]  -> JPEG copy for the vision model (default 1024 px long side)
+#   python3 -I -S images/inspect.py crop <in> <out> x0 y0 x1 y1 <aspect|object>
+#        subject bbox (0..1) centered in the largest crop of that aspect (w/h); "object" = tight crop around the
+#        bbox with padding. Downscale only, never upscale or stretch.
 import sys
 sys.path.insert(0, "/usr/lib/python3/dist-packages")
 import json, re, subprocess
@@ -67,10 +73,108 @@ def inspect(path):
     return {"width": w, "height": h, "faces": faces(path), "watermark": ocr_tokens(path)}
 
 
-def slab(src, out, W=1200, H=1500):
-    from PIL import Image, ImageDraw
+def blur(path):
+    # Sharpness = Laplacian variance per tile on a 1000 px copy; the score is the mean of the sharpest quarter of the tiles,
+    # so a sharp slab on a plain studio background is not called blurry because of its empty background.
+    import cv2
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        return -1
+    h, w = img.shape
+    s = 1000.0 / max(h, w)
+    img = cv2.resize(img, (max(1, int(w * s)), max(1, int(h * s))), interpolation=cv2.INTER_AREA)
+    h, w = img.shape
+    vals = []
+    for ty in range(4):
+        for tx in range(4):
+            t = img[ty * h // 4:(ty + 1) * h // 4, tx * w // 4:(tx + 1) * w // 4]
+            if t.size:
+                vals.append(float(cv2.Laplacian(t, cv2.CV_64F).var()))
+    vals.sort(reverse=True)
+    top = vals[:max(1, len(vals) // 4)]
+    return round(sum(top) / len(top), 1)
+
+
+def text_ratio(path):
+    # Share of the image covered by OCR'd words (confidence >= 60, 2+ characters). Screenshots, tweets and text graphics
+    # score high; a photographed card with its small attack text scores low.
+    from PIL import Image
+    import tempfile, os
+    with Image.open(path) as im:
+        im = im.convert("RGB")
+        s = min(1.0, 1600.0 / max(im.size))
+        if s < 1.0:
+            im = im.resize((int(im.width * s), int(im.height * s)))
+        W, H = im.size
+        fd, tmp = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        im.save(tmp)
+    try:
+        out = subprocess.run(["tesseract", tmp, "stdout", "--psm", "11", "-l", "eng", "tsv"], capture_output=True, text=True, timeout=60).stdout
+    except Exception:
+        return -1
+    finally:
+        os.remove(tmp)
+    area = 0
+    for line in out.splitlines()[1:]:
+        c = line.split("\t")
+        if len(c) < 12:
+            continue
+        try:
+            conf = float(c[10])
+        except ValueError:
+            continue
+        if conf >= 60 and len(c[11].strip()) >= 2:
+            area += int(c[8]) * int(c[9])
+    return round(area / float(W * H), 3)
+
+
+def web(path):
+    r = inspect(path)
+    r["blur"] = blur(path)
+    r["text_ratio"] = text_ratio(path)
+    return r
+
+
+def thumb(src, out, long=1024):
+    from PIL import Image
+    with Image.open(src) as im:
+        im = im.convert("RGB")
+        im.thumbnail((long, long), Image.LANCZOS)
+        im.save(out, "JPEG", quality=85)
+        return {"ok": True, "width": im.width, "height": im.height}
+
+
+def crop(src, out, x0, y0, x1, y1, aspect, max_long=1800):
+    from PIL import Image
+    with Image.open(src) as im:
+        im = im.convert("RGB")
+        W, H = im.size
+        bx0, by0, bx1, by1 = [max(0.0, min(1.0, float(v))) for v in (x0, y0, x1, y1)]
+        if bx1 <= bx0 or by1 <= by0:
+            bx0, by0, bx1, by1 = 0.0, 0.0, 1.0, 1.0
+        cx, cy = (bx0 + bx1) / 2 * W, (by0 + by1) / 2 * H
+        if aspect == "object":
+            pw, ph = (bx1 - bx0) * W * 0.08, (by1 - by0) * H * 0.08
+            box = [max(0, bx0 * W - pw), max(0, by0 * H - ph), min(W, bx1 * W + pw), min(H, by1 * H + ph)]
+        else:
+            a = float(aspect)
+            cw, ch = (W, W / a) if W / a <= H else (H * a, H)
+            left = min(max(0, cx - cw / 2), W - cw)
+            top = min(max(0, cy - ch / 2), H - ch)
+            box = [left, top, left + cw, top + ch]
+        c = im.crop(tuple(int(round(v)) for v in box))
+        if max(c.size) > max_long:
+            c.thumbnail((max_long, max_long), Image.LANCZOS)
+        c.save(out, "PNG")
+        return {"ok": True, "width": c.width, "height": c.height, "box": [int(v) for v in box], "subject_center": [round(cx / W, 3), round(cy / H, 3)]}
+
+
+def slab(src, out, name="", grade="", W=1200, H=1500):
+    from PIL import Image, ImageDraw, ImageFont
     card = Image.open(src).convert("RGBA")
-    bg = Image.new("RGBA", (W, H), (20, 20, 22, 255))
+    # Transparent background: the card template lays the slab on its own pattern, sized above the headline.
+    bg = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     # Slab case in the upper part (headline and labels sit over the lower part of the zone).
@@ -85,10 +189,36 @@ def slab(src, out, W=1200, H=1500):
     card.thumbnail((ww, wh), Image.LANCZOS)
     cx = wx0 + (ww - card.width) // 2; cy = wy0 + (wh - card.height) // 2
     d.rounded_rectangle([wx0 - 6, wy0 - 6, wx0 + ww + 6, wy0 + wh + 6], radius=14, outline=(205, 210, 218, 90), width=2)
+    # Label: card name left, the real grade from the story right (no grade = name only). No grader logo or branding.
+    import os
+    fd = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts")
+    def font(f, size):
+        try:
+            return ImageFont.truetype(os.path.join(fd, f), size)
+        except Exception:
+            return ImageFont.load_default()
+    lx0, ly0, lx1, ly1 = sx + 18, sy + 18, sx + sw - 18, sy + 18 + lh
+    if grade:
+        fg = font("Inter-Bold.ttf", int(lh * 0.42))
+        gw = d.textlength(grade, font=fg)
+        d.text((lx1 - 22 - gw, (ly0 + ly1) / 2), grade, font=fg, fill=(232, 180, 58, 255), anchor="lm")
+        room = lx1 - lx0 - gw - 66
+    else:
+        room = lx1 - lx0 - 44
+    if name:
+        fn = font("Inter-Medium.ttf", int(lh * 0.24))
+        txt = name
+        while txt and d.textlength(txt, font=fn) > room:
+            txt = txt[:-1]
+        if txt != name:
+            txt = txt.rstrip()[:-1] + "…"
+        d.text((lx0 + 22, (ly0 + ly1) / 2), txt, font=fn, fill=(240, 236, 228, 255), anchor="lm")
     bg.alpha_composite(layer)
     bg.alpha_composite(card, (cx, cy))
-    bg.convert("RGB").save(out, "PNG")
-    return {"ok": True, "width": W, "height": H}
+    box = bg.getbbox() or (0, 0, W, H)
+    bg = bg.crop((max(0, box[0] - 8), max(0, box[1] - 8), min(W, box[2] + 8), min(H, box[3] + 8)))
+    bg.save(out, "PNG")
+    return {"ok": True, "width": bg.width, "height": bg.height}
 
 
 if __name__ == "__main__":
@@ -97,9 +227,15 @@ if __name__ == "__main__":
         if mode == "inspect":
             r = inspect(sys.argv[2])
         elif mode == "slab":
-            r = slab(sys.argv[2], sys.argv[3])
+            r = slab(sys.argv[2], sys.argv[3], *(sys.argv[4:6]))
+        elif mode == "web":
+            r = web(sys.argv[2])
+        elif mode == "thumb":
+            r = thumb(sys.argv[2], sys.argv[3], int(sys.argv[4]) if len(sys.argv) > 4 else 1024)
+        elif mode == "crop":
+            r = crop(sys.argv[2], sys.argv[3], *sys.argv[4:9])
         else:
-            r = {"error": "mode inspect|slab"}
+            r = {"error": "mode inspect|slab|web|thumb|crop"}
     except Exception as e:
         r = {"error": str(e)[:200]}
     print(json.dumps(r))

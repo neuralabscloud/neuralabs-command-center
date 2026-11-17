@@ -340,6 +340,31 @@ function topHtml(pill, i, n) { return `<div class="top"><span class="pill">${esc
 function footHtml(i, n, acct) { return `<div class="foot">${account(acct).brandHtml}<div class="dots">${Array.from({ length: n }, (_, k) => `<i${k === i ? ' class="on"' : ""}></i>`).join("")}</div></div>`; }
 function safeImg(u) { const s = String(u || ""); return /^(data:image\/(png|jpeg|webp);base64,|https:\/\/|file:\/\/)/.test(s) ? s.replace(/['"()\\\s]/g, encodeURIComponent) : ""; }
 
+// Web media (image_policy.kind: web): images.<slot>_fit says how the image sits in the zone.
+//   photo  signal: photo fills the image zone (0 to 820 px) with a fade into the card; versus: cover, subject centered
+//   object card, slab or product on a plain background: whole, centered, 60% of the slide height, on the dark pattern
+//   slab   card database scan composited into the virtual slab frame (own 4:5 image with its own background)
+//   logo   set art alone, centered on the dark pattern
+// images.<slot>_logo: set logo laid over a photo. Never stretched (contain or cover only).
+const bgBox = (img, css, size = "contain") => `<div style="position:absolute;${css};background:url('${img}') center/${size} no-repeat"></div>`;
+function webZone(images, slot, layout) {
+  const img = safeImg(images[slot]);
+  const fit = images[`${slot}_fit`];
+  if (!img || !fit) return null;
+  const logo = safeImg(images[`${slot}_logo`]);
+  const logoHtml = logo ? bgBox(logo, layout === "signal" ? "left:120px;right:120px;top:110px;height:190px;filter:drop-shadow(0 6px 18px rgba(0,0,0,.7))" : "left:24px;right:24px;top:24px;height:110px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.7))") : "";
+  if (layout === "versus") {
+    const size = fit === "photo" ? "cover" : "contain";
+    return { image: "", fallback: (fit === "photo" ? "" : slabPatternSvg()) + bgBox(img, "inset:0", size) + logoHtml };
+  }
+  if (fit === "photo") return { image: "", fallback: bgBox(img, "left:0;right:0;top:0;height:820px", "cover") + `<div style="position:absolute;left:0;right:0;top:600px;height:222px;background:linear-gradient(180deg,rgba(20,20,22,0),#141416)"></div>` + logoHtml };
+  // object/slab/logo: class fit-above, FIT_JS shrinks the box so it ends above the fitted headline (never overlaps text).
+  const above = (css, pad) => `<div class="fit-above" data-pad="${pad}" style="position:absolute;${css};background:url('${img}') center/contain no-repeat"></div>`;
+  if (fit === "object" || fit === "slab") return { image: "", fallback: slabPatternSvg() + above("left:90px;right:90px;top:170px;height:810px;filter:drop-shadow(0 18px 40px rgba(0,0,0,.6))", 36) };
+  if (fit === "logo") return { image: "", fallback: slabPatternSvg() + above("left:130px;right:130px;top:170px;height:440px;filter:drop-shadow(0 10px 30px rgba(0,0,0,.7))", 36) };
+  return null;
+}
+
 // images: { hook, left, right } as data: URIs (local files, no network during render).
 function buildSlides(card, images = {}, acct) {
   const A = account(acct);
@@ -353,7 +378,8 @@ function buildSlides(card, images = {}, acct) {
     return A.fallback === "slab" ? slabPatternSvg() : A.fallback === "chart" ? chartPatternSvg(A.chartColor || undefined) : "";
   };
   let hook;
-  if (L === "signal") hook = fill(tpl("signal"), { ...base(0), image: safeImg(images.hook), fallback: fb(images.hook, images.hook_series), headline: highlight(card.headline), hint: esc(card.hint || "swipe for the breakdown") });
+  const wz = slot => webZone(images, slot, L);
+  if (L === "signal") hook = fill(tpl("signal"), { ...base(0), ...(wz("hook") || { image: safeImg(images.hook), fallback: fb(images.hook, images.hook_series) }), headline: highlight(card.headline), hint: esc(card.hint || "swipe for the breakdown") });
   else if (L === "persona") hook = fill(tpl("persona"), { ...base(0), image: safeImg(images.hook), headline: highlight(card.headline), hint: esc(card.hint || card.context_line || "swipe for the breakdown") });
   else if (L === "number") {
     const bars = card.pop ? popBarsSvg(card.pop) : "";
@@ -362,7 +388,8 @@ function buildSlides(card, images = {}, acct) {
   } else if (L === "versus") {
     const v = card.versus || {};
     const side = s => `${esc(s?.value)}${s?.unit ? ` <span style="font:700 26px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">${esc(s.unit)}</span>` : ""}`;
-    hook = fill(tpl("versus"), { ...base(0), left_image: safeImg(images.left), right_image: safeImg(images.right), left_fallback: fb(images.left, images.left_series), right_fallback: fb(images.right, images.right_series), left_label: esc(v.left?.label), right_label: esc(v.right?.label), left_value: side(v.left), right_value: side(v.right), headline: highlight(card.headline), context_line: esc(card.context_line || card.hint || "") });
+    const wl = wz("left"), wr = wz("right");
+    hook = fill(tpl("versus"), { ...base(0), left_image: wl ? wl.image : safeImg(images.left), right_image: wr ? wr.image : safeImg(images.right), left_fallback: wl ? wl.fallback : fb(images.left, images.left_series), right_fallback: wr ? wr.fallback : fb(images.right, images.right_series), left_label: esc(v.left?.label), right_label: esc(v.right?.label), left_value: side(v.left), right_value: side(v.right), headline: highlight(card.headline), context_line: esc(card.context_line || card.hint || "") });
   } else throw new Error(`onbekende layout ${L}`);
   const p = card.payload || {};
   const items = (p.items || []).map((it, k) => `<li><b class="n">0${k + 1}</b><div><h3>${esc(stripMarks(it.title))}</h3><p>${esc(stripMarks(it.body))}</p></div></li>`).join("");
@@ -409,6 +436,12 @@ const FIT_JS = `(async () => {
     let s = 1, guard = 0;
     const over = () => src ? ol.getBoundingClientRect().bottom > src.getBoundingClientRect().top - 24 : box.scrollHeight > box.clientHeight;
     while (over() && guard++ < 20) { s -= 0.04; ol.style.zoom = s; }
+  }
+  for (const el of document.querySelectorAll('.fit-above')) {
+    const card = el.closest('.card'), h = card && card.querySelector('.headline');
+    if (!h) continue;
+    const top = el.getBoundingClientRect().top, lim = h.getBoundingClientRect().top - (+el.dataset.pad || 30);
+    if (top + el.offsetHeight > lim) el.style.height = Math.max(200, lim - top) + 'px';
   }
   window.__fit = true;
 })();`;

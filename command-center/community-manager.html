@@ -660,7 +660,9 @@ async function loadNewsCards(chId, accountId) {
         ${m.reason ? `<div style="color:var(--text-dim)">${esc(m.reason)}</div>` : ''}
         ${mtxt ? `<div style="color:var(--text-dim)">${mtxt}</div>` : ''}
         ${m.slides.length > 1 ? `<div>${m.slides.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">slide ${i + 1}</a>`).join(' · ')}</div>` : ''}
+        ${m.web_images && m.web_images.length ? `<div style="color:var(--text-dim)">Image: ${m.web_images.map(w => `${w.page ? `<a href="${esc(safeUrl(w.page))}" target="_blank" rel="noopener">${esc(w.credit || w.domain)}</a>` : esc(w.credit || w.domain)} (${esc(w.step)})`).join(', ')}${m.takedowns ? ` · ${esc(m.takedowns)} takedown(s)` : ''}</div>` : ''}
         ${needsOk ? `<button class="btn-sm" data-owner-only onclick="approveNewsCards(${jq(m.id)}, ${jq(acc)}, this)">Approve and schedule</button>` : ''}
+        ${m.web_images && m.web_images.length ? `<button class="btn-sm" data-owner-only onclick="takedownNewsCards(${jq(m.id)}, ${jq(acc)}, ${jq(m.web_images.map(w => w.domain).join(', '))}, this)">Take down image</button>` : ''}
       </div></div>`;
   }).join('');
   const tabs = accounts.map(a => `<button class="btn-sm${a.id === acc ? ' primary' : ''}" onclick="loadNewsCards(${jq(chId)}, ${jq(a.id)})">${esc(a.id)}</button>`).join('');
@@ -692,6 +694,20 @@ async function approveNewsCards(id, acc, btn) {
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     loadNewsCards(NC_CHANNEL);
   } catch (e) { alert(`Approve failed: ${e.message}`); btn.disabled = false; }
+}
+// Takedown: deletes the IG post and X posts of the set, blocks the image's source domain, re-renders with the next image.
+async function takedownNewsCards(id, acc, domains, btn) {
+  if (!confirm(`Take down the image of set ${id}?\n\nThis deletes the Instagram post and X posts of this set, blocks ${domains} for future images and re-renders the set with the next image.`)) return;
+  const reason = prompt('Reason (optional, goes into the takedown log):', '') || '';
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/news-cards/sets/${encodeURIComponent(id)}/takedown?account=${encodeURIComponent(acc)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account: acc, reason }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    const a = d.action || {};
+    alert(`Taken down. Blocked: ${(a.blocklisted || []).join(', ') || 'already blocked'}. ${a.rerender && a.rerender.ok ? 'Re-rendered with a new image.' : 'No other image found.'}`);
+    loadNewsCards(NC_CHANNEL);
+  } catch (e) { alert(`Takedown failed: ${e.message}`); btn.disabled = false; }
 }
 function renderPairs(c) {
   const id = esc(c.id);
