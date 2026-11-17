@@ -451,6 +451,19 @@ async function renderSet(card, { setId, outDir, images = {}, account: acct }) {
   return out;
 }
 
+// One finished page (own HTML, e.g. the vault templates) → 1080×1350 PNG. Same fonts, base.css, theme and fit as the card sets.
+async function renderHtml(slideHtml, file, acct) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const page = await (await browser()).newPage({ viewport: SIZE, deviceScaleFactor: 1 });
+  try {
+    await page.route("**/*", r => (/^(data|about):/.test(r.request().url()) ? r.continue() : r.abort()));
+    await page.setContent(pageHtml(slideHtml, acct), { waitUntil: "load" });
+    await page.waitForFunction(() => window.__fit === true, null, { timeout: 15000 });
+    await page.screenshot({ path: file, type: "png", fullPage: false });
+    return file;
+  } finally { await page.close(); }
+}
+
 function dataUri(file) {
   if (!file || !fs.existsSync(file)) return "";
   const buf = fs.readFileSync(file);
@@ -464,5 +477,5 @@ module.exports = {
   esc, stripMarks, highlight, numbersIn, numberVariants,
   scoreItem, dedupKey, isDuplicate, compatibleLayouts, layoutDeficits, planDay,
   systemPrompt, userPrompt, parseJson, validateCard, generateCard,
-  chartSvg, popBarsSvg, slabPatternSvg, buildSlides, pageHtml, fontStatus, renderSet, closeBrowser, dataUri, imagePrompt,
+  chartSvg, popBarsSvg, slabPatternSvg, buildSlides, pageHtml, fontStatus, renderSet, renderHtml, closeBrowser, dataUri, safeImg, fill, tpl, TPL_DIR, imagePrompt,
 };

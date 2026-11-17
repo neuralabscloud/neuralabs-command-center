@@ -9009,7 +9009,49 @@ app.post("/community/channels/:id/replies/run", async (req, res) => {
 // Posts items for sale from a feed on set weekdays, and SOLD posts for items
 // that left the feed (config on channel.listings).
 const listingsMod = require("./listings-autopilot");
+// Vault posts (Slabhaus "for sale" / "sold" in the news-card style): Instagram direct, X hook + reply, cap + queue.
+const vaultMod = require("./vault-posts");
+const vaultGalleryDir = path.join(__dirname, "data", "brand-assets", "SLABHAUS", "slabs");
+const vaultPosts = vaultMod.createVault({
+  dataDir: path.join(__dirname, "data"),
+  mediaDir: MEDIA_DIR,
+  tz: TIMEZONE,
+  anthropic,
+  galleryDir: vaultGalleryDir,
+  galleryPhotos: () => require("./news-cards-pipeline").galleryPhotos(vaultGalleryDir),
+  xOk: (channel) => !!channelXCreds(channel.id),
+  igImage: async (channel, png, caption, id) => {
+    const A = require("./news-cards").account(vaultMod.vaultConfig(channel).account);
+    const { conn } = newsCardsIgConn(channel, { profile: A.profile });
+    if (!png.startsWith(path.join(MEDIA_DIR, "vault-posts") + path.sep) || !fs.existsSync(png)) throw new Error("vault card missing");
+    const origin = knownPublicOrigin();
+    if (!/^https:\/\//.test(origin)) throw new Error("no public https origin (PUBLIC_BASE_URL)");
+    fs.mkdirSync(IG_MEDIA_DIR, { recursive: true });
+    const file = `vault_${String(id).replace(/[^\w-]/g, "")}.jpg`;
+    const out = path.join(IG_MEDIA_DIR, file);
+    if (!fs.existsSync(out)) await new Promise((ok, no) => execFile("convert", [png + "[0]", "-background", "black", "-flatten", "-strip", "-quality", "92", out], { timeout: 60000 }, e => e ? no(e) : ok()));
+    return igPublish.publishImage({ igUserId: conn.ig_user_id, token: conn.page_access_token, imageUrl: `${origin}/share/image/${shareImageSig(file)}/${file}`, caption });
+  },
+  // Comment on our own Instagram post (token in the POST body, not in the URL).
+  igComment: async (channel, mediaId, message) => {
+    const A = require("./news-cards").account(vaultMod.vaultConfig(channel).account);
+    const { conn } = newsCardsIgConn(channel, { profile: A.profile });
+    const r = await fetch(`${igPublish.GRAPH}/${encodeURIComponent(mediaId)}/comments`, { method: "POST", body: new URLSearchParams({ message, access_token: conn.page_access_token }), signal: AbortSignal.timeout(30000) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) throw new Error(`Instagram comment: ${d.error?.message || "HTTP " + r.status}`);
+    return d;
+  },
+  addXTask: (fields) => {
+    const now = new Date().toISOString();
+    const task = { id: genId(), created_at: now, updated_at: now, trigger_word: "", published_at: null, message_id: null, attempts: 0, error: null, autopilot: true, ...fields };
+    writeTaskFile(COMMUNITY_TASKS_FILE, [...readTaskFile(COMMUNITY_TASKS_FILE), task]);
+    return task;
+  },
+  notify: (title, body, level) => sendTelegram(`🏦 ${escapeHtmlTg(title)}`, escapeHtmlTg(body || ""), level || "info"),
+});
+setInterval(() => vaultPosts.tick(readChannels().filter(c => c.platform === "twitter" && c.listings), Date.now(), c => listingsMod.config(c).window_start).catch(e => console.error("[VAULT]", e.message)), 60_000);
 const listingsBot = listingsMod.createListings({
+  vault: vaultPosts,
   dataDir: path.join(__dirname, "data"),
   mediaDir: MEDIA_DIR,
   tz: TIMEZONE,
@@ -9055,6 +9097,18 @@ app.post("/community/channels/:id/listings/refresh", async (req, res) => {
   if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
   try { res.json(await listingsBot.refresh(channel)); }
   catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get("/community/channels/:id/vault-posts", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  res.json(vaultPosts.status(channel));
+});
+app.post("/community/channels/:id/vault-posts/:postId/approve", (req, res) => {
+  const channel = getChannel(req.params.id);
+  if (!channel || channel.platform !== "twitter") return res.status(404).json({ error: "X channel not found" });
+  const p = vaultPosts.approve(String(req.params.postId).slice(0, 40));
+  if (!p || p.channel_id !== channel.id) return res.status(404).json({ error: "draft not found" });
+  res.json({ ok: true, id: p.id, status: p.status });
 });
 app.post("/community/channels/:id/listings/run", (req, res) => {
   const channel = getChannel(req.params.id);
@@ -9188,6 +9242,22 @@ app.get("/agents/autonomous", (_req, res) => {
         last_run: last ? { at: last.at, status: last.action === "error" ? "failed" : last.action, error: last.error || null } : null,
         running: !!st.running, manage_url: "/community-manager.html",
       });
+      const vcfg = vaultMod.vaultConfig(c);
+      if (vcfg.enabled) {
+        const vs = vaultPosts.status(c);
+        const vlast = vs.recent[0];
+        jobs.push({
+          id: "vault_posts:" + c.id, kind: "vault_posts", agent: "community_manager",
+          name: `Vault posts · ${c.name}`,
+          enabled: cfg.enabled && vcfg.enabled, toggle: { channel_id: c.id, field: "listings" },
+          when: `on new listing slot and on sale · max ${vcfg.daily_cap}/day · sold within ${vcfg.sold_delay_min} min`,
+          details: `${vs.today}/${vcfg.daily_cap} today · ${vs.queued.length} waiting · Instagram ${vcfg.instagram ? "on" : "off"} · X ${vcfg.x ? "on" : "off"}`,
+          today: null,
+          next_run: vs.queued.length ? vs.queued[0].due_at : null,
+          last_run: vlast ? { at: vlast.released_at, status: vlast.status, error: (vlast.ig && vlast.ig.error) || null } : null,
+          running: false, manage_url: "/community-manager.html",
+        });
+      }
     }
     if (c.platform === "telegram" && c.autopilot) {
       const st = tgAutopilot.status(c);

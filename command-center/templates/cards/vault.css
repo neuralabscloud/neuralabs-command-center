@@ -1,0 +1,29 @@
+/* Vault posts (vault_listing / vault_sold): shared skeleton on top of base.css + the account theme. */
+.vault{position:relative;width:1080px;height:1350px;overflow:hidden;background:var(--ground);}
+.vault .zone{position:absolute;left:0;top:0;width:1080px;height:900px;overflow:hidden;}
+.vault .zone .slabpat{position:absolute;inset:0;}
+.vault .zone .fade{position:absolute;left:0;right:0;top:560px;height:340px;background:linear-gradient(to bottom,rgba(12,12,14,0) 0%,var(--ground) 100%);}
+.vault .vglow{position:absolute;left:540px;top:470px;width:900px;height:900px;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(closest-side,rgba(232,180,58,.22) 0%,rgba(232,180,58,.09) 45%,rgba(232,180,58,0) 100%);}
+.vault .slabbox{position:absolute;left:330px;top:150px;width:420px;height:640px;display:flex;align-items:center;justify-content:center;z-index:2;}
+.vault .slabbox img{display:block;max-width:420px;max-height:640px;width:auto;height:auto;border-radius:22px;border:3px solid #3a3a40;box-sizing:border-box;
+  box-shadow:0 30px 60px rgba(0,0,0,.55),0 8px 18px rgba(0,0,0,.4);background:#111;}
+.vault.sold .slabbox img{filter:saturate(.55) brightness(.85);}
+.vault .stamp{position:absolute;left:540px;top:470px;transform:translate(-50%,-50%) rotate(-12deg);z-index:3;
+  font:400 96px/1 "Akira Expanded",var(--display);color:var(--accent);border:6px solid var(--accent);border-radius:16px;
+  padding:22px 40px 18px;background:rgba(12,12,14,.55);letter-spacing:.02em;}
+.vault .vtop{position:absolute;top:64px;left:var(--pad);right:var(--pad);display:flex;align-items:center;justify-content:space-between;z-index:4;}
+.vault .vtop .pill{text-transform:none;letter-spacing:.06em;font-size:26px;}
+.vault.sold .vtop .pill{background:var(--cream);border-color:var(--cream);color:var(--pill-text);}
+.vault .text{position:absolute;left:var(--pad);right:var(--pad);top:900px;z-index:4;}
+.vault .line1{font:600 22px/1.2 var(--body);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vault .vhead{font-family:"Akira Expanded",var(--display);font-weight:400;font-size:60px;line-height:1.05;color:var(--text);margin-top:16px;max-height:130px;overflow:hidden;}
+.vault .chips{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;}
+.vault .chip{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font:600 22px/1 var(--body);color:var(--muted2);white-space:nowrap;}
+.vault .chip b{color:var(--accent);font-weight:700;}
+.vault .vfoot{position:absolute;left:var(--pad);right:var(--pad);bottom:72px;display:flex;align-items:flex-end;justify-content:space-between;z-index:4;}
+.vault .vfoot .k{font:500 18px/1 var(--body);color:var(--dim);letter-spacing:.06em;}
+.vault .vfoot .price{font:400 64px/1 "Akira Expanded",var(--display);color:var(--accent);margin-top:12px;white-space:nowrap;}
+.vault .vfoot .soldword{font:400 44px/1 "Akira Expanded",var(--display);color:var(--accent);margin-top:12px;}
+.vault .vfoot .r{text-align:right;}
+.vault .vfoot .r .v{font:600 24px/1.2 var(--body);color:var(--cream);margin-top:12px;}

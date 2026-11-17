@@ -86,6 +86,13 @@ function sanitize(input) {
     window_start: c.window_start, window_end: c.window_end, mode: c.mode,
     sold_posts: c.sold_posts, sold_per_day: c.sold_per_day, link: c.link, video: c.video,
     check_every_min: c.check_every_min, language: String(i.language || "").slice(0, 40),
+    ...(i.vault && typeof i.vault === "object" ? { vault: {
+      enabled: !!i.vault.enabled, account: String(i.vault.account || "slabhaus").replace(/[^\w-]/g, "").slice(0, 40),
+      daily_cap: Math.min(10, Math.max(1, Number(i.vault.daily_cap) || 2)),
+      sold_delay_min: Math.min(1440, Math.max(0, Number.isFinite(+i.vault.sold_delay_min) ? +i.vault.sold_delay_min : 120)),
+      sold_comment: String(i.vault.sold_comment || "sold, thank you").slice(0, 120),
+      x: i.vault.x !== false, instagram: i.vault.instagram !== false,
+    } } : {}),
   };
 }
 
@@ -127,6 +134,18 @@ function resolveUrl(u, base) {
   try { const r = new URL(String(u), base); return /^https?:$/.test(r.protocol) ? r.href : null; } catch { return null; }
 }
 
+// Structured slab fields (vault posts): short strings and numbers only.
+function feedDetails(d) {
+  if (!d || typeof d !== "object") return null;
+  const str = (v, n = 80) => (typeof v === "string" || typeof v === "number") && String(v).trim() ? String(v).replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, n) : null;
+  const num = v => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : null;
+  return {
+    card: str(d.card), set: str(d.set), year: num(d.year), number: str(d.number, 20), variant: str(d.variant),
+    language: str(d.language, 20), grader: str(d.grader, 12), grade: str(d.grade, 6), cert: str(d.cert, 20),
+    pop: num(d.pop), pop_higher: num(d.pop_higher), listed_at: str(d.listed_at, 40),
+  };
+}
+
 function normaliseFeed(json, feedUrl) {
   const items = Array.isArray(json && json.items) ? json.items : [];
   return {
@@ -139,6 +158,7 @@ function normaliseFeed(json, feedUrl) {
       marketplace_url: resolveUrl(i.marketplace_url, feedUrl), page_url: resolveUrl(i.page_url, feedUrl),
       price: i.price && typeof i.price === "object" ? { amount: Number(i.price.amount) || 0, currency: String(i.price.currency || "USD"), usd: Number(i.price.usd) || 0 } : null,
       image: resolveUrl(i.image, feedUrl), video: /\.mp4(\?|$)/i.test(String(i.video || "")) ? resolveUrl(i.video, feedUrl) : null,
+      details: feedDetails(i.details),
     })),
   };
 }
@@ -419,6 +439,25 @@ ${recent.length ? `\nRecent posts of this kind (use different wording and a diff
     return (st.recent || []).filter(r => r.kind === kind).slice(0, 4).map(r => r.text);
   }
 
+  function vaultOn(channel) { return !!(deps.vault && channel.listings && channel.listings.vault && channel.listings.vault.enabled); }
+  // Shared bookkeeping after a listing/sold post was made (classic task or vault post).
+  function afterPost(channel, kind, item, info) {
+    mutate(channel.id, st => {
+      st.recent = [{ kind, text: info.text, at: new Date().toISOString() }, ...(st.recent || [])].slice(0, 12);
+      if (kind === "listing") {
+        st.posted_counts = { ...(st.posted_counts || {}), [item.id]: ((st.posted_counts || {})[item.id] || 0) + 1 };
+        st.last_listing_id = item.id;
+        if (st.slot && info.trigger === "schedule") st.slot.status = "done";
+      } else {
+        st.sold_queue = (st.sold_queue || []).filter(i => i.id !== item.id);
+        st.sold = (st.sold || []).map(s => s.id === item.id ? { ...s, posted: true, task_id: info.id } : s);
+        const day = localDay(new Date(), tz);
+        st.sold_today = st.sold_today && st.sold_today.day === day ? { day, n: st.sold_today.n + 1 } : { day, n: 1 };
+      }
+      addLog(st, { action: kind, item: displayName(item), task_id: info.id, media: info.method, mode: info.mode, trigger: info.trigger });
+    });
+  }
+
   async function produce(channel, { kind, mode, item_id, trigger = "schedule" }) {
     if (busy) throw new Error(`Listings autopilot is busy (${busy.step})`);
     busy = { channel_id: channel.id, kind, step: "reading feed", started_at: new Date().toISOString() };
@@ -436,6 +475,13 @@ ${recent.length ? `\nRecent posts of this kind (use different wording and a diff
         const st = loadState()[channel.id] || {};
         item = item_id ? feed.items.find(i => i.id === item_id && sellable(i)) : pickListing(feed.items, st.posted_counts || {}, st.last_listing_id);
         if (!item) throw new Error(item_id ? "item not in the feed (or no price)" : "no item with a price in the feed");
+      }
+      if (vaultOn(channel)) {
+        // Vault posts: card in the news-card system, own copy checks, IG direct + X pair, cap + queue in vault-posts.js.
+        busy.step = "vault post";
+        const e = await deps.vault.enqueue(channel, { kind, item, mode, trigger });
+        afterPost(channel, kind, item, { id: e.id, text: e.copy.ig_caption, method: `vault:${e.cutout}`, mode, trigger });
+        return { vault: e };
       }
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       busy.step = item.video && cfg.video ? "rendering video" : "rendering card";
@@ -466,20 +512,7 @@ ${recent.length ? `\nRecent posts of this kind (use different wording and a diff
         reason: kind === "sold" ? `${displayName(item)} left the listings: sold post` : `Listing post for ${displayName(item)} (${priceText(item)})`,
       };
       addTask(task);
-      mutate(channel.id, st => {
-        st.recent = [{ kind, text, at: nowIso }, ...(st.recent || [])].slice(0, 12);
-        if (kind === "listing") {
-          st.posted_counts = { ...(st.posted_counts || {}), [item.id]: ((st.posted_counts || {})[item.id] || 0) + 1 };
-          st.last_listing_id = item.id;
-          if (st.slot && trigger === "schedule") st.slot.status = "done";
-        } else {
-          st.sold_queue = (st.sold_queue || []).filter(i => i.id !== item.id);
-          st.sold = (st.sold || []).map(s => s.id === item.id ? { ...s, posted: true, task_id: id } : s);
-          const day = localDay(new Date(), tz);
-          st.sold_today = st.sold_today && st.sold_today.day === day ? { day, n: st.sold_today.n + 1 } : { day, n: 1 };
-        }
-        addLog(st, { action: kind, item: displayName(item), task_id: id, media: media.method, mode, trigger });
-      });
+      afterPost(channel, kind, item, { id, text, method: media.method, mode, trigger });
       log(`${channel.name}: queued ${kind} ${id} (${displayName(item)}, ${media.method}, ${mode})`);
       return { task };
     } catch (e) {
@@ -515,7 +548,8 @@ ${recent.length ? `\nRecent posts of this kind (use different wording and a diff
     });
     if (busy) return;
     const soldToday = st.sold_today && st.sold_today.day === day ? st.sold_today.n : 0;
-    if (cfg.sold_posts && (st.sold_queue || []).length && soldToday < cfg.sold_per_day && inWindow(cfg, now, tz)) {
+    const soldGate = vaultOn(channel) ? true : soldToday < cfg.sold_per_day && inWindow(cfg, now, tz);
+    if (cfg.sold_posts && (st.sold_queue || []).length && soldGate) {
       await produce(channel, { kind: "sold", mode: cfg.mode }).catch(() => {});
       return;
     }
