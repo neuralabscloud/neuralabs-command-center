@@ -137,6 +137,8 @@ function createReplies(deps) {
     const cutoff = Date.now() - OUR_POSTS_DAYS * 864e5;
     for (const t of readTasks()) {
       if (t.channel_id !== channel.id || t.status !== "published" || !t.message_id) continue;
+      // Campaign pairs (NeuraShield) get no automatic replies: a human sends answers from the approval queue.
+      if (t.no_auto_replies || (t.pair && t.pair.campaign)) continue;
       if (Date.parse(t.published_at || t.created_at || 0) < cutoff) continue;
       map.set(String(t.message_id), { kind: "post", text: t.text || "", source: t.source && t.source.text || "", root: String(t.message_id) });
     }

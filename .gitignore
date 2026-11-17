@@ -92,6 +92,8 @@ command-center/data/rips-tasks.json
 
 # gh0stlayer news cards: manifests, state, dry-run renders (runtime)
 command-center/data/news-cards/
+# NeuraShield X runtime state (drafts, tickets, dry runs)
+command-center/data/neurashield/
 command-center/data/vault-posts/
 # Slabhaus web images: image_log, blocklist, takedown_log (runtime)
 command-center/data/slabhaus/

@@ -8509,6 +8509,11 @@ async function publishTwitterPost(task, channel) {
 
   const body = { text };
   if (mediaIds.length) body.media = { media_ids: mediaIds };
+  // Poll hook (NeuraShield weekly poll): X does not allow media and a poll on the same post.
+  if (task.pair && task.pair.poll && Array.isArray(task.pair.poll.options) && task.pair.poll.options.length >= 2) {
+    delete body.media;
+    body.poll = { options: task.pair.poll.options.slice(0, 4).map(o => String(o).slice(0, 25)), duration_minutes: task.pair.poll.duration_minutes || 1440 };
+  }
 
   // Hook + reply pair: hook first, then each reply chained to the previous one.
   if (task.pair && Array.isArray(task.pair.replies) && task.pair.replies.length) {
@@ -8837,7 +8842,42 @@ setTimeout(() => {
 // ── X HOOK + REPLY PAIRS ──────────────────────
 // Some autopilot slots become a hook post + reply payload (profiles in data/x-pair-profiles.json).
 const xPairs = require("./x-pairs");
+// NeuraShield on X (task neurashield-x): a campaign on the pair engine, config in config/neurashield/.
+const neuraShieldX = require("./neurashield-x");
+const tgEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const nsNotify = (title, message, severity = "info") => {
+  try {
+    const all = readTaskFile("notifications.json");
+    all.unshift({ id: genId(), type: "neurashield", agent: "community_manager", title, message, severity, read: false, created_at: new Date().toISOString() });
+    writeTaskFile("notifications.json", all.slice(0, 100));
+  } catch (e) { console.error("[NEURASHIELD] notify:", e.message); }
+};
+const updateCommunityTask = (id, fn) => {
+  const all = readTaskFile(COMMUNITY_TASKS_FILE);
+  const t = all.find(x => x.id === id);
+  if (!t) return;
+  fn(t);
+  t.updated_at = new Date().toISOString();
+  writeTaskFile(COMMUNITY_TASKS_FILE, all);
+};
+const neuraShield = neuraShieldX.createNeuraShield({
+  root: __dirname,
+  dataDir: path.join(__dirname, "data"),
+  readChannels: () => readChannels(),
+  readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
+  updateTask: updateCommunityTask,
+  twitterApi,
+  twitterCredsFor: (channel) => twitterCreds(channel),
+  sendTelegram: (title, message, severity) => sendTelegram(tgEsc(title), tgEsc(message), severity),
+  notify: nsNotify,
+  bumpUsage: () => { try { bumpTwitterUsage(); } catch {} },
+  anthropic,
+  model: process.env.X_PAIRS_MODEL || process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5",
+  log: (m) => console.log(`[NEURASHIELD] ${m}`),
+});
 const xPairsBot = xPairs.createPairs({
+  campaigns: { [neuraShieldX.CAMPAIGN]: neuraShield.campaign },
+  extraProfiles: () => neuraShield.extraProfiles(),
   dataDir: path.join(__dirname, "data"),
   mediaDir: MEDIA_DIR,
   readTasks: () => readTaskFile(COMMUNITY_TASKS_FILE),
@@ -8858,7 +8898,19 @@ const xPairsBot = xPairs.createPairs({
   apiBase: process.env.X_PAIRS_DATA_API || undefined,
   log: (m) => console.log(`[PAIRS] ${m}`),
 });
-setInterval(() => xPairsBot.tick(readChannels().filter(c => c.platform === "twitter" && c.enabled !== false)).catch(e => console.error("[PAIRS]", e.message)), 60_000);
+neuraShield.attach(xPairsBot);
+setInterval(() => {
+  const chans = readChannels().filter(c => c.platform === "twitter" && c.enabled !== false);
+  const ns = neuraShield.channel();
+  if (ns && ns.enabled !== false) chans.push(ns); // campaign pseudo-channel: metrics + weekly reweight under its own key
+  xPairsBot.tick(chans).catch(e => console.error("[PAIRS]", e.message));
+}, 60_000);
+// NeuraShield watchers: news override (every 30 min, 08-21 Madrid), replies (every 2 h for 12 h), poll results.
+setInterval(() => {
+  neuraShield.tickNews().then(r => { if (r && (r.task_id || r.error)) console.log("[NEURASHIELD] news", JSON.stringify(r)); }).catch(e => console.error("[NEURASHIELD] news", e.message));
+  neuraShield.tickReplies().catch(e => console.error("[NEURASHIELD] replies", e.message));
+  neuraShield.tickPolls().catch(e => console.error("[NEURASHIELD] polls", e.message));
+}, 5 * 60_000);
 
 // ── SOCIAL MEDIA AUTOPILOT (X) ────────────────
 // Finds well-performing posts per topic, writes an original post, redraws the
@@ -9140,6 +9192,40 @@ app.post("/community/channels/:id/pairs/dry-run", async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// NeuraShield (task neurashield-x): status for the panel, run now, dry run (nothing posted), approval queue, tickets.
+app.get("/neurashield/status", (_req, res) => {
+  try { res.json(neuraShield.status()); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/neurashield/run", async (req, res) => {
+  const b = req.body || {};
+  try { res.json(await neuraShield.runDaily({ mode: b.mode === "review" ? "review" : undefined, force: b.force === true })); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/neurashield/dry-run", async (req, res) => {
+  const n = Math.max(1, Math.min(7, Number((req.body || {}).n) || 7));
+  try { res.json(await neuraShield.dryRun({ n })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/neurashield/facts", async (req, res) => {
+  try { res.json(await neuraShield.updateFacts({ dryRun: (req.body || {}).dry_run !== false })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/neurashield/report", async (req, res) => {
+  try { res.json(await neuraShield.report({ send: (req.body || {}).send === true })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/neurashield/drafts/:id/send", async (req, res) => {
+  const text = (req.body || {}).text;
+  try { res.json(await neuraShield.sendDraft(String(req.params.id), typeof text === "string" ? text : undefined)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/neurashield/drafts/:id/skip", (req, res) => {
+  try { res.json(neuraShield.setDraft(String(req.params.id), "skipped")); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post("/neurashield/tickets/:id/close", (req, res) => {
+  try { res.json(neuraShield.setTicket(String(req.params.id), "closed")); } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
 const autopilotFor = (channel) => (channel.platform === "telegram" ? tgAutopilot : channel.platform === "twitter" ? autopilot : null);
 
 // Every autonomous job that is not a row in scheduled-tasks.json, so the
@@ -9179,6 +9265,31 @@ app.get("/agents/autonomous", (_req, res) => {
         today: null,
         last_run: last ? { at: last.posted_at || last.created_at, status: last.status, error: last.error || null } : null,
         running: false, manage_url: "/community-manager.html",
+      });
+    }
+    if (c.platform === "twitter" && c.id === neuraShield.config().channel_id) {
+      const ncfg = neuraShield.config();
+      const nst = neuraShield.status();
+      const lastNs = nst.pairs[0];
+      jobs.push({
+        id: "neurashield_news:" + c.id, kind: "neurashield_news", agent: "community_manager",
+        name: `NeuraShield nieuwsreactie · ${c.name}`,
+        enabled: !!(ncfg.news && ncfg.news.enabled), toggle: null,
+        when: `elke ${(ncfg.news || {}).check_every_min || 30} min · ${((ncfg.news || {}).hours || [8, 21]).join("-")}u ${ncfg.window.tz}`,
+        details: `Zelfde-dag pair bij een echt crypto security incident · max ${(ncfg.news || {}).max_per_week || 2}/week · ${nst.publishing_enabled ? "publiceert" : "alleen concepten (publiceren uit)"}`,
+        today: null,
+        last_run: nst.news_checked_at ? { at: nst.news_checked_at, status: "checked", error: null } : null,
+        running: false, manage_url: "/community-manager.html#neurashield",
+      });
+      jobs.push({
+        id: "neurashield_replies:" + c.id, kind: "neurashield_replies", agent: "community_manager",
+        name: `NeuraShield antwoorden · ${c.name}`,
+        enabled: true, toggle: null,
+        when: `elke ${(ncfg.replies || {}).every_h || 2} uur, 12 uur na elke post`,
+        details: `Productvragen naar goedkeuring (${nst.drafts.length} wachtend) · bugs en false positives als ticket (${nst.tickets.length} open)`,
+        today: null,
+        last_run: lastNs ? { at: lastNs.posted_at || lastNs.created_at, status: lastNs.status, error: lastNs.error || null } : null,
+        running: false, manage_url: "/community-manager.html#neurashield",
       });
     }
     if (c.platform === "twitter" && c.replies) {
@@ -9711,6 +9822,15 @@ async function executeSchedule(schedule) {
       await executeEduDesignerSchedule(schedule);
     } else if (schedule.agent === "character_video_batch") {
       await executeCharacterBatchSchedule(schedule);
+    } else if (schedule.agent === "neurashield_x") {
+      const r = await neuraShield.runDaily({});
+      console.log("[NEURASHIELD] daily", JSON.stringify(r));
+    } else if (schedule.agent === "neurashield_report") {
+      await neuraShield.report({ send: true });
+    } else if (schedule.agent === "neurashield_facts") {
+      const r = await neuraShield.updateFacts({});
+      console.log("[NEURASHIELD] facts", JSON.stringify(r));
+      if (r.added.length) nsNotify("NeuraShield facts bijgewerkt", r.added.join("\n"), "info");
     } else if (schedule.agent === "news_cards") {
       const pl = newsCards.forAccount((schedule.payload && schedule.payload.account) || "gh0stlayer");
       if (pl.config().enabled === false) console.log(`[NEWS-CARDS] ${pl.id} disabled in ${pl.DIR}/config.json`);

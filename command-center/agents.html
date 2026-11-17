@@ -573,7 +573,7 @@ async function cancelTask(api, taskId, btn) {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU', character_video_batch: 'DESIGNER → CONTENT CREATOR · VIDEO BATCH', news_cards: 'SOCIAL MEDIA MANAGER · NEWS CARDS' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU', character_video_batch: 'DESIGNER → CONTENT CREATOR · VIDEO BATCH', news_cards: 'SOCIAL MEDIA MANAGER · NEWS CARDS', neurashield_x: 'SOCIAL MEDIA MANAGER · NEURASHIELD X', neurashield_report: 'SOCIAL MEDIA MANAGER · NEURASHIELD REPORT', neurashield_facts: 'SOCIAL MEDIA MANAGER · NEURASHIELD FACTS' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -586,8 +586,14 @@ const AGENT_STYLES = {
   edu_designer: 'color:hsl(38 92% 55%)',
   character_video_batch: 'color:hsl(264 65% 65%)',
   news_cards: 'color:hsl(264 65% 65%)',
+  neurashield_x: 'color:hsl(190 80% 50%)',
+  neurashield_report: 'color:hsl(190 80% 50%)',
+  neurashield_facts: 'color:hsl(190 80% 50%)',
 };
 const AGENT_DESCRIPTIONS = {
+  neurashield_x: 'Daily NeuraShield hook + reply pair on X (gh0stlayer). The run plans one pair from the weekly pillar mix, checks it against config/neurashield/facts.md and schedules it at a random moment between 14:00 and 18:00 Europe/Madrid. News reactions, reply triage and poll results run on their own. Panel on the Social Media Manager page.',
+  neurashield_report: 'Weekly NeuraShield report: top and worst 3 pairs, pillar performance, pending reply drafts, open tickets and the threat list version. Sent to Telegram and the notifications.',
+  neurashield_facts: 'Weekly facts updater: appends dated lines to config/neurashield/facts.md from the README changelog and the threat list version bump only.',
   designer: 'Creates visual content (Instagram posts, carousels, thumbnails) using AI image generation or HTML rendering.',
   marketeer: 'Your marketing strategist — executes any marketing task: content plans, copywriting, SEO audits, ad strategy, etc.',
   assistant: 'Personal assistant with calendar access — can give daily overviews, plan meetings, or answer operational questions.',
@@ -640,6 +646,12 @@ function buildScheduleSummary(s) {
         ? ` · posts directly at ${escHtml(p.publish.time || '18:00')}${p.publish.instagram === false ? '' : ' + Instagram Reel'}` : '';
       return `${escHtml((p.character && p.character.name) || 'character')} · ${n} outfit${n === 1 ? '' : 's'} · Seedance 2.5 ${escHtml(p.resolution || '720p')} · stills in the <a href="designer.html" style="color:inherit">Designer</a>, videos in <a href="content-creator.html" style="color:inherit">Content Creator</a> · ${escHtml(days)}${pub}${bf}`;
     }
+    case 'neurashield_x':
+      return `One NeuraShield pair, random slot 14:00 to 18:00 Europe/Madrid · panel on the <a href="community-manager.html#neurashield" style="color:inherit">Social Media Manager</a> page`;
+    case 'neurashield_report':
+      return `Weekly NeuraShield report to Telegram and notifications`;
+    case 'neurashield_facts':
+      return `Appends dated facts from the changelog and threat list version`;
     case 'news_cards': {
       const acc = p.account || 'gh0stlayer';
       const what = acc === 'slabhaus' ? 'Pokémon TCG news and NeuraCollectibles pop data' : 'fresh crypto news';

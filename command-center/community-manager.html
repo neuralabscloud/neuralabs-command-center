@@ -370,7 +370,7 @@ function renderChannelCard(c) {
           <input class="edit-input" type="number" id="ch-window-${esc(c.id)}" value="${esc(c.schedule_window_days || 7)}" min="1" max="90">
         </div>
       </div>
-      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderIgReplies(c) + renderReplies(c) + renderEngage(c) + renderListings(c) + renderPairs(c) + renderNewsCards(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
+      ${isTwitter ? renderXKeys(c) + renderAutopilot(c) + renderInstagram(c) + renderIgReplies(c) + renderReplies(c) + renderEngage(c) + renderListings(c) + renderPairs(c) + renderNeuraShield(c) + renderNewsCards(c) : ''}${c.platform === 'telegram' ? renderTgAutopilot(c) : ''}
       <div class="post-actions">
         <button class="btn-sm primary" onclick="saveChannel(${jq(c.id)})">Save</button>
       </div>
@@ -708,6 +708,107 @@ async function takedownNewsCards(id, acc, domains, btn) {
     alert(`Taken down. Blocked: ${(a.blocklisted || []).join(', ') || 'already blocked'}. ${a.rerender && a.rerender.ok ? 'Re-rendered with a new image.' : 'No other image found.'}`);
     loadNewsCards(NC_CHANNEL);
   } catch (e) { alert(`Takedown failed: ${e.message}`); btn.disabled = false; }
+}
+// NeuraShield (task neurashield-x): own pair campaign on this account. Shown only on the channel it posts from.
+function renderNeuraShield(c) {
+  setTimeout(() => loadNeuraShield(c.id), 0);
+  return `<div id="ns-wrap-${esc(c.id)}"></div>`;
+}
+async function loadNeuraShield(chId) {
+  const wrap = document.getElementById(`ns-wrap-${chId}`);
+  if (!wrap) return;
+  let s;
+  try { s = await fetchJson('/neurashield/status'); } catch { return; }
+  if (!s || s.channel_id !== chId) { wrap.innerHTML = ''; return; }
+  const mix = Object.keys(s.mix || {}).map(k => `${esc(k.replace(/_/g, ' '))} ${esc((s.week.pillars || {})[k] || 0)}/${esc(s.mix[k])}`).join(' · ');
+  const head = [
+    `Publiceren: ${s.publishing_enabled ? '<b style="color:var(--success)">aan</b>' : '<b style="color:var(--warning)">uit</b> (alleen concepten)'} · ${s.credentials ? 'X keys ok' : '<span style="color:var(--error)">geen X keys</span>'} · ${s.premium ? 'Premium' : 'geen Premium'} · venster ${esc(s.window.start)} tot ${esc(s.window.end)} ${esc(s.window.tz)}`,
+    `Week vanaf ${esc(s.week.week)}: ${mix} · poll ${esc(s.week.polls)}/1`,
+    `Gisteren: pillar ${esc((s.yesterday.pillars || []).join(', ') || 'geen')}, formule ${esc((s.yesterday.formulas || []).join(', ') || 'geen')} (vandaag niet)`,
+    `Threat list: ${s.threat ? `versie ${esc(s.threat.version)}, gepubliceerd ${esc(s.threat.published)}` : 'nog niet gelezen'} · facts: ${esc(s.facts_lines)} regels · testimonials: ${esc(s.testimonials)} · galerij: ${esc(s.gallery)} beelden`,
+  ];
+  if (s.reweighted_at) head.push(`Gewichten bijgewerkt ${esc(fmt(s.reweighted_at))}`);
+  if ((s.dropped || []).length) head.push(`<span style="color:var(--warning)">Afgekeurd door de validator:</span> ${s.dropped.slice(0, 3).map(d => esc((d.at ? fmt(d.at) + ' · ' : '') + (d.reason || ''))).join(' | ')}`);
+  const pct = v => v != null ? Math.round(v * 100) + '%' : '?';
+  const pollHtml = p => {
+    if (!p.poll) return '';
+    const r = p.poll.results;
+    if (!r) return `<div style="margin-top:4px">📊 Poll: ${(p.poll.options || []).map(esc).join(' / ')} (nog open of geen resultaat)</div>`;
+    return `<div style="margin-top:4px">📊 Poll (${esc(r.total)} stemmen): ${r.options.map(o => `${esc(o.label)} ${esc(o.pct)}%`).join(' · ')}</div>`;
+  };
+  const rows = (s.pairs || []).map(p => {
+    const link = p.hook_id ? ` · <a href="https://x.com/i/status/${encodeURIComponent(p.hook_id)}" target="_blank" rel="noopener">open</a>` : '';
+    const m = p.hook_impressions != null ? ` · ${esc(p.metrics_at)}: hook ${esc(p.hook_impressions)} / reply ${esc(p.reply_impressions)} views (diepte ${esc(pct(p.ratio))})` : '';
+    const lc = p.link_clicks != null ? ` · ${esc(p.link_clicks)} linkklikken` : '';
+    const sc = p.score && p.score.score != null ? ` · score ${esc(p.score.score)}` : '';
+    const when = p.posted_at ? fmt(p.posted_at) : (p.scheduled_local ? 'gepland ' + p.scheduled_local : fmt(p.created_at));
+    const facts = (p.facts_matched || []).map(f => `<div style="margin-left:14px;color:var(--text-dim)">L${esc(f.line)}: ${esc(f.text)}<br><i>${esc(f.claim)}</i></div>`).join('');
+    const held = p.held ? `<div style="color:var(--warning)">Concept: ${esc(p.held)}</div>` : '';
+    const news = p.news ? `<div>Nieuws: <a href="${esc(p.news.url)}" target="_blank" rel="noopener">${esc(p.news.title)}</a></div>` : '';
+    return `<details style="margin-top:4px"><summary>${esc(when)} · ${esc(p.status)} · ${esc(p.pillar)} · ${esc(p.formula)}${p.kind === 'news' ? ' · 🗞' : ''}${p.has_media ? ' · 🖼' : ''}${p.has_product_link ? ' · 🔗' : ''}${p.poll ? ' · 📊' : ''}${m}${lc}${sc}${link}</summary>
+      <div class="ap-status" style="margin-top:4px">${held}${news}${pairHtml(p)}${pollHtml(p)}${facts ? '<div style="margin-top:6px">Facts gematcht:</div>' + facts : ''}${p.error ? `<div style="color:var(--error)">${esc(p.error)}</div>` : ''}</div></details>`;
+  });
+  const drafts = (s.drafts || []).map(d => `<div class="ap-status" style="margin-top:6px">
+      <div><a href="${esc(d.url)}" target="_blank" rel="noopener">@${esc(d.author)}</a>: ${esc(d.text)}</div>
+      <textarea id="ns-d-${esc(d.id)}" rows="3" style="width:100%;margin-top:4px">${esc(d.draft)}</textarea>
+      ${(d.facts_lines || []).length ? `<div style="color:var(--text-dim)">Facts: ${d.facts_lines.map(n => 'L' + esc(n)).join(', ')}</div>` : ''}
+      ${(d.warnings || []).length ? `<div style="color:var(--warning)">Let op: ${d.warnings.map(esc).join(', ')}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:4px" data-owner-only>
+        <button class="btn-sm" onclick="nsDraft(${jq(d.id)}, 'send', this)">Versturen</button>
+        <button class="btn-sm" onclick="nsDraft(${jq(d.id)}, 'skip', this)">Overslaan</button>
+      </div></div>`).join('');
+  const tickets = (s.tickets || []).map(t => `<div class="ap-status" style="margin-top:6px">
+      <b>${t.kind === 'bug_report' ? 'Bug' : 'False positive'}</b> · ${esc(fmt(t.created_at))} · <a href="${esc(t.url)}" target="_blank" rel="noopener">@${esc(t.author)}</a>
+      <div style="white-space:pre-wrap">${esc(t.text)}</div>${t.summary ? `<div style="color:var(--text-dim)">${esc(t.summary)}</div>` : ''}
+      <button class="btn-sm" style="margin-top:4px" data-owner-only onclick="nsTicket(${jq(t.id)}, this)">Sluiten</button></div>`).join('');
+  wrap.innerHTML = `
+    <div class="edit-label" style="margin-top:14px" id="neurashield">🛡 NeuraShield op X</div>
+    <div class="discord-banner">Eén hook + reply pair per dag over NeuraShield, op een willekeurig moment tussen ${esc(s.window.start)} en ${esc(s.window.end)} (${esc(s.window.tz)}), plus een nieuwsreactie op dagen met echt nieuws. Productclaims komen alleen uit <code>${esc(s.files.facts)}</code>. Antwoorden op productvragen gaan nooit automatisch: jij drukt op versturen.</div>
+    <div class="ap-status">${head.join('<br>')}${rows.length ? '' : '<br>Nog geen pairs.'}${rows.join('')}</div>
+    <div class="edit-label" style="margin-top:10px">Antwoorden wachten op goedkeuring (${esc((s.drafts || []).length)})</div>
+    ${drafts || '<div class="ap-status">Geen.</div>'}
+    <div class="edit-label" style="margin-top:10px">Open tickets (${esc((s.tickets || []).length)})</div>
+    ${tickets || '<div class="ap-status">Geen.</div>'}
+    <div id="ns-dry"></div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" data-owner-only>
+      <button class="btn-sm" onclick="nsRun(this)">Pair nu als concept</button>
+      <button class="btn-sm" onclick="nsDryRun(this)">Dry run (7, niets gepost)</button>
+    </div>`;
+  if (location.hash === '#neurashield') document.getElementById('neurashield').scrollIntoView();
+}
+function nsReload() { const el = document.querySelector('[id^="ns-wrap-"]'); if (el) loadNeuraShield(el.id.slice(8)); }
+async function nsDraft(id, action, btn) {
+  btn.disabled = true;
+  try {
+    const ta = document.getElementById(`ns-d-${id}`);
+    await fetchJson(`/neurashield/drafts/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action === 'send' ? { text: ta ? ta.value : undefined } : {}) });
+    nsReload();
+  } catch (e) { alert('NeuraShield: ' + e.message); btn.disabled = false; }
+}
+async function nsTicket(id, btn) {
+  btn.disabled = true;
+  try { await fetchJson(`/neurashield/tickets/${encodeURIComponent(id)}/close`, { method: 'POST' }); nsReload(); }
+  catch (e) { alert('NeuraShield: ' + e.message); btn.disabled = false; }
+}
+async function nsRun(btn) {
+  btn.disabled = true; btn.textContent = 'Bezig… (1-2 min)';
+  try {
+    const r = await fetchJson('/neurashield/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'review', force: true }) });
+    btn.textContent = r.skipped ? 'Overgeslagen: ' + r.skipped : 'Concept klaar';
+    nsReload();
+  } catch (e) { alert('NeuraShield: ' + e.message); btn.textContent = 'Pair nu als concept'; }
+  btn.disabled = false;
+}
+async function nsDryRun(btn) {
+  const out = document.getElementById('ns-dry');
+  btn.disabled = true; btn.textContent = '7 pairs schrijven… (3-6 min)';
+  try {
+    const r = await fetchJson('/neurashield/dry-run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ n: 7 }) });
+    out.innerHTML = (r.pairs || []).map((p, i) => `<div class="ap-status" style="margin-top:6px"><b>#${i + 1} ${esc(p.pillar || '')} · ${esc(p.formula || '')}</b>${p.poll ? ' · 📊' : ''} · ${p.validator && p.validator.ok ? '<span style="color:var(--success)">validator ok</span>' : `<span style="color:var(--error)">afgekeurd: ${esc((p.validator || {}).error || '')}</span>`}
+      ${p.hook ? pairHtml(p) : ''}${p.poll_options ? `<div>Poll: ${p.poll_options.map(esc).join(' / ')}</div>` : ''}
+      ${((p.check || {}).facts_matched || []).map(f => `<div style="color:var(--text-dim)">L${esc(f.line)}: ${esc(f.text)}</div>`).join('')}</div>`).join('');
+  } catch (e) { out.textContent = 'Dry run fout: ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Dry run (7, niets gepost)';
 }
 function renderPairs(c) {
   const id = esc(c.id);

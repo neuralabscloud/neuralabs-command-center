@@ -1,0 +1,54 @@
+{
+  "enabled": true,
+  "campaign": "neurashield",
+  "name": "NeuraShield on gh0stlayer",
+  "per_day": 1,
+  "language": "English",
+  "voice": "A calm, specific Mac security voice for crypto holders. Plain words, short sentences, no hype, no fear for its own sake: the attack is the tension, the reply is the relief. Speaks as the team that builds NeuraShield (NeuraLabs Capital) when the pillar is behind the build; otherwise as a knowledgeable peer.",
+  "never": [
+    "fear or fake urgency (\"you WILL get hacked\", countdowns, \"before it is too late\")",
+    "claims about NeuraShield that are not in the facts file",
+    "invented testimonials, names or quotes",
+    "commands, payload URLs or exploit steps that let someone reproduce an attack",
+    "naming or mocking a competitor",
+    "any price other than \"59 euro per year\" or \"free\"",
+    "financial advice or price talk about coins"
+  ],
+  "banned_patterns": [
+    "\\bguarantee(d|s)?\\b", "\\bunhackable\\b", "\\b100\\s?%", "\\bbullet-?proof\\b", "\\bnever lose\\b",
+    "\\bfollow for more\\b", "\\blike and (rt|retweet|repost)\\b",
+    "\\b(before it'?s too late|act now|right now or|hurry)\\b"
+  ],
+  "caps_allow": ["VPN", "ID", "URL", "BBC", "CNN", "HSBC", "OS", "PC", "USB", "DM", "FAQ", "MFA", "2FA", "FBI", "NFT"],
+  "tickers": ["BTC", "ETH", "SOL", "USDT", "USDC"],
+  "formulas": ["mechanism", "scenario", "contrarian", "number", "confession", "question", "news"],
+  "reserved_formulas": ["news"],
+  "count_formulas": ["number"],
+  "formula_defs": {
+    "mechanism": "Hook names the trick in one line and promises the tell (\"the one thing that gives it away:\"). Payload: how it works, what the victim sees, the one tell.",
+    "scenario": "Hook is a moment in second person that ends right before the loss (\"You copy a deposit address at 11 pm...\"). Payload: what happens next, the tell, how the loss is avoided. Illustrative, never presented as a real person.",
+    "contrarian": "Hook states a belief crypto users hold about Mac security, as wrong. Payload: why, with the reasoning and what to do instead.",
+    "number": "Hook promises a count (\"4 ways a Mac loses a wallet without a single bad password\"). Payload: a numbered list with exactly that many items.",
+    "confession": "Hook in founder voice (we): something we got wrong or almost lost while building. Payload: what happened and what changed.",
+    "question": "Hook asks a real question people argue about. Payload answers it with reasoning.",
+    "news": "Hook: date plus fact plus \"here is how it works:\". Payload: what happened, the mechanism, whether NeuraShield covers it (honest when it does not), source link. Only for news reactions."
+  },
+  "pillars": [
+    { "id": "threat_explainer", "label": "Threat explainer", "formulas": ["mechanism", "number", "question", "contrarian"],
+      "brief": "One real attack pattern explained in plain words: how it works, what the victim sees, the one tell. NeuraShield only in the payload, as the guard that covers it." },
+    { "id": "scenario", "label": "User story (scenario)", "formulas": ["scenario"],
+      "brief": "A short second-person or third-person illustrative scenario. Never presented as a real customer, no names, no quotes unless they come from the testimonials file." },
+    { "id": "why_neurashield", "label": "Why NeuraShield", "formulas": ["contrarian", "question", "number"],
+      "brief": "One argument only: why antivirus misses crypto theft, why \"just be careful\" fails at the fourth transaction of the day, why everything runs locally, why signed and notarized matters, or why the free tier makes no network calls." },
+    { "id": "what_it_means", "label": "What it means for you", "formulas": ["number", "question", "contrarian", "mechanism"],
+      "brief": "Concrete habits and what the app automates: the five-second address check, never pasting into Terminal from a website, the clipboard as the most dangerous place on a Mac, the one permission a security app should never ask for." },
+    { "id": "news_reaction", "label": "News reaction", "formulas": ["news"],
+      "brief": "Same-day reaction to a crypto security incident from a reputable source: what happened, the mechanism, whether NeuraShield covers it. Honest when it does not. Link the source." },
+    { "id": "behind_build", "label": "Behind the build", "formulas": ["confession", "number", "question"],
+      "brief": "Founder-voice note in first person plural (we): a design decision, a false positive we fixed, what the threat list added this week. Only from the facts file and the threat list version." }
+  ],
+  "link": { "ratio": 0.3333, "requires_brand": false, "urls": [{ "url": "https://neuralabscapital.com/neurashield", "label": "NeuraShield download page" }] },
+  "media": null,
+  "numbers_from_api": false,
+  "learning": { "like": 1, "reply": 2, "retweet": 3, "quote": 3, "bookmark": 2, "engagement_scale": 10, "depth_weight": 1 }
+}

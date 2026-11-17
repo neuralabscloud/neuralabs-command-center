@@ -1,0 +1,172 @@
+{
+  "neurashield": {
+    "x_account": "gh0stlayer",
+    "channel_id": "mud1u9q9bqh1",
+    "publishing_enabled": true,
+    "window": {
+      "start": "14:00",
+      "end": "18:00",
+      "tz": "Europe/Madrid"
+    },
+    "max_pairs_per_day": 2,
+    "product_link": "https://neuralabscapital.com/neurashield",
+    "link_ratio": 0.3333,
+    "media_ratio": 0.5,
+    "hashtags": [
+      "#crypto",
+      "#bitcoin",
+      "#macos",
+      "#security",
+      "#opsec",
+      "#defi"
+    ],
+    "weekly_mix": {
+      "threat_explainer": 2,
+      "scenario": 1,
+      "why_neurashield": 1,
+      "what_it_means": 1,
+      "news_reaction": 1,
+      "behind_build": 1
+    },
+    "poll": {
+      "per_week": 1,
+      "duration_minutes": 1440,
+      "from_weekday": 3,
+      "not_on": [
+        "scenario",
+        "news_reaction"
+      ]
+    },
+    "news": {
+      "enabled": true,
+      "max_age_h": 24,
+      "min_score": 7,
+      "max_per_week": 2,
+      "check_every_min": 30,
+      "hours": [
+        8,
+        21
+      ],
+      "live_from": "2026-11-18T13:00:00Z"
+    },
+    "replies": {
+      "every_h": 2,
+      "window_h": 12
+    },
+    "threat_list_url": "https://ugqicxduvvdzojanysvm.supabase.co/storage/v1/object/public/neurashield/threats/v1.json",
+    "changelog_source": "",
+    "gallery_batch_prefix": "neurashield-",
+    "competitors": [
+      "Malwarebytes",
+      "Norton",
+      "McAfee",
+      "Intego",
+      "Kaspersky",
+      "Bitdefender",
+      "Avast",
+      "AVG",
+      "Sophos",
+      "ESET",
+      "CleanMyMac",
+      "Little Snitch",
+      "LuLu",
+      "BlockBlock",
+      "KnockKnock",
+      "Objective-See",
+      "Avira",
+      "Trend Micro",
+      "Webroot",
+      "CrowdStrike",
+      "SentinelOne",
+      "Jamf",
+      "Wallet Guard",
+      "Pocket Universe",
+      "Blockaid",
+      "Scam Sniffer",
+      "ScamSniffer"
+    ],
+    "threat_topics": [
+      {
+        "id": "clickfix",
+        "label": "ClickFix paste-in-Terminal commands",
+        "keywords": [
+          "clickfix",
+          "terminal",
+          "paste",
+          "clipboard"
+        ]
+      },
+      {
+        "id": "fake_installers",
+        "label": "Fake Zoom, Teams or Ledger Live installers",
+        "keywords": [
+          "installer",
+          "zoom",
+          "fake installers",
+          "download"
+        ]
+      },
+      {
+        "id": "address_poisoning",
+        "label": "Address poisoning",
+        "keywords": [
+          "address",
+          "poisoning",
+          "trusted list"
+        ]
+      },
+      {
+        "id": "clipper",
+        "label": "Clipper malware that swaps a copied address",
+        "keywords": [
+          "clipper",
+          "clipboard",
+          "address"
+        ]
+      },
+      {
+        "id": "fake_password_prompts",
+        "label": "Fake macOS password prompts",
+        "keywords": [
+          "password",
+          "prompt",
+          "dialog"
+        ]
+      },
+      {
+        "id": "copy_hijack",
+        "label": "Copy hijacks by page scripts and extensions",
+        "keywords": [
+          "copy hijack",
+          "clipboard",
+          "extension"
+        ]
+      },
+      {
+        "id": "tampered_wallet_apps",
+        "label": "Tampered wallet apps",
+        "keywords": [
+          "tampered",
+          "wallet apps",
+          "ledger live"
+        ]
+      },
+      {
+        "id": "malicious_extensions",
+        "label": "Malicious browser extensions",
+        "keywords": [
+          "extension"
+        ]
+      },
+      {
+        "id": "startup_hijacks",
+        "label": "Startup hijacks (launch agents and login items)",
+        "keywords": [
+          "startup",
+          "login",
+          "launch agent"
+        ]
+      }
+    ]
+  }
+}

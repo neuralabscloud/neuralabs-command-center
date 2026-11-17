@@ -183,7 +183,8 @@ function validatePair(pair, ctx = {}) {
 
   // links: payload only, max 1, only when this pair may carry one, only allowed urls
   const pLinks = replies.flatMap(links);
-  if (pLinks.length > 1) errors.push("payload has more than 1 link");
+  const maxLinks = ctx.maxLinks || 1;
+  if (pLinks.length > maxLinks) errors.push(`payload has more than ${maxLinks} link${maxLinks === 1 ? "" : "s"}`);
   if (pLinks.length && !ctx.allowLink) errors.push("this pair may not carry a link (cadence)");
   if (pLinks.length && ctx.allowedLinks && ctx.allowedLinks.length && !pLinks.every(l => ctx.allowedLinks.some(a => l.replace(/[).,]+$/, "").replace(/\/$/, "") === a.replace(/\/$/, "")))) errors.push(`link not allowed: ${pLinks[0]}`);
   if (replies.some(mentions) && replies.flatMap(mentions).length) errors.push("payload contains an @mention");
@@ -195,6 +196,11 @@ function validatePair(pair, ctx = {}) {
     const lastLine = lastLines[lastLines.length - 1] || "";
     const before = replies.slice(0, -1).flatMap(hashtags).length + hashtags(lastLines.slice(0, -1).join("\n")).length;
     if (before || !hashtags(lastLine).length) errors.push("hashtags only on the last line of the payload");
+    if (ctx.hashtagAllow && ctx.hashtagAllow.length) {
+      const allow = new Set(ctx.hashtagAllow.map(h => h.toLowerCase()));
+      const bad = tags.map(t => t.trim()).filter(t => !allow.has(t.toLowerCase()));
+      if (bad.length) errors.push(`hashtag not allowed: ${bad.join(", ")} (only ${ctx.hashtagAllow.join(" ")})`);
+    }
   }
 
   // brand mention is a payload-only, cadence-limited thing
@@ -203,7 +209,7 @@ function validatePair(pair, ctx = {}) {
   // count: hook promise must match the payload
   const want = hookCount(hook);
   const got = payloadCount(replies);
-  if (ctx.formula === "numbered_promise" && want == null) errors.push("numbered_promise hook must promise a count (\"3 checks ...\")");
+  if ((ctx.countFormulas || ["numbered_promise"]).includes(ctx.formula) && want == null) errors.push(`${ctx.formula} hook must promise a count ("3 checks ...")`);
   if (want != null) {
     if (got < 0) errors.push(`payload numbering is not 1..n (${-got} numbered lines)`);
     else if (got !== want) errors.push(`hook promises ${want}, payload delivers ${got} numbered items`);
@@ -283,9 +289,20 @@ function reweight(pairs, field, keys) {
   return out;
 }
 
+// A channel can carry extra pair campaigns next to its own profile (for example NeuraShield on
+// the gh0stlayer account): channel.pair_campaign = "neurashield" -> profile key "<id>#neurashield".
+// A campaign has its own history, state and weights; its tasks post on the real channel.
+function linkClicks(m) {
+  const parts = m ? [m.hook, m.reply].filter(x => x && x.url_link_clicks != null) : [];
+  return parts.length ? parts.reduce((a, x) => a + (Number(x.url_link_clicks) || 0), 0) : null;
+}
+
+function keyOf(channel) { return channel && channel.pair_campaign ? `${channel.id}#${channel.pair_campaign}` : channel && channel.id; }
+
 function profileFor(profiles, channel) {
-  const p = profiles && channel && profiles[channel.id];
+  const p = profiles && channel && profiles[keyOf(channel)];
   if (!p || p.enabled === false) return null;
+  const defs = { ...FORMULAS, ...(p.formula_defs || {}) };
   return {
     ...p,
     premium: !!p.premium, per_day: Math.max(0, Math.min(6, Number(p.per_day) || 0)),
@@ -293,7 +310,8 @@ function profileFor(profiles, channel) {
     never: p.never || [], banned_patterns: p.banned_patterns || [], caps_allow: p.caps_allow || [], tickers: p.tickers || [],
     media: p.media || null, link: p.link || null, brand_mention: p.brand_mention || null,
     numbers_from_api: !!p.numbers_from_api, data: p.data || null, hashtags: p.hashtags || [],
-    formulas: (p.formulas || Object.keys(FORMULAS)).filter(f => FORMULAS[f]), learning: p.learning || {},
+    formulas: (p.formulas || Object.keys(FORMULAS)).filter(f => defs[f]), learning: p.learning || {},
+    formula_defs: defs, count_formulas: p.count_formulas || ["numbered_promise"], campaign: p.campaign || null,
   };
 }
 
@@ -324,21 +342,29 @@ function createPairs(deps) {
   const profilesFile = deps.profilesFile || path.join(dataDir, "x-pair-profiles.json");
   const stateFile = path.join(dataDir, "community", "x-pairs-state.json");
 
-  function profiles() { try { return JSON.parse(fs.readFileSync(profilesFile, "utf8")); } catch { return {}; } }
+  const campaigns = deps.campaigns || {};
+  function profiles() {
+    let base = {};
+    try { base = JSON.parse(fs.readFileSync(profilesFile, "utf8")); } catch {}
+    return { ...base, ...(deps.extraProfiles ? deps.extraProfiles() || {} : {}) };
+  }
+  const campaignOf = (channel, p) => (p && p.campaign && campaigns[p.campaign]) || (channel && channel.pair_campaign && campaigns[channel.pair_campaign]) || null;
   function profile(channel) { return profileFor(profiles(), channel); }
   function loadState() { try { return JSON.parse(fs.readFileSync(stateFile, "utf8")); } catch { return {}; } }
   function saveState(s) { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(s, null, 2)); }
   function mutate(id, fn) { const s = loadState(); s[id] = s[id] || {}; const r = fn(s[id]); saveState(s); return r; }
 
-  function pairTasks(channelId) {
-    return readTasks().filter(t => t.channel_id === channelId && t.pair)
+  // Pair tasks of this channel; a campaign only sees its own, the channel profile only the ones without campaign.
+  function pairTasks(channel) {
+    const camp = channel.pair_campaign || null;
+    return readTasks().filter(t => t.channel_id === channel.id && t.pair && (t.pair.campaign || null) === camp)
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   }
-  function history(channelId) {
+  function history(channel) {
     const cutoff = now().getTime() - HISTORY_DAYS * 864e5;
-    return pairTasks(channelId).filter(t => !["cancelled", "failed"].includes(t.status) && Date.parse(t.created_at) >= cutoff)
+    return pairTasks(channel).filter(t => !["cancelled", "failed"].includes(t.status) && Date.parse(t.created_at) >= cutoff)
       .map(t => ({ id: t.id, pillar: t.pair.pillar, formula: t.pair.formula, has_link: !!t.pair.has_link, has_media: !!t.pair.has_media,
-        brand: !!t.pair.brand_mention, text: [t.pair.hook, ...(t.pair.replies || [])].join("\n"), at: t.created_at }));
+        brand: !!t.pair.brand_mention, text: [t.pair.hook, ...(t.pair.replies || [])].join("\n"), at: t.created_at, status: t.status, pair: t.pair }));
   }
 
   function perDay(channel) { const p = profile(channel); return p ? p.per_day : 0; }
@@ -443,11 +469,11 @@ function createPairs(deps) {
 
   // --- plan one pair: formula, pillar, cadence flags, facts, media ---
   async function plan(channel, p, opts = {}) {
-    const st = loadState()[channel.id] || {};
-    const hist = opts.history || history(channel.id);
+    const st = loadState()[keyOf(channel)] || {};
+    const hist = opts.history || history(channel);
     const weights = st.weights || {};
     const lastFormula = opts.lastFormula !== undefined ? opts.lastFormula : (hist[0] && hist[0].formula);
-    const formula = pickFormula(lastFormula, weights.formulas || {}, Math.random, p.formulas);
+    const formula = pickFormula(lastFormula, weights.formulas || {}, Math.random, p.formulas.filter(f => !(p.reserved_formulas || []).includes(f)));
     let pillarId = pickPillar(p.pillars, hist.map(h => h.pillar), weights.pillars || {});
     let pillar = p.pillars.find(x => x.id === pillarId);
     let facts = null, fallback = null;
@@ -466,7 +492,9 @@ function createPairs(deps) {
     const linkOk = allowLink && (!p.link.requires_brand || allowBrand);
     const wantMedia = !!(p.media && cadenceAllows(hist, "has_media", p.media.ratio));
     const media = wantMedia ? await pickMedia(channel, p, st.media_counts) : null;
-    return { formula, pillar, facts, fallback, allowLink: linkOk, allowBrand, media, history: hist };
+    const base = { formula, pillar, facts, fallback, allowLink: linkOk, allowBrand, media, history: hist };
+    const camp = campaignOf(channel, p);
+    return camp && camp.plan ? camp.plan(channel, p, base, { ...opts, state: st, pickFormula, weightedPick, cadenceAllows }) : base;
   }
 
   function prompt(channel, p, pl) {
@@ -483,16 +511,16 @@ function createPairs(deps) {
     const factsBlock = pl.facts
       ? `\nData for this pair (fetched now from the NeuraCollectibles API). Every price, percentage, pop count or market figure you use MUST appear in this data. Use only a few, never invent or extrapolate:\n${JSON.stringify(pl.facts, null, 1)}\n`
       : (p.numbers_from_api ? "\nNo market data is available for this pair: write evergreen. Do NOT state any price, percentage, pop count or market figure.\n" : "");
-    const mediaBlock = pl.media
+    const mediaBlock = pl.media && pl.media.describe ? `\nThe hook gets an image: ${pl.media.describe}\n` : pl.media
       ? `\nThe hook gets an image: ${pl.media.kind === "slab_photo" ? `a photo of a slab from our own collection (${pl.media.label}). You may refer to it, but claim nothing about it beyond what that label says.` : `a still of our character (${pl.media.label}). The text does not need to describe it.`}\n`
       : "\nThe hook has no image.\n";
     return `You write one hook + reply pair for the X account "${channel.name}". Language: ${p.language}.
 Voice: ${p.voice}
-${brandKnowledge ? brandKnowledge(channel) : ""}
+${pl.brandBlock !== undefined ? pl.brandBlock : (brandKnowledge ? brandKnowledge(channel) : "")}
 
 Pillar for this pair: ${pl.pillar.label}. ${pl.pillar.brief || ""}
-Formula: ${pl.formula}. ${FORMULAS[pl.formula]}
-${factsBlock}${mediaBlock}
+Formula: ${pl.formula}. ${p.formula_defs[pl.formula] || FORMULAS[pl.formula] || ""}
+${factsBlock}${mediaBlock}${pl.extraPrompt ? `\n${pl.extraPrompt}\n` : ""}
 How the pair works: the hook is posted first and makes people open the reply. The payload is our reply under the hook and delivers exactly what the hook promised.
 
 Hook rules:
@@ -521,6 +549,9 @@ ${pl.history.slice(0, 8).map(h => `- [${h.formula}/${h.pillar}] ${h.text.split("
 Answer only by calling the submit_pair tool.`;
   }
 
+  const POLL_PROP = { poll_options: { type: "array", items: { type: "string" }, description: "Exactly 4 poll options, each at most 25 characters. Only when this pair is a poll." } };
+  const toolFor = pl => pl && pl.poll ? { ...TOOL, input_schema: { ...TOOL.input_schema, properties: { ...TOOL.input_schema.properties, ...POLL_PROP }, required: [...TOOL.input_schema.required, "poll_options"] } } : TOOL;
+
   const TOOL = {
     name: "submit_pair",
     description: "Submit the hook and its payload replies.",
@@ -546,12 +577,14 @@ Answer only by calling the submit_pair tool.`;
       brandName: p.brand_mention ? p.brand_mention.name : null,
       banned: p.banned_patterns, capsExtra: [...p.caps_allow, ...p.tickers], history: pl.history,
       facts: pl.media && pl.media.label ? { ...(pl.facts || {}), image_label: pl.media.label } : pl.facts, numbersFromApi: p.numbers_from_api,
+      countFormulas: p.count_formulas, ...(pl.ctx || {}),
     };
+    const camp = campaignOf(channel, p);
     const messages = [{ role: "user", content: prompt(channel, p, pl) }];
     const tries = [];
     for (let attempt = 0; attempt <= MAX_REGENERATIONS; attempt++) {
       const msg = await anthropic.messages.create({
-        model, max_tokens: 6000, tools: [TOOL], tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages,
+        model, max_tokens: 6000, tools: [toolFor(pl)], tool_choice: { type: "auto", disable_parallel_tool_use: true }, messages,
       });
       const use = msg.content.find(b => b.type === "tool_use");
       if (!use) {
@@ -565,7 +598,16 @@ Answer only by calling the submit_pair tool.`;
       let replies = (Array.isArray(out.replies) ? out.replies : [out.replies]).map(cleanText).filter(Boolean);
       if (p.premium && replies.length > 1 && weightedLength(replies.join("\n\n")) <= 1200) replies = [replies.join("\n\n")];
       const pair = { hook: cleanText(out.hook), replies, has_link: replies.some(r => links(r).length > 0), angle: String(out.angle || "").slice(0, 300) };
+      if (pl.poll) pair.poll_options = (Array.isArray(out.poll_options) ? out.poll_options : []).map(o => cleanText(String(o))).filter(Boolean);
       const v = validatePair(pair, ctx);
+      // Campaign rules on top of the shared validator: first the cheap deterministic ones, then the LLM check.
+      if (camp && camp.validate) v.errors.push(...(camp.validate(pair, pl, p) || []));
+      if (!v.errors.length && camp && camp.check) {
+        const c = await camp.check(pair, pl, p);
+        v.errors.push(...(c.errors || []));
+        v.meta = c.meta || null;
+      }
+      v.ok = !v.errors.length;
       tries.push(v.errors);
       if (v.ok) return { pair, validation: v, attempts: attempt + 1, tries };
       messages.push({ role: "assistant", content: msg.content });
@@ -579,17 +621,17 @@ Answer only by calling the submit_pair tool.`;
 
   function logDrop(channel, pl, e) {
     log(`pairs: ${channel.name}: ${e.message}`);
-    mutate(channel.id, s => {
+    mutate(keyOf(channel), s => {
       s.dropped = [{ at: now().toISOString(), formula: pl && pl.formula, pillar: pl && pl.pillar && pl.pillar.id, reasons: e.tries || [[e.message]] }, ...(s.dropped || [])].slice(0, 50);
     });
   }
 
   // Scheduled/manual production through the autopilot: creates one task (draft in review mode).
-  async function produce(channel, { mode, step = () => {}, record = () => {} } = {}) {
+  async function produce(channel, { mode, step = () => {}, record = () => {}, planOpts = {} } = {}) {
     const p = profile(channel);
     if (!p) throw new Error("No pair profile for this channel (data/x-pair-profiles.json)");
     step("planning pair");
-    const pl = await plan(channel, p);
+    const pl = await plan(channel, p, planOpts);
     step(`writing pair (${pl.formula} · ${pl.pillar.id})`);
     let res;
     try { res = await write(channel, p, pl); } catch (e) { if (e.dropped) logDrop(channel, pl, e); throw e; }
@@ -616,28 +658,35 @@ Answer only by calling the submit_pair tool.`;
         media_kind: mediaPath ? pl.media.kind : null, facts_used: !!pl.facts, fallback: pl.fallback || null,
         validator: { ok: true, attempts: res.attempts }, hook_id: null, reply_ids: [], posted_at: null,
         metrics: {}, score: null, created_at: ts,
+        ...(channel.pair_campaign ? { campaign: channel.pair_campaign } : {}),
+        ...(res.validation && res.validation.meta ? { check: res.validation.meta } : {}),
+        ...(res.pair.poll_options ? { poll: { options: res.pair.poll_options, duration_minutes: 1440, poll_id: null, results: null } } : {}),
       },
     };
+    const camp = campaignOf(channel, p);
+    if (camp && camp.decorate) camp.decorate(task, res, pl, { mode });
     addTask(task);
-    if (mediaPath) mutate(channel.id, s => { s.media_counts = { ...(s.media_counts || {}), [pl.media.key]: ((s.media_counts || {})[pl.media.key] || 0) + 1 }; });
+    if (mediaPath) mutate(keyOf(channel), s => { s.media_counts = { ...(s.media_counts || {}), [pl.media.key]: ((s.media_counts || {})[pl.media.key] || 0) + 1 }; });
     record({ status: "done", task_id: id, finished_at: now().toISOString() });
-    log(`pairs: ${channel.name}: queued ${id} (${pl.formula}/${pl.pillar.id}, ${res.pair.replies.length} repl${res.pair.replies.length === 1 ? "y" : "ies"}, media ${mediaPath ? pl.media.kind : "none"}, link ${res.pair.has_link})`);
+    log(`pairs: ${channel.name}${channel.pair_campaign ? "#" + channel.pair_campaign : ""}: queued ${id} (${pl.formula}/${pl.pillar.id}, ${res.pair.replies.length} repl${res.pair.replies.length === 1 ? "y" : "ies"}, media ${mediaPath ? pl.media.kind : "none"}, link ${res.pair.has_link})`);
     return { task };
   }
 
   // Dry run: n pairs, nothing stored as task, nothing posted. Formula rotation simulated in sequence.
-  async function dryRun(channel, n = 5) {
+  // planFor(i, hist) lets a campaign force the pillar per dry-run slot (e.g. one per pillar).
+  async function dryRun(channel, n = 5, { planFor } = {}) {
     const p = profile(channel);
     if (!p) throw new Error("No pair profile for this channel");
     const out = [];
-    let hist = history(channel.id);
+    let hist = history(channel);
     for (let i = 0; i < n; i++) {
-      const pl = await plan(channel, p, { history: hist, lastFormula: hist[0] && hist[0].formula });
-      const row = { n: i + 1, formula: pl.formula, pillar: pl.pillar.id, facts_used: !!pl.facts, fallback: pl.fallback, allow_link: pl.allowLink, allow_brand: pl.allowBrand, media: pl.media ? { kind: pl.media.kind, label: pl.media.label } : null };
+      const extra = planFor ? planFor(i, hist) || {} : {};
+      const pl = await plan(channel, p, { history: hist, lastFormula: hist[0] && hist[0].formula, dryRun: true, ...extra });
+      const row = { n: i + 1, formula: pl.formula, pillar: pl.pillar.id, poll: !!pl.poll, facts_used: !!pl.facts, fallback: pl.fallback, allow_link: pl.allowLink, allow_brand: pl.allowBrand, media: pl.media ? { kind: pl.media.kind, label: pl.media.label } : null, news: pl.news || null };
       try {
         const res = await write(channel, p, pl);
-        Object.assign(row, { hook: res.pair.hook, replies: res.pair.replies, has_link: res.pair.has_link, angle: res.pair.angle, validator: { ok: true, attempts: res.attempts, rejected_attempts: res.tries.filter(t => t.length) } });
-        hist = [{ pillar: pl.pillar.id, formula: pl.formula, has_link: res.pair.has_link, has_media: !!pl.media, brand: !!(p.brand_mention && res.pair.replies.join(" ").toLowerCase().includes(p.brand_mention.name.toLowerCase())), text: [res.pair.hook, ...res.pair.replies].join("\n"), at: now().toISOString() }, ...hist];
+        Object.assign(row, { hook: res.pair.hook, replies: res.pair.replies, poll_options: res.pair.poll_options || null, has_link: res.pair.has_link, angle: res.pair.angle, check: res.validation.meta || null, validator: { ok: true, attempts: res.attempts, rejected_attempts: res.tries.filter(t => t.length) } });
+        hist = [{ pillar: pl.pillar.id, formula: pl.formula, has_link: res.pair.has_link, has_media: !!pl.media, poll: !!pl.poll, brand: !!(p.brand_mention && res.pair.replies.join(" ").toLowerCase().includes(p.brand_mention.name.toLowerCase())), text: [res.pair.hook, ...res.pair.replies].join("\n"), at: now().toISOString(), status: "dry_run", pair: { pillar: pl.pillar.id, formula: pl.formula, poll: res.pair.poll_options ? {} : null, has_link: res.pair.has_link, has_media: !!pl.media, topic: pl.topic ? pl.topic.id : null, engagement: pl.engagement || null } }, ...hist];
       } catch (e) {
         Object.assign(row, { validator: { ok: false, dropped: !!e.dropped, error: e.message, rejected_attempts: e.tries || [] } });
       }
@@ -655,7 +704,7 @@ Answer only by calling the submit_pair tool.`;
       const t = now().getTime();
       for (const channel of channels) {
         if (!profile(channel)) continue;
-        const due = pairTasks(channel.id).filter(x => x.status === "published" && x.pair.hook_id && x.pair.posted_at).map(x => {
+        const due = pairTasks(channel).filter(x => x.status === "published" && x.pair.hook_id && x.pair.posted_at).map(x => {
           const age = t - Date.parse(x.pair.posted_at);
           const want = !x.pair.metrics.h24 && age >= 24 * 3.6e6 && age < 60 * 3.6e6 ? "h24" : (!x.pair.metrics.h72 && age >= 72 * 3.6e6 && age < 14 * 864e5 ? "h72" : null);
           return want ? { task: x, want } : null;
@@ -669,8 +718,11 @@ Answer only by calling the submit_pair tool.`;
   async function fetchMetrics(channel, due) {
     const creds = twitterCredsFor(channel);
     const ids = [...new Set(due.flatMap(d => [d.task.pair.hook_id, d.task.pair.reply_ids[0]]).filter(Boolean))];
-    const resp = await twitterApi("GET", `https://api.x.com/2/tweets?ids=${ids.join(",")}&tweet.fields=public_metrics`, creds);
-    const byId = Object.fromEntries((resp.data || []).map(x => [x.id, x.public_metrics || {}]));
+    // Link clicks (non_public_metrics) only exist for our own posts younger than 30 days; fall back to public counts.
+    let resp, withPrivate = true;
+    try { resp = await twitterApi("GET", `https://api.x.com/2/tweets?ids=${ids.join(",")}&tweet.fields=public_metrics,non_public_metrics`, creds); }
+    catch (e) { withPrivate = false; resp = await twitterApi("GET", `https://api.x.com/2/tweets?ids=${ids.join(",")}&tweet.fields=public_metrics`, creds); }
+    const byId = Object.fromEntries((resp.data || []).map(x => [x.id, { ...(x.public_metrics || {}), ...(withPrivate && x.non_public_metrics && x.non_public_metrics.url_link_clicks != null ? { url_link_clicks: x.non_public_metrics.url_link_clicks } : {}) }]));
     const learn = (profile(channel) || {}).learning || {};
     if (deps.updateTask) for (const d of due) {
       const hook = byId[d.task.pair.hook_id];
@@ -686,14 +738,14 @@ Answer only by calling the submit_pair tool.`;
   }
 
   function maybeReweight(channel, force = false) {
-    const st = loadState()[channel.id] || {};
+    const st = loadState()[keyOf(channel)] || {};
     const last = Date.parse(st.reweighted_at || 0);
     if (!force && now().getTime() - last < 7 * 864e5) return null;
     const p = profile(channel);
     const cutoff = now().getTime() - 56 * 864e5;
-    const scored = pairTasks(channel.id).filter(x => x.pair.score && Date.parse(x.created_at) >= cutoff).map(x => ({ formula: x.pair.formula, pillar: x.pair.pillar, score: x.pair.score }));
+    const scored = pairTasks(channel).filter(x => x.pair.score && Date.parse(x.created_at) >= cutoff).map(x => ({ formula: x.pair.formula, pillar: x.pair.pillar, score: x.pair.score }));
     const weights = { formulas: reweight(scored, "formula", p.formulas), pillars: reweight(scored, "pillar", p.pillars.map(x => x.id)), based_on: scored.length, exploration: EXPLORATION };
-    mutate(channel.id, s => { s.weights = weights; s.reweighted_at = now().toISOString(); });
+    mutate(keyOf(channel), s => { s.weights = weights; s.reweighted_at = now().toISOString(); });
     if (scored.length) log(`pairs: ${channel.name}: reweighted on ${scored.length} scored pairs`);
     return weights;
   }
@@ -701,7 +753,7 @@ Answer only by calling the submit_pair tool.`;
   // Our pair replies, so x-replies also answers people who react under them.
   function ourReplies(channel) {
     const out = [];
-    for (const t of pairTasks(channel.id)) {
+    for (const t of pairTasks(channel)) {
       if (t.status !== "published" || !t.pair.hook_id) continue;
       t.pair.reply_ids.forEach((rid, i) => out.push({ id: rid, conversation_id: t.pair.hook_id, text: t.pair.replies[i] || "", to_text: t.pair.hook, to_author: null, at: t.pair.posted_at || t.published_at }));
     }
@@ -710,8 +762,8 @@ Answer only by calling the submit_pair tool.`;
 
   function status(channel) {
     const p = profile(channel);
-    const st = loadState()[channel.id] || {};
-    const rows = pairTasks(channel.id).slice(0, 20).map(t => {
+    const st = loadState()[keyOf(channel)] || {};
+    const rows = pairTasks(channel).slice(0, 20).map(t => {
       const m = t.pair.metrics.h72 || t.pair.metrics.h24 || null;
       const hi = m && m.hook ? Number(m.hook.impression_count) || 0 : null;
       const ri = m && m.reply ? Number(m.reply.impression_count) || 0 : null;
@@ -720,13 +772,15 @@ Answer only by calling the submit_pair tool.`;
         hook: t.pair.hook, replies: t.pair.replies, has_media: t.pair.has_media, has_link: t.pair.has_link,
         hook_id: t.pair.hook_id, reply_ids: t.pair.reply_ids, hook_impressions: hi, reply_impressions: ri,
         ratio: hi ? round((ri || 0) / hi, 3) : null, metrics_at: m ? (t.pair.metrics.h72 ? "72h" : "24h") : null, score: t.pair.score, error: t.error,
+        link_clicks: linkClicks(m),
+        scheduled_at: t.scheduled_at, poll: t.pair.poll || null, check: t.pair.check || null, has_product_link: t.pair.has_product_link,
       };
     });
     return { enabled: !!p, profile: p ? { premium: p.premium, per_day: p.per_day, pillars: p.pillars.map(x => x.id), formulas: p.formulas } : null,
       weights: st.weights || null, reweighted_at: st.reweighted_at || null, dropped: (st.dropped || []).slice(0, 10), pairs: rows };
   }
 
-  return { perDay, produce, dryRun, tick, status, ourReplies, profile, maybeReweight, _plan: plan, _write: write };
+  return { perDay, produce, dryRun, tick, status, ourReplies, profile, maybeReweight, history, pairTasks, _plan: plan, _write: write };
 }
 
 // ---------- publishing (used by the X publisher in api-server.js) ----------
@@ -782,6 +836,6 @@ async function publishPair({ hookBody, replies, api, wait = sleep, clock = Date.
 module.exports = {
   FORMULAS, CAPS_ALLOW, POINTER, EXPLORATION, MAX_REGENERATIONS,
   weightedLength, emojis, links, hashtags, mentions, capsViolations, hookCount, payloadCount, similarity, claimNumbers, ungroundedNumbers,
-  validatePair, cadenceAllows, pickFormula, pickPillar, weightedPick, scorePair, reweight, profileFor, splitThread, cleanText,
+  validatePair, cadenceAllows, pickFormula, keyOf, linkClicks, pickPillar, weightedPick, scorePair, reweight, profileFor, splitThread, cleanText,
   createPairs, publishPair,
 };
