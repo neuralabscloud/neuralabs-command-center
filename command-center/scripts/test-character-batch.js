@@ -82,9 +82,11 @@ const concepts = Array.from({ length: 7 }, (_, i) => cb.normalizeConcept(raw(i),
   check("audio line last", c.video_prompt.endsWith(r.audio.replace("{music}", "deep electronic pulse").replace("{sfx}", "wind, distant traffic")));
   const t = cb.normalizeConcept(raw(0, { onscreen_text: "risk first — always" }), 0, { ...ctx, payload: { ...payload, text_mode: "model" } });
   check("text line with exact text, dashes stripped", t.video_prompt.includes("reading exactly: risk first always.") && !t.video_prompt.includes(r.no_text));
-  check("caption is 3 lines lowercase", c.caption.split("\n").length === 3 && c.caption === c.caption.toLowerCase());
-  check("question gets a question mark", c.caption.split("\n")[1] === "where do you trade from?");
-  check("4 hashtags with #", c.caption.split("\n")[2] === "#trading #bitcoin #defi #tradinglifestyle");
+  check("caption is 3 blocks with blank lines", c.caption.split("\n\n").length === 3);
+  check("caption line in sentence case with period", c.caption.split("\n\n")[0] === "Patience pays the patient.");
+  check("question gets a capital and question mark", c.caption.split("\n\n")[1] === "Where do you trade from?");
+  check("4 hashtags with #", c.caption.split("\n\n")[2] === "#trading #bitcoin #defi #tradinglifestyle");
+  check("sentence case keeps I and tickers", cb.buildCaption({ caption_line: "btc taught me patience", question: "what have i learned from eth?", hashtags: ["#a", "#b", "#c", "#d"] }).startsWith("BTC taught me patience.\n\nWhat have I learned from ETH?"));
   check("outfit index continues the rotation", concepts.map(x => x.outfit).join("") === "CDABCDA");
   check("music_sfx combined", c.music_sfx === "deep electronic pulse · wind, distant traffic");
   check("dates from the coming week", concepts[6].date === "2026-10-18" && concepts[6].day === "Sunday");

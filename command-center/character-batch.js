@@ -221,7 +221,7 @@ function systemPrompt(payload = {}, n = SLOTS) {
     "- Device backs (hard): a phone has exactly one screen, on the side facing him; its back is a closed case with only camera lenses. A laptop has one display on the inside of the lid; the back of the lid is closed, plain metal. When the camera faces him, it sees only those closed backs, so never describe a chart, glow or image on the back of a phone or laptop; show his screen with an over-the-shoulder or from-above shot instead.",
     "- Never describe mimed actions (air guitar and the like): the video model turns them into real objects. No physical object may appear out of nowhere: every object in the beats already exists in the still. Light, holograms, particles and energy may grow out of objects that are already there (the phone, the screens, the city, the sky).",
     forbidden.length ? `- These names never appear anywhere in a scene, prompt or on-screen text: ${forbidden.join(", ")}.` : "",
-    "- Captions: lowercase English, no dashes or hyphens of any kind. caption_line is a short trading line of at most 6 words; question is one reflective question that invites comments; hashtags are exactly 4.",
+    "- Captions: plain English (casing and line breaks are added for you), no dashes or hyphens of any kind. caption_line is a short trading line of at most 6 words; question is one reflective question that invites comments; hashtags are exactly 4.",
     "- No readable numbers, prices or PnL anywhere.",
     "",
     "The system adds the fixed sentences itself (reference instructions, face description, device rules, text and audio lines), so do NOT write those: describe only the scene, camera, light, beats, music and sound effects.",
@@ -347,8 +347,17 @@ function buildVideoPrompt(c, payload) {
   ].join(" ");
 }
 
+// Sentence case: capital at the start, "i" as a word becomes "I", tickers stay upper case.
+const TICKERS = /\b(btc|eth|sol|xrp|bnb|usdt|usdc|nft|nfts|defi|ai)\b/g;
+function sentenceCase(s) {
+  const t = String(s || "").trim().replace(/\bi\b/g, "I").replace(/\bi'(m|ve|ll|d)\b/g, "I'$1")
+    .replace(TICKERS, m => m === "nfts" ? "NFTs" : m === "defi" ? "DeFi" : m.toUpperCase());
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Caption: line, question, hashtags; a blank line between the blocks.
 function buildCaption(c) {
-  return [c.caption_line, c.question, normalizeHashtags(c.hashtags).join(" ")].join("\n");
+  return [sentenceCase(c.caption_line) + ".", sentenceCase(c.question), normalizeHashtags(c.hashtags).join(" ")].join("\n\n");
 }
 
 // Claude's raw concept → the stored concept with every prompt assembled.
@@ -421,7 +430,7 @@ function validateConcepts(concepts, { recent = [], forbidden = [], payload = {},
     for (const [k, v] of Object.entries({ caption: c.caption, onscreen_text: c.onscreen_text })) {
       if (DASHES.test(v)) errors.push(`${tag}: ${k} contains a dash.`);
     }
-    if (c.caption !== c.caption.toLowerCase()) errors.push(`${tag}: caption must be lowercase.`);
+    if (c.caption.split("\n\n").slice(0, 2).some(l => l && l[0] !== l[0].toUpperCase())) errors.push(`${tag}: caption lines must start with a capital.`);
     if (!c.onscreen_text) errors.push(`${tag}: onscreen_text (the tagline) is required.`);
     else if (words(c.onscreen_text) > DEFAULTS.max_tagline_words) errors.push(`${tag}: onscreen_text has ${words(c.onscreen_text)} words; max ${DEFAULTS.max_tagline_words}.`);
     if (/\d/.test(c.onscreen_text)) errors.push(`${tag}: on-screen text may not contain numbers.`);
