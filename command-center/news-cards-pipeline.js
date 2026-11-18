@@ -249,8 +249,10 @@ function createPipeline(accountId) {
           if (!r.has_more) break;
         }
       }
-      const n = norm(name);
-      const hit = cache.find(x => x.language === "en" && norm(x.name) === n) || cache.find(x => norm(x.name) === n);
+      // Exact name first; then without a trailing "set" ("Base Set" is "Base" in the card database).
+      const n = norm(name), bare = v => norm(v).replace(/ set$/, "");
+      const find = eq => cache.find(x => x.language === "en" && eq(x.name)) || cache.find(x => eq(x.name));
+      const hit = find(x => norm(x) === n) || find(x => bare(x) === bare(name));
       return hit && hit.logo_url ? { logo_url: hit.logo_url, source_page_url: `https://api.neuralabs.cloud/collectibles/v1/releases/${encodeURIComponent(hit.set_id)}` } : null;
     };
   }
