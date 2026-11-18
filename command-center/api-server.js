@@ -9831,6 +9831,21 @@ async function executeSchedule(schedule) {
       const r = await neuraShield.updateFacts({});
       console.log("[NEURASHIELD] facts", JSON.stringify(r));
       if (r.added.length) nsNotify("NeuraShield facts bijgewerkt", r.added.join("\n"), "info");
+    } else if (schedule.agent === "gta6_campaign") {
+      if (gta6.localDate() > gta6.END) {
+        const all = readTaskFile("scheduled-tasks.json");
+        const me = all.find(x => x.id === schedule.id);
+        if (me) { me.enabled = false; me.updated_at = new Date().toISOString(); writeTaskFile("scheduled-tasks.json", all); }
+        console.log("[GTA6] campagne voorbij, schedule uitgezet");
+      } else {
+        try {
+          const r = await gta6.run(gta6Deps(), {});
+          console.log("[GTA6]", JSON.stringify(r).slice(0, 300));
+        } catch (e) {
+          nsNotify("GTA VI post mislukt", e.message.slice(0, 400), "warning");
+          throw e;
+        }
+      }
     } else if (schedule.agent === "news_cards") {
       const pl = newsCards.forAccount((schedule.payload && schedule.payload.account) || "gh0stlayer");
       if (pl.config().enabled === false) console.log(`[NEWS-CARDS] ${pl.id} disabled in ${pl.DIR}/config.json`);
@@ -10550,6 +10565,26 @@ function charBatchStillsFor(batchId, slots) {
 // ── NEWS CARDS (per account: accounts/<name>.yaml) ──
 // Card sets (news-cards-pipeline.js). Platform glue lives here; the pipeline gets it injected. Direct Graph/X APIs, no Buffer.
 const newsCards = require("./news-cards-pipeline");
+
+// Tijdelijke GTA VI campagne (18 t/m 27 nov 2026): één post per dag op gh0stlayer X (+ IG crosspost).
+const gta6 = require("./gta6-campaign");
+const gta6Deps = () => ({
+  nanoBananaRun, downloadTo, readTaskFile, writeTaskFile, genId, channelId: "mud1u9q9bqh1",
+  notify: (title, msg) => nsNotify(title, msg, "info"),
+});
+app.get("/gta6/status", (_req, res) => {
+  try { res.json(gta6.status(readTaskFile)); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/gta6/run", async (req, res) => {
+  const b = req.body || {};
+  try {
+    res.json(await gta6.run(gta6Deps(), {
+      dry_run: b.dry_run === true, force: b.force === true,
+      date: /^\d{4}-\d{2}-\d{2}$/.test(b.date || "") ? b.date : undefined,
+      delay_min: Number.isFinite(+b.delay_min) ? Math.max(5, Math.min(600, +b.delay_min)) : undefined,
+    }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 const NEWS_CARDS_MODEL = process.env.NEWS_CARDS_MODEL || "claude-opus-5-5";
 
 async function newsCardsJpegs(m) {

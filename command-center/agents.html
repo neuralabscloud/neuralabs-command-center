@@ -573,7 +573,7 @@ async function cancelTask(api, taskId, btn) {
 }
 
 // ── SCHEDULED TASKS ──
-const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU', character_video_batch: 'DESIGNER → CONTENT CREATOR · VIDEO BATCH', news_cards: 'SOCIAL MEDIA MANAGER · NEWS CARDS', neurashield_x: 'SOCIAL MEDIA MANAGER · NEURASHIELD X', neurashield_report: 'SOCIAL MEDIA MANAGER · NEURASHIELD REPORT', neurashield_facts: 'SOCIAL MEDIA MANAGER · NEURASHIELD FACTS' };
+const AGENT_LABELS = { designer: 'DESIGNER', marketeer: 'MARKETEER', assistant: 'ASSISTANT', ads_optimizer: 'ADS OPTIMIZER', community_manager: 'SOCIAL MEDIA MANAGER', opusclip: 'OPUSCLIP', ugc_autopilot: 'MARKETEER → CONTENT CREATOR', growth_marketeer: 'GROWTH MARKETEER', edu_designer: 'DESIGNER · EDU', character_video_batch: 'DESIGNER → CONTENT CREATOR · VIDEO BATCH', news_cards: 'SOCIAL MEDIA MANAGER · NEWS CARDS', neurashield_x: 'SOCIAL MEDIA MANAGER · NEURASHIELD X', neurashield_report: 'SOCIAL MEDIA MANAGER · NEURASHIELD REPORT', neurashield_facts: 'SOCIAL MEDIA MANAGER · NEURASHIELD FACTS', gta6_campaign: 'SOCIAL MEDIA MANAGER · GTA VI CAMPAGNE' };
 const AGENT_STYLES = {
   designer: 'color:hsl(45 93% 55%)',
   marketeer: 'color:hsl(340 80% 55%)',
@@ -586,6 +586,7 @@ const AGENT_STYLES = {
   edu_designer: 'color:hsl(38 92% 55%)',
   character_video_batch: 'color:hsl(264 65% 65%)',
   news_cards: 'color:hsl(264 65% 65%)',
+  gta6_campaign: 'color:hsl(320 80% 65%)',
   neurashield_x: 'color:hsl(190 80% 50%)',
   neurashield_report: 'color:hsl(190 80% 50%)',
   neurashield_facts: 'color:hsl(190 80% 50%)',
@@ -652,6 +653,8 @@ function buildScheduleSummary(s) {
       return `Weekly NeuraShield report to Telegram and notifications`;
     case 'neurashield_facts':
       return `Appends dated facts from the changelog and threat list version`;
+    case 'gta6_campaign':
+      return `<b>gh0stlayer</b> · temporary, 18 to 27 Nov 2026 · one GTA VI x crypto post per day (Nano Banana visual + live BTC price), on X about 30 min after the run and then Instagram · switches itself off after the last day`;
     case 'news_cards': {
       const acc = p.account || 'gh0stlayer';
       const what = acc === 'slabhaus' ? 'Pokémon TCG news and NeuraCollectibles pop data' : 'fresh crypto news';
