@@ -1,6 +1,27 @@
 # gh0stlayer news cards: evergreen pool. Verifiable protocol facts, each with a source URL.
 # Format (own minimal parser, sources/evergreen.js): "- key: value" starts an item; values in [..] or {..} are JSON.
 # Used when the day's news scores low, and by --dry-run to cover every layout.
+# Order matters on equal scores: educational items (edu-*) and history alternate 2:1 (2026-11-20).
+
+- id: edu-seed-phrase
+  topic: seed phrase
+  title: "Your seed phrase is 12 or 24 words from a list of 2,048"
+  summary: "Most wallets follow BIP39: the recovery phrase is 12 or 24 words picked from a fixed list of 2,048 words. Anyone with those words controls the wallet. No real support team, exchange or airdrop will ever ask for them."
+  source: BIP39
+  url: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki
+  numbers: [12, 24, 2048]
+  entities: [Wallet, Security]
+  layouts: [signal]
+
+- id: edu-multisig
+  topic: multisig
+  title: "A 2-of-3 multisig survives one lost or stolen key"
+  summary: "A multisignature wallet needs several keys to sign. In a 2-of-3 setup there are three keys and any two can move funds, so one lost or stolen key is not fatal."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Multi-signature
+  numbers: [2, 3]
+  entities: [Bitcoin, Wallet, Security]
+  layouts: [signal]
 
 - id: btc-halving-schedule
   title: "Bitcoin's block subsidy fell to 3.125 BTC at the April 2024 halving"
@@ -14,6 +35,26 @@
   series: [["2009", 50], ["2012", 25], ["2016", 12.5], ["2020", 6.25], ["2024", 3.125]]
   versus: {"left": {"label": "2020 halving", "value": "6.25", "unit": "BTC per block"}, "right": {"label": "2024 halving", "value": "3.125", "unit": "BTC per block"}}
 
+- id: edu-scams-ic3
+  topic: scams
+  title: "Crypto investment fraud was the costliest scam the FBI tracked in 2023"
+  summary: "The FBI's 2023 Internet Crime Report lists investment fraud as the costliest crime type, with crypto investment schemes the largest part. The common pattern: a friendly contact, a fake trading platform with fake profits, then fees to withdraw."
+  source: FBI IC3
+  url: https://www.ic3.gov/AnnualReport/Reports/2023_IC3Report.pdf
+  numbers: [2023]
+  entities: [Security, Scams]
+  layouts: [signal]
+
+- id: edu-token-approvals
+  topic: token approvals
+  title: "A token approval can stay open long after you used the app"
+  summary: "ERC-20 tokens, standardised in 2015 (EIP-20), let you approve a contract to spend your tokens. Many apps ask for an unlimited amount. That permission stays until you revoke it, so a hacked or malicious contract can still drain the token later."
+  source: Revoke.cash
+  url: https://revoke.cash/learn/approvals/what-are-token-approvals
+  numbers: [2015, 20]
+  entities: [Ethereum, Wallet, Security]
+  layouts: [signal]
+
 - id: btc-supply-cap
   title: "Bitcoin's supply is capped at 21 million coins, each split into 100,000,000 sats"
   summary: "The protocol caps total supply just under 21 million BTC. One bitcoin is 100,000,000 satoshis, the smallest unit on chain."
@@ -23,6 +64,28 @@
   entities: [Bitcoin]
   layouts: [number, signal]
 
+- id: edu-celsius
+  topic: custody
+  title: "Celsius froze withdrawals on 12 June 2022"
+  summary: "On 12 June 2022 lender Celsius paused all withdrawals, swaps and transfers, and filed for bankruptcy in July. Users who held coins there could not move them. Coins on a platform are a claim on that platform, not coins in your own wallet."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Celsius_Network
+  date: 2022-06-12
+  numbers: [2022, 12]
+  entities: [Custody, Exchange]
+  layouts: [signal]
+
+- id: edu-whitepaper
+  topic: bitcoin whitepaper
+  title: "The Bitcoin whitepaper is 9 pages and came out on 31 October 2008"
+  summary: "Satoshi Nakamoto published 'Bitcoin: A Peer-to-Peer Electronic Cash System' on 31 October 2008. It is 9 pages long and still one of the clearest explanations of how the network works."
+  source: bitcoin.org
+  url: https://bitcoin.org/bitcoin.pdf
+  date: 2008-10-31
+  numbers: [9, 2008]
+  entities: [Bitcoin]
+  layouts: [signal]
+
 - id: btc-difficulty-retarget
   title: "Bitcoin retargets mining difficulty every 2,016 blocks to keep blocks near 10 minutes"
   summary: "Every 2,016 blocks, about two weeks, the network adjusts difficulty so the average block time stays near the 10 minute target, whatever hashrate joins or leaves."
@@ -31,6 +94,27 @@
   numbers: [2016, 10]
   entities: [Bitcoin, Miners]
   layouts: [number, signal]
+
+- id: edu-eth-launch
+  topic: ethereum launch
+  title: "Ethereum went live on 30 July 2015"
+  summary: "Ethereum's first live release, Frontier, launched on 30 July 2015. It added programmable smart contracts on top of a blockchain, the base for DeFi, stablecoins and NFTs."
+  source: ethereum.org
+  url: https://ethereum.org/en/history/
+  date: 2015-07-30
+  numbers: [2015, 30]
+  entities: [Ethereum]
+  layouts: [signal]
+
+- id: edu-wei-gwei
+  topic: gas units
+  title: "1 ETH is 1,000,000,000 gwei"
+  summary: "Ether has small units like sats in Bitcoin. 1 gwei is 0.000000001 ETH, so 1 ETH is 1,000,000,000 gwei. Gas prices in wallets are shown in gwei."
+  source: ethereum.org
+  url: https://ethereum.org/en/developers/docs/gas/
+  numbers: [1000000000, 1]
+  entities: [Ethereum, Gas]
+  layouts: [signal]
 
 - id: btc-genesis
   title: "Bitcoin's genesis block was mined on 3 January 2009"
@@ -42,6 +126,26 @@
   entities: [Bitcoin]
   layouts: [signal, number]
 
+- id: edu-gas-21000
+  topic: gas
+  title: "A plain ETH transfer always uses 21,000 gas"
+  summary: "Sending ETH from one address to another uses exactly 21,000 gas units. Swaps and other contract calls use more because they run code. The fee is gas used times the gas price."
+  source: ethereum.org
+  url: https://ethereum.org/en/developers/docs/gas/
+  numbers: [21000]
+  entities: [Ethereum, Gas]
+  layouts: [signal]
+
+- id: edu-block-time
+  topic: confirmations
+  title: "Bitcoin makes about 144 blocks a day"
+  summary: "Bitcoin targets one block every 10 minutes, about 144 blocks a day. Many services wait for 6 confirmations, roughly an hour, before they treat a large payment as final."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Confirmation
+  numbers: [144, 10, 6]
+  entities: [Bitcoin]
+  layouts: [signal]
+
 - id: btc-pizza
   title: "On 22 May 2010 someone paid 10,000 BTC for two pizzas"
   summary: "Laszlo Hanyecz paid 10,000 BTC for two pizzas on 22 May 2010, the first widely cited real world purchase with bitcoin."
@@ -51,6 +155,26 @@
   numbers: [10000]
   entities: [Bitcoin]
   layouts: [signal, persona]
+
+- id: edu-address-types
+  topic: addresses
+  title: "Bitcoin addresses start with 1, 3 or bc1, and that tells you the type"
+  summary: "Legacy Bitcoin addresses start with 1, script addresses with 3, and native SegWit and Taproot addresses with bc1. Newer bc1 addresses usually mean lower fees. Always check the full address, not just the first and last characters."
+  source: Bitcoin Wiki
+  url: https://en.bitcoin.it/wiki/Invoice_address
+  numbers: [1, 3]
+  entities: [Bitcoin, Wallet]
+  layouts: [signal]
+
+- id: edu-lightning
+  topic: lightning
+  title: "The Lightning Network whitepaper came out in 2016"
+  summary: "Lightning moves Bitcoin payments off chain through payment channels and settles on chain later. The idea was published by Joseph Poon and Thaddeus Dryja in 2016. It is built for small, fast payments."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Lightning_Network
+  numbers: [2016]
+  entities: [Bitcoin, Lightning]
+  layouts: [signal]
 
 - id: btc-segwit
   title: "SegWit activated on Bitcoin at block 481,824 on 24 August 2017"
@@ -62,6 +186,27 @@
   entities: [Bitcoin]
   layouts: [signal, number]
 
+- id: edu-dencun
+  topic: layer 2
+  title: "The Dencun upgrade of 13 March 2024 cut layer 2 fees"
+  summary: "Ethereum's Dencun upgrade went live on 13 March 2024. It added blobs (EIP-4844), a cheaper place for rollups to post their data, and fees on layer 2 networks dropped sharply."
+  source: ethereum.org
+  url: https://ethereum.org/en/roadmap/dencun/
+  date: 2024-03-13
+  numbers: [2024, 4844]
+  entities: [Ethereum, Layer 2]
+  layouts: [signal]
+
+- id: edu-staking-32
+  topic: staking
+  title: "Running your own Ethereum validator takes 32 ETH"
+  summary: "Solo staking on Ethereum needs 32 ETH per validator. Pools and liquid staking let people stake less, but add a smart contract or a provider as an extra risk."
+  source: ethereum.org
+  url: https://ethereum.org/en/staking/
+  numbers: [32]
+  entities: [Ethereum, Staking]
+  layouts: [signal]
+
 - id: btc-taproot
   title: "Taproot activated on Bitcoin at block 709,632 in November 2021"
   summary: "The Taproot soft fork activated at block 709,632 on 14 November 2021, adding Schnorr signatures and cheaper complex spending conditions."
@@ -71,6 +216,28 @@
   numbers: [709632]
   entities: [Bitcoin]
   layouts: [signal, number]
+
+- id: edu-impermanent-loss
+  topic: impermanent loss
+  title: "If one token in your LP doubles, you trail holding by about 5.7%"
+  summary: "In a 50/50 liquidity pool, a 2x price change leaves you about 5.7% behind simply holding both tokens. At 3x it is about 13.4%, at 5x about 25.5%. Trading fees have to beat that gap."
+  source: Binance Academy
+  url: https://academy.binance.com/en/articles/impermanent-loss-explained
+  numbers: [5.7, 13.4, 25.5, 2, 3, 5]
+  entities: [DeFi]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Price 2x", "value": "5.7%", "unit": "behind holding"}, "right": {"label": "Price 5x", "value": "25.5%", "unit": "behind holding"}}
+
+- id: edu-leverage-math
+  topic: leverage
+  title: "At 10x leverage a 10% move against you can wipe out your margin"
+  summary: "Leverage multiplies both directions. At 10x, a 10% move against the position equals 100% of the margin, and liquidation usually comes earlier because of maintenance margin. At 50x it takes about 2%."
+  source: Hyperliquid docs
+  url: https://hyperliquid.gitbook.io/hyperliquid-docs/trading/liquidations
+  numbers: [10, 50, 2, 100]
+  entities: [Leverage, Trading]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "10x leverage", "value": "10%", "unit": "move wipes margin"}, "right": {"label": "50x leverage", "value": "2%", "unit": "move wipes margin"}}
 
 - id: eth-merge
   title: "The Merge moved Ethereum to proof of stake on 15 September 2022"
@@ -83,6 +250,26 @@
   layouts: [signal, number, versus]
   versus: {"left": {"label": "before the Merge", "value": "PoW", "unit": "miners"}, "right": {"label": "after the Merge", "value": "PoS", "unit": "validators"}}
 
+- id: edu-apr-apy
+  topic: apr vs apy
+  title: "10% APR compounded daily is about 10.52% APY"
+  summary: "APR is the simple yearly rate. APY includes compounding. 10% APR compounded daily works out to about 10.52% APY. In DeFi, check which one is shown, and whether the reward token holds its value."
+  source: Investor.gov
+  url: https://www.investor.gov/financial-tools-calculators/calculators/compound-interest-calculator
+  numbers: [10, 10.52]
+  entities: [DeFi, Yield]
+  layouts: [signal]
+
+- id: edu-dca
+  topic: dca
+  title: "Dollar cost averaging: the same amount on a fixed schedule"
+  summary: "Dollar cost averaging means buying a fixed amount at fixed times, for example 100 dollars every month, whatever the price. It spreads the entry over time. It does not prevent losses when the price keeps falling."
+  source: Investor.gov
+  url: https://www.investor.gov/introduction-investing/investing-basics/glossary/dollar-cost-averaging
+  numbers: [100, 12]
+  entities: [Trading]
+  layouts: [signal]
+
 - id: eth-london-1559
   title: "Since the London upgrade in August 2021, Ethereum burns the base fee of every transaction"
   summary: "EIP-1559 shipped with the London upgrade on 5 August 2021. Every transaction pays a base fee that is burned, plus an optional tip to the block proposer."
@@ -91,6 +278,27 @@
   date: 2021-08-05
   numbers: [1559]
   entities: [Ethereum]
+  layouts: [signal]
+
+- id: edu-funding
+  topic: funding rates
+  title: "Funding on Hyperliquid is paid every hour"
+  summary: "Perpetual futures have no expiry, so a funding payment keeps their price near spot. When funding is positive, longs pay shorts. On Hyperliquid it is paid every hour, on many exchanges every 8 hours."
+  source: Hyperliquid docs
+  url: https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding
+  numbers: [1, 8]
+  entities: [Trading, Hyperliquid]
+  layouts: [signal]
+
+- id: edu-ronin
+  topic: bridge hacks
+  title: "The Ronin bridge lost more than $600 million in March 2022"
+  summary: "Attackers took control of 5 of the 9 validator keys of the Ronin bridge behind Axie Infinity and withdrew more than $600 million in March 2022. Bridges hold large pools of funds, which makes them a top target."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Axie_Infinity
+  date: 2022-03-23
+  numbers: [600000000, 5, 9, 2022]
+  entities: [Security, Hacks]
   layouts: [signal]
 
 - id: eth-shapella
@@ -103,6 +311,28 @@
   entities: [Ethereum]
   layouts: [signal, versus]
 
+- id: edu-bybit
+  topic: exchange hacks
+  title: "About $1.5 billion in ETH was stolen from Bybit in February 2025"
+  summary: "On 21 February 2025 attackers drained about $1.5 billion in ETH from a Bybit cold wallet by tricking signers into approving a malicious transaction. The FBI attributed it to North Korea."
+  source: FBI IC3
+  url: https://www.ic3.gov/PSA/2025/PSA250226
+  date: 2025-02-21
+  numbers: [1500000000, 2025]
+  entities: [Security, Hacks]
+  layouts: [signal]
+
+- id: edu-drawdown
+  topic: volatility
+  title: "Bitcoin fell about 77% from its 2021 high to its 2022 low"
+  summary: "Bitcoin peaked near $69,000 in November 2021 and fell to about $15,500 in November 2022, a drop of roughly 77%. Large drawdowns have happened in every cycle so far."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/History_of_bitcoin
+  numbers: [69000, 15500, 77, 2021, 2022]
+  entities: [Bitcoin, Market]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Nov 2021 high", "value": "$69,000", "unit": "BTC"}, "right": {"label": "Nov 2022 low", "value": "$15,500", "unit": "BTC"}}
+
 - id: eth-slot-time
   title: "Ethereum proposes a block every 12 seconds, one per slot"
   summary: "Under proof of stake, time is divided into 12 second slots and 32 slot epochs. One validator is chosen to propose a block in each slot."
@@ -111,6 +341,26 @@
   numbers: [12, 32]
   entities: [Ethereum]
   layouts: [number, signal]
+
+- id: edu-stablecoins
+  topic: stablecoins
+  title: "USDT launched in 2014 and is still the largest stablecoin"
+  summary: "Stablecoins aim to track a currency, mostly the US dollar. Tether (USDT) launched in 2014 and USDC in 2018. Fiat-backed stablecoins depend on the reserves and the company behind them."
+  source: ethereum.org
+  url: https://ethereum.org/en/stablecoins/
+  numbers: [2014, 2018, 1]
+  entities: [Stablecoins]
+  layouts: [signal]
+
+- id: edu-ordinals
+  topic: ordinals
+  title: "Ordinals brought inscriptions to Bitcoin in January 2023"
+  summary: "The Ordinals protocol, launched in January 2023, numbers individual sats and lets data such as images be inscribed on them. It led to busier blocks and higher fees during peaks."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Ordinals_(Bitcoin)
+  numbers: [2023]
+  entities: [Bitcoin]
+  layouts: [signal]
 
 - id: us-spot-btc-etf
   title: "The SEC approved 11 US spot bitcoin ETFs on 10 January 2024"
@@ -121,6 +371,17 @@
   numbers: [11]
   entities: [Bitcoin, ETF, SEC]
   layouts: [signal, number]
+
+- id: edu-poly
+  topic: bridge hacks
+  title: "Most of the $610 million taken from Poly Network in 2021 was returned"
+  summary: "In August 2021 an attacker took about $610 million from the Poly Network cross-chain protocol, then returned most of it within weeks. It is still one of the largest DeFi exploits."
+  source: Wikipedia
+  url: https://en.wikipedia.org/wiki/Poly_Network
+  date: 2021-08-10
+  numbers: [610000000, 2021]
+  entities: [Security, Hacks, DeFi]
+  layouts: [signal]
 
 - id: mtgox
   title: "Mt. Gox halted withdrawals in February 2014 and reported about 850,000 BTC missing"

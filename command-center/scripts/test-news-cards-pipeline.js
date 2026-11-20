@@ -9,9 +9,10 @@ const t = (name, cond) => { console.log(`${cond ? "ok  " : "FOUT"} ${name}`); if
 
 const now = Date.parse("2026-11-16T07:30:00Z");
 const pool = ev.load();
+// gh0stlayer mix since 2026-11-20: number has weight 0 and is never planned.
 const plans = P.planLayouts(pool, [], ["signal", "number", "versus", "persona"], now);
-t("planLayouts: elke layout een item (evergreen)", plans.length === 4 && plans.map(p => p.layout).join() === "signal,number,versus,persona");
-t("planLayouts: geen item dubbel", new Set(plans.map(p => p.item.id)).size === 4);
+t("planLayouts: elke layout met gewicht een item (evergreen)", plans.length === 3 && plans.map(p => p.layout).join() === "signal,versus,persona");
+t("planLayouts: geen item dubbel", new Set(plans.map(p => p.item.id)).size === 3);
 
 const stills = [{ id: "a", prompt: "front view" }, { id: "b", prompt: "three-quarter view, night" }, { id: "c", prompt: "three quarter view" }];
 t("persona: three-quarter voorkeur", P.pickPersonaStill(stills, [], now, 14, () => 0).id === "b");
@@ -41,7 +42,7 @@ const deps = mode => ({
   await P.schedulePublish({ deps: deps("auto"), m, nowMs: now });
   t("auto: IG en X ingepland, geen tiktok", m.posts.instagram.status === "scheduled" && m.posts.x.status === "scheduled" && !m.posts.tiktok);
   t("auto: X task scheduled met pair hook+reply", calls.x[0].status === "scheduled" && calls.x[0].pair.hook === "hook 👇" && calls.x[0].pair.replies[0] === "reply");
-  t("auto: X alleen slide 1", calls.x[0].media_paths.length === 1 && /slide_1/.test(calls.x[0].media_paths[0]));
+  t("auto: X krijgt alle slides (x_all_slides, max 4)", calls.x[0].media_paths.length === Math.min(4, m.slides.length) && /slide_1/.test(calls.x[0].media_paths[0]));
   t("IG 45 min, X 20 min na de run", m.posts.instagram.due_at === new Date(now + 45 * 60000).toISOString() && m.posts.x.due_at === new Date(now + 20 * 60000).toISOString());
 
   const m2 = mkSet("s2");

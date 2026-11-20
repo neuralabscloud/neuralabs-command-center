@@ -29,6 +29,7 @@ async function coingecko(now) {
   const dom = g.market_cap_percentage.btc, eth = g.market_cap_percentage.eth, mc = g.total_market_cap.usd;
   return [metric({
     source: "CoinGecko", url: "https://www.coingecko.com/en/global-charts",
+    topic: "btc dominance",
     title: `Bitcoin dominance is ${dom.toFixed(1)}% of a ${usd(mc)} crypto market`,
     summary: `Bitcoin holds ${dom.toFixed(1)}% of total crypto market cap (${usd(mc)}). Ether holds ${eth.toFixed(1)}%. Market cap change over 24h: ${g.market_cap_change_percentage_24h_usd.toFixed(1)}%.`,
     numbers: [{ raw: `${dom.toFixed(1)}%`, value: +dom.toFixed(1) }, { raw: usd(mc), value: mc }, { raw: `${eth.toFixed(1)}%`, value: +eth.toFixed(1) }],
@@ -41,6 +42,7 @@ function vsItem({ source, url, name, rows, now, entities, extra = "" }) {
   if (!cur || !ago) return null;
   const pct = (cur.v / ago.v - 1) * 100;
   return metric({
+    topic: String(name).toLowerCase(),
     source, url, title: `${name} is ${usd(cur.v)}, versus ${usd(ago.v)} a year ago`,
     summary: `${name}: ${usd(cur.v)} on ${monthLabel(cur.t)}, ${usd(ago.v)} on ${monthLabel(ago.t)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% over 12 months). ${extra}`.trim(),
     numbers: [{ raw: usd(cur.v), value: cur.v }, { raw: usd(ago.v), value: ago.v }, { raw: `${pct.toFixed(1)}%`, value: +pct.toFixed(1) }],
@@ -69,6 +71,7 @@ async function mempool(now) {
     const next = Math.ceil((tip + 1) / 210000) * 210000, left = next - tip;
     out.push(metric({
       source: "mempool.space", url: "https://mempool.space/",
+      topic: "btc halving",
       title: `Bitcoin's next halving is ${left.toLocaleString("en-US")} blocks away, at block ${next.toLocaleString("en-US")}`,
       summary: `Current block height ${tip.toLocaleString("en-US")}. The subsidy halves every 210,000 blocks; the next halving is at block ${next.toLocaleString("en-US")}, ${left.toLocaleString("en-US")} blocks from now. At the 10 minute target that is roughly ${Math.round(left * 10 / 1440)} days.`,
       numbers: [{ raw: left.toLocaleString("en-US"), value: left }, { raw: next.toLocaleString("en-US"), value: next }, { raw: tip.toLocaleString("en-US"), value: tip }, { raw: "210,000", value: 210000 }],
@@ -82,6 +85,7 @@ async function mempool(now) {
     const pct = (cur.v / ago.v - 1) * 100;
     out.push(metric({
       source: "mempool.space", url: "https://mempool.space/graphs/mining/hashrate-difficulty",
+      topic: "btc hashrate",
       title: `Bitcoin hashrate is ${eh(cur.v)} EH/s, versus ${eh(ago.v)} EH/s a year ago`,
       summary: `Average network hashrate ${eh(cur.v)} EH/s on ${monthLabel(cur.t)}, ${eh(ago.v)} EH/s on ${monthLabel(ago.t)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%). Last difficulty adjustment: ${diff.previousRetarget >= 0 ? "+" : ""}${Number(diff.previousRetarget).toFixed(2)}%.`,
       numbers: [{ raw: `${eh(cur.v)} EH/s`, value: eh(cur.v) }, { raw: `${eh(ago.v)} EH/s`, value: eh(ago.v) }, { raw: `${pct.toFixed(1)}%`, value: +pct.toFixed(1) }, { raw: `${Number(diff.previousRetarget).toFixed(2)}%`, value: +Number(diff.previousRetarget).toFixed(2) }],
@@ -100,6 +104,7 @@ async function feargreed(now) {
   if (!today) return [];
   return [metric({
     source: "Alternative.me", url: "https://alternative.me/crypto/fear-and-greed-index/",
+    topic: "fear and greed",
     title: `Crypto fear and greed index reads ${today.value} (${today.value_classification.toLowerCase()}), from ${week.value} a week ago`,
     summary: `Fear and greed index: ${today.value} today (${today.value_classification}), ${week.value} seven days ago (${week.value_classification}).`,
     numbers: [{ raw: String(today.value), value: +today.value }, { raw: String(week.value), value: +week.value }],
@@ -119,6 +124,7 @@ async function hyperliquid(now) {
   const oi = Number(c.openInterest) * Number(c.markPx), f = Number(c.funding) * 100, apr = f * 24 * 365;
   return [metric({
     source: "Hyperliquid", url: "https://app.hyperliquid.xyz/trade/BTC",
+    topic: "hyperliquid oi",
     title: `BTC open interest on Hyperliquid is ${usd(oi)}, funding ${f.toFixed(4)}% per hour`,
     summary: `BTC perp on Hyperliquid: open interest ${Number(c.openInterest).toFixed(0)} BTC (${usd(oi)}), funding ${f.toFixed(4)}% per hour (about ${apr.toFixed(1)}% annualised), 24h notional volume ${usd(Number(c.dayNtlVlm))}.`,
     numbers: [{ raw: usd(oi), value: oi }, { raw: `${f.toFixed(4)}%`, value: +f.toFixed(4) }, { raw: `${apr.toFixed(1)}%`, value: +apr.toFixed(1) }, { raw: usd(Number(c.dayNtlVlm)), value: Number(c.dayNtlVlm) }],

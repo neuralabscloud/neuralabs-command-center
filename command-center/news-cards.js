@@ -28,7 +28,7 @@ function readOpt(file) { try { return fs.readFileSync(file, "utf8"); } catch { r
 function account(a) {
   if (a && a.__acct) return a;
   const p = a && typeof a === "object" ? a : accounts.load(a || "gh0stlayer");
-  const key = `${p.id}|${JSON.stringify(p).length}`;
+  const key = `${p.id}|${JSON.stringify(p)}`; // full content: a length key mixed up configs of equal length (3/2/1/1 vs 4/0/1/1)
   if (_acct.has(key)) return _acct.get(key);
   const sc = p.scoring || {}, v = p.voice || {}, ip = p.image_policy || {};
   const A = {

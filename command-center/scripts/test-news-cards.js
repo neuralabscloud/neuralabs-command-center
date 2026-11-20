@@ -53,15 +53,16 @@ t("zonder feit afgewezen", !!nc.scoreItem({ ...fresh, title: "Markets are moving
 t("memecoin afgewezen", !!nc.scoreItem({ ...fresh, title: "New memecoin jumps 400%" }, now).reject);
 t("evergreen freshness 40", nc.scoreItem(item, now).freshness === 40);
 
-// dedup + plan
+// dedup + plan (mechanism test with a fixed 3/2/1/1 mix, independent of the live account mix)
+const MIX = { ...require("../accounts").load("gh0stlayer"), weekly_mix: { signal: 3, number: 2, versus: 1, persona: 1 } };
 const hist = [{ dedup_key: nc.dedupKey(fresh), layout: "signal", created_at: "2026-11-10T07:30:00Z" }];
 t("dedup binnen 30 dagen", nc.isDuplicate(fresh, hist, now));
-const def = nc.layoutDeficits([{ layout: "signal", created_at: "2026-11-15T07:30:00Z" }, { layout: "signal", created_at: "2026-11-14T07:30:00Z" }, { layout: "signal", created_at: "2026-11-13T07:30:00Z" }], now);
+const def = nc.layoutDeficits([{ layout: "signal", created_at: "2026-11-15T07:30:00Z" }, { layout: "signal", created_at: "2026-11-14T07:30:00Z" }, { layout: "signal", created_at: "2026-11-13T07:30:00Z" }], now, MIX);
 t("deficit na 3x signal: number grootste tekort", def.signal < 0 && def.number > def.versus && def.number > 1);
 const many = Array.from({ length: 21 }, (_, i) => ({ layout: ["signal", "signal", "signal", "number", "number", "versus", "persona"][i % 7], created_at: new Date(now - i * 7 * 3600e3).toISOString() }));
-const d21 = nc.layoutDeficits(many, now);
+const d21 = nc.layoutDeficits(many, now, MIX);
 t("mix 3/2/1/1 houdt bij 3 per dag", Math.max(...Object.values(d21)) - Math.min(...Object.values(d21)) < 1);
-const plan = nc.planDay([fresh, item], [{ layout: "signal", created_at: "2026-11-15T07:30:00Z" }, { layout: "signal", created_at: "2026-11-14T07:30:00Z" }, { layout: "signal", created_at: "2026-11-13T07:30:00Z" }], { now, rand: () => 0.5 });
+const plan = nc.planDay([fresh, item], [{ layout: "signal", created_at: "2026-11-15T07:30:00Z" }, { layout: "signal", created_at: "2026-11-14T07:30:00Z" }, { layout: "signal", created_at: "2026-11-13T07:30:00Z" }], { now, rand: () => 0.5, account: MIX });
 t("plan kiest number voor evergreen item", plan.length === 1 && plan[0].layout === "number" && plan[0].item === item);
 
 // chart + slides
