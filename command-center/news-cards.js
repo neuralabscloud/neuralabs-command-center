@@ -37,7 +37,7 @@ function account(a) {
     pillRules: p.pill_rules || {},
     relevant: new RegExp(sc.relevant || RELEVANT.source, "i"), reject: new RegExp(sc.reject || REJECT.source, "i"),
     rejectReason: sc.reject_reason || "niet relevant", maxAge: Number(sc.max_age_hours) || 24, minScore: Number(sc.min_score) || 50,
-    trending: sc.trending || null,
+    trending: sc.trending || null, topicCooldownDays: Number(sc.topic_cooldown_days) || 0,
     voiceIntro: v.intro || "", voiceRules: v.rules || "", capsAllow: v.caps_allow || CAPS_EXTRA, captionCaps: v.caption_caps || [...TICKERS, "ETF", "TVL", "AI", "DeFi"],
     forbid: (v.forbid || []).map(f => ({ re: new RegExp(f.pattern, "i"), reason: f.reason || "verboden formulering" })),
     hashtags: Array.isArray(v.hashtags) && v.hashtags.length ? v.hashtags.map(h => String(h).toLowerCase()) : null,
@@ -121,9 +121,26 @@ function dedupKey(item) {
   const fact = n == null ? String(item.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().slice(0, 60) : String(typeof n === "object" ? n.value : n);
   return `${ent}|${fact}`;
 }
-function isDuplicate(item, history, now = Date.now(), days = 30) {
+// Topic = what the post is about (set, card, evergreen theme), independent of the number in it. Used for the
+// per-account cooldown (scoring.topic_cooldown_days): "30th Celebration -19.6%" and "-9.1%" are the same topic.
+const normTopic = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const GENERIC_ENTITIES = new Set(["psa", "cgc", "bgs", "beckett", "sgc", "tag", "pop", "market", "release"]);
+function topicKey(item) {
+  if (!item) return "";
+  if (item.topic) return normTopic(item.topic);
+  if (item.card && item.card.name) return normTopic(item.card.name);
+  if (item.kind === "metric") { const e = (item.entities || []).find(x => !GENERIC_ENTITIES.has(String(x).toLowerCase())); if (e) return normTopic(e); }
+  if (item.kind === "evergreen") return normTopic(item.id || item.title);
+  return "";
+}
+function isDuplicate(item, history, now = Date.now(), days = 30, topicDays = 0) {
   const key = dedupKey(item);
-  return (history || []).some(h => h.dedup_key === key && now - Date.parse(h.created_at || 0) < days * 86400e3);
+  const topic = topicDays > 0 ? topicKey(item) : "";
+  return (history || []).some(h => {
+    const age = now - Date.parse(h.created_at || 0);
+    if (h.dedup_key === key && age < days * 86400e3) return true;
+    return !!topic && h.topic_key === topic && age < topicDays * 86400e3;
+  });
 }
 
 function compatibleLayouts(item) {
@@ -148,9 +165,9 @@ function layoutDeficits(history, now = Date.now(), acct) {
 // Plan the day: for each slot pick the most-needed layout, then the best fresh non-duplicate item that fits it.
 function planDay(candidates, history, { count = 1, weights = {}, rand = Math.random, now = Date.now(), minScore = 50, account: acct } = {}) {
   const scored = candidates.map(item => ({ item, score: scoreItem(item, now, acct) }))
-    .filter(c => !c.score.reject && c.score.total >= minScore && !isDuplicate(c.item, history, now))
+    .filter(c => !c.score.reject && c.score.total >= minScore && !isDuplicate(c.item, history, now, 30, account(acct).topicCooldownDays))
     .sort((a, b) => b.score.total - a.score.total);
-  const used = new Set();
+  const used = new Set(), usedTopics = new Set();
   const plan = [];
   const hist = [...(history || [])];
   for (let i = 0; i < count; i++) {
@@ -160,11 +177,12 @@ function planDay(candidates, history, { count = 1, weights = {}, rand = Math.ran
     const first = xPairs.weightedPick(top, weights.layout || {}, rand);
     let pick = null;
     for (const layout of [first, ...ordered.filter(l => l !== first)]) {
-      const c = scored.find(c => !used.has(c) && compatibleLayouts(c.item).includes(layout));
+      const c = scored.find(c => !used.has(c) && !usedTopics.has(topicKey(c.item) || c) && compatibleLayouts(c.item).includes(layout));
       if (c) { pick = { ...c, layout }; break; }
     }
     if (!pick) break;
     used.add(scored.find(c => c.item === pick.item));
+    if (topicKey(pick.item)) usedTopics.add(topicKey(pick.item));
     plan.push(pick);
     hist.push({ layout: pick.layout, created_at: new Date(now).toISOString() });
   }
@@ -508,7 +526,7 @@ function imagePrompt(brief, acct) { return `${String(brief || "").replace(/[â€“â
 module.exports = {
   SIZE, LAYOUTS, PILLS, WEEKLY_MIX, IMAGE_RULES, CAPS_EXTRA, RELEVANT, REJECT, TICKERS, account, layoutLabel,
   esc, stripMarks, highlight, numbersIn, numberVariants,
-  scoreItem, dedupKey, isDuplicate, compatibleLayouts, layoutDeficits, planDay,
+  scoreItem, dedupKey, topicKey, isDuplicate, compatibleLayouts, layoutDeficits, planDay,
   systemPrompt, userPrompt, parseJson, validateCard, generateCard,
   chartSvg, popBarsSvg, slabPatternSvg, buildSlides, pageHtml, fontStatus, renderSet, renderHtml, closeBrowser, dataUri, safeImg, fill, tpl, TPL_DIR, imagePrompt,
 };

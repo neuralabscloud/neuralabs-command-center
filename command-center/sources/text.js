@@ -25,19 +25,22 @@ function numbers(text) {
   return out;
 }
 
-const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”", mdash: ", ", ndash: ", ", hellip: "..." };
+const NAMED = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”", mdash: ", ", ndash: ", ", hellip: "...", eacute: "é", egrave: "è", agrave: "à", uuml: "ü", ouml: "ö", auml: "ä", ccedil: "ç", trade: "™", reg: "®", copy: "©" };
 function decode(s) {
   return String(s || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
-    .replace(/&([a-z]+);/gi, (m, n) => NAMED[n.toLowerCase()] ?? m);
+    .replace(/&([a-z]+);/gi, (m, n) => NAMED[n] ?? NAMED[n.toLowerCase()] ?? m);
 }
 function htmlText(s) {
   return decode(String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")).replace(/[–—]/g, ", ").replace(/\s+/g, " ").trim();
 }
 // Article body: concatenated <p> text, capped.
 function articleText(html, max = 4000) {
-  const ps = [...String(html || "").matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m => htmlText(m[1])).filter(t => t.length > 60);
+  // Strip script/style/noscript from the whole page first: an unclosed <p> before a <script> otherwise drags page JS into the text.
+  const clean = String(html || "").replace(/<(script|style|noscript)\b[\s\S]*?<\/\1>/gi, " ");
+  const code = /window\.|function\s*\(|=>|\{"|":\s*(null|true|false|\d)|;\s*var\s/;
+  const ps = [...clean.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m => htmlText(m[1])).filter(t => t.length > 60 && !code.test(t)).map(t => decode(t));
   return ps.join(" ").slice(0, max);
 }
 

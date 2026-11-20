@@ -125,7 +125,7 @@ function createPipeline(accountId) {
   }
   function history() {
     return listSets({ limit: 500 }).filter(m => m.status !== "skipped" && m.status !== "failed")
-      .map(m => ({ created_at: m.created_at, layout: m.layout, pill: m.pill, dedup_key: m.item?.dedup_key, persona_still: m.images?.persona_task_id, photos: m.images?.photos || [] }));
+      .map(m => ({ created_at: m.created_at, layout: m.layout, pill: m.pill, dedup_key: m.item?.dedup_key, topic_key: m.item?.topic_key || "", persona_still: m.images?.persona_task_id, photos: m.images?.photos || [] }));
   }
   function loadState() { return readJson(STATE_FILE, {}); }
   function saveState(s) { writeJson(STATE_FILE, s); }
@@ -288,7 +288,7 @@ function createPipeline(accountId) {
   async function buildSet({ deps, plan, setId, dryRun, now, weights, hist }) {
     const m = {
       id: setId, account: A.id, created_at: new Date(now).toISOString(), dry_run: !!dryRun, status: "generating",
-      item: { kind: plan.item.kind, source: plan.item.source, url: plan.item.url, title: plan.item.title, published_at: plan.item.published_at, dedup_key: nc.dedupKey(plan.item), data_fetched_at: plan.item.data_fetched_at || null, trend: plan.item.trend || null },
+      item: { kind: plan.item.kind, source: plan.item.source, url: plan.item.url, title: plan.item.title, published_at: plan.item.published_at, dedup_key: nc.dedupKey(plan.item), topic_key: nc.topicKey(plan.item), data_fetched_at: plan.item.data_fetched_at || null, trend: plan.item.trend || null },
       score: plan.score, layout: plan.layout, pill: null, card: null, attempts: [], images: {}, slides: [], posts: {}, metrics: {}, log: [],
     };
     const pill = pickPill(plan.item, plan.layout, weights);
@@ -403,7 +403,7 @@ function createPipeline(accountId) {
       reply = withCredit(reply);
       const task = deps.addXTask({
         channel_id: channel.id, status: auto ? "scheduled" : "draft", scheduled_at: m.posts.x.due_at,
-        text: m.card.x_hook, media_path: m.slides[0].rel, media_paths: [m.slides[0].rel],
+        text: m.card.x_hook, media_path: m.slides[0].rel, media_paths: xMediaPaths(m),
         topic: nc.stripMarks(m.card.headline).slice(0, 80), format: "news_card", news_set_id: m.id, news_account: A.id,
         pair: { hook: m.card.x_hook, replies: [reply], formula: "news_card", pillar: m.layout, pillar_label: m.pill,
           premium: xPremium(channel.id), has_media: true, has_link: !!m.posts.x.link, brand_mention: false, media_kind: "news_card",
@@ -413,6 +413,12 @@ function createPipeline(accountId) {
     }
     m.status = "scheduled";
     saveSet(m);
+  }
+
+  // X gets the whole set (max 4 images) when publish.x_all_slides is on, otherwise only the hook slide.
+  function xMediaPaths(m) {
+    const rels = (m.slides || []).map(x => x.rel).filter(Boolean);
+    return (P.publish || {}).x_all_slides ? rels.slice(0, 4) : rels.slice(0, 1);
   }
 
   async function publishInstagram({ deps, m }) {
@@ -548,7 +554,7 @@ function createPipeline(accountId) {
           if (!dryRun && m.id !== "?") saveSet(m);
         }
         sets.push(m);
-        hist.push({ created_at: new Date(now).toISOString(), layout: plan.layout, dedup_key: nc.dedupKey(plan.item), persona_still: m.images?.persona_task_id, photos: m.images?.photos || [] });
+        hist.push({ created_at: new Date(now).toISOString(), layout: plan.layout, dedup_key: nc.dedupKey(plan.item), topic_key: nc.topicKey(plan.item), persona_still: m.images?.persona_task_id, photos: m.images?.photos || [] });
       }
       await nc.closeBrowser();
       const summary = { account: A.id, reason, dry_run: dryRun, sources: src.status, candidates: src.items.length, planned: plans.length, sets: sets.map(s => ({ id: s.id, status: s.status, layout: s.layout, pill: s.pill, reason: s.reason || s.error || null })), ms: Date.now() - t0 };

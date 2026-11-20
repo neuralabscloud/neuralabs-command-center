@@ -75,6 +75,26 @@ t("2 slides zonder closer", nc.buildSlides({ ...good, closer: null }, {}).length
 t("geen script-injectie", !nc.buildSlides({ ...good, headline: "<script>x</script>" }, {})[0].html.includes("<script>x"));
 
 // generateCard met nep-LLM: eerste poging fout, tweede goed
+// Topic cooldown (scoring.topic_cooldown_days): same set/card/evergreen theme, other number = still a repeat.
+{
+  const m1 = { kind: "metric", title: "30th Celebration set index moved -19.6% over the last 7 days", numbers: [{ value: -19.6 }], entities: ["30th Celebration", "market"] };
+  const m2 = { ...m1, title: "30th Celebration set index moved -9.1% over the last 7 days", numbers: [{ value: -9.1 }] };
+  const m3 = { ...m1, title: "Perfect Order set index moved -12% over the last 7 days", numbers: [{ value: -12 }], entities: ["Perfect Order", "market"] };
+  const ev1 = { kind: "evergreen", id: "base-set-holo-count", topic: "Base Set", title: "x", numbers: [16] };
+  const ev2 = { kind: "evergreen", id: "base-red-cheeks", topic: "base set", title: "y", numbers: [58] };
+  const pop = { kind: "metric", card: { name: "Fuecoco" }, entities: ["Fuecoco", "pop"], numbers: [{ value: 58 }] };
+  t("topicKey set metric = set name", nc.topicKey(m1) === "30th celebration");
+  t("topicKey evergreen = topic veld", nc.topicKey(ev1) === "base set" && nc.topicKey(ev2) === "base set");
+  t("topicKey card = kaartnaam", nc.topicKey(pop) === "fuecoco");
+  const hist = [{ created_at: new Date(now - 2 * 864e5).toISOString(), dedup_key: nc.dedupKey(m1), topic_key: nc.topicKey(m1) },
+                { created_at: new Date(now - 3 * 864e5).toISOString(), dedup_key: nc.dedupKey(ev1), topic_key: nc.topicKey(ev1) }];
+  t("zonder cooldown: ander getal is geen dubbel", !nc.isDuplicate(m2, hist, now));
+  t("met cooldown 7d: zelfde set ander getal = dubbel", nc.isDuplicate(m2, hist, now, 30, 7));
+  t("met cooldown 7d: andere set mag", !nc.isDuplicate(m3, hist, now, 30, 7));
+  t("met cooldown 7d: ander Base Set-feit = dubbel", nc.isDuplicate(ev2, hist, now, 30, 7));
+  t("na 7 dagen mag het onderwerp weer", !nc.isDuplicate(m2, hist, now + 6 * 864e5, 30, 7));
+}
+
 (async () => {
   let calls = 0;
   const llm = async (sys, user) => { calls++; return JSON.stringify(calls === 1 ? { ...good, headline: "Miners — sell" } : good); };

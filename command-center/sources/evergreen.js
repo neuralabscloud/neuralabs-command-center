@@ -37,7 +37,7 @@ function load(file = FILE) {
     published_at: e.date ? new Date(`${e.date}T00:00:00Z`).toISOString() : null,
     numbers: (e.numbers || []).map(n => ({ raw: String(n), value: n })),
     entities: e.entities || [], layouts: e.layouts || ["signal"],
-    series: e.series || null, versus: e.versus || null,
+    series: e.series || null, versus: e.versus || null, topic: e.topic || null,
   }));
 }
 

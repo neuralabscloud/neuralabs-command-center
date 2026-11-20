@@ -2,6 +2,7 @@
 # "- key: value" starts an item; values in [..] or {..} are JSON. Only facts with a source URL.
 
 - id: base-set-1999
+  topic: base set
   title: "Base Set reached US shelves in 1999 with 102 cards, 16 of them holo rares"
   summary: "The English Base Set released on 9 January 1999 in the United States. It has 102 cards, including 16 holographic rares such as Charizard, Blastoise and Venusaur."
   source: Bulbapedia
@@ -12,6 +13,7 @@
   layouts: [number, signal]
 
 - id: base-set-holo-count
+  topic: base set
   title: "Base Set has 16 holo rares out of 102 cards"
   summary: "Of the 102 cards in Base Set, numbers 1 to 16 are the holographic rares, from Alakazam to Zapdos. Charizard is card 4/102."
   source: Bulbapedia
@@ -21,6 +23,7 @@
   layouts: [number, signal]
 
 - id: tcg-japan-1996
+  topic: tcg history
   title: "The Pokémon TCG launched in Japan in October 1996, two years before Base Set"
   summary: "The Pokémon Trading Card Game first released in Japan on 20 October 1996. The English Base Set followed in the US on 9 January 1999."
   source: Bulbapedia
@@ -30,3 +33,453 @@
   entities: [release]
   layouts: [versus, signal]
   versus: {"left": {"label": "Japan launch", "value": "1996", "unit": "October"}, "right": {"label": "Base Set US", "value": "1999", "unit": "January"}}
+
+# Added 2026-11-20: wider pool (eras, sets, secret rares, grading). topic = cooldown key (7 days per topic).
+
+- id: jungle-1999
+  topic: jungle
+  title: "Jungle came out in June 1999 with 64 cards"
+  summary: "Jungle was the first English expansion after Base Set. It released on 16 June 1999 with 64 cards, including holo rares such as Scyther, Vaporeon, Jolteon and Flareon."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Jungle_(TCG)
+  date: 1999-06-16
+  numbers: [64, 1999]
+  entities: [release]
+  layouts: [signal]
+
+- id: fossil-1999
+  topic: fossil
+  title: "Fossil followed in October 1999 with 62 cards"
+  summary: "Fossil released in English on 10 October 1999 with 62 cards. Its holo rares include the legendary birds Articuno, Moltres and Zapdos, plus Gengar, Lapras and Dragonite."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Fossil_(TCG)
+  date: 1999-10-10
+  numbers: [62, 1999]
+  entities: [release]
+  layouts: [signal]
+
+- id: base-set-2-2000
+  topic: base set 2
+  title: "Base Set 2 reprinted Base Set and Jungle in one 130 card set"
+  summary: "Base Set 2 released on 24 February 2000 with 130 cards, all reprints taken from Base Set and Jungle."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_2_(TCG)
+  date: 2000-02-24
+  numbers: [130, 2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: team-rocket-secret-rare
+  topic: team rocket
+  title: "Dark Raichu 83/82 was the first secret rare in the English TCG"
+  summary: "Team Rocket released on 24 April 2000. The set lists 82 cards, but Dark Raichu is numbered 83/82, a card beyond the set total. It was the first secret rare in the English Pokémon TCG. Team Rocket also introduced Dark Pokémon."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Team_Rocket_(TCG)
+  date: 2000-04-24
+  numbers: [83, 82, 2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: gym-heroes-2000
+  topic: gym heroes
+  title: "Gym Heroes brought Gym Leader Pokémon to the TCG in 2000"
+  summary: "Gym Heroes released on 14 August 2000 with 132 cards. It introduced owner cards like Brock's, Misty's, Lt. Surge's and Erika's Pokémon."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Gym_Heroes_(TCG)
+  date: 2000-08-14
+  numbers: [132, 2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: gym-challenge-blaine
+  topic: gym challenge
+  title: "Blaine's Charizard sits at 2/132 in Gym Challenge"
+  summary: "Gym Challenge released on 16 October 2000 with 132 cards. Blaine's Charizard is card 2/132, one of the holo rares in the set."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Gym_Challenge_(TCG)
+  date: 2000-10-16
+  numbers: [132, 2, 2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: neo-genesis-2000
+  topic: neo genesis
+  title: "Neo Genesis added two new types in December 2000"
+  summary: "Neo Genesis released on 16 December 2000 with 111 cards. It introduced the Darkness and Metal types and baby Pokémon. Lugia is card 9/111."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Neo_Genesis_(TCG)
+  date: 2000-12-16
+  numbers: [111, 9, 2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: neo-destiny-shining-charizard
+  topic: neo destiny
+  title: "Shining Charizard is numbered 107/105 in Neo Destiny"
+  summary: "Neo Destiny released on 28 February 2002. The set lists 105 cards plus 8 secret Shining Pokémon, including Shining Charizard at 107/105."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Neo_Destiny_(TCG)
+  date: 2002-02-28
+  numbers: [107, 105, 8, 2002]
+  entities: [release]
+  layouts: [signal]
+
+- id: legendary-collection-reverse
+  topic: legendary collection
+  title: "Legendary Collection introduced reverse holos in 2002"
+  summary: "Legendary Collection released on 24 May 2002 with 110 cards, mostly reprints of older cards. It was the first English set with reverse holo cards, known for their fireworks pattern."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Legendary_Collection_(TCG)
+  date: 2002-05-24
+  numbers: [110, 2002]
+  entities: [release]
+  layouts: [signal]
+
+- id: skyridge-last-wotc
+  topic: skyridge
+  title: "Skyridge was the last set Wizards of the Coast released"
+  summary: "Skyridge, from 2003, was the final Pokémon TCG expansion released by Wizards of the Coast before The Pokémon Company took over the English game. The main set lists 144 cards."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Skyridge_(TCG)
+  numbers: [144, 2003]
+  entities: [release]
+  layouts: [signal]
+
+- id: ex-ruby-sapphire-2003
+  topic: ex ruby sapphire
+  title: "Pokémon-ex debuted in EX Ruby & Sapphire in 2003"
+  summary: "EX Ruby & Sapphire released on 18 June 2003 with 109 cards. It was the first set from The Pokémon Company International era and introduced Pokémon-ex."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/EX_Ruby_%26_Sapphire_(TCG)
+  date: 2003-06-18
+  numbers: [109, 2003]
+  entities: [release]
+  layouts: [signal]
+
+- id: gold-star-2004
+  topic: gold star
+  title: "Gold Star cards first appeared in 2004"
+  summary: "Gold Star Pokémon, shiny cards marked with a star after the name, debuted in EX Team Rocket Returns in 2004. Players could only have one Gold Star card in a deck."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/EX_Team_Rocket_Returns_(TCG)
+  numbers: [2004, 1]
+  entities: [release]
+  layouts: [signal]
+
+- id: lv-x-2007
+  topic: diamond pearl
+  title: "Lv.X cards arrived with Diamond & Pearl in 2007"
+  summary: "The Diamond & Pearl expansion, released in 2007, introduced Pokémon Lv.X cards, which are placed on top of the same Pokémon in play."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Diamond_%26_Pearl_(TCG)
+  numbers: [2007]
+  entities: [release]
+  layouts: [signal]
+
+- id: pokemon-ex-2012
+  topic: next destinies
+  title: "Next Destinies brought Pokémon-EX in 2012"
+  summary: "Next Destinies, released in February 2012, introduced Pokémon-EX with a capital EX. When one is Knocked Out, the opponent takes 2 Prize cards."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Next_Destinies_(TCG)
+  numbers: [2012, 2]
+  entities: [release]
+  layouts: [signal]
+
+- id: xy-mega-fairy
+  topic: xy
+  title: "XY added Mega Evolution and the Fairy type in 2014"
+  summary: "The XY expansion released on 5 February 2014. It introduced Mega Evolution Pokémon-EX and the Fairy type to the TCG."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/XY_(TCG)
+  date: 2014-02-05
+  numbers: [2014]
+  entities: [release]
+  layouts: [signal]
+
+- id: sun-moon-gx
+  topic: sun moon
+  title: "GX cards started with Sun & Moon in 2017"
+  summary: "Sun & Moon released on 3 February 2017 and introduced Pokémon-GX, each with a GX attack that can be used once per game."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Sun_%26_Moon_(TCG)
+  date: 2017-02-03
+  numbers: [2017, 1]
+  entities: [release]
+  layouts: [signal]
+
+- id: sword-shield-v
+  topic: sword shield
+  title: "V and VMAX arrived with Sword & Shield in 2020"
+  summary: "Sword & Shield released on 7 February 2020 and introduced Pokémon V and Pokémon VMAX. Regulation marks, the small letter used for Standard format rotation, also began in this era."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Sword_%26_Shield_(TCG)
+  date: 2020-02-07
+  numbers: [2020]
+  entities: [release]
+  layouts: [signal]
+
+- id: brilliant-stars-vstar
+  topic: brilliant stars
+  title: "Brilliant Stars introduced VSTAR and the Trainer Gallery"
+  summary: "Brilliant Stars released on 25 February 2022. It introduced Pokémon VSTAR with a once per game VSTAR Power, and the Trainer Gallery subset."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Brilliant_Stars_(TCG)
+  date: 2022-02-25
+  numbers: [2022, 1]
+  entities: [release]
+  layouts: [signal]
+
+- id: evolving-skies-umbreon
+  topic: evolving skies
+  title: "Umbreon VMAX alt art is card 215/203 in Evolving Skies"
+  summary: "Evolving Skies released on 27 August 2021 with 203 cards in the main set. The alternate art Umbreon VMAX is card 215/203, a secret rare beyond the set total."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Evolving_Skies_(TCG)
+  date: 2021-08-27
+  numbers: [215, 203, 2021]
+  entities: [release]
+  layouts: [signal]
+
+- id: celebrations-2021
+  topic: celebrations
+  title: "Celebrations marked 25 years of the TCG in 2021"
+  summary: "Celebrations released on 8 October 2021 for the 25th anniversary. The main set has 25 cards, plus a Classic Collection of 25 reprints of famous older cards, including Base Set Charizard 4/102."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Celebrations_(TCG)
+  date: 2021-10-08
+  numbers: [25, 4, 102, 2021]
+  entities: [release]
+  layouts: [signal]
+
+- id: crown-zenith-2023
+  topic: crown zenith
+  title: "Crown Zenith closed out Sword & Shield with a 70 card gallery"
+  summary: "Crown Zenith released on 20 January 2023 with 159 cards in the main set, plus the 70 card Galarian Gallery subset."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Crown_Zenith_(TCG)
+  date: 2023-01-20
+  numbers: [159, 70, 2023]
+  entities: [release]
+  layouts: [signal]
+
+- id: sv-silver-borders
+  topic: scarlet violet
+  title: "Scarlet & Violet switched English cards to silver borders"
+  summary: "Scarlet & Violet released on 31 March 2023 with 198 cards in the main set. English cards changed from yellow to silver borders, lowercase Pokémon ex returned, and Illustration Rare and Special Illustration Rare rarities were introduced."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Scarlet_%26_Violet_(TCG)
+  date: 2023-03-31
+  numbers: [198, 2023]
+  entities: [release]
+  layouts: [signal]
+
+- id: sv-151-2023
+  topic: 151
+  title: "Scarlet & Violet 151 returned to the original 151 Pokémon"
+  summary: "Scarlet & Violet 151 released on 22 September 2023 with 165 cards in the main set, featuring the original 151 Pokémon from Kanto."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Scarlet_%26_Violet%E2%80%94151_(TCG)
+  date: 2023-09-22
+  numbers: [165, 151, 2023]
+  entities: [release]
+  layouts: [signal]
+
+- id: obsidian-flames-tera
+  topic: obsidian flames
+  title: "Obsidian Flames brought Tera Pokémon ex in 2023"
+  summary: "Obsidian Flames released on 11 August 2023. It introduced Tera Pokémon ex, including a Darkness type Tera Charizard ex."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Obsidian_Flames_(TCG)
+  date: 2023-08-11
+  numbers: [2023]
+  entities: [release]
+  layouts: [signal]
+
+- id: hidden-fates-shiny-vault
+  topic: hidden fates
+  title: "Hidden Fates had a 94 card Shiny Vault"
+  summary: "Hidden Fates released on 23 August 2019 with 68 cards in the main set, plus a Shiny Vault subset of 94 cards numbered SV1 to SV94."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Hidden_Fates_(TCG)
+  date: 2019-08-23
+  numbers: [68, 94, 2019]
+  entities: [release]
+  layouts: [signal]
+
+- id: shining-fates-2021
+  topic: shining fates
+  title: "Shining Fates brought the Shiny Vault back in 2021"
+  summary: "Shining Fates released on 19 February 2021 as a special set with its own Shiny Vault subset of shiny Pokémon."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Shining_Fates_(TCG)
+  date: 2021-02-19
+  numbers: [2021]
+  entities: [release]
+  layouts: [signal]
+
+- id: paldean-fates-2024
+  topic: paldean fates
+  title: "Paldean Fates was the shiny set of January 2024"
+  summary: "Paldean Fates released on 26 January 2024 as a special set focused on shiny Pokémon."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Paldean_Fates_(TCG)
+  date: 2024-01-26
+  numbers: [2024]
+  entities: [release]
+  layouts: [signal]
+
+- id: prismatic-evolutions-2025
+  topic: prismatic evolutions
+  title: "Prismatic Evolutions put Eevee and its evolutions center stage"
+  summary: "Prismatic Evolutions released on 17 January 2025 as a special set built around Eevee and its evolutions."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Prismatic_Evolutions_(TCG)
+  date: 2025-01-17
+  numbers: [2025]
+  entities: [release]
+  layouts: [signal]
+
+- id: pikachu-illustrator
+  topic: pikachu illustrator
+  title: "A PSA 10 Pikachu Illustrator set a Guinness record at $5,275,000"
+  summary: "Pikachu Illustrator was a 1998 promo card awarded to winners of CoroCoro illustration contests in Japan, illustrated by Atsuko Nishida. A PSA 10 copy sold privately in 2022 for $5,275,000, recognized by Guinness World Records as the most expensive Pokémon card sold at the time."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Illustrator_(Promo)
+  numbers: [5275000, 1998, 2022, 10]
+  entities: [market, psa]
+  layouts: [signal]
+
+- id: ancient-mew-2000
+  topic: ancient mew
+  title: "Ancient Mew was handed out with the 2000 movie"
+  summary: "The Ancient Mew promo was given to moviegoers with Pokémon the Movie 2000 in US theaters. Its text uses an ancient script instead of normal card text."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Ancient_Mew_(Pok%C3%A9mon_the_Movie_2000_promo)
+  numbers: [2000]
+  entities: [release]
+  layouts: [signal]
+
+- id: base-charizard-artist
+  topic: base set
+  title: "Base Set Charizard 4/102 was illustrated by Mitsuhiro Arita"
+  summary: "Charizard, card 4/102 in Base Set, was illustrated by Mitsuhiro Arita. It has 120 HP and the attack Fire Spin for 100 damage."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Charizard_(Base_Set_4)
+  numbers: [4, 102, 120, 100]
+  entities: [release]
+  layouts: [signal]
+
+- id: base-print-runs
+  topic: base set
+  title: "English Base Set has three main print runs: 1st Edition, Shadowless and Unlimited"
+  summary: "The English Base Set was printed as 1st Edition (with a 1st Edition stamp left under the art box), Shadowless (no 1st Edition stamp and no drop shadow on the right side of the art box) and Unlimited (with the drop shadow)."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_(TCG)
+  numbers: [1, 3, 1999]
+  entities: [release]
+  layouts: [signal]
+
+- id: base-red-cheeks
+  topic: base set
+  title: "Early Base Set Pikachu 58/102 prints have red cheeks"
+  summary: "Pikachu 58/102 from Base Set was first printed with red cheeks. Later prints changed the cheeks to yellow. Collectors call the early version Red Cheeks Pikachu."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Pikachu_(Base_Set_58)
+  numbers: [58, 102]
+  entities: [release]
+  layouts: [signal]
+
+- id: japanese-no-rarity
+  topic: base set
+  title: "The first Japanese Base Set print has no rarity symbols"
+  summary: "The first print of the Japanese Base Set, from October 1996, has no rarity symbols on the cards. Collectors call it the No Rarity print."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_(TCG)
+  date: 1996-10-20
+  numbers: [1996]
+  entities: [release]
+  layouts: [signal]
+
+- id: rarity-symbols
+  topic: rarity
+  title: "A circle, a diamond or a star: how TCG rarity symbols work"
+  summary: "On most English Pokémon cards the rarity symbol sits in the lower corner: a circle for common, a diamond for uncommon and a star for rare. The system has been used since Base Set in 1999."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Rarity
+  numbers: [3, 1999]
+  entities: [release]
+  layouts: [signal]
+
+- id: card-back-1999
+  topic: card back
+  title: "The English card back design has been the same since 1999"
+  summary: "The back of English Pokémon cards has kept the same design since Base Set in 1999. Japanese cards used a different back for many years."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Card_back
+  numbers: [1999]
+  entities: [release]
+  layouts: [signal]
+
+- id: bgs-black-label
+  topic: grading
+  title: "A BGS Black Label needs a 10 in all four subgrades"
+  summary: "Beckett Grading Services gives four subgrades: centering, corners, edges and surface. A card with a 10 in all four gets the Pristine 10 Black Label, the rarest BGS grade."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Beckett_Grading_Services
+  numbers: [10, 4]
+  entities: [bgs, beckett]
+  layouts: [signal]
+
+- id: cgc-pristine
+  topic: grading
+  title: "CGC has two different 10s: Pristine and Gem Mint"
+  summary: "CGC grades cards on a 10 point scale and uses two top grades: Pristine 10 for flawless cards and Gem Mint 10 for near flawless cards."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Certified_Guaranty_Company
+  numbers: [10]
+  entities: [cgc]
+  layouts: [signal]
+
+- id: psa-1991
+  topic: grading
+  title: "PSA has been grading collectibles since 1991"
+  summary: "Professional Sports Authenticator, PSA, started grading in 1991. Its top grade is PSA 10 Gem Mint."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Professional_Sports_Authenticator
+  numbers: [1991, 10]
+  entities: [psa]
+  layouts: [signal]
+
+- id: versus-base-vs-sv
+  topic: set size
+  title: "Base Set had 102 cards, Scarlet & Violet base had 198"
+  summary: "The English Base Set from 1999 had 102 cards. The Scarlet & Violet base set from 2023 had 198 cards in the main set."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Base_Set_(TCG)
+  numbers: [102, 198, 1999, 2023]
+  entities: [release]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Base Set 1999", "value": "102", "unit": "cards"}, "right": {"label": "Scarlet & Violet 2023", "value": "198", "unit": "cards"}}
+
+- id: versus-borders
+  topic: scarlet violet
+  title: "Yellow borders since 1999, silver borders since 2023"
+  summary: "English Pokémon cards had yellow borders from Base Set in 1999 until Scarlet & Violet in 2023, which switched to silver borders."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Scarlet_%26_Violet_(TCG)
+  numbers: [1999, 2023]
+  entities: [release]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Yellow borders", "value": "1999", "unit": "Base Set"}, "right": {"label": "Silver borders", "value": "2023", "unit": "Scarlet & Violet"}}
+
+- id: versus-secret-rares
+  topic: secret rares
+  title: "The first secret rare in 2000 vs Evolving Skies in 2021"
+  summary: "Dark Raichu 83/82 from Team Rocket (2000) was the first English secret rare, one card beyond the set total. In Evolving Skies (2021) the Umbreon VMAX alt art is 215/203, twelve beyond the set total."
+  source: Bulbapedia
+  url: https://bulbapedia.bulbagarden.net/wiki/Team_Rocket_(TCG)
+  numbers: [83, 82, 215, 203, 2000, 2021]
+  entities: [release]
+  layouts: [versus, signal]
+  versus: {"left": {"label": "Dark Raichu 2000", "value": "83/82", "unit": "Team Rocket"}, "right": {"label": "Umbreon VMAX 2021", "value": "215/203", "unit": "Evolving Skies"}}

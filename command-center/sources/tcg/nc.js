@@ -35,7 +35,9 @@ function metric(o, fetchedAt) {
   return { kind: "metric", source: "NeuraCollectibles API", url: PUBLIC_URL, published_at: fetchedAt, data_fetched_at: fetchedAt, ...o };
 }
 
-async function metricItems({ base, key, now = Date.now(), log = () => {} } = {}) {
+// perStep: candidates per endpoint (the topic cooldown in news-cards.js then skips recently posted cards/sets).
+// minSetMove: a set index move below this |%| is not news.
+async function metricItems({ base, key, now = Date.now(), log = () => {}, perStep = 1, minSetMove = 0 } = {}) {
   if (!key) throw new Error("geen NC_API_KEY");
   const api = client({ base: base || DEFAULT_BASE, key });
   const at = new Date(now).toISOString();
@@ -44,8 +46,8 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
 
   await step("pop-shock", async () => {
     const r = await api("pop-shock", { language: "en", limit: 25 });
-    const it = (r.items || []).find(x => x.card && latin(x.card.name) && latin(x.card.set_name) && x.psa10_now > x.psa10_then);
-    if (!it) return;
+    const list = uniqCards((r.items || []).filter(x => x.card && latin(x.card.name) && latin(x.card.set_name) && x.psa10_now > x.psa10_then)).slice(0, perStep);
+    for (const it of list) {
     const c = it.card;
     const pop = await popFor(api, c.card_id).catch(() => null);
     out.push(metric({
@@ -58,23 +60,25 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
       versus: { left: { label: `PSA 10 pop on ${it.since}`, value: fmt(it.psa10_then), unit: "copies" }, right: { label: "PSA 10 pop now", value: fmt(it.psa10_now), unit: "copies" } },
       pop, nc_endpoint: "pop-shock",
     }, at));
+    }
   });
 
   await step("grading leaders", async () => {
     const r = await api("analytics/grading/leaders", { language: "en", min_pop: 300, limit: 25 });
-    const it = (r.items || []).find(x => x.card && latin(x.card.name) && latin(x.card.set_name) && x.pop10 > 0);
-    if (!it) return;
+    const list = uniqCards((r.items || []).filter(x => x.card && latin(x.card.name) && latin(x.card.set_name) && x.pop10 > 0)).slice(0, perStep);
+    for (const it of list) {
     const c = it.card;
     const pop = await popFor(api, c.card_id).catch(() => null);
-    if (!pop) return;
+    if (!pop) continue;
     out.push(metric({
       id: `nc-leader-${c.card_id}-${pop["10"]}`,
       title: `${cardLabel(c)} has ${fmt(pop["10"])} PSA 10 copies${pop.total ? ` out of ${fmt(pop.total)} graded` : ""}`,
       summary: `PSA population for ${cardLabel(c)} as of ${pop.as_of || it.pop_as_of}: ${["6", "7", "8", "9", "10"].filter(g => pop[g] != null).map(g => `PSA ${g}: ${fmt(pop[g])}`).join(", ")}.${pop.gem_rate_pct != null ? ` Gem rate ${pop.gem_rate_pct}%.` : ""}`,
       numbers: [{ raw: fmt(pop["10"]), value: pop["10"] }, ...(pop.total ? [{ raw: fmt(pop.total), value: pop.total }] : [])],
-      entities: [c.name, "pop", "psa"], pill_hint: "pop report", layouts: ["number"], pop, nc_endpoint: "analytics/grading/leaders",
+      entities: [c.name, "pop", "psa"], pill_hint: "pop report", layouts: ["number", "signal"], pop, nc_endpoint: "analytics/grading/leaders",
       card: cardRef(c),
     }, at));
+    }
   });
 
   await step("releases", async () => {
@@ -93,9 +97,8 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
 
   await step("sets", async () => {
     const r = await api("analytics/sets", { limit: 50 });
-    const sets = (r.items || []).filter(x => x.language === "en" && latin(x.name) && Number.isFinite(x.change_7d) && x.priced_cards >= 20);
-    const it = sets.sort((a, b) => Math.abs(b.change_7d) - Math.abs(a.change_7d))[0];
-    if (!it) return;
+    const sets = (r.items || []).filter(x => x.language === "en" && latin(x.name) && Number.isFinite(x.change_7d) && x.priced_cards >= 20 && Math.abs(x.change_7d) >= minSetMove);
+    for (const it of sets.sort((a, b) => Math.abs(b.change_7d) - Math.abs(a.change_7d)).slice(0, perStep)) {
     const pct = Math.round(it.change_7d * 10) / 10;
     out.push(metric({
       id: `nc-set-${it.set_id}-${pct}`,
@@ -104,9 +107,13 @@ async function metricItems({ base, key, now = Date.now(), log = () => {} } = {})
       numbers: [{ raw: `${pct}%`, value: pct }, { raw: fmt(it.priced_cards), value: it.priced_cards }],
       entities: [it.name, "market"], pill_hint: "market", layouts: ["signal", "persona"], nc_endpoint: "analytics/sets",
     }, at));
+    }
   });
   return out;
 }
+
+// One entry per card name (pop-shock lists can hold several printings of the same card).
+function uniqCards(list) { const seen = new Set(); return list.filter(x => { const k = String(x.card.name).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }); }
 
 // Card identity on an item, for the image policy (tier 2: card image from the NC card database).
 function cardRef(c) { return { card_id: c.card_id, name: c.name, set_name: c.set_name, number: c.number || null }; }

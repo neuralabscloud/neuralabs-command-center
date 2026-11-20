@@ -36,5 +36,14 @@ const s = market.monthly(rows, Date.parse("2026-11-04"), 1e9, 1);
 t("monthly reeks 13 punten", s.length === 13 && s[12][1] === 400);
 t("koersvoorspelling afgewezen", !!nc.scoreItem({ kind: "news", title: "Bitcoin risks falling below $60,000", numbers: [{ value: 60000 }], published_at: new Date().toISOString() }).reject);
 
+// articleText: page JS from an unclosed <p> before a <script> must not leak in (PokeGuardian/JouwWeb, 2026-11-20).
+{
+  const T = require("../sources/text");
+  const html = '<p>The Pok&amp;eacute;mon Company announced the next expansion with 120 cards in the main set today.<script>window.JOUWWEB.cart = {"products":[],"coupon":null}; var x = 50033;</script></p><p>' + 'x'.repeat(10) + '</p>';
+  const out = T.articleText(html);
+  t("articleText zonder page JS", !/coupon|JOUWWEB|50033/.test(out) && /120 cards/.test(out));
+  t("articleText dubbel gecodeerde entity", /Pokémon/.test(out));
+}
+
 console.log(fails ? `${fails} FOUT` : "alles ok");
 process.exit(fails ? 1 : 0);

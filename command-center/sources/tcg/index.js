@@ -141,7 +141,7 @@ async function fetchAll({ now = Date.now(), env = process.env, account = {}, log
         await new Promise(res => setTimeout(res, 2500));
       }
     })(),
-    run("NeuraCollectibles API", () => ncapi.metricItems({ base: account.sources?.nc_api, key: env[account.credentials?.nc_api_key_env || "NC_API_KEY"], now, log }), metrics),
+    run("NeuraCollectibles API", () => ncapi.metricItems({ base: account.sources?.nc_api, key: env[account.credentials?.nc_api_key_env || "NC_API_KEY"], now, log, perStep: Number(account.sources?.nc_per_step) || 1, minSetMove: Number(account.sources?.nc_set_min_move_pct) || 0 }), metrics),
   ]);
   for (const o of OUTLETS.filter(o => o.blocked)) status[o.source] = o.blocked;
   applyTrend(news, redditTitles);
