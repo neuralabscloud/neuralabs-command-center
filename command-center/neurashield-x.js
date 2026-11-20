@@ -635,7 +635,7 @@ ${replies.map((r, i) => `[${i}] ${String(r.text).slice(0, 500)}`).join("\n")}` }
     if (/[–—]/.test(body)) throw new Error("geen em of en dash");
     const ch = need();
     const resp = await twitterApi("POST", "https://api.x.com/2/tweets", twitterCredsFor(ch), { json: { text: body, reply: { in_reply_to_tweet_id: d.tweet_id } } });
-    bumpUsage();
+    bumpUsage(ch);
     Object.assign(d, { status: "sent", sent_text: body, sent_id: resp && resp.data && resp.data.id, sent_at: now().toISOString() });
     writeJson(draftsFile, all);
     return d;

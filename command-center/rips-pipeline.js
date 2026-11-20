@@ -857,7 +857,7 @@ function createRips(deps) {
     else {
       try { twitterCreds(ch); } catch (e) { res.x.missing.push(e.message.replace(/^X credentials missing:\s*/, "")); }
       res.x.username = ch.x_username || null;
-      try { const u = twitterUsageSummary(); res.x.usage = u; if (u.used >= u.limit) res.x.warnings.push(`X monthly post limit reached (${u.used}/${u.limit})`); } catch {}
+      try { const u = twitterUsageSummary(ch); res.x.usage = u; if (u.used >= u.limit) res.x.warnings.push(`X monthly post limit reached (${u.used}/${u.limit})`); } catch {}
     }
     res.x.ok = !res.x.missing.length;
     return res;
@@ -899,13 +899,13 @@ function createRips(deps) {
     const cred = credentials(cfg);
     if (!cred.x.ok) throw new Error(`credentials missing: ${cred.x.missing.join("; ")}`);
     const creds = twitterCreds(ch);
-    const u = twitterUsageSummary(); if (u.used >= u.limit) throw new Error(`X monthly post limit reached (${u.used}/${u.limit})`);
+    const u = twitterUsageSummary(ch); if (u.used >= u.limit) throw new Error(`X monthly post limit reached (${u.used}/${u.limit})`);
     const v = version(job, n);
     const text = R.trimForX((v.captions && v.captions.x) || v.post_text || "", 280);
     const mediaId = await twitterUploadFile(finalPath(job.id, n), `${job.id}_final.mp4`, creds);
     const d = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: { text, media: { media_ids: [mediaId] } } });
     if (!d.data || !d.data.id) throw new Error("X API: tweet created but no id returned");
-    bumpTwitterUsage();
+    bumpTwitterUsage(ch);
     return { media_id: d.data.id, upload_media_id: mediaId, permalink: ch.x_username ? `https://x.com/${ch.x_username}/status/${d.data.id}` : null };
   }
 

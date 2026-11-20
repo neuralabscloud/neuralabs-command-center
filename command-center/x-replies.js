@@ -106,7 +106,7 @@ function limitHit(st, cfg, r) {
 function createReplies(deps) {
   const {
     dataDir, tz, readChannels, readTasks, twitterApi, twitterCredsFor, twitterVerify,
-    twitterWeightedLength, anthropic, brandKnowledge, autopilotConfig, notify,
+    twitterWeightedLength, anthropic, brandKnowledge, autopilotConfig, notify, bumpUsage = () => {},
     log = (m) => console.log("[X-REPLIES]", m),
   } = deps;
   const stateFile = path.join(dataDir, "community", "replies-state.json");
@@ -280,6 +280,7 @@ Rules for a reply:
       try {
         const res = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: { text: d.text, reply: { in_reply_to_tweet_id: r.id } } });
         const id = res && res.data && res.data.id;
+        bumpUsage(channel);
         replied++;
         mutate(channel.id, s => {
           rollDay(s);

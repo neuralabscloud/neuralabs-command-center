@@ -3237,7 +3237,7 @@ app.post("/community/channels/:id/validate", async (req, res) => {
   if (channel.platform === "twitter") {
     try {
       const me = await twitterVerifyCredentials(twitterCreds(channel));
-      const usage = twitterUsageSummary();
+      const usage = twitterUsageSummary(channel);
       const channels = readChannels();
       const c = channels.find(x => x.id === channel.id);
       if (c && c.x_username !== me.username) { c.x_username = me.username; writeChannels(channels); }
@@ -3263,7 +3263,7 @@ app.post("/community/channels/:id/validate", async (req, res) => {
 });
 
 // Twitter/X monthly post usage (free tier = 500 writes/month)
-app.get("/community/twitter/usage", (_req, res) => res.json(twitterUsageSummary()));
+app.get("/community/twitter/usage", (req, res) => res.json(twitterUsageSummary(req.query.channel_id ? String(req.query.channel_id) : null)));
 
 // ── COMMUNITY MANAGER: TASKS ──────────────────
 app.get("/community/tasks", (req, res) => {
@@ -8383,15 +8383,24 @@ function twitterOAuthHeader(method, url, creds) {
 
 function twitterMonthKey() { return new Date().toISOString().slice(0, 7); }
 function twitterPostLimit() { return Number(process.env.TWITTER_MONTHLY_POST_LIMIT) || 500; }
-function twitterPostsUsed() {
-  try { return Number(JSON.parse(fs.readFileSync(TWITTER_USAGE_FILE, "utf8"))[twitterMonthKey()]) || 0; } catch { return 0; }
+// Usage is counted per X account (each channel has its own app keys and its own X limit).
+// File keys: "YYYY-MM" = all accounts (info), "YYYY-MM|<channelId>" = that account.
+function twitterChannelId(ch) { return ch && typeof ch === "object" ? ch.id : ch || null; }
+function twitterPostsUsed(ch) {
+  const id = twitterChannelId(ch), key = id ? `${twitterMonthKey()}|${id}` : twitterMonthKey();
+  try { return Number(JSON.parse(fs.readFileSync(TWITTER_USAGE_FILE, "utf8"))[key]) || 0; } catch { return 0; }
 }
-function twitterUsageSummary() { return { month: twitterMonthKey(), used: twitterPostsUsed(), limit: twitterPostLimit() }; }
-function bumpTwitterUsage() {
+function twitterUsageSummary(ch) {
+  const id = twitterChannelId(ch);
+  return { month: twitterMonthKey(), channel_id: id, used: twitterPostsUsed(id), limit: twitterPostLimit(), total_all_accounts: twitterPostsUsed(null) };
+}
+function bumpTwitterUsage(ch) {
   let usage = {};
   try { usage = JSON.parse(fs.readFileSync(TWITTER_USAGE_FILE, "utf8")); } catch {}
-  const key = twitterMonthKey();
+  const key = twitterMonthKey(), id = twitterChannelId(ch);
   usage[key] = (Number(usage[key]) || 0) + 1;
+  if (id) usage[`${key}|${id}`] = (Number(usage[`${key}|${id}`]) || 0) + 1;
+  else console.warn("[X-USAGE] bump zonder kanaal: alleen totaal geteld");
   fs.writeFileSync(TWITTER_USAGE_FILE, JSON.stringify(usage, null, 2));
 }
 
@@ -8486,9 +8495,9 @@ async function twitterUploadFile(full, name, creds) {
 
 async function publishTwitterPost(task, channel) {
   const creds = twitterCreds(channel);
-  const { used, limit } = twitterUsageSummary();
+  const { used, limit } = twitterUsageSummary(channel);
   if (used >= limit) {
-    throw new Error(`X monthly post limit reached (${used}/${limit}). Resets next month, or raise TWITTER_MONTHLY_POST_LIMIT if your API tier allows more.`);
+    throw new Error(`X monthly post limit reached for ${channel.name || channel.id} (${used}/${limit}). Resets next month, or raise TWITTER_MONTHLY_POST_LIMIT if your API tier allows more.`);
   }
 
   const text = task.text || "";
@@ -8521,7 +8530,7 @@ async function publishTwitterPost(task, channel) {
     const r = await xPairs.publishPair({
       hookBody: body,
       replies: task.pair.replies,
-      api: (method, url, json) => twitterApi(method, url, creds, json ? { json } : {}).then(d => { if (method === "POST") bumpTwitterUsage(); return d; }),
+      api: (method, url, json) => twitterApi(method, url, creds, json ? { json } : {}).then(d => { if (method === "POST") bumpTwitterUsage(channel); return d; }),
       log: (m) => console.log(`[PAIRS] ${task.id}: ${m}`),
     });
     return { message_id: r.hook_id, reply_ids: r.reply_ids };
@@ -8529,7 +8538,7 @@ async function publishTwitterPost(task, channel) {
 
   const d = await twitterApi("POST", "https://api.x.com/2/tweets", creds, { json: body });
   if (!d.data?.id) throw new Error("X API: tweet created but no id returned");
-  bumpTwitterUsage();
+  bumpTwitterUsage(channel);
   return { message_id: d.data.id };
 }
 
@@ -8870,7 +8879,7 @@ const neuraShield = neuraShieldX.createNeuraShield({
   twitterCredsFor: (channel) => twitterCreds(channel),
   sendTelegram: (title, message, severity) => sendTelegram(tgEsc(title), tgEsc(message), severity),
   notify: nsNotify,
-  bumpUsage: () => { try { bumpTwitterUsage(); } catch {} },
+  bumpUsage: (ch) => { try { bumpTwitterUsage(ch); } catch {} },
   anthropic,
   model: process.env.X_PAIRS_MODEL || process.env.SOCIAL_AUTOPILOT_MODEL || "claude-sonnet-5-5",
   log: (m) => console.log(`[NEURASHIELD] ${m}`),
@@ -9042,6 +9051,7 @@ const xRepliesBot = xReplies.createReplies({
   autopilotConfig: (channel) => channel.autopilot || {},
   extraOurTweets: (channel) => [...xEngageBot.ourReplies(channel), ...xPairsBot.ourReplies(channel)],
   notify: sendTelegram,
+  bumpUsage: (channel) => { try { bumpTwitterUsage(channel); } catch {} },
 });
 setInterval(() => xRepliesBot.tick().catch(e => console.error("[X-REPLIES]", e.message)), 60_000);
 
