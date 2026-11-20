@@ -131,15 +131,53 @@ function topicKey(item) {
   if (item.card && item.card.name) return normTopic(item.card.name);
   if (item.kind === "metric") { const e = (item.entities || []).find(x => !GENERIC_ENTITIES.has(String(x).toLowerCase())); if (e) return normTopic(e); }
   if (item.kind === "evergreen") return normTopic(item.id || item.title);
+  if (item.kind === "news") return newsTopicKey(item.title);
   return "";
 }
+// News has no fixed topic, so its key is a fingerprint of the headline: "news:" + distinctive words, where a
+// proper noun from a sentence-case headline gets a "^" (Anthropic in "Ark buys ... Anthropic shares"). Two
+// headlines are the same story when they share 2 distinctive words, or 1 proper noun that is not a market staple.
+const NEWS_STOP = new Set(("the and for with from into over under after amid about above below than that this these those what when where which while will would could should says said say report reports reportedly " +
+  "its their they them have has had been being are was were not but now new first last more most less just also how why who can may might week weeks day days today year years month months amp " +
+  "bitcoin btc crypto cryptocurrency ethereum eth ether solana sol xrp etf etfs sec fed market markets price prices token tokens stablecoin stablecoins blockchain onchain trading traders trader " +
+  "billion million percent record high low rises rise falls fall drops drop gains gain surges surge slips jumps hits hit sees see amid morning minute update news daily weekly analysts analyst " +
+  "investors investor exchange exchanges firm company companies digital asset assets defi cftc fdic occ ceo chair chief head " +
+  "january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday") .split(" "));
+function newsTopicKey(title) {
+  const raw = String(title || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[\u2018\u2019']s\b/g, "").replace(/\$?(\d+(?:[.,]\d+)*)\s*([kmb])\b/gi, "$1");
+  const words = raw.split(/[^A-Za-z0-9.,]+/).map(w => w.replace(/^[.,]+|[.,]+$/g, "")).filter(Boolean);
+  const long = words.filter(w => /^[A-Za-z]{4,}$/.test(w));
+  const sentenceCase = long.length > 2 && long.filter(w => /^[A-Z]/.test(w)).length / long.length < 0.7;
+  const out = new Set();
+  words.forEach((w, i) => {
+    const lw = w.toLowerCase().replace(/[.,]/g, "");
+    // An exact, non-round figure ($582M) identifies a story as well as a name does.
+    if (/^\d+$/.test(lw)) { if (lw.length >= 3 && !/^20\d\d$/.test(lw)) out.add(/0$/.test(lw) ? lw : "^" + lw); return; }
+    if (lw.length < 3 || NEWS_STOP.has(lw)) return;
+    out.add(sentenceCase && i > 0 && /^[A-Z]/.test(w) ? "^" + lw : lw);
+  });
+  return out.size ? "news:" + [...out].join(" ") : "";
+}
+function topicsMatch(a, b) {
+  if (!a || !b) return false;
+  if (!a.startsWith("news:") || !b.startsWith("news:")) return a === b;
+  const ta = a.slice(5).split(" "), tb = b.slice(5).split(" ");
+  const plain = t => t.replace(/^\^/, "");
+  const setB = new Map(tb.map(t => [plain(t), t]));
+  let shared = 0, proper = false;
+  for (const t of ta) { const o = setB.get(plain(t)); if (!o) continue; shared++; if (t[0] === "^" || o[0] === "^") proper = true; }
+  return shared >= 2 || proper;
+}
+// News stories move fast: the news window is capped at 3 days (a new Coinbase story next week is fine).
+const NEWS_TOPIC_DAYS = 3;
 function isDuplicate(item, history, now = Date.now(), days = 30, topicDays = 0) {
   const key = dedupKey(item);
   const topic = topicDays > 0 ? topicKey(item) : "";
+  const tDays = topic.startsWith("news:") ? Math.min(topicDays, NEWS_TOPIC_DAYS) : topicDays;
   return (history || []).some(h => {
     const age = now - Date.parse(h.created_at || 0);
     if (h.dedup_key === key && age < days * 86400e3) return true;
-    return !!topic && h.topic_key === topic && age < topicDays * 86400e3;
+    return !!topic && topicsMatch(topic, h.topic_key) && age < tDays * 86400e3;
   });
 }
 
@@ -177,7 +215,7 @@ function planDay(candidates, history, { count = 1, weights = {}, rand = Math.ran
     const first = xPairs.weightedPick(top, weights.layout || {}, rand);
     let pick = null;
     for (const layout of [first, ...ordered.filter(l => l !== first)]) {
-      const c = scored.find(c => !used.has(c) && !usedTopics.has(topicKey(c.item) || c) && compatibleLayouts(c.item).includes(layout));
+      const c = scored.find(c => { const k = topicKey(c.item); return !used.has(c) && !(k && [...usedTopics].some(u => topicsMatch(k, u))) && compatibleLayouts(c.item).includes(layout); });
       if (c) { pick = { ...c, layout }; break; }
     }
     if (!pick) break;
@@ -526,7 +564,7 @@ function imagePrompt(brief, acct) { return `${String(brief || "").replace(/[â€“â
 module.exports = {
   SIZE, LAYOUTS, PILLS, WEEKLY_MIX, IMAGE_RULES, CAPS_EXTRA, RELEVANT, REJECT, TICKERS, account, layoutLabel,
   esc, stripMarks, highlight, numbersIn, numberVariants,
-  scoreItem, dedupKey, topicKey, isDuplicate, compatibleLayouts, layoutDeficits, planDay,
+  scoreItem, dedupKey, topicKey, newsTopicKey, topicsMatch, isDuplicate, compatibleLayouts, layoutDeficits, planDay,
   systemPrompt, userPrompt, parseJson, validateCard, generateCard,
   chartSvg, popBarsSvg, slabPatternSvg, buildSlides, pageHtml, fontStatus, renderSet, renderHtml, closeBrowser, dataUri, safeImg, fill, tpl, TPL_DIR, imagePrompt,
 };

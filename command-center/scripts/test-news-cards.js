@@ -96,6 +96,18 @@ t("geen script-injectie", !nc.buildSlides({ ...good, headline: "<script>x</scrip
   t("na 7 dagen mag het onderwerp weer", !nc.isDuplicate(m2, hist, now + 6 * 864e5, 30, 7));
 }
 
+// news topic cooldown (2026-11-20): same story from two outlets, different wording
+const nA = nc.newsTopicKey("Ark buys $90 million worth of Anthropic shares on debut, trims Ethereum and Solana");
+const nB = nc.newsTopicKey("Morning Minute: Anthropic IPO Pops, Sinks Markets");
+const nC = nc.newsTopicKey("MoonPay applies for national trust bank charter to expand stablecoin services");
+t("nieuws: zelfde verhaal herkend (Anthropic)", nc.topicsMatch(nA, nB));
+t("nieuws: \$582M uitstroom twee bronnen", nc.topicsMatch(nc.newsTopicKey("US spot bitcoin ETFs see $582 million in daily net outflows"), nc.newsTopicKey("Bitcoin ETFs Shed $582M in a Day as BTC Drops Below $62K")));
+t("nieuws: ander verhaal niet geblokt", !nc.topicsMatch(nA, nC) && !nc.topicsMatch(nc.newsTopicKey("Bitcoin ETFs see outflows"), nc.newsTopicKey("Bitcoin hits record as ETF demand grows")));
+const nItem = { kind: "news", title: "Morning Minute: Anthropic IPO Pops, Sinks Markets", entities: ["Fed"], numbers: [] };
+const nHist = d => [{ created_at: new Date(now - d * 86400e3).toISOString(), topic_key: nA, dedup_key: "x" }];
+t("nieuws: cooldown binnen 3 dagen", nc.isDuplicate(nItem, nHist(2), now, 30, 7));
+t("nieuws: na 3 dagen weer toegestaan", !nc.isDuplicate(nItem, nHist(4), now, 30, 7));
+
 (async () => {
   let calls = 0;
   const llm = async (sys, user) => { calls++; return JSON.stringify(calls === 1 ? { ...good, headline: "Miners — sell" } : good); };
