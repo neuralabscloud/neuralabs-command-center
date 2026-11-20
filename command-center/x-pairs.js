@@ -218,7 +218,8 @@ function validatePair(pair, ctx = {}) {
   // numbers must come from the API facts of this run
   if (ctx.numbersFromApi) {
     const bad = ungroundedNumbers(all.replace(/https?:\/\/\S+/g, " "), ctx.facts);
-    if (bad.length) errors.push(`numbers not in the API data of this run: ${bad.slice(0, 5).join(", ")}`);
+    // The writer tends to swap one invented figure for another (80% → 80 → 50, 2026-11-20), so say what to do instead.
+    if (bad.length) errors.push(`numbers not in the API data of this run: ${bad.slice(0, 5).join(", ")}. Do not replace them with another number: delete the figure and say it in words ("most", "a few", "rarely"), or use a number that appears literally in the facts`);
   }
 
   // recent duplicates: same pillar + same formula + similar text

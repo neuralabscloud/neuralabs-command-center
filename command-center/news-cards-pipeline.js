@@ -266,8 +266,19 @@ function createPipeline(accountId) {
     const usedInSet = [];
     m.images.policy = "web";
     for (const slot of slots) {
-      const r = await web.resolveSlot({ A, item, card, layout: L, slot, setId, dataDir: DIR, io: deps.webIo || {},
-        ctx: { llm: deps.llm, cardImage, setArt, dryRun, excludeUrls: exclude, usedInSet, log: s => log(m, s) } });
+      let r;
+      try {
+        r = await web.resolveSlot({ A, item, card, layout: L, slot, setId, dataDir: DIR, io: deps.webIo || {},
+          ctx: { llm: deps.llm, cardImage, setArt, dryRun, excludeUrls: exclude, usedInSet, log: s => log(m, s) } });
+      } catch (e) {
+        // "then vs now" of one card (pop 20 → 26): both halves show the same card, so the left photo is the right
+        // answer for the right half too, instead of dropping the whole set (Deerling, 2026-11-20).
+        if (slot !== "right" || !item.card || !m.images.left) throw e;
+        log(m, `beeld right: zelfde kaart als links, links beeld hergebruikt (${String(e.message).slice(0, 80)})`);
+        m.images.right = { ...m.images.left, reused_from: "left" };
+        for (const k of ["", "_fit", "_logo"]) if (images[`left${k}`]) images[`right${k}`] = images[`left${k}`];
+        continue;
+      }
       // versus: subject per half (the LLM sees that half's label: 1996 Japan launch vs 1999 Base Set); never the same photo twice
       usedInSet.push(r.record.image_url);
       m.images[slot] = r.record;
@@ -282,6 +293,12 @@ function createPipeline(accountId) {
       m.images.credit = credit;
     }
     return images;
+  }
+
+  function releaseImages(m, dryRun) {
+    if (dryRun || IP.kind !== "web") return;
+    try { web.appendLog(web.settings(A).log, { used_at: new Date().toISOString(), action: "released", account: A.id, set_id: m.id, reason: "set mislukt" }); }
+    catch (e) { log(m, `vrijgeven beeld mislukt: ${e.message}`); }
   }
 
   // ---------- one set ----------
@@ -316,14 +333,14 @@ function createPipeline(accountId) {
         m.status = "failed"; m.reason = `geen beeld: ${e.message.slice(0, 200)}`;
         m.images.error = e.message.slice(0, 300); m.images.steps = e.steps || [];
         log(m, `gestopt: ${m.reason}`);
-        if (dryRun) log(m, "melding overgeslagen (dry run)");
-        else deps.notify?.(`${A.label}: geen beeld`, `${nc.stripMarks(card.headline)}\n${e.message}`.slice(0, 400), "danger");
+        releaseImages(m, dryRun);
+        // No separate alert: the run plans a replacement item and reports skipped sets in its summary.
         return dryRun ? saveDrySet(m) : saveSet(m);
       }
       if (IP.kind === "web" && (plan.layout === "signal" || plan.layout === "versus")) {
         m.status = "failed"; m.reason = `beeld mislukt: ${e.message.slice(0, 200)}`; m.images.error = e.message.slice(0, 300);
         log(m, `gestopt: ${m.reason}`);
-        if (!dryRun) deps.notify?.(`${A.label}: beeld mislukt`, e.message.slice(0, 300), "danger");
+        releaseImages(m, dryRun);
         return dryRun ? saveDrySet(m) : saveSet(m);
       }
       log(m, `beeld mislukt: ${e.message.slice(0, 200)}; render zonder beeld`);
@@ -541,8 +558,11 @@ function createPipeline(accountId) {
       const plans = layouts
         ? planLayouts(src.items, hist, layouts, now)
         : nc.planDay(src.items, hist, { count: count || cfg.sets_per_run, weights, now, minScore: cfg.min_score, account: A });
-      const sets = [];
-      for (const plan of plans) {
+      const sets = [], skipped = [];
+      const queue = [...plans];
+      let replacements = 0;
+      while (queue.length) {
+        const plan = queue.shift();
         let m;
         try {
           m = await buildSet({ deps, plan, setId: newSetId(now), dryRun, now, weights, hist });
@@ -555,6 +575,13 @@ function createPipeline(accountId) {
         }
         sets.push(m);
         hist.push({ created_at: new Date(now).toISOString(), layout: plan.layout, dedup_key: nc.dedupKey(plan.item), topic_key: nc.topicKey(plan.item), persona_still: m.images?.persona_task_id, photos: m.images?.photos || [] });
+        // Image failure: the slot is not lost, plan the next best item (the failed one is now in hist, so skipped).
+        if (m.status === "failed" && /^(geen beeld|beeld mislukt)/.test(m.reason || "") && !layouts && replacements < 2) {
+          replacements++;
+          skipped.push(`${nc.stripMarks(m.card?.headline || plan.item.title || "")}: ${m.reason}`);
+          const next = nc.planDay(src.items, hist, { count: 1, weights, now, minScore: cfg.min_score, account: A })[0];
+          if (next) { console.log(`[NEWS-CARDS ${A.id}] ${m.id} zonder beeld, vervanger: ${next.item.title}`); queue.push(next); }
+        }
       }
       await nc.closeBrowser();
       const summary = { account: A.id, reason, dry_run: dryRun, sources: src.status, candidates: src.items.length, planned: plans.length, sets: sets.map(s => ({ id: s.id, status: s.status, layout: s.layout, pill: s.pill, reason: s.reason || s.error || null })), ms: Date.now() - t0 };
@@ -563,7 +590,7 @@ function createPipeline(accountId) {
         const ok = sets.filter(s => ["scheduled", "rendered"].includes(s.status));
         if (!plans.length) deps.notify?.(A.label, "geen geschikt item vandaag (alles afgewezen of al gebruikt)", "warning");
         else if (!ok.length) deps.notify?.(`${A.label} mislukt`, sets.map(s => s.reason || s.error).join("; ").slice(0, 400), "danger");
-        else deps.notify?.(`${A.label} klaar`, ok.map(s => `${s.layout} · ${nc.stripMarks(s.card?.headline || "")}`).join("\n"), "info");
+        else deps.notify?.(`${A.label} klaar`, [...ok.map(s => `${s.layout} · ${nc.stripMarks(s.card?.headline || "")}`), ...skipped.map(x => `overgeslagen (geen beeld): ${x}`)].join("\n").slice(0, 600), "info");
       }
       return { ...summary, manifests: sets };
     } finally {

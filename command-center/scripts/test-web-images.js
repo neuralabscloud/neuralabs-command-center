@@ -8,6 +8,18 @@ const nc = require("../news-cards");
 const NC = require("../news-cards-pipeline");
 let fails = 0;
 const t = (name, cond) => { console.log(`${cond ? "ok  " : "FOUT"} ${name}`); if (!cond) fails++; };
+
+// failed set releases its picks (Deerling 2026-11-20): not counted as recently used
+{
+  const f = path.join(os.tmpdir(), `rel-${process.pid}.jsonl`);
+  const at = new Date().toISOString();
+  W.appendLog(f, { used_at: at, action: "used", set_id: "a", image_url: "https://x/a.png" });
+  W.appendLog(f, { used_at: at, action: "used", set_id: "b", image_url: "https://x/b.png" });
+  W.appendLog(f, { used_at: at, action: "released", set_id: "b" });
+  const r = W.recentlyUsed(f, 30);
+  t("released set telt niet als gebruikt", r.has("https://x/a.png") && !r.has("https://x/b.png"));
+  fs.rmSync(f, { force: true });
+}
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "web-img-"));
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64)]);
 

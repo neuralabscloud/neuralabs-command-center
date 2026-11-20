@@ -99,7 +99,10 @@ function appendLog(file, rec) { fs.mkdirSync(path.dirname(file), { recursive: tr
 // Image URLs used on a live set in the last N days (dry runs do not count, takedowns do).
 function recentlyUsed(file, days, now = Date.now(), exceptSet = null) {
   const cut = now - days * 864e5;
-  return new Set(readLog(file).filter(r => (r.action || "used") === "used" && !r.dry_run && r.set_id !== exceptSet && Date.parse(r.used_at) >= cut).map(r => r.image_url));
+  const rows = readLog(file);
+  // A set that failed (no image for another slot) never posted: its picks are released and may be used again.
+  const released = new Set(rows.filter(r => r.action === "released").map(r => r.set_id));
+  return new Set(rows.filter(r => (r.action || "used") === "used" && !r.dry_run && r.set_id !== exceptSet && !released.has(r.set_id) && Date.parse(r.used_at) >= cut).map(r => r.image_url));
 }
 
 // ---------- safe fetch (any public host, https only, every hop checked) ----------
