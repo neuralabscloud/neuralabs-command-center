@@ -1,0 +1,10 @@
+// Evlyn (Command Center, gebruiker ccweb) mag alleen deze app-diensten starten, stoppen of herstarten.
+// Zelfde lijst als UNIT_RE in /root/command-center/evlyn.js. Al het andere blijft geweigerd.
+// Terugdraaien: /root/backups/cc-evlyn-2026-11-21/ROLLBACK.sh
+polkit.addRule(function (action, subject) {
+  if (action.id != "org.freedesktop.systemd1.manage-units" || subject.user != "ccweb") return;
+  var unit = action.lookup("unit"), verb = action.lookup("verb");
+  var ok = /^(nc-[a-z-]+|raydar-(api|markets|pipeline|publisher|src-[a-z]+)|neuralabs-[a-z0-9-]+|neuraintel|metavers3-(academy|call)|defitracker-[a-z]+|gh0stlayer|slabhaus|arc-scan|rh-scan|solana-scan|marktanalyse|cpuwacht|neuratrade-chart)\.service$/;
+  if (unit && ok.test(unit) && (verb == "restart" || verb == "start" || verb == "stop")) return polkit.Result.YES;
+  return polkit.Result.NO;
+});

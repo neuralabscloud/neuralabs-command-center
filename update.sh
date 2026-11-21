@@ -100,6 +100,7 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         --exclude='data/brand-configs.json' \
         --exclude='data/brand-assets/' \
         --exclude='data/brand-knowledge/' \
+        --exclude='data/evlyn/' \
         --exclude='data/ref-library/' \
         --exclude='data/ref-library.json' \
         --exclude='data/overlays/' \

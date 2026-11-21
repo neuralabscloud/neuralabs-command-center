@@ -41,6 +41,7 @@ command-center/public/media/*
 
 # Community manager runtime data (channels + archetype sets are customer-specific)
 command-center/data/community/
+command-center/data/evlyn/
 command-center/data/social-media/
 
 # Brand asset uploads (customers upload their own)
