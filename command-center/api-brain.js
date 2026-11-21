@@ -134,16 +134,45 @@ function summarize(feed, nowMs = Date.now()) {
   };
 }
 
+// Gemiddelde per minuut over de laatste `windowMs`, uit de oplopende tellers van de API.
+// Het verkeer komt in stoten (bv. 150 verzoeken in 2 s, elke 5 min): het laatste-minuut-cijfer springt,
+// dit gemiddelde niet. `history` = [{t, total, regions:{id:count}}], oudste eerst. Te korte meting → null.
+function averages(history, nowMs, windowMs = 300000, minSpanMs = 60000) {
+  const h = (history || []).filter(x => x && nowMs - x.t <= windowMs + 15000);
+  if (h.length < 2) return null;
+  const a = h[0], b = h[h.length - 1], span = b.t - a.t;
+  if (span < minSpanMs || b.total < a.total) return null;
+  const rate = d => Math.round((Math.max(0, d) / span) * 60000 * 10) / 10;
+  const regions = {};
+  for (const id of REGION_IDS) regions[id] = rate(num(b.regions[id]) - num(a.regions[id]));
+  return { window_s: Math.round(span / 1000), per_min: rate(b.total - a.total), regions };
+}
+
 // Haalt de feed op met de eigen sleutel in een header. Korte cache, zodat meerdere tabbladen
 // de API niet vaker bevragen dan nodig.
 function createBrain({ url, key, fetchImpl = fetch, cacheMs = 2000, timeoutMs = 4000 }) {
-  let cache = null, cachedAt = 0, inflight = null;
+  let cache = null, cachedAt = 0, inflight = null, history = [];
+  // Onthoudt de tellers van de laatste minuten en hangt het gemiddelde aan de samenvatting.
+  function withAverages(sum) {
+    const last = history[history.length - 1];
+    if (last && sum.total_requests < last.total) history = []; // API is herstart: tellers begonnen opnieuw
+    if (!last || sum.ts_ms - last.t >= 10000 || !history.length) {
+      history.push({ t: sum.ts_ms, total: sum.total_requests, regions: Object.fromEntries(sum.regions.map(r => [r.id, r.count])) });
+    }
+    history = history.filter(x => sum.ts_ms - x.t <= 330000);
+    const cur = { t: sum.ts_ms, total: sum.total_requests, regions: Object.fromEntries(sum.regions.map(r => [r.id, r.count])) };
+    const avg = averages([...history, cur], sum.ts_ms);
+    sum.avg_per_min = avg ? avg.per_min : null;
+    sum.avg_window_s = avg ? avg.window_s : null;
+    for (const r of sum.regions) r.avg_per_min = avg ? avg.regions[r.id] : null;
+    return sum;
+  }
   async function load() {
     if (!key) return { ok: false, error: "not_configured", regions: REGIONS, events: [] };
     try {
       const r = await fetchImpl(url, { headers: { "X-Brain-Key": key }, signal: AbortSignal.timeout(timeoutMs) });
       if (!r.ok) return { ok: false, error: `api_${r.status}`, regions: REGIONS, events: [] };
-      return summarize(await r.json());
+      return withAverages(summarize(await r.json()));
     } catch {
       return { ok: false, error: "unreachable", regions: REGIONS, events: [] };
     }
@@ -157,4 +186,4 @@ function createBrain({ url, key, fetchImpl = fetch, cacheMs = 2000, timeoutMs = 
   };
 }
 
-module.exports = { REGIONS, classify, summarize, perMinute, median, createBrain };
+module.exports = { REGIONS, classify, summarize, perMinute, median, averages, createBrain };

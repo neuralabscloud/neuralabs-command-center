@@ -306,6 +306,9 @@
   const fmtInt = n => Number(n || 0).toLocaleString("en-US");
   const fmtAge = s => s == null ? "unknown" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`;
   const fmtUp = s => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
+  // Tempo van een gebied: het 5-minutengemiddelde als dat er is, anders de laatste minuut.
+  const rateOf = r => r.avg_per_min != null ? r.avg_per_min : (r.per_min || 0);
+  const fmtRate = v => v > 0 && v < 10 ? (Math.round(v * 10) / 10).toLocaleString("en-US") : fmtInt(Math.round(v || 0));
   const fmtMs = v => v == null ? "none yet" : `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`;
 
   function vital(label, value, warn) {
@@ -321,23 +324,25 @@
     } else {
       const stale = d.regime.age_seconds != null && d.regime.age_seconds > 3600;
       vitals.append(
-        vital("Requests per minute", fmtInt(d.per_min)),
+        d.avg_per_min != null
+          ? vital(`Requests/min (${Math.max(1, Math.round(d.avg_window_s / 60))} min avg)`, `${fmtRate(d.avg_per_min)} (now ${fmtInt(d.per_min)})`)
+          : vital("Requests in the last minute", fmtInt(d.per_min)),
         vital("Median response", fmtMs(d.p50_ms)),
         vital("Awake for", fmtUp(d.uptime_seconds)),
-        vital("Regime", d.regime.label ? `${d.regime.label}${stale ? `, ${fmtAge(d.regime.age_seconds)} old` : ""}` : "unknown", stale || !d.regime.label),
+        vital("Regime", d.regime.label ? `${d.regime.label.replace(/_/g, " ")}${stale ? `, ${fmtAge(d.regime.age_seconds)} old` : ""}` : "unknown", stale || !d.regime.label),
         vital("Redis keys", d.redis.connected ? fmtInt(d.redis.keys) : "disconnected", !d.redis.connected),
         vital("Server errors", fmtInt(d.errors_total), d.errors_total > 0),
       );
     }
     regionList.textContent = "";
-    const max = Math.max(1, ...regions.map(r => r.per_min || 0));
+    const max = Math.max(1, ...regions.map(rateOf));
     for (const r of regions) {
       const row = el("button", "nb-region" + ((hoverLobe || lockLobe) === r.lobe ? " nb-on" : ""));
       row.type = "button";
       row.style.setProperty("--h", r.lobe === "stem" ? "230 14% 80%" : `${r.hue} 70% 72%`);
-      const bar = el("span", "nb-bar"); bar.style.width = (d.ok ? Math.round((r.per_min || 0) / max * 100) : 0) + "%";
+      const bar = el("span", "nb-bar"); bar.style.width = (d.ok ? Math.round(rateOf(r) / max * 100) : 0) + "%";
       const track = el("span", "nb-track"); track.append(bar);
-      row.append(el("span", "nb-dot"), el("span", "nb-region-name", r.label), track, el("span", "nb-region-val", d.ok ? `${fmtInt(r.per_min)}/min` : ""));
+      row.append(el("span", "nb-dot"), el("span", "nb-region-name", r.label), track, el("span", "nb-region-val", d.ok ? `${fmtRate(rateOf(r))}/min` : ""));
       row.setAttribute("aria-pressed", lockLobe === r.lobe ? "true" : "false");
       row.addEventListener("mouseenter", () => setHover(r.lobe));
       row.addEventListener("mouseleave", () => setHover(null));
@@ -346,7 +351,7 @@
       row.addEventListener("click", () => { lockLobe = lockLobe === r.lobe ? null : r.lobe; renderSide(lastData); });
       regionList.append(row);
       const L = labelEls[r.lobe];
-      if (L) { L.name.textContent = r.label; L.val.textContent = !d.ok ? "" : r.per_min ? `${fmtInt(r.per_min)}/min` : "quiet"; L.box.style.setProperty("--h", r.lobe === "stem" ? "230 14% 80%" : `${r.hue} 70% 72%`); }
+      if (L) { L.name.textContent = r.label; L.val.textContent = !d.ok ? "" : rateOf(r) ? `${fmtRate(rateOf(r))}/min` : "quiet"; L.box.style.setProperty("--h", r.lobe === "stem" ? "230 14% 80%" : `${r.hue} 70% 72%`); }
     }
     renderDetail(d);
     senses.textContent = "";
@@ -367,7 +372,7 @@
   function renderDetail(d) {
     detail.textContent = "";
     const lobe = hoverLobe || lockLobe;
-    const r = lobe ? regions.find(x => x.lobe === lobe) : regions.slice().sort((a, b) => (b.per_min || 0) - (a.per_min || 0) || (b.count || 0) - (a.count || 0))[0];
+    const r = lobe ? regions.find(x => x.lobe === lobe) : regions.slice().sort((a, b) => rateOf(b) - rateOf(a) || (b.count || 0) - (a.count || 0))[0];
     if (!r) return;
     detail.style.setProperty("--h", r.lobe === "stem" ? "230 14% 80%" : `${r.hue} 70% 72%`);
     detail.append(el("div", "nb-detail-name", r.label), el("div", "nb-detail-role", r.role));
@@ -431,7 +436,7 @@
     pill.textContent = d.ok ? `Live · v${d.version}` : d.error === "not_configured" ? "Not configured" : "No signal";
     pill.className = "nb-pill" + (d.ok ? " nb-live" : " nb-down");
     root.classList.toggle("nb-off", !d.ok);
-    for (const r of regions) level[r.lobe] = d.ok ? Math.min(1, Math.log1p(r.per_min || 0) / Math.log1p(120)) : 0;
+    for (const r of regions) level[r.lobe] = d.ok ? Math.min(1, Math.log1p(Math.max(rateOf(r), r.per_min || 0)) / Math.log1p(120)) : 0;
     renderSide(d);
     if (wasOnline !== online && staticLayer) draw(performance.now(), 16);
     if (!d.ok) return;

@@ -80,6 +80,21 @@ const check = (name, cond) => { if (cond) { pass++; console.log("ok   " + name);
   const denied = await ab.createBrain({ url: "x", key: "k", fetchImpl: async () => ({ ok: false, status: 401 }) }).snapshot();
   check("api error handled", denied.ok === false && denied.error === "api_401");
 
+  // gemiddelde over 5 minuten
+  const R = n => ({ regime: 0, derivatives: 0, flow: 0, scanners: 0, market: n, collectibles: 0, core: 0 });
+  const T0 = 1_800_000_000_000;
+  check("average: too little history = null", ab.averages([{ t: T0, total: 0, regions: R(0) }], T0) === null);
+  check("average: span under a minute = null", ab.averages([{ t: T0, total: 0, regions: R(0) }, { t: T0 + 30000, total: 50, regions: R(50) }], T0 + 30000) === null);
+  const avg = ab.averages([{ t: T0, total: 100, regions: R(80) }, { t: T0 + 150000, total: 250, regions: R(230) }, { t: T0 + 300000, total: 250, regions: R(230) }], T0 + 300000);
+  check("average: burst spread over 5 minutes", avg && avg.per_min === 30 && avg.regions.market === 30 && avg.regions.regime === 0 && avg.window_s === 300);
+  check("average: counters reset = null", ab.averages([{ t: T0, total: 500, regions: R(500) }, { t: T0 + 120000, total: 5, regions: R(5) }], T0 + 120000) === null);
+  check("average: old samples ignored", ab.averages([{ t: T0 - 900000, total: 0, regions: R(0) }, { t: T0, total: 900, regions: R(900) }], T0) === null);
+  let tick = 0;
+  const feedAt = n => async () => ({ ok: true, status: 200, json: async () => ({ ts_ms: T0 + n() * 120000, total_requests: n() * 60, window_seconds: 60, endpoints: [{ endpoint: "GET /news", count: n() * 60 }], recent: [] }) });
+  const live = ab.createBrain({ url: "x", key: "k", cacheMs: 0, fetchImpl: feedAt(() => tick) });
+  const s0 = await live.snapshot(); tick = 1; const s1 = await live.snapshot();
+  check("snapshot: first has no average, later has", s0.avg_per_min === null && s1.avg_per_min === 30 && s1.regions.find(r => r.id === "market").avg_per_min === 30);
+
   console.log(`\n${pass} ok, ${fail} FOUT`);
   process.exit(fail ? 1 : 0);
 })();

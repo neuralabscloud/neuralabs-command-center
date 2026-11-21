@@ -9676,6 +9676,8 @@ const apiBrain = require("./api-brain").createBrain({
   url: (process.env.NEURALABS_API_LOCAL || "http://127.0.0.1:8000") + "/admin/brain-feed",
   key: process.env.NEURALABS_BRAIN_KEY || "",
 });
+// Elke 30 s een meting, ook als niemand kijkt: zo is het 5-minutengemiddelde er meteen bij het openen.
+setInterval(() => { apiBrain.snapshot().catch(() => {}); }, 30000).unref();
 app.get("/api-brain", async (_req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(await apiBrain.snapshot());
