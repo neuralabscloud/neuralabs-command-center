@@ -784,6 +784,73 @@ body::after {
   .nav-item { width: 33px; height: 33px; }
   .nav-item svg { width: 15px; height: 15px; }
 }
+
+/* ── HET BREIN (api.neuralabs.cloud) ────────────── */
+/* Altijd donker, ook in het lichte thema: het is een scanbeeld. Tekening in public/api-brain.js. */
+.nb { --nb-text: hsl(250 30% 96%); --nb-dim: hsl(250 14% 68%); --nb-line: hsl(258 30% 22%);
+  background: radial-gradient(120% 90% at 32% 42%, hsl(262 46% 10%) 0%, hsl(258 30% 5%) 55%, hsl(0 0% 2%) 100%);
+  border: 1px solid var(--nb-line); border-radius: var(--radius); color: var(--nb-text); overflow: hidden; font-family: var(--font-data); }
+.nb-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--nb-line); }
+.nb-title { font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+.nb-sub { font-size: 11px; color: var(--nb-dim); margin-top: 3px; }
+.nb-pill { font-size: 11px; font-weight: 600; color: var(--nb-dim); padding: 5px 10px; border: 1px solid var(--nb-line); border-radius: 999px; white-space: nowrap; }
+.nb-pill::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 7px; vertical-align: 1px; }
+.nb-pill.nb-live { color: hsl(142 70% 60%); border-color: hsl(142 50% 24%); }
+.nb-pill.nb-down { color: hsl(0 85% 68%); border-color: hsl(0 50% 28%); }
+.nb-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+.nb-left { min-width: 0; padding: 6px 10px 12px; }
+.nb-stage { position: relative; aspect-ratio: 10 / 7; max-width: 760px; margin: 0 auto; }
+.nb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.nb-labels { position: absolute; inset: 0; pointer-events: none; }
+.nb-label { position: absolute; transform: translate(0, -100%); white-space: nowrap; line-height: 1.25; }
+.nb-label.nb-right { transform: translate(-100%, -100%); text-align: right; }
+.nb-label.nb-below { transform: translate(0, 0); }
+.nb-label.nb-below.nb-right { transform: translate(-100%, 0); }
+.nb-label-name { font-size: 11px; font-weight: 600; color: hsl(var(--h, 258 60% 80%)); }
+.nb-label-val { font-size: 10px; color: var(--nb-dim); font-variant-numeric: tabular-nums; }
+.nb-stream { list-style: none; margin: 4px 8px 0; padding: 8px 0 0; border-top: 1px solid var(--nb-line); min-height: 104px; }
+.nb-stream:empty::after { content: "No requests yet. Each request to the API shows up here and as a signal in the brain."; font-size: 11px; color: var(--nb-dim); }
+.nb-off .nb-stream:empty::after { content: "Signals return here once the API answers again."; }
+.nb-sig { display: grid; grid-template-columns: 58px 8px minmax(0, 1fr) 30px 52px; gap: 8px; align-items: center; font-size: 11px; color: var(--nb-dim); padding: 2px 0; font-variant-numeric: tabular-nums; }
+.nb-sig:first-child { color: var(--nb-text); }
+.nb-sig-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-sig-ms { text-align: right; }
+.nb-sig.nb-err .nb-sig-status { color: hsl(0 85% 68%); font-weight: 700; }
+.nb-sig.nb-warn .nb-sig-status { color: hsl(45 90% 62%); }
+.nb-dot { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--h, 258 60% 80%)); flex: none; }
+.nb-side { border-left: 1px solid var(--nb-line); padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.nb-vitals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 0; }
+.nb-vital dt { font-size: 10px; color: var(--nb-dim); }
+.nb-vital dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.nb-vital.nb-warn dd, .nb-sense.nb-warn span:last-child { color: hsl(45 90% 62%); }
+.nb-regions { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--nb-line); padding-top: 10px; }
+.nb-region { display: grid; grid-template-columns: 8px 92px minmax(0, 1fr) 54px; gap: 8px; align-items: center; background: none; border: 1px solid transparent; border-radius: 6px; padding: 5px 6px; color: var(--nb-text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.nb-region:hover, .nb-region.nb-on, .nb-region[aria-pressed="true"] { background: hsl(var(--h) / 0.09); border-color: hsl(var(--h) / 0.35); }
+.nb-region:focus-visible { outline: 2px solid hsl(var(--h)); outline-offset: 1px; }
+.nb-track { height: 3px; border-radius: 2px; background: hsl(258 20% 16%); overflow: hidden; }
+.nb-bar { display: block; height: 100%; background: hsl(var(--h)); border-radius: 2px; transition: width 0.6s ease; }
+.nb-region-val { font-size: 11px; color: var(--nb-dim); text-align: right; font-variant-numeric: tabular-nums; }
+.nb-detail { border-top: 1px solid var(--nb-line); padding-top: 10px; min-height: 118px; }
+.nb-detail-name { font-size: 12px; font-weight: 700; color: hsl(var(--h, 258 60% 80%)); }
+.nb-detail-role { font-size: 11px; color: var(--nb-dim); margin: 2px 0 8px; }
+.nb-cap { font-size: 10px; color: var(--nb-dim); margin-bottom: 5px; }
+.nb-empty { font-size: 11px; color: var(--nb-dim); }
+.nb-route, .nb-sense { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.nb-route-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--nb-dim); min-width: 0; }
+.nb-senses { border-top: 1px solid var(--nb-line); padding-top: 10px; }
+.nb-senses:empty { display: none; }
+.nb-sense span:first-child { color: var(--nb-dim); }
+@media (max-width: 1500px) {
+  .nb-body { grid-template-columns: minmax(0, 1fr); }
+  .nb-side { border-left: 0; border-top: 1px solid var(--nb-line); }
+  .nb-vitals { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) {
+  .nb-vitals { grid-template-columns: 1fr 1fr; }
+  .nb-label-name { font-size: 10px; } .nb-label-val { font-size: 9px; }
+  .nb-sig { grid-template-columns: 8px minmax(0, 1fr) 30px; } .nb-sig-time, .nb-sig-ms { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .nb-bar { transition: none; } }
 </style>
 </head>
 <body>
@@ -819,6 +886,11 @@ body::after {
         </div>
       </div>
     </div>
+
+    <!-- HET BREIN: api.neuralabs.cloud (public/api-brain.js) -->
+    <section class="fade-up delay-2">
+      <div class="nb" id="api-brain"></div>
+    </section>
 
     <!-- AI TEAM -->
     <section class="fade-up delay-3">
@@ -1173,6 +1245,7 @@ window.addEventListener('resize', function() {
 
 <script src="/auth-guard.js"></script>
 <script src="/sidebar.js"></script>
+<script src="/api-brain.js"></script>
 <script src="/notif-panel.js"></script>
 </body>
 </html>

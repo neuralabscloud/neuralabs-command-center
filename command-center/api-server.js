@@ -9670,6 +9670,17 @@ function getTopProcesses() {
   } catch { return []; }
 }
 
+// Het brein op de overview: activiteit van api.neuralabs.cloud per hersengebied (alleen-lezen).
+// Team-gebruikers krijgen dit niet (geen regel in users.js RULES).
+const apiBrain = require("./api-brain").createBrain({
+  url: (process.env.NEURALABS_API_LOCAL || "http://127.0.0.1:8000") + "/admin/brain-feed",
+  key: process.env.NEURALABS_BRAIN_KEY || "",
+});
+app.get("/api-brain", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(await apiBrain.snapshot());
+});
+
 app.get("/system/health", (_req, res) => {
   try {
     const uptime = parseFloat(fs.readFileSync("/proc/uptime", "utf8").split(" ")[0]);
