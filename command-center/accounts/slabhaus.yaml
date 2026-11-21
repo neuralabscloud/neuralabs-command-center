@@ -118,7 +118,7 @@ publish:
   x_all_slides: true           # X gets all slides (max 4 images), not only the hook slide
   platforms:
     instagram: {"enabled": true, "delay_min": 45, "max_per_day": 3, "min_gap_hours": 3}
-    x: {"enabled": true, "delay_min": 20, "max_per_day": 3, "min_gap_hours": 3}
+    x: {"enabled": false, "delay_min": 20, "max_per_day": 3, "min_gap_hours": 3}   # uit 2026-11-21: X-account geflagd
 
 metrics:
   weights: {"ig_likes": 1, "ig_comments": 2, "ig_saved": 4, "ig_shares": 3, "x": 1}

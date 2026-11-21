@@ -8675,6 +8675,17 @@ async function processCommunityTasks() {
     const channel = channelMap[task.channel_id];
     if (!channel) continue;
     if (channel.enabled === false) continue;
+    // X staat uit voor dit kanaal (bijv. account geflagd): niet naar X, Instagram-cross-post gaat wel door.
+    if (channel.platform === "twitter" && channel.x_paused) {
+      task.status = "x_paused";
+      task.updated_at = new Date().toISOString();
+      task.error = null;
+      if (igPublish.shouldCrosspost(task, channel)) task.instagram = { status: "pending", attempts: 0, queued_at: task.updated_at };
+      else if (!task.instagram) task.instagram = { status: "skipped", reason: igPublish.skipReason(task, channel) || "X paused; post not suited for Instagram" };
+      save(task);
+      console.log(`[WORKER] ${task.id}: X paused for ${channel.id}, not posted to X (instagram: ${task.instagram.status})`);
+      continue;
+    }
     processingTasks.add(task.id);
     try {
       console.log(`[WORKER] Publishing community post ${task.id} to ${channel.id} (${task.archetype || "?"})`);
