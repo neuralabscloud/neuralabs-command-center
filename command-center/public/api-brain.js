@@ -70,7 +70,12 @@
   const stream = el("ol", "nb-stream");
   stream.setAttribute("aria-label", "Latest requests");
   const left = el("div", "nb-left");
-  left.append(stage, stream);
+  const eeg = el("canvas", "nb-eeg");
+  eeg.setAttribute("role", "img");
+  eeg.setAttribute("aria-label", "Requests per second over the last two minutes");
+  const eegWrap = el("div", "nb-eeg-wrap");
+  eegWrap.append(el("span", "nb-eeg-cap", "Activity, last 2 minutes"), eeg);
+  left.append(stage, eegWrap, stream);
 
   const side = el("div", "nb-side");
   const vitals = el("dl", "nb-vitals");
@@ -101,7 +106,7 @@
       if (!accept(x, y)) continue;
       let ok = true;
       for (let j = start; j < nodes.length; j++) { const n = nodes[j]; if ((n.x - x) ** 2 + (n.y - y) ** 2 < minDist * minDist) { ok = false; break; } }
-      if (ok) nodes.push({ x, y, lobe: lobeOf(x, y), e: 0, kind: null, nb: [], parent: -1 });
+      if (ok) nodes.push({ x, y, lobe: lobeOf(x, y), e: 0, kind: null, nb: [], parent: -1, depth: 0, ph: rand() * 6.283, sp: 0.0007 + rand() * 0.0016 });
     }
   }
   const cortexLobes = ["frontal", "parietal", "occipital", "temporal"];
@@ -146,6 +151,9 @@
       }
     }
   })();
+  // Afstand tot de ingang in sprongen: daarmee trekt de rustgolf vanuit de hersenstam door het brein.
+  let maxDepth = 1;
+  for (const n of nodes) { let d = 0, i = n.parent; while (i >= 0 && d < 400) { d++; i = nodes[i].parent; } n.depth = d; if (d > maxDepth) maxDepth = d; }
   const byLobe = {};
   nodes.forEach((n, i) => (byLobe[n.lobe] = byLobe[n.lobe] || []).push(i));
   const lobeCenter = {};
@@ -172,24 +180,36 @@
     const c = staticLayer.getContext("2d");
     c.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
     c.lineCap = "round";
-    // weefsel
-    for (const p of [stemPath, cbPath, cerePath]) { c.fillStyle = "hsla(258,45%,62%,0.05)"; c.fill(p); }
-    c.lineWidth = 1.5; c.strokeStyle = "hsla(258,65%,80%,0.5)";
-    c.stroke(stemPath); c.stroke(cbPath);
-    c.fillStyle = "hsl(258,30%,5.5%)"; c.fill(cerePath); c.fillStyle = "hsla(258,45%,62%,0.05)"; c.fill(cerePath);
-    c.stroke(cerePath);
-    // windingen
-    c.save(); c.clip(cerePath); c.lineWidth = 1.3; c.strokeStyle = "hsla(258,50%,78%,0.2)";
-    for (const p of sulciPaths) c.stroke(p);
-    c.beginPath(); c.ellipse(LIMBIC.x, LIMBIC.y, LIMBIC.rx, LIMBIC.ry, 0, 0, Math.PI * 2); c.stroke();
+    // aura achter het brein
+    const aura = c.createRadialGradient(510, 330, 60, 510, 330, 470);
+    aura.addColorStop(0, "hsla(262,80%,58%,0.16)"); aura.addColorStop(0.6, "hsla(250,80%,50%,0.05)"); aura.addColorStop(1, "hsla(250,80%,50%,0)");
+    c.fillStyle = aura; c.fillRect(0, 0, W, H);
+    // rand in de kleuren van de gebieden: voorhoofd paars, kruin blauw, achterhoofd groen
+    const rim = c.createLinearGradient(150, 0, 860, 0);
+    rim.addColorStop(0, "hsla(264,80%,80%,0.75)"); rim.addColorStop(0.5, "hsla(218,80%,80%,0.75)"); rim.addColorStop(1, "hsla(150,70%,76%,0.75)");
+    // weefsel met volume: licht valt van linksboven
+    const flesh = p => { const g = c.createRadialGradient(400, 210, 20, 480, 330, 520); g.addColorStop(0, "hsl(260,42%,15%)"); g.addColorStop(0.55, "hsl(258,36%,8%)"); g.addColorStop(1, "hsl(256,30%,4%)"); c.fillStyle = g; c.fill(p); };
+    const glowStroke = (p, style, blur) => { c.save(); c.shadowColor = "hsla(262,95%,70%,0.75)"; c.shadowBlur = blur * scale * dpr; c.strokeStyle = style; c.lineWidth = 1.6; c.stroke(p); c.restore(); };
+    const innerGlow = (p, col) => { c.save(); c.clip(p); c.strokeStyle = col; for (const w of [26, 14, 6]) { c.lineWidth = w; c.stroke(p); } c.restore(); };
+    flesh(stemPath); glowStroke(stemPath, "hsla(240,30%,82%,0.6)", 10); innerGlow(stemPath, "hsla(240,40%,70%,0.05)");
+    flesh(cbPath); glowStroke(cbPath, "hsla(38,70%,78%,0.65)", 12); innerGlow(cbPath, "hsla(38,80%,60%,0.05)");
+    flesh(cerePath); glowStroke(cerePath, rim, 16); innerGlow(cerePath, "hsla(262,80%,70%,0.045)");
+    // windingen: donkere plooi met een lichte rand erlangs
+    c.save(); c.clip(cerePath);
+    c.lineWidth = 4; c.strokeStyle = "hsla(258,60%,2%,0.32)"; for (const p of sulciPaths) c.stroke(p);
+    c.translate(0, -1.4); c.lineWidth = 1.2; c.strokeStyle = "hsla(258,60%,82%,0.24)"; for (const p of sulciPaths) c.stroke(p);
+    c.translate(0, 1.4);
+    const lg = c.createRadialGradient(LIMBIC.x, LIMBIC.y, 0, LIMBIC.x, LIMBIC.y, LIMBIC.rx); lg.addColorStop(0, "hsla(328,70%,60%,0.10)"); lg.addColorStop(1, "hsla(328,70%,60%,0)");
+    c.beginPath(); c.ellipse(LIMBIC.x, LIMBIC.y, LIMBIC.rx, LIMBIC.ry, 0, 0, Math.PI * 2); c.fillStyle = lg; c.fill();
+    c.lineWidth = 1.1; c.strokeStyle = "hsla(328,60%,78%,0.3)"; c.stroke();
     c.restore();
     c.save(); c.clip(cbPath); c.lineWidth = 1; c.strokeStyle = "hsla(258,50%,78%,0.18)";
     for (let k = -3; k <= 3; k++) { c.beginPath(); c.ellipse(CEREBELLUM.x, CEREBELLUM.y + k * 17, CEREBELLUM.rx * 1.1, 26, CEREBELLUM.rot, Math.PI * 0.05, Math.PI * 0.95); c.stroke(); }
     c.restore();
     // synapsen en neuronen in rust
     c.lineWidth = 0.7;
-    nodes.forEach((a, i) => { for (const j of a.nb) if (j > i) { c.strokeStyle = lobeCol(a.lobe, 0.22); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(nodes[j].x, nodes[j].y); c.stroke(); } });
-    for (const n of nodes) { c.fillStyle = lobeCol(n.lobe, 0.7); c.beginPath(); c.arc(n.x, n.y, 1.8, 0, Math.PI * 2); c.fill(); }
+    nodes.forEach((a, i) => { for (const j of a.nb) if (j > i) { c.strokeStyle = lobeCol(a.lobe, 0.2); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(nodes[j].x, nodes[j].y); c.stroke(); } });
+    for (const n of nodes) { c.fillStyle = lobeCol(n.lobe, 0.1); c.beginPath(); c.arc(n.x, n.y, 4.2, 0, Math.PI * 2); c.fill(); c.fillStyle = lobeCol(n.lobe, 0.62); c.beginPath(); c.arc(n.x, n.y, 1.7, 0, Math.PI * 2); c.fill(); }
     // aanwijslijnen van de labels
     c.lineWidth = 0.9;
     for (const [lobe, L] of Object.entries(LOBES)) {
@@ -200,16 +220,19 @@
 
   const pulses = [];  // {path:[i], len:[cumulatief], total, t0, dur, lobe, kind, at}
   const ripples = []; // {x, y, t0, lobe, kind}
+  const sparks = [];  // {i, at, e, kind, src}: de ontlading die zich na aankomst van neuron tot neuron verspreidt
   const level = {};   // activiteit per kwab 0..1 (uit verzoeken per minuut)
   let online = false, hoverLobe = null, lockLobe = null, lastFrame = 0, visible = true;
 
   function frame(now) {
     requestAnimationFrame(frame);
     if (!visible || document.hidden || !staticLayer) return;
-    const busy = pulses.length || ripples.length || nodes.some(n => n.e > 0.01);
-    if (now - lastFrame < (busy ? 30 : 90)) return; // in rust volstaat een traag ademritme
+    const busy = pulses.length || ripples.length || sparks.length || nodes.some(n => n.e > 0.01);
+    const alive = online && !reduceMotion;
+    if (now - lastFrame < (busy ? 30 : alive ? 42 : 250)) return; // in rust een kalmer ritme
     const dt = Math.min(200, now - lastFrame); lastFrame = now;
     draw(now, dt);
+    drawEeg();
   }
   function draw(now, dt) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -231,6 +254,30 @@
       ctx.fillStyle = g; ctx.fillRect(c0[0] - rad, c0[1] - rad, rad * 2, rad * 2);
     }
     if (focus && byLobe[focus]) { ctx.fillStyle = lobeCol(focus, 0.55, 80); for (const i of byLobe[focus]) { const n = nodes[i]; ctx.beginPath(); ctx.arc(n.x, n.y, 2, 0, Math.PI * 2); ctx.fill(); } }
+    // rust: elk neuron fonkelt op eigen ritme en een trage golf trekt vanuit de hersenstam door het brein.
+    // Bewust kleurloos en zwak: gekleurde flitsen zijn alleen echte verzoeken.
+    if (online && !reduceMotion) {
+      const front = ((now % 5200) / 5200) * (maxDepth + 10) - 4;
+      for (const n of nodes) {
+        const tw = 0.5 + 0.5 * Math.sin(now * n.sp + n.ph), dd = n.depth - front;
+        const wave = dd > -7 && dd < 2 ? Math.exp(-(dd * dd) / (dd < 0 ? 9 : 1.2)) : 0;
+        const a = (0.05 + 0.2 * (level[n.lobe] || 0)) * tw * tw * tw + 0.3 * wave;
+        if (a < 0.03) continue;
+        ctx.fillStyle = `hsla(${n.lobe === "stem" ? 235 : hueOf[n.lobe]},45%,86%,${a})`;
+        ctx.beginPath(); ctx.arc(n.x, n.y, 1.5 + 1.3 * tw + 1.2 * wave, 0, Math.PI * 2); ctx.fill();
+      }
+      // de ingang klopt mee met de golf
+      const r0 = nodes[rootNode], beat = Math.exp(-Math.max(0, front + 4) / 3.5);
+      const g0 = ctx.createRadialGradient(r0.x, r0.y, 0, r0.x, r0.y, 26);
+      g0.addColorStop(0, `hsla(235,60%,88%,${0.12 + 0.4 * beat})`); g0.addColorStop(1, "hsla(235,60%,88%,0)");
+      ctx.fillStyle = g0; ctx.fillRect(r0.x - 26, r0.y - 26, 52, 52);
+    }
+    // ontladingen die aan de beurt zijn
+    for (let k = sparks.length - 1; k >= 0; k--) {
+      const S = sparks[k]; if (S.at > now) continue;
+      const m = nodes[S.i]; if (S.e > m.e) { m.e = S.e; m.kind = S.kind; m.src = S.src; }
+      sparks.splice(k, 1);
+    }
     // signalen onderweg
     for (let p = pulses.length - 1; p >= 0; p--) {
       const P = pulses[p], prog = (now - P.t0) / P.dur;
@@ -241,8 +288,22 @@
       const a = nodes[P.path[k]], b = nodes[P.path[Math.min(k + 1, P.path.length - 1)]];
       const seg = (P.len[k + 1] || P.len[k]) - P.len[k], f = seg ? (dist - P.len[k]) / seg : 1;
       const x = a.x + (b.x - a.x) * f, y = a.y + (b.y - a.y) * f;
-      ctx.fillStyle = kindCol(P.kind, P.lobe, 0.28); ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = kindCol(P.kind, P.lobe, 1); ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2); ctx.fill();
+      // komeetspoor: de laatste 110 eenheden van de route, vervagend naar achteren
+      const tail = Math.max(0, dist - 110);
+      let px = x, py = y, pd = dist;
+      for (let j = k; j >= 0 && pd > tail; j--) {
+        const q = nodes[P.path[j]], qd = P.len[j];
+        let qx = q.x, qy = q.y, nd = qd;
+        if (qd < tail) { const g = (pd - tail) / (pd - qd || 1); qx = px + (q.x - px) * g; qy = py + (q.y - py) * g; nd = tail; }
+        const al = 1 - (dist - (pd + nd) / 2) / 110;
+        ctx.strokeStyle = kindCol(P.kind, P.lobe, 0.75 * al * al); ctx.lineWidth = 0.8 + 2.4 * al; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
+        px = qx; py = qy; pd = nd;
+      }
+      const hg = ctx.createRadialGradient(x, y, 0, x, y, 15);
+      hg.addColorStop(0, kindCol(P.kind, P.lobe, 0.55)); hg.addColorStop(1, kindCol(P.kind, P.lobe, 0));
+      ctx.fillStyle = hg; ctx.fillRect(x - 15, y - 15, 30, 30);
+      ctx.fillStyle = "hsla(0,0%,100%,0.95)"; ctx.beginPath(); ctx.arc(x, y, 2.3, 0, Math.PI * 2); ctx.fill();
       if (prog >= 1) { pulses.splice(p, 1); arrive(P, now); }
     }
     // neuronen die vuren, doven langzaam uit
@@ -255,10 +316,13 @@
       n.e *= decay;
     }
     for (let r = ripples.length - 1; r >= 0; r--) {
-      const R = ripples[r], q = (now - R.t0) / 900;
+      const R = ripples[r], q = (now - R.t0) / 1100;
       if (q >= 1) { ripples.splice(r, 1); continue; }
-      ctx.strokeStyle = kindCol(R.kind, R.lobe, 0.6 * (1 - q)); ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.arc(R.x, R.y, 6 + 44 * q, 0, Math.PI * 2); ctx.stroke();
+      const e1 = 1 - (1 - q) * (1 - q);
+      ctx.strokeStyle = kindCol(R.kind, R.lobe, 0.65 * (1 - q)); ctx.lineWidth = 1.8 * (1 - q) + 0.4;
+      ctx.beginPath(); ctx.arc(R.x, R.y, 5 + 52 * e1, 0, Math.PI * 2); ctx.stroke();
+      if (q > 0.18) { const q2 = (q - 0.18) / 0.82, e2 = 1 - (1 - q2) * (1 - q2); ctx.strokeStyle = kindCol(R.kind, R.lobe, 0.35 * (1 - q2)); ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(R.x, R.y, 4 + 34 * e2, 0, Math.PI * 2); ctx.stroke(); }
+      if (q < 0.25) { const fl = 1 - q / 0.25, fg = ctx.createRadialGradient(R.x, R.y, 0, R.x, R.y, 30); fg.addColorStop(0, kindCol(R.kind, R.lobe, 0.5 * fl)); fg.addColorStop(1, kindCol(R.kind, R.lobe, 0)); ctx.fillStyle = fg; ctx.fillRect(R.x - 30, R.y - 30, 60, 60); }
     }
     ctx.globalCompositeOperation = "source-over";
   }
@@ -266,7 +330,17 @@
     const t = P.path[P.path.length - 1], n = nodes[t];
     const light = (i, e) => { const m = nodes[i]; m.e = Math.max(m.e, e); m.kind = P.kind; m.src = P.lobe; };
     light(t, 1);
-    if (!P.rejected) for (const j of n.nb) { light(j, 0.75); for (const k of nodes[j].nb) if (k !== t) light(k, 0.4); }
+    if (!P.rejected && reduceMotion) for (const j of n.nb) { light(j, 0.75); for (const k of nodes[j].nb) if (k !== t) light(k, 0.4); }
+    else if (!P.rejected) {
+      // van neuron tot neuron, binnen het eigen gebied, elke sprong iets later en zwakker
+      const seen = new Set([t]); let ring = [t];
+      const E = [0, 0.85, 0.62, 0.42, 0.26];
+      for (let h = 1; h < E.length && sparks.length < 1500; h++) {
+        const next = [];
+        for (const i of ring) for (const j of nodes[i].nb) { if (seen.has(j) || nodes[j].lobe !== n.lobe) continue; seen.add(j); next.push(j); sparks.push({ i: j, at: now + h * 85, e: E[h], kind: P.kind, src: P.lobe }); }
+        ring = next;
+      }
+    }
     ripples.push({ x: n.x, y: n.y, t0: now, lobe: P.lobe, kind: P.kind });
   }
   // Eén echt verzoek → één signaal van de hersenstam naar het gebied dat het afhandelt.
@@ -414,6 +488,42 @@
   canvas.addEventListener("mouseleave", () => setHover(null));
   canvas.addEventListener("click", () => { lockLobe = hoverLobe && lockLobe !== hoverLobe ? hoverLobe : null; if (lastData) renderSide(lastData); });
 
+  // ── Activiteitslijn: echte verzoeken per seconde, laatste 2 minuten ─────
+  const EEG_S = 120;
+  const eegCtx = eeg.getContext("2d");
+  const buckets = new Map(); // seconde → {n, lobes:{lobe:n}}
+  let clockSkew = 0, eegW = 0, eegH = 0;
+  function eegAdd(ev) {
+    const sec = Math.floor(ev.t / 1000); let b = buckets.get(sec);
+    if (!b) { b = { n: 0, lobes: {} }; buckets.set(sec, b); }
+    const reg = regions.find(r => r.id === ev.region), lobe = reg ? reg.lobe : "stem";
+    b.n++; b.lobes[lobe] = (b.lobes[lobe] || 0) + 1;
+  }
+  function eegResize() {
+    const w = eeg.clientWidth, h = eeg.clientHeight; if (!w) return;
+    eegW = w; eegH = h; eeg.width = Math.round(w * dpr); eeg.height = Math.round(h * dpr);
+  }
+  function drawEeg() {
+    if (!eegW) return;
+    const c = eegCtx, nowS = (Date.now() + clockSkew) / 1000, px = eegW / EEG_S, mid = eegH / 2;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, eegW, eegH);
+    c.fillStyle = "hsla(258,40%,70%,0.22)"; c.fillRect(0, mid - 0.5, eegW, 1);
+    if (!online) return;
+    for (const [sec, b] of buckets) {
+      const age = nowS - sec; if (age > EEG_S + 2) { buckets.delete(sec); continue; }
+      const x = eegW - age * px; if (x < -px) continue;
+      let top = "stem", tn = 0; for (const [l, v] of Object.entries(b.lobes)) if (v > tn) { tn = v; top = l; }
+      const grow = reduceMotion ? 1 : Math.min(1, Math.max(0.15, (age + 0.2) / 1.2)); // nieuwe pieken groeien in
+      const hh = Math.max(1.5, (0.22 + 0.78 * Math.min(1, Math.log(b.n) / Math.log(60))) * (mid - 2) * grow), fade = Math.min(1, x / 60);
+      c.fillStyle = lobeCol(top, 0.9 * fade, 72);
+      const bw = Math.max(1.5, px * 0.55);
+      c.beginPath(); if (c.roundRect) c.roundRect(x, mid - hh, bw, hh * 2, bw / 2); else c.rect(x, mid - hh, bw, hh * 2); c.fill();
+    }
+    // het nu: een lichtpunt aan de rechterkant
+    const pulse = reduceMotion ? 0.7 : 0.55 + 0.45 * Math.sin(Date.now() / 400);
+    c.fillStyle = `hsla(258,80%,88%,${pulse})`; c.beginPath(); c.arc(eegW - 2.5, mid, 2.2, 0, Math.PI * 2); c.fill();
+  }
+
   // ── Data ─────────────────────────────────────────────────────────────────
   let lastT = 0, first = true, timer = null;
   const queue = []; // {at (performance.now), ev}
@@ -438,9 +548,11 @@
     root.classList.toggle("nb-off", !d.ok);
     for (const r of regions) level[r.lobe] = d.ok ? Math.min(1, Math.log1p(Math.max(rateOf(r), r.per_min || 0)) / Math.log1p(120)) : 0;
     renderSide(d);
-    if (wasOnline !== online && staticLayer) draw(performance.now(), 16);
+    if (wasOnline !== online && staticLayer) { draw(performance.now(), 16); drawEeg(); }
     if (!d.ok) return;
+    if (d.ts_ms) clockSkew = d.ts_ms - Date.now();
     let fresh = (d.events || []).filter(e => e.t > lastT);
+    fresh.forEach(eegAdd);
     if (fresh.length) lastT = fresh[fresh.length - 1].t;
     if (first) { first = false; fresh = fresh.slice(-8); fresh.forEach((ev, i) => queue.push({ at: performance.now() + 400 + i * 220, ev })); return; }
     if (fresh.length > 70) { const step = fresh.length / 70; fresh = Array.from({ length: 70 }, (_, i) => fresh[Math.floor(i * step)]); }
@@ -452,9 +564,9 @@
   }
 
   if ("IntersectionObserver" in window) new IntersectionObserver(es => { visible = es[0].isIntersecting; }).observe(stage);
-  if ("ResizeObserver" in window) new ResizeObserver(() => { resize(); if (staticLayer) draw(performance.now(), 16); }).observe(stage);
+  if ("ResizeObserver" in window) new ResizeObserver(() => { resize(); eegResize(); if (staticLayer) { draw(performance.now(), 16); drawEeg(); } }).observe(stage);
   else window.addEventListener("resize", resize);
-  resize();
+  resize(); eegResize();
   renderSide({ ok: false, error: "connecting", events: [] });
   vitals.textContent = "";
   requestAnimationFrame(frame);

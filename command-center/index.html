@@ -808,6 +808,14 @@ body::after {
 .nb-label.nb-below.nb-right { transform: translate(-100%, 0); }
 .nb-label-name { font-size: 11px; font-weight: 600; color: hsl(var(--h, 258 60% 80%)); }
 .nb-label-val { font-size: 10px; color: var(--nb-dim); font-variant-numeric: tabular-nums; }
+.nb-eeg-wrap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; margin: 0 8px; padding: 4px 0 6px; }
+.nb-eeg-cap { font-size: 10px; color: var(--nb-dim); white-space: nowrap; }
+.nb-eeg { display: block; width: 100%; height: 44px; }
+.nb-sig { animation: nb-in 0.35s ease-out; }
+@keyframes nb-in { from { opacity: 0; transform: translateY(-6px); } }
+.nb-pill.nb-live::before { animation: nb-beat 2.4s ease-in-out infinite; }
+@keyframes nb-beat { 0%, 100% { box-shadow: 0 0 0 0 hsl(142 70% 60% / 0.5); } 50% { box-shadow: 0 0 0 5px hsl(142 70% 60% / 0); } }
+@media (prefers-reduced-motion: reduce) { .nb-sig, .nb-pill.nb-live::before { animation: none; } }
 .nb-stream { list-style: none; margin: 4px 8px 0; padding: 8px 0 0; border-top: 1px solid var(--nb-line); min-height: 104px; }
 .nb-stream:empty::after { content: "No requests yet. Each request to the API shows up here and as a signal in the brain."; font-size: 11px; color: var(--nb-dim); }
 .nb-off .nb-stream:empty::after { content: "Signals return here once the API answers again."; }
